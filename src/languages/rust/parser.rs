@@ -1,11 +1,9 @@
 use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
 use std::path::Path;
-use std::fs;
 use syn::{visit::Visit, ItemFn, ItemStruct, ItemImpl, Visibility as SynVis};
 
-pub fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<Symbol>> {
-    let source = fs::read_to_string(file_path)?;
+pub fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec<Symbol>> {
     let syntax = syn::parse_file(&source)?;
 
     let relative_path = pathdiff::diff_paths(file_path, root_dir)
@@ -17,9 +15,11 @@ pub fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<Symbol>> {
         symbols: Vec::new(),
         relative_path,
         struct_indices: std::collections::HashMap::new(),
+        pending_methods: std::collections::HashMap::new(),
     };
 
     visitor.visit_file(&syntax);
+    visitor.attach_pending_methods();
 
     Ok(visitor.symbols)
 }
@@ -29,6 +29,7 @@ struct SymbolVisitor {
     relative_path: String,
     // Map struct name to index in symbols vector
     struct_indices: std::collections::HashMap<String, usize>,
+    pending_methods: std::collections::HashMap<String, Vec<Symbol>>,
 }
 
 impl SymbolVisitor {
@@ -61,6 +62,31 @@ impl SymbolVisitor {
             signature,
             children: vec![],
         }
+    }
+
+    fn attach_pending_methods(&mut self) {
+        for (type_name, methods) in self.pending_methods.drain() {
+            if let Some(idx) = self.struct_indices.get(&type_name).copied() {
+                self.symbols[idx].children.extend(methods);
+            } else {
+                for mut method in methods {
+                    method.name = format!("{}.{}", type_name, method.name);
+                    self.symbols.push(method);
+                }
+            }
+        }
+    }
+
+    fn push_pending(&mut self, type_name: String, method: Symbol, trait_name: Option<String>) {
+        let method = if let Some(trait_name) = trait_name {
+            let mut updated = method;
+            updated.signature = format!("fn {}::{}(...)", trait_name, updated.name);
+            updated
+        } else {
+            method
+        };
+
+        self.pending_methods.entry(type_name).or_default().push(method);
     }
 }
 
@@ -98,7 +124,11 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
         
         let idx = self.symbols.len();
         self.symbols.push(self.create_symbol(name.clone(), SymbolKind::Struct, vis, node.ident.span(), sig));
-        self.struct_indices.insert(name, idx);
+        self.struct_indices.insert(name.clone(), idx);
+
+        if let Some(methods) = self.pending_methods.remove(&name) {
+            self.symbols[idx].children.extend(methods);
+        }
     }
     
     fn visit_item_impl(&mut self, node: &'ast ItemImpl) {
@@ -126,17 +156,19 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                      let m_vis = map_vis(&method.vis);
                      let m_sig = format!("fn {}(...)", m_name);
                      
-                     let mut sym = self.create_symbol(m_name, SymbolKind::Method, m_vis, method.sig.ident.span(), m_sig);
-                     sym.name = if type_name == "?" {
-                         format!("{}::{}", trait_name, sym.name)
-                     } else {
-                         format!("{}::{}::{}", type_name, trait_name, sym.name)
-                     };
-                     
+                     let sym = self.create_symbol(m_name, SymbolKind::Method, m_vis, method.sig.ident.span(), m_sig);
+
                      if let Some(idx) = parent_idx {
+                         let mut sym = sym;
+                         sym.signature = format!("fn {}::{}(...)", trait_name, sym.name);
                          self.symbols[idx].children.push(sym);
+                     } else if type_name != "?" {
+                         self.push_pending(type_name.clone(), sym, Some(trait_name.clone()));
                      } else {
-                         self.symbols.push(sym);
+                         let mut orphan = sym;
+                         orphan.name = format!("{}::{}", trait_name, orphan.name);
+                         orphan.signature = format!("fn {}(...)", orphan.name);
+                         self.symbols.push(orphan);
                      }
                  }
              }
@@ -158,11 +190,7 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                      if let Some(idx) = parent_idx {
                          self.symbols[idx].children.push(sym);
                      } else {
-                         // Orphan method (impl block before struct or struct in other file)
-                         // Treat as top-level function but with class-like name prefix for context
-                         let mut orphan = sym;
-                         orphan.name = format!("{}.{}", type_name, orphan.name);
-                         self.symbols.push(orphan);
+                         self.push_pending(type_name.clone(), sym, None);
                      }
                  }
              }

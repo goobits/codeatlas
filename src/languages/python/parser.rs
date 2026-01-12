@@ -4,12 +4,10 @@ use rustpython_parser::{ast, Parse};
 use rustpython_parser::source_code::LineIndex;
 use rustpython_parser::text_size::TextRange;
 use std::path::Path;
-use std::fs;
 use std::sync::Arc;
 
-pub fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<Symbol>> {
-    let source = fs::read_to_string(file_path)?;
-    let ast = ast::Suite::parse(&source, &file_path.to_string_lossy())?;
+pub fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec<Symbol>> {
+    let ast = ast::Suite::parse(source, &file_path.to_string_lossy())?;
 
     let relative_path = pathdiff::diff_paths(file_path, root_dir)
         .unwrap_or(file_path.to_path_buf())
@@ -24,6 +22,7 @@ pub fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<Symbol>> {
         relative_path,
         source,
         line_index,
+        recurse_into_functions: true,
     };
 
     visitor.visit_suite(&ast);
@@ -36,6 +35,7 @@ struct SymbolVisitor {
     relative_path: String,
     source: Arc<str>,
     line_index: LineIndex,
+    recurse_into_functions: bool,
 }
 
 impl SymbolVisitor {
@@ -84,9 +84,9 @@ impl SymbolVisitor {
                 let symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, sig);
                 self.symbols.push(symbol);
                 
-                // Recurse? Usually functions don't have public symbols inside, 
-                // but we might want to catch nested classes or functions.
-                // self.visit_suite(&f.body); 
+                if self.recurse_into_functions {
+                    self.visit_suite(&f.body);
+                }
             },
             ast::Stmt::ClassDef(c) => {
                 let name = c.name.as_str().to_string();
@@ -100,6 +100,7 @@ impl SymbolVisitor {
                     relative_path: self.relative_path.clone(),
                     source: self.source.clone(),
                     line_index: self.line_index.clone(),
+                    recurse_into_functions: false,
                 };
                 child_visitor.visit_suite(&c.body);
                 

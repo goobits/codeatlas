@@ -2,7 +2,7 @@ use crate::domain::ScanReport;
 use std::cmp::Ordering;
 
 pub fn render(report: &ScanReport) -> String {
-    let mut symbols = report.symbols.clone();
+    let mut symbols: Vec<&crate::domain::Symbol> = report.symbols.iter().collect();
 
     // Deterministic Sort
     symbols.sort_by(|a, b| {
@@ -40,7 +40,7 @@ pub fn render(report: &ScanReport) -> String {
         
         // Children (Methods)
         // Sort children too
-        let mut children = sym.children.clone();
+        let mut children: Vec<&crate::domain::Symbol> = sym.children.iter().collect();
         children.sort_by(|a, b| a.name.cmp(&b.name));
         
         for child in children {

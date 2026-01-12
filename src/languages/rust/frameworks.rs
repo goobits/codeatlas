@@ -1,11 +1,91 @@
 use crate::domain::{Route, Symbol};
+use regex::Regex;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
-pub fn detect_routes(_symbols: &mut [Symbol]) -> Vec<Route> {
-    // Axum/Actix routing is often done via method calls like `.route("/path", get(handler))`
-    // This requires analyzing the main function or setup functions.
-    // Similar to Python, without examining the AST of the *registration* calls (which might be in `main` or `lib`),
-    // purely symbol-based detection is hard.
-    
-    // We will leave this empty for MVP to avoid false positives.
-    Vec::new()
+pub fn detect_routes(file_path: &std::path::Path, source: &str, symbols: &mut [Symbol]) -> Vec<Route> {
+    let mut routes = Vec::new();
+    let symbol_info = build_symbol_info(symbols);
+
+    for (method, path, handler) in parse_attribute_routes(source) {
+        routes.push(build_route(file_path, &symbol_info, &method, &path, &handler));
+    }
+
+    for (method, path, handler) in parse_builder_routes(source) {
+        routes.push(build_route(file_path, &symbol_info, &method, &path, &handler));
+    }
+
+    routes
+}
+
+fn parse_attribute_routes(source: &str) -> Vec<(String, String, String)> {
+    static ATTR_RE: OnceLock<Regex> = OnceLock::new();
+    let attr_re = ATTR_RE.get_or_init(|| {
+        Regex::new(r#"(?s)#\[(get|post|put|delete|patch)\("([^"]+)"\)\]\s*fn\s+([A-Za-z_][A-Za-z0-9_]*)"#).unwrap()
+    });
+
+    attr_re
+        .captures_iter(source)
+        .map(|caps| {
+            (
+                caps[1].to_uppercase(),
+                caps[2].to_string(),
+                caps[3].to_string(),
+            )
+        })
+        .collect()
+}
+
+fn parse_builder_routes(source: &str) -> Vec<(String, String, String)> {
+    static ROUTE_RE: OnceLock<Regex> = OnceLock::new();
+    let route_re = ROUTE_RE.get_or_init(|| {
+        Regex::new(r#"\.route\s*\(\s*"([^"]+)"\s*,\s*(get|post|put|delete|patch)\s*\(\s*([A-Za-z_][A-Za-z0-9_:]*)"#).unwrap()
+    });
+
+    route_re
+        .captures_iter(source)
+        .map(|caps| {
+            let handler = caps[3]
+                .split("::")
+                .last()
+                .unwrap_or(&caps[3])
+                .to_string();
+            (
+                caps[2].to_uppercase(),
+                caps[1].to_string(),
+                handler,
+            )
+        })
+        .collect()
+}
+
+fn build_route(
+    file_path: &std::path::Path,
+    symbol_info: &HashMap<String, (String, Option<crate::domain::Span>)>,
+    method: &str,
+    path: &str,
+    handler: &str,
+) -> Route {
+    let (handler_id, span) = symbol_info
+        .get(handler)
+        .map(|info| (Some(info.0.clone()), info.1.clone()))
+        .unwrap_or((None, None));
+
+    Route {
+        method: method.to_string(),
+        path: path.to_string(),
+        handler_id,
+        source_framework: "Axum/Actix".to_string(),
+        file_path: file_path.to_string_lossy().to_string(),
+        span,
+    }
+}
+
+fn build_symbol_info(symbols: &[Symbol]) -> HashMap<String, (String, Option<crate::domain::Span>)> {
+    let mut info = HashMap::new();
+    for sym in symbols {
+        info.entry(sym.name.clone())
+            .or_insert_with(|| (sym.id.clone(), sym.span.clone()));
+    }
+    info
 }

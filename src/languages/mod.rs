@@ -2,8 +2,12 @@ pub mod typescript;
 pub mod python;
 pub mod rust;
 
-use crate::domain::{LanguageScanner, ScanConfig, ScanReport, ScanStats, Symbol, SymbolKind, Visibility};
+use crate::domain::{
+    Language, LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol,
+    SymbolKind, Visibility,
+};
 use std::path::Path;
+use walkdir::DirEntry;
 
 pub fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageScanner>> {
     let mut scanners: Vec<Box<dyn LanguageScanner>> = Vec::new();
@@ -69,4 +73,82 @@ pub(crate) fn apply_symbol_filters(symbols: &mut Vec<Symbol>, config: &ScanConfi
     }
 
     symbols.retain_mut(|symbol| keep_symbol(symbol, config));
+}
+
+pub(crate) fn scan_language<F, P, D>(
+    root_dir: &Path,
+    config: &ScanConfig,
+    language: Language,
+    filter_entry: F,
+    is_language_file: fn(&Path) -> bool,
+    needs_source: bool,
+    mut parse_file: P,
+    mut detect_routes: D,
+) -> ScanReport
+where
+    F: Fn(&DirEntry) -> bool,
+    P: FnMut(&Path, &Path, Option<&str>) -> anyhow::Result<Vec<Symbol>>,
+    D: FnMut(&Path, &str, &mut [Symbol]) -> Vec<Route>,
+{
+    let mut report = ScanReport {
+        stats: ScanStats::default(),
+        symbols: vec![],
+        routes: vec![],
+        skipped_files: vec![],
+    };
+
+    let walker = walkdir::WalkDir::new(root_dir).into_iter();
+
+    for entry in walker.filter_entry(filter_entry) {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let path = entry.path();
+        if path.is_dir() || !is_language_file(path) {
+            continue;
+        }
+
+        let source = if needs_source {
+            match std::fs::read_to_string(path) {
+                Ok(content) => Some(content),
+                Err(e) => {
+                    report.stats.files_skipped += 1;
+                    report.skipped_files.push(SkippedFile {
+                        path: path.to_string_lossy().to_string(),
+                        reason: e.to_string(),
+                        language,
+                    });
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+
+        match parse_file(path, root_dir, source.as_deref()) {
+            Ok(mut symbols) => {
+                report.stats.files_scanned += 1;
+
+                let file_routes = detect_routes(path, source.as_deref().unwrap_or(""), &mut symbols);
+                report.stats.routes_found += file_routes.len();
+                report.routes.extend(file_routes);
+
+                apply_symbol_filters(&mut symbols, config);
+                report.stats.symbols_found += symbols.len();
+                report.symbols.extend(symbols);
+            }
+            Err(e) => {
+                report.stats.files_skipped += 1;
+                report.skipped_files.push(SkippedFile {
+                    path: path.to_string_lossy().to_string(),
+                    reason: e.to_string(),
+                    language,
+                });
+            }
+        }
+    }
+
+    report
 }

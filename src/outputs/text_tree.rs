@@ -14,18 +14,17 @@ pub fn render(report: &ScanReport) -> String {
     }
     
     // Sort files
-    let mut sorted_files: Vec<_> = files.keys().collect();
+    let mut sorted_files: Vec<String> = files.keys().map(|key| (*key).clone()).collect();
     sorted_files.sort();
 
     for file in sorted_files {
         output.push_str(&format!("{} {}\n", "📁".blue(), file));
         
-        let symbols = files.get(file).unwrap();
+        let symbols = files.get_mut(&file).unwrap();
         // Sort symbols by line
-        let mut sorted_syms = symbols.clone();
-        sorted_syms.sort_by_key(|s| s.span.as_ref().map(|sp| sp.start_line).unwrap_or(0));
+        symbols.sort_by_key(|s| s.span.as_ref().map(|sp| sp.start_line).unwrap_or(0));
         
-        for sym in sorted_syms {
+        for sym in symbols.iter() {
             let icon = match sym.kind {
                 crate::domain::SymbolKind::Class | crate::domain::SymbolKind::Struct => "C".yellow(),
                 crate::domain::SymbolKind::Function | crate::domain::SymbolKind::Method => "f".magenta(),

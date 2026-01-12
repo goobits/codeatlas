@@ -1,6 +1,5 @@
-use crate::domain::{LanguageScanner, ScanConfig, ScanReport, ScanStats, SkippedFile, Language};
+use crate::domain::{Language, LanguageScanner, ScanConfig, ScanReport};
 use std::path::Path;
-use walkdir::WalkDir;
 
 pub mod parser;
 pub mod frameworks;
@@ -9,57 +8,25 @@ pub struct PythonScanner;
 
 impl LanguageScanner for PythonScanner {
     fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {
-        let mut report = ScanReport {
-            stats: ScanStats::default(),
-            symbols: vec![],
-            routes: vec![],
-            skipped_files: vec![],
-        };
-
-        let walker = WalkDir::new(root_dir).into_iter();
-
-        for entry in walker.filter_entry(|e| {
-            let name = e.file_name().to_string_lossy();
-            !name.starts_with(".") && name != "__pycache__" && name != "venv" && name != "build" && name != "dist" && !name.ends_with(".egg-info")
-        }) {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-            let path = entry.path();
-            if path.is_dir() {
-                continue;
-            }
-
-            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            if ext != "py" {
-                continue;
-            }
-
-            match parser::parse_file(path, root_dir) {
-                Ok(mut symbols) => {
-                    report.stats.files_scanned += 1;
-
-                    let file_routes = frameworks::detect_routes(&mut symbols);
-                    report.stats.routes_found += file_routes.len();
-                    report.routes.extend(file_routes);
-
-                    crate::languages::apply_symbol_filters(&mut symbols, config);
-                    report.stats.symbols_found += symbols.len();
-                    report.symbols.extend(symbols);
-                }
-                Err(e) => {
-                    report.stats.files_skipped += 1;
-                    report.skipped_files.push(SkippedFile {
-                        path: path.to_string_lossy().to_string(),
-                        reason: e.to_string(),
-                        language: Language::Python,
-                    });
-                }
-            }
-        }
-        
-        report
+        crate::languages::scan_language(
+            root_dir,
+            config,
+            Language::Python,
+            |e| {
+                let name = e.file_name().to_string_lossy();
+                !name.starts_with(".")
+                    && name != "__pycache__"
+                    && name != "venv"
+                    && name != "build"
+                    && name != "dist"
+                    && !name.ends_with(".egg-info")
+            },
+            |path| path.extension().and_then(|s| s.to_str()) == Some("py"),
+            true,
+            |path, root, source| parser::parse_file(path, root, source.ok_or_else(|| {
+                anyhow::anyhow!("Missing source for python parser")
+            })?),
+            |path, source, symbols| frameworks::detect_routes(path, source, symbols),
+        )
     }
 }
