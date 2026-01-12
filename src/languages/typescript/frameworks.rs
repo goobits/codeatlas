@@ -2,7 +2,11 @@ use crate::domain::{Route, Symbol};
 use regex::Regex;
 use std::sync::OnceLock;
 
-pub fn detect_routes(_file_path: &std::path::Path, _source: &str, symbols: &mut [Symbol]) -> Vec<Route> {
+pub(crate) fn detect_routes(
+    _file_path: &std::path::Path,
+    _source: &str,
+    symbols: &mut [Symbol],
+) -> Vec<Route> {
     let mut routes = Vec::new();
 
     for sym in symbols.iter_mut() {

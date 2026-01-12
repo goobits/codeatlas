@@ -1,3 +1,4 @@
+mod analysis;
 mod domain;
 mod languages;
 mod outputs;
@@ -37,6 +38,14 @@ struct Cli {
     /// Entrypoints for Audit Mode
     #[arg(long, value_delimiter = ',')]
     entrypoints: Option<Vec<String>>,
+
+    /// Include unused_public analysis in output
+    #[arg(long, default_value_t = false)]
+    suggest: bool,
+
+    /// Include import graph in output
+    #[arg(long, default_value_t = false)]
+    imports: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -54,10 +63,20 @@ fn main() {
         include_types: cli.include_types,
         include_private: cli.include_private,
         entrypoints: cli.entrypoints,
+        suggest: cli.suggest,
+        imports: cli.imports,
     };
 
     let scanners = languages::get_scanners(cli.languages);
-    let report = languages::scan_all(&cli.path, &config, scanners);
+    let mut report = languages::scan_all(&cli.path, &config, scanners);
+    let mut importers = None;
+    if config.imports {
+        importers = Some(analysis::annotate_imports(&mut report, &cli.path));
+    }
+    if config.suggest {
+        let importers = importers.unwrap_or_else(|| analysis::build_importers(&report, &cli.path));
+        analysis::annotate_unused_public(&mut report, &importers);
+    }
 
     let output_content = match cli.format {
         OutputFormat::Tree => outputs::text_tree::render(&report),

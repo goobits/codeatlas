@@ -6,6 +6,8 @@ pub struct ScanConfig {
     pub include_types: bool,
     pub include_private: bool,
     pub entrypoints: Option<Vec<String>>, // If Some, "Audit Mode"
+    pub suggest: bool,
+    pub imports: bool,
 }
 
 pub trait LanguageScanner {

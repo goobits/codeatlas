@@ -3,7 +3,29 @@ use anyhow::Result;
 use std::path::Path;
 use syn::{visit::Visit, ItemFn, ItemStruct, ItemImpl, Visibility as SynVis};
 
-pub fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec<Symbol>> {
+pub(crate) struct UseExport {
+    pub module_path: Vec<String>,
+    pub name: String,
+    pub alias: String,
+    pub is_glob: bool,
+}
+
+pub(crate) struct RustModuleInfo {
+    pub symbols: Vec<Symbol>,
+    pub public_mods: Vec<String>,
+    pub public_uses: Vec<UseExport>,
+    pub uses: Vec<UseExport>,
+}
+
+pub(crate) fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec<Symbol>> {
+    Ok(parse_module_info(file_path, root_dir, source)?.symbols)
+}
+
+pub(crate) fn parse_module_info(
+    file_path: &Path,
+    root_dir: &Path,
+    source: &str,
+) -> Result<RustModuleInfo> {
     let syntax = syn::parse_file(&source)?;
 
     let relative_path = pathdiff::diff_paths(file_path, root_dir)
@@ -21,7 +43,29 @@ pub fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec
     visitor.visit_file(&syntax);
     visitor.attach_pending_methods();
 
-    Ok(visitor.symbols)
+    let mut public_mods = Vec::new();
+    let mut public_uses = Vec::new();
+    let mut uses = Vec::new();
+    for item in &syntax.items {
+        if let syn::Item::Mod(item_mod) = item {
+            if matches!(item_mod.vis, SynVis::Public(_)) {
+                public_mods.push(item_mod.ident.to_string());
+            }
+        }
+        if let syn::Item::Use(item_use) = item {
+            collect_use_imports(&item_use.tree, Vec::new(), &mut uses);
+            if matches!(item_use.vis, SynVis::Public(_)) {
+                collect_use_exports(&item_use.tree, Vec::new(), &mut public_uses);
+            }
+        }
+    }
+
+    Ok(RustModuleInfo {
+        symbols: visitor.symbols,
+        public_mods,
+        public_uses,
+        uses,
+    })
 }
 
 struct SymbolVisitor {
@@ -195,5 +239,85 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                  }
              }
          }
+    }
+}
+
+fn collect_use_exports(tree: &syn::UseTree, prefix: Vec<String>, exports: &mut Vec<UseExport>) {
+    match tree {
+        syn::UseTree::Name(name) => {
+            let name = name.ident.to_string();
+            exports.push(UseExport {
+                module_path: prefix,
+                name: name.clone(),
+                alias: name,
+                is_glob: false,
+            });
+        }
+        syn::UseTree::Rename(rename) => {
+            exports.push(UseExport {
+                module_path: prefix,
+                name: rename.ident.to_string(),
+                alias: rename.rename.to_string(),
+                is_glob: false,
+            });
+        }
+        syn::UseTree::Glob(_) => {
+            exports.push(UseExport {
+                module_path: prefix,
+                name: "*".to_string(),
+                alias: "*".to_string(),
+                is_glob: true,
+            });
+        }
+        syn::UseTree::Path(path) => {
+            let mut next = prefix;
+            next.push(path.ident.to_string());
+            collect_use_exports(&path.tree, next, exports);
+        }
+        syn::UseTree::Group(group) => {
+            for tree in &group.items {
+                collect_use_exports(tree, prefix.clone(), exports);
+            }
+        }
+    }
+}
+
+fn collect_use_imports(tree: &syn::UseTree, prefix: Vec<String>, imports: &mut Vec<UseExport>) {
+    match tree {
+        syn::UseTree::Name(name) => {
+            let name = name.ident.to_string();
+            imports.push(UseExport {
+                module_path: prefix,
+                name,
+                alias: String::new(),
+                is_glob: false,
+            });
+        }
+        syn::UseTree::Rename(rename) => {
+            imports.push(UseExport {
+                module_path: prefix,
+                name: rename.ident.to_string(),
+                alias: rename.rename.to_string(),
+                is_glob: false,
+            });
+        }
+        syn::UseTree::Glob(_) => {
+            imports.push(UseExport {
+                module_path: prefix,
+                name: "*".to_string(),
+                alias: "*".to_string(),
+                is_glob: true,
+            });
+        }
+        syn::UseTree::Path(path) => {
+            let mut next = prefix;
+            next.push(path.ident.to_string());
+            collect_use_imports(&path.tree, next, imports);
+        }
+        syn::UseTree::Group(group) => {
+            for tree in &group.items {
+                collect_use_imports(tree, prefix.clone(), imports);
+            }
+        }
     }
 }

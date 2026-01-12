@@ -6,7 +6,29 @@ use rustpython_parser::text_size::TextRange;
 use std::path::Path;
 use std::sync::Arc;
 
-pub fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec<Symbol>> {
+pub(crate) struct PythonImport {
+    pub module: String,
+    pub names: Vec<String>,
+    pub is_star: bool,
+    pub level: usize,
+    pub aliases: Vec<Option<String>>,
+}
+
+pub(crate) struct PythonModuleInfo {
+    pub symbols: Vec<Symbol>,
+    pub exports: Option<Vec<String>>,
+    pub imports: Vec<PythonImport>,
+}
+
+pub(crate) fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec<Symbol>> {
+    Ok(parse_module_info(file_path, root_dir, source)?.symbols)
+}
+
+pub(crate) fn parse_module_info(
+    file_path: &Path,
+    root_dir: &Path,
+    source: &str,
+) -> Result<PythonModuleInfo> {
     let ast = ast::Suite::parse(source, &file_path.to_string_lossy())?;
 
     let relative_path = pathdiff::diff_paths(file_path, root_dir)
@@ -27,7 +49,13 @@ pub fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec
 
     visitor.visit_suite(&ast);
 
-    Ok(visitor.symbols)
+    let (exports, imports) = collect_exports_and_imports(&ast);
+
+    Ok(PythonModuleInfo {
+        symbols: visitor.symbols,
+        exports,
+        imports,
+    })
 }
 
 struct SymbolVisitor {
@@ -123,12 +151,7 @@ impl SymbolVisitor {
 }
 
 fn determine_visibility(name: &str) -> Visibility {
-    if name.starts_with("__") && name.ends_with("__") {
-        Visibility::Public // Magic methods are technically accessible, but often treated special. Let's say Public for now or Internal?
-        // Spec says: Starts with __ -> Private. 
-        // But __init__ is special.
-        // Let's stick to strict spec:
-    } else if name.starts_with("__") {
+    if name.starts_with("__") {
         Visibility::Private
     } else if name.starts_with("_") {
         Visibility::Internal
@@ -144,4 +167,99 @@ fn kind_to_str(kind: SymbolKind) -> &'static str {
         SymbolKind::Method => "method",
         _ => "sym",
     }
+}
+
+fn collect_exports_and_imports(
+    suite: &[ast::Stmt],
+) -> (Option<Vec<String>>, Vec<PythonImport>) {
+    let mut exports = None;
+    let mut imports = Vec::new();
+
+    for stmt in suite {
+        match stmt {
+            ast::Stmt::Assign(assign) => {
+                if exports.is_some() {
+                    continue;
+                }
+                let is_all = assign
+                    .targets
+                    .iter()
+                    .any(|target| matches!(target, ast::Expr::Name(name) if name.id.as_str() == "__all__"));
+                if !is_all {
+                    continue;
+                }
+                if let Some(values) = extract_string_list(&assign.value) {
+                    exports = Some(values);
+                }
+            }
+            ast::Stmt::Import(import) => {
+                let mut modules = Vec::new();
+                let mut aliases = Vec::new();
+                for name in &import.names {
+                    let module = name.name.as_str().to_string();
+                    modules.push(module);
+                    aliases.push(name.asname.as_ref().map(|alias| alias.as_str().to_string()));
+                }
+                if !modules.is_empty() {
+                    imports.push(PythonImport {
+                        module: String::new(),
+                        names: modules,
+                        is_star: false,
+                        level: 0,
+                        aliases,
+                    });
+                }
+            }
+            ast::Stmt::ImportFrom(import) => {
+                let module = import.module.as_ref().map(|m| m.as_str().to_string()).unwrap_or_default();
+                let mut names = Vec::new();
+                let mut is_star = false;
+                let mut aliases = Vec::new();
+                for name in &import.names {
+                    let imported = name.name.as_str().to_string();
+                    if imported == "*" {
+                        is_star = true;
+                    } else {
+                        names.push(imported);
+                    }
+                    aliases.push(name.asname.as_ref().map(|alias| alias.as_str().to_string()));
+                }
+                imports.push(PythonImport {
+                    module,
+                    names,
+                    is_star,
+                    level: import.level.map(|level| level.to_usize()).unwrap_or(0),
+                    aliases,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    (exports, imports)
+}
+
+fn extract_string_list(expr: &ast::Expr) -> Option<Vec<String>> {
+    match expr {
+        ast::Expr::List(list) => extract_strings(&list.elts),
+        ast::Expr::Tuple(tuple) => extract_strings(&tuple.elts),
+        _ => None,
+    }
+}
+
+fn extract_strings(exprs: &[ast::Expr]) -> Option<Vec<String>> {
+    let mut values = Vec::new();
+    for expr in exprs {
+        match expr {
+            ast::Expr::Constant(constant) => {
+                if let ast::Constant::Str(value) = &constant.value {
+                    values.push(value.clone());
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+    Some(values)
 }

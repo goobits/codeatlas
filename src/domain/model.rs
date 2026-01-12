@@ -7,6 +7,8 @@ pub struct ScanReport {
     pub symbols: Vec<Symbol>,
     pub routes: Vec<Route>,
     pub skipped_files: Vec<SkippedFile>,
+    pub imports: Vec<ImportUsage>,
+    pub unused_public: Vec<UnusedPublic>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -56,6 +58,18 @@ pub struct Route {
     pub span: Option<Span>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportUsage {
+    pub id: String,
+    pub importers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnusedPublic {
+    pub id: String,
+    pub suggestion: String,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Visibility {
     Public,
@@ -64,7 +78,7 @@ pub enum Visibility {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Language {
     TypeScript,
     Python,

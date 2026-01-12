@@ -3,7 +3,11 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-pub fn detect_routes(file_path: &std::path::Path, source: &str, symbols: &mut [Symbol]) -> Vec<Route> {
+pub(crate) fn detect_routes(
+    file_path: &std::path::Path,
+    source: &str,
+    symbols: &mut [Symbol],
+) -> Vec<Route> {
     let mut routes = Vec::new();
     let symbol_info = build_symbol_info(symbols);
 
