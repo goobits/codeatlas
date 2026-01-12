@@ -9,12 +9,13 @@ pub fn collect_importers(
     root_dir: &Path,
     symbol_index: &HashMap<Language, HashMap<String, HashMap<String, String>>>,
     importers: &mut Importers,
+    no_default_ignore: bool,
 ) {
     let Some(symbols_by_file) = symbol_index.get(&Language::Python) else {
         return;
     };
 
-    let (modules, module_by_name) = load_modules(root_dir);
+    let (modules, module_by_name) = load_modules(root_dir, no_default_ignore);
     if modules.is_empty() {
         return;
     }
@@ -36,19 +37,23 @@ pub fn collect_importers(
     }
 }
 
-fn load_modules(root_dir: &Path) -> (HashMap<String, ModuleInfo>, HashMap<String, String>) {
+fn load_modules(
+    root_dir: &Path,
+    no_default_ignore: bool,
+) -> (HashMap<String, ModuleInfo>, HashMap<String, String>) {
     let mut modules: HashMap<String, ModuleInfo> = HashMap::new();
     let mut module_by_name: HashMap<String, String> = HashMap::new();
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
     for entry in walker.filter_entry(|e| {
+        if e.depth() == 0 {
+            return true;
+        }
         let name = e.file_name().to_string_lossy();
-        !name.starts_with(".")
-            && name != "__pycache__"
-            && name != "venv"
-            && name != "build"
-            && name != "dist"
-            && !name.ends_with(".egg-info")
+        if crate::analysis::ignore::is_ignored_dir(&name, no_default_ignore) {
+            return false;
+        }
+        name != "__pycache__" && name != "venv" && !name.ends_with(".egg-info")
     }) {
         let entry = match entry {
             Ok(e) => e,

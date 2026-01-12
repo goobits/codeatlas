@@ -6,9 +6,13 @@ mod python;
 mod rust;
 mod typescript;
 
-pub type Importers = HashMap<String, HashSet<String>>;
+pub(crate) type Importers = HashMap<String, HashSet<String>>;
 
-pub fn build_importers(report: &ScanReport, root_dir: &Path) -> Importers {
+pub(crate) fn build_importers(
+    report: &ScanReport,
+    root_dir: &Path,
+    no_default_ignore: bool,
+) -> Importers {
     let mut importers = HashMap::new();
 
     let public_symbols: Vec<&Symbol> = report
@@ -19,9 +23,9 @@ pub fn build_importers(report: &ScanReport, root_dir: &Path) -> Importers {
 
     let symbol_index = build_symbol_index(&public_symbols);
 
-    python::collect_importers(root_dir, &symbol_index, &mut importers);
-    rust::collect_importers(root_dir, &symbol_index, &mut importers);
-    typescript::collect_importers(root_dir, &symbol_index, &mut importers);
+    python::collect_importers(root_dir, &symbol_index, &mut importers, no_default_ignore);
+    rust::collect_importers(root_dir, &symbol_index, &mut importers, no_default_ignore);
+    typescript::collect_importers(root_dir, &symbol_index, &mut importers, no_default_ignore);
 
     importers
 }
@@ -38,14 +42,14 @@ fn build_symbol_index(
     index
 }
 
-pub fn add_importer(importers: &mut Importers, symbol_id: &str, importer: &str) {
+pub(crate) fn add_importer(importers: &mut Importers, symbol_id: &str, importer: &str) {
     importers
         .entry(symbol_id.to_string())
         .or_default()
         .insert(importer.to_string());
 }
 
-pub fn to_import_usage(importers: &Importers) -> Vec<ImportUsage> {
+pub(crate) fn to_import_usage(importers: &Importers) -> Vec<ImportUsage> {
     let mut usage = Vec::new();
     for (id, files) in importers {
         let mut importers: Vec<String> = files.iter().cloned().collect();

@@ -8,6 +8,7 @@ pub fn collect_importers(
     root_dir: &Path,
     symbol_index: &HashMap<Language, HashMap<String, HashMap<String, String>>>,
     importers: &mut Importers,
+    no_default_ignore: bool,
 ) {
     let Some(symbols_by_file) = symbol_index.get(&Language::Rust) else {
         return;
@@ -18,8 +19,11 @@ pub fn collect_importers(
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
     for entry in walker.filter_entry(|e| {
+        if e.depth() == 0 {
+            return true;
+        }
         let name = e.file_name().to_string_lossy();
-        !name.starts_with(".") && name != "target"
+        !crate::analysis::ignore::is_ignored_dir(&name, no_default_ignore) && name != "target"
     }) {
         let entry = match entry {
             Ok(e) => e,

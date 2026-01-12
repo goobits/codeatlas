@@ -1,7 +1,7 @@
 use crate::domain::ScanReport;
 use colored::*;
 
-pub fn render(report: &ScanReport) -> String {
+pub(crate) fn render(report: &ScanReport) -> String {
     let mut output = String::new();
     
     output.push_str("\n CodeAtlas Scan Report \n");

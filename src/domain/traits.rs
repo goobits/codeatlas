@@ -8,6 +8,7 @@ pub struct ScanConfig {
     pub entrypoints: Option<Vec<String>>, // If Some, "Audit Mode"
     pub suggest: bool,
     pub imports: bool,
+    pub no_default_ignore: bool,
 }
 
 pub trait LanguageScanner {

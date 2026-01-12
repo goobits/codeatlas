@@ -1,6 +1,6 @@
-use codeatlas::analysis;
-use codeatlas::domain::ScanConfig;
-use codeatlas::languages;
+use crate::analysis;
+use crate::domain::ScanConfig;
+use crate::languages;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -15,11 +15,12 @@ fn collect_unused_ids(root: &PathBuf, language: &str) -> HashSet<String> {
         entrypoints: None,
         suggest: true,
         imports: false,
+        no_default_ignore: false,
     };
     let scanners = languages::get_scanners(Some(vec![language.to_string()]));
     let mut report = languages::scan_all(root, &config, scanners);
-    let importers = analysis::annotate_imports(&mut report, root);
-    analysis::annotate_unused_public(&mut report, &importers);
+    let importers = analysis::annotate_imports(&mut report, root, config.no_default_ignore);
+    analysis::annotate_unused_public(&mut report, &importers, config.no_default_ignore);
     report.unused_public.into_iter().map(|entry| entry.id).collect()
 }
 

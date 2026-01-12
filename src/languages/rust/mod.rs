@@ -17,6 +17,9 @@ impl LanguageScanner for RustScanner {
             config,
             Language::Rust,
             |e| {
+                if e.depth() == 0 {
+                    return true;
+                }
                 let name = e.file_name().to_string_lossy();
                 !name.starts_with(".") && name != "target"
             },
@@ -59,6 +62,9 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
     for entry in walker.filter_entry(|e| {
+        if e.depth() == 0 {
+            return true;
+        }
         let name = e.file_name().to_string_lossy();
         !name.starts_with(".") && name != "target"
     }) {

@@ -1,7 +1,7 @@
 use crate::domain::ScanReport;
 use std::cmp::Ordering;
 
-pub fn render(report: &ScanReport) -> String {
+pub(crate) fn render(report: &ScanReport) -> String {
     let mut symbols: Vec<&crate::domain::Symbol> = report.symbols.iter().collect();
 
     // Deterministic Sort

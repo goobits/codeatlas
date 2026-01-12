@@ -1,6 +1,6 @@
 use crate::domain::ScanReport;
 
-pub fn render(report: &ScanReport) -> String {
+pub(crate) fn render(report: &ScanReport) -> String {
     let mut output = String::new();
     output.push_str("mindmap\n");
     output.push_str("  root((Repository))\n");

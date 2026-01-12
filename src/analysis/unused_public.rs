@@ -1,11 +1,19 @@
 use crate::analysis::imports::Importers;
+use crate::analysis::ignore;
 use crate::domain::{ScanReport, UnusedPublic, Visibility};
 
-pub fn compute(report: &ScanReport, importers: &Importers) -> Vec<UnusedPublic> {
+pub(crate) fn compute(
+    report: &ScanReport,
+    importers: &Importers,
+    no_default_ignore: bool,
+) -> Vec<UnusedPublic> {
     let mut unused = Vec::new();
 
     for symbol in &report.symbols {
         if symbol.visibility != Visibility::Public {
+            continue;
+        }
+        if ignore::is_ignored_path(&symbol.file_path, no_default_ignore) {
             continue;
         }
         if importers.get(&symbol.id).map_or(true, |files| files.is_empty()) {

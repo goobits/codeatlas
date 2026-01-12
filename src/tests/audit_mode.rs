@@ -1,5 +1,5 @@
-use codeatlas::domain::ScanConfig;
-use codeatlas::languages;
+use crate::domain::ScanConfig;
+use crate::languages;
 use std::path::PathBuf;
 
 fn fixture_root(path: &str) -> PathBuf {
@@ -15,6 +15,7 @@ fn audit_mode_typescript_exports() {
         entrypoints: Some(vec!["src/index.ts".to_string()]),
         suggest: false,
         imports: false,
+        no_default_ignore: false,
     };
     let scanners = languages::get_scanners(Some(vec!["ts".to_string()]));
     let report = languages::scan_all(&root, &config, scanners);
@@ -32,6 +33,7 @@ fn audit_mode_python_exports() {
         entrypoints: Some(vec!["pkg/__init__.py".to_string()]),
         suggest: false,
         imports: false,
+        no_default_ignore: false,
     };
     let scanners = languages::get_scanners(Some(vec!["py".to_string()]));
     let report = languages::scan_all(&root, &config, scanners);
@@ -49,6 +51,7 @@ fn audit_mode_rust_exports() {
         entrypoints: Some(vec!["src/lib.rs".to_string()]),
         suggest: false,
         imports: false,
+        no_default_ignore: false,
     };
     let scanners = languages::get_scanners(Some(vec!["rs".to_string()]));
     let report = languages::scan_all(&root, &config, scanners);

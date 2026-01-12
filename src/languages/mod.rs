@@ -9,7 +9,7 @@ use crate::domain::{
 use std::path::Path;
 use walkdir::DirEntry;
 
-pub fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageScanner>> {
+pub(crate) fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageScanner>> {
     let mut scanners: Vec<Box<dyn LanguageScanner>> = Vec::new();
 
     let all = langs.is_none();
@@ -31,7 +31,7 @@ pub fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageScanner>>
     scanners
 }
 
-pub fn scan_all(root_dir: &Path, config: &ScanConfig, scanners: Vec<Box<dyn LanguageScanner>>) -> ScanReport {
+pub(crate) fn scan_all(root_dir: &Path, config: &ScanConfig, scanners: Vec<Box<dyn LanguageScanner>>) -> ScanReport {
     let mut combined_report = ScanReport {
         stats: ScanStats::default(),
         symbols: vec![],

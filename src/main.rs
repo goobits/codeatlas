@@ -4,6 +4,9 @@ mod languages;
 mod outputs;
 mod paths;
 
+#[cfg(test)]
+mod tests;
+
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 use domain::ScanConfig;
@@ -47,6 +50,10 @@ struct Cli {
     /// Include import graph in output
     #[arg(long, default_value_t = false)]
     imports: bool,
+
+    /// Disable default ignore list (tests/fixtures, target, node_modules, etc.)
+    #[arg(long, default_value_t = false)]
+    no_default_ignore: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -66,17 +73,24 @@ fn main() {
         entrypoints: cli.entrypoints,
         suggest: cli.suggest,
         imports: cli.imports,
+        no_default_ignore: cli.no_default_ignore,
     };
 
     let scanners = languages::get_scanners(cli.languages);
     let mut report = languages::scan_all(&cli.path, &config, scanners);
     let mut importers = None;
     if config.imports {
-        importers = Some(analysis::annotate_imports(&mut report, &cli.path));
+        importers = Some(analysis::annotate_imports(
+            &mut report,
+            &cli.path,
+            config.no_default_ignore,
+        ));
     }
     if config.suggest {
-        let importers = importers.unwrap_or_else(|| analysis::build_importers(&report, &cli.path));
-        analysis::annotate_unused_public(&mut report, &importers);
+        let importers = importers.unwrap_or_else(|| {
+            analysis::build_importers(&report, &cli.path, config.no_default_ignore)
+        });
+        analysis::annotate_unused_public(&mut report, &importers, config.no_default_ignore);
     }
 
     let output_content = match cli.format {
