@@ -35,9 +35,7 @@ pub fn render(report: &ScanReport) -> String {
     for sym in symbols {
         output.push_str(&format!(
             "[{}] {}: {}\n",
-            sym.language,
-            sym.file_path,
-            sym.signature
+            sym.language, sym.file_path, sym.signature
         ));
         
         // Children (Methods)
@@ -48,9 +46,7 @@ pub fn render(report: &ScanReport) -> String {
         for child in children {
              output.push_str(&format!(
                 "[{}] {}:   {}\n",
-                child.language,
-                child.file_path,
-                child.signature
+                child.language, child.file_path, child.signature
             ));
         }
     }

@@ -37,10 +37,10 @@ impl LanguageScanner for PythonScanner {
                 continue;
             }
 
-            report.stats.files_scanned += 1;
-
             match parser::parse_file(path, root_dir) {
                 Ok(mut symbols) => {
+                    report.stats.files_scanned += 1;
+
                     let file_routes = frameworks::detect_routes(&mut symbols);
                     report.stats.routes_found += file_routes.len();
                     report.routes.extend(file_routes);

@@ -40,11 +40,11 @@ impl LanguageScanner for TypeScriptScanner {
 
             // node_modules excluded by filter_entry above
 
-            report.stats.files_scanned += 1;
-
             // Resilience: Try to parse
             match parser::parse_file(path, root_dir) {
                 Ok(mut symbols) => {
+                    report.stats.files_scanned += 1;
+                    
                     // Detect routes BEFORE filtering symbols
                     let file_routes = frameworks::detect_routes(&mut symbols);
                     report.stats.routes_found += file_routes.len();

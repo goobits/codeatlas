@@ -152,7 +152,8 @@ impl Visit for SymbolVisitor {
             if let Expr::Member(member) = &**expr {
                 if let Some(prop) = member.prop.as_ident() {
                     let method_name = prop.sym.to_string();
-                    if ["get", "post", "put", "delete", "patch"].contains(&method_name.as_str()) {
+                    const HTTP_METHODS: &[&str] = &["get", "post", "put", "delete", "patch"];
+                    if HTTP_METHODS.contains(&method_name.as_str()) {
                          let obj_name = if let Expr::Ident(id) = &*member.obj {
                              id.sym.to_string()
                          } else {

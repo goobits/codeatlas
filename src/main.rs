@@ -67,7 +67,11 @@ fn main() {
     };
 
     if let Some(out_dir) = cli.out {
-        std::fs::create_dir_all(&out_dir).expect("Failed to create output directory");
+        if let Err(e) = std::fs::create_dir_all(&out_dir) {
+             eprintln!("Error creating output directory: {}", e);
+             std::process::exit(1);
+        }
+        
         let filename = match cli.format {
             OutputFormat::Tree => "atlas.tree",
             OutputFormat::Mermaid => "atlas.mmd",
@@ -75,7 +79,12 @@ fn main() {
             OutputFormat::Json => "atlas.json",
         };
         let out_path = out_dir.join(filename);
-        std::fs::write(&out_path, output_content).expect("Failed to write output file");
+        
+        if let Err(e) = std::fs::write(&out_path, output_content) {
+             eprintln!("Error writing output file: {}", e);
+             std::process::exit(1);
+        }
+        
         println!("Report written to {}", out_path.display());
     } else {
         println!("{}", output_content);

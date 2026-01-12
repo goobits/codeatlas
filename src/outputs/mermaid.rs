@@ -18,16 +18,20 @@ pub fn render(report: &ScanReport) -> String {
     sorted_files.sort();
     
     for file in sorted_files {
-        output.push_str(&format!("    {}\n", file));
+        output.push_str(&format!("    {}\n", escape(file)));
         let symbols = files.get(file).unwrap();
         
         for sym in symbols {
-            output.push_str(&format!("      {}\n", sym.name));
+            output.push_str(&format!("      {}\n", escape(&sym.name)));
             for child in &sym.children {
-                output.push_str(&format!("        {}\n", child.name));
+                output.push_str(&format!("        {}\n", escape(&child.name)));
             }
         }
     }
 
     output
+}
+
+fn escape(s: &str) -> String {
+    s.replace("(", "（").replace(")", "）").replace("[", "【").replace("]", "】")
 }
