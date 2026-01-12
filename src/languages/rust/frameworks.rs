@@ -23,10 +23,18 @@ pub(crate) fn detect_routes(
 }
 
 fn parse_attribute_routes(source: &str) -> Vec<(String, String, String)> {
-    static ATTR_RE: OnceLock<Regex> = OnceLock::new();
-    let attr_re = ATTR_RE.get_or_init(|| {
-        Regex::new(r#"(?s)#\[(get|post|put|delete|patch)\("([^"]+)"\)\]\s*fn\s+([A-Za-z_][A-Za-z0-9_]*)"#).unwrap()
-    });
+    static ATTR_RE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
+    let attr_re = ATTR_RE
+        .get_or_init(|| {
+            Regex::new(
+                r#"(?s)#\[(get|post|put|delete|patch)\("([^"]+)"\)\]\s*fn\s+([A-Za-z_][A-Za-z0-9_]*)"#,
+            )
+        })
+        .as_ref()
+        .ok();
+    let Some(attr_re) = attr_re else {
+        return Vec::new();
+    };
 
     attr_re
         .captures_iter(source)
@@ -41,10 +49,18 @@ fn parse_attribute_routes(source: &str) -> Vec<(String, String, String)> {
 }
 
 fn parse_builder_routes(source: &str) -> Vec<(String, String, String)> {
-    static ROUTE_RE: OnceLock<Regex> = OnceLock::new();
-    let route_re = ROUTE_RE.get_or_init(|| {
-        Regex::new(r#"\.route\s*\(\s*"([^"]+)"\s*,\s*(get|post|put|delete|patch)\s*\(\s*([A-Za-z_][A-Za-z0-9_:]*)"#).unwrap()
-    });
+    static ROUTE_RE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
+    let route_re = ROUTE_RE
+        .get_or_init(|| {
+            Regex::new(
+                r#"\.route\s*\(\s*"([^"]+)"\s*,\s*(get|post|put|delete|patch)\s*\(\s*([A-Za-z_][A-Za-z0-9_:]*)"#,
+            )
+        })
+        .as_ref()
+        .ok();
+    let Some(route_re) = route_re else {
+        return Vec::new();
+    };
 
     route_re
         .captures_iter(source)

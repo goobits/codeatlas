@@ -43,8 +43,8 @@ fn parse_method_from_name(name: &str) -> Option<&'static str> {
 }
 
 fn parse_path_from_signature(sig: &str) -> Option<String> {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| Regex::new(r#"[(]['"]([^'"]+)['"]"#).unwrap());
+    static RE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r#"[(]['"]([^'"]+)['"]"#)).as_ref().ok()?;
     
     if let Some(caps) = re.captures(sig) {
         return Some(caps[1].to_string());
