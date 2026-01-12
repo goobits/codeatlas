@@ -2,7 +2,7 @@ pub mod typescript;
 pub mod python;
 pub mod rust;
 
-use crate::domain::{LanguageScanner, ScanConfig, ScanReport, ScanStats};
+use crate::domain::{LanguageScanner, ScanConfig, ScanReport, ScanStats, Symbol, SymbolKind, Visibility};
 use std::path::Path;
 
 pub fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageScanner>> {
@@ -10,16 +10,17 @@ pub fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageScanner>>
 
     let all = langs.is_none();
     let set = langs.unwrap_or_default();
+    let has = |value: &str| set.iter().any(|lang| lang == value);
     
-    if all || set.contains(&"ts".to_string()) || set.contains(&"js".to_string()) {
+    if all || has("ts") || has("js") {
         scanners.push(Box::new(typescript::TypeScriptScanner));
     }
     
-    if all || set.contains(&"py".to_string()) {
+    if all || has("py") {
         scanners.push(Box::new(python::PythonScanner));
     }
     
-    if all || set.contains(&"rs".to_string()) {
+    if all || has("rs") {
         scanners.push(Box::new(rust::RustScanner));
     }
 
@@ -48,4 +49,24 @@ pub fn scan_all(root_dir: &Path, config: &ScanConfig, scanners: Vec<Box<dyn Lang
     }
     
     combined_report
+}
+
+pub(crate) fn apply_symbol_filters(symbols: &mut Vec<Symbol>, config: &ScanConfig) {
+    fn keep_symbol(symbol: &mut Symbol, config: &ScanConfig) -> bool {
+        symbol.children.retain_mut(|child| keep_symbol(child, config));
+        if !config.include_private && symbol.visibility != Visibility::Public {
+            return false;
+        }
+        if !config.include_types
+            && matches!(
+                symbol.kind,
+                SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct | SymbolKind::Method
+            )
+        {
+            return false;
+        }
+        true
+    }
+
+    symbols.retain_mut(|symbol| keep_symbol(symbol, config));
 }

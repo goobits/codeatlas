@@ -8,9 +8,6 @@ pub fn detect_routes(symbols: &mut [Symbol]) -> Vec<Route> {
     for sym in symbols.iter_mut() {
         if let Some(method) = parse_method_from_name(&sym.name) {
              if let Some(path) = parse_path_from_signature(&sym.signature) {
-                 // Routes are public entry points
-                 sym.visibility = crate::domain::Visibility::Public;
-                 
                  routes.push(Route {
                      method,
                      path,

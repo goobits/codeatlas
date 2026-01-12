@@ -35,10 +35,7 @@ pub fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<Symbol>> {
 
     let module = parser
         .parse_module()
-        .map_err(|e| {
-            e.into_diagnostic(&handler).emit();
-            anyhow::anyhow!("Parse failed")
-        })?;
+        .map_err(|e| anyhow::anyhow!("Parse failed: {:?}", e))?;
 
     let relative_path = pathdiff::diff_paths(file_path, root_dir)
         .unwrap_or(file_path.to_path_buf())

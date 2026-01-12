@@ -1,8 +1,11 @@
 use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
 use rustpython_parser::{ast, Parse};
+use rustpython_parser::source_code::LineIndex;
+use rustpython_parser::text_size::TextRange;
 use std::path::Path;
 use std::fs;
+use std::sync::Arc;
 
 pub fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<Symbol>> {
     let source = fs::read_to_string(file_path)?;
@@ -13,9 +16,14 @@ pub fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<Symbol>> {
         .to_string_lossy()
         .to_string();
 
+    let source = Arc::<str>::from(source);
+    let line_index = LineIndex::from_source_text(&source);
+
     let mut visitor = SymbolVisitor {
         symbols: Vec::new(),
         relative_path,
+        source,
+        line_index,
     };
 
     visitor.visit_suite(&ast);
@@ -26,6 +34,8 @@ pub fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<Symbol>> {
 struct SymbolVisitor {
     symbols: Vec<Symbol>,
     relative_path: String,
+    source: Arc<str>,
+    line_index: LineIndex,
 }
 
 impl SymbolVisitor {
@@ -34,21 +44,16 @@ impl SymbolVisitor {
         name: String,
         kind: SymbolKind,
         visibility: Visibility,
-        _location: rustpython_parser::text_size::TextRange, // Placeholder, actual AST has `range` or `location`
-        // Wait, rustpython_ast types usually have a `range` field if compiled with `location` feature or similar?
-        // Let's check `rustpython_ast` crate docs or usage.
-        // Actually, for this prototype we might not have perfect span info if not exposed easily, 
-        // but let's assume standard AST nodes have `range`.
-        // rustpython_ast::Stmt has `range`.
-        start_line: u32, // We'll simplify and pass line numbers if possible, or 0
+        range: TextRange,
         signature: String,
     ) -> Symbol {
-        // Simplified Span creation
+        let start_loc = self.line_index.source_location(range.start(), &self.source);
+        let end_loc = self.line_index.source_location(range.end(), &self.source);
         let span = Some(Span {
-            start_line,
-            start_col: 0,
-            end_line: start_line, // Placeholder
-            end_col: 0,
+            start_line: start_loc.row.get(),
+            start_col: start_loc.column.get(),
+            end_line: end_loc.row.get(),
+            end_col: end_loc.column.get(),
         });
 
         Symbol {
@@ -76,14 +81,7 @@ impl SymbolVisitor {
                 let name = f.name.as_str().to_string();
                 let vis = determine_visibility(&name);
                 let sig = format!("def {}(...)", name);
-                // Note: f.range is available in newer rustpython
-                // We will assume `range` or row info is available on the node.
-                // `stmt.range()` returns TextRange. We need line lookup. 
-                // For MVP without line-index crate, we might default to 0.
-                // Or better, let's just skip exact line numbers if too complex without source map.
-                // Actually `rustpython_parser` usually returns a location attached.
-                
-                let symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, 0, sig);
+                let symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, sig);
                 self.symbols.push(symbol);
                 
                 // Recurse? Usually functions don't have public symbols inside, 
@@ -94,12 +92,14 @@ impl SymbolVisitor {
                 let name = c.name.as_str().to_string();
                 let vis = determine_visibility(&name);
                 let sig = format!("class {}", name);
-                let mut symbol = self.create_symbol(name, SymbolKind::Class, vis, c.range, 0, sig);
+                let mut symbol = self.create_symbol(name, SymbolKind::Class, vis, c.range, sig);
                 
                 // Visit children to find methods
                 let mut child_visitor = SymbolVisitor {
                     symbols: Vec::new(),
                     relative_path: self.relative_path.clone(),
+                    source: self.source.clone(),
+                    line_index: self.line_index.clone(),
                 };
                 child_visitor.visit_suite(&c.body);
                 

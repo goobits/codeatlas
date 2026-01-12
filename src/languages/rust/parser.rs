@@ -2,7 +2,7 @@ use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
 use std::path::Path;
 use std::fs;
-use syn::{visit::Visit, ItemFn, ItemStruct, ItemImpl, Visibility as SynVis, spanned::Spanned};
+use syn::{visit::Visit, ItemFn, ItemStruct, ItemImpl, Visibility as SynVis};
 
 pub fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<Symbol>> {
     let source = fs::read_to_string(file_path)?;
@@ -103,8 +103,43 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
     
     fn visit_item_impl(&mut self, node: &'ast ItemImpl) {
          // Try to find the type name
-         if let Some((_, _path, _)) = &node.trait_ {
-             // Trait impl - skip for now or treat as standalone
+         if let Some((_, trait_path, _)) = &node.trait_ {
+             let trait_name = trait_path
+                 .segments
+                 .last()
+                 .map(|s| s.ident.to_string())
+                 .unwrap_or("?".to_string());
+             let type_name = match &*node.self_ty {
+                 syn::Type::Path(type_path) => type_path
+                     .path
+                     .segments
+                     .last()
+                     .map(|s| s.ident.to_string())
+                     .unwrap_or("?".to_string()),
+                 _ => "?".to_string(),
+             };
+             let parent_idx = self.struct_indices.get(&type_name).copied();
+
+             for item in &node.items {
+                 if let syn::ImplItem::Fn(method) = item {
+                     let m_name = method.sig.ident.to_string();
+                     let m_vis = map_vis(&method.vis);
+                     let m_sig = format!("fn {}(...)", m_name);
+                     
+                     let mut sym = self.create_symbol(m_name, SymbolKind::Method, m_vis, method.sig.ident.span(), m_sig);
+                     sym.name = if type_name == "?" {
+                         format!("{}::{}", trait_name, sym.name)
+                     } else {
+                         format!("{}::{}::{}", type_name, trait_name, sym.name)
+                     };
+                     
+                     if let Some(idx) = parent_idx {
+                         self.symbols[idx].children.push(sym);
+                     } else {
+                         self.symbols.push(sym);
+                     }
+                 }
+             }
          } else if let syn::Type::Path(type_path) = &*node.self_ty {
              // Inherent impl
              let type_name = type_path.path.segments.last().map(|s| s.ident.to_string()).unwrap_or("?".to_string());

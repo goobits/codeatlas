@@ -20,7 +20,7 @@ quote = "1.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
 
 # Python Parsing
-rustpython-parser = "0.3"
+rustpython-parser = { version = "0.3", features = ["location"] }
 rustpython-ast = "0.3"
 
 # TypeScript/JS Parsing (via swc_core to ensure version alignment)

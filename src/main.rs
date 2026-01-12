@@ -63,7 +63,13 @@ fn main() {
         OutputFormat::Tree => outputs::text_tree::render(&report),
         OutputFormat::Mermaid => outputs::mermaid::render(&report),
         OutputFormat::Compact => outputs::compact::render(&report),
-        OutputFormat::Json => outputs::json::render(&report),
+        OutputFormat::Json => match outputs::json::render(&report) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("Error serializing report: {}", e);
+                std::process::exit(1);
+            }
+        },
     };
 
     if let Some(out_dir) = cli.out {

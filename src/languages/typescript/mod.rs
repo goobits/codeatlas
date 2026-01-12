@@ -1,4 +1,4 @@
-use crate::domain::{LanguageScanner, ScanConfig, ScanReport, ScanStats, Symbol, SkippedFile, Language};
+use crate::domain::{LanguageScanner, ScanConfig, ScanReport, ScanStats, SkippedFile, Language};
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -50,13 +50,8 @@ impl LanguageScanner for TypeScriptScanner {
                     report.stats.routes_found += file_routes.len();
                     report.routes.extend(file_routes);
                     
+                    crate::languages::apply_symbol_filters(&mut symbols, config);
                     report.stats.symbols_found += symbols.len();
-                    
-                    // Filter based on config (visibility)
-                    if !config.include_private {
-                         symbols.retain(|s| s.visibility == crate::domain::Visibility::Public);
-                    }
-                    
                     report.symbols.extend(symbols);
                 }
                 Err(e) => {

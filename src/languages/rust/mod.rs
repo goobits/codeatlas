@@ -45,12 +45,8 @@ impl LanguageScanner for RustScanner {
                     report.stats.routes_found += file_routes.len();
                     report.routes.extend(file_routes);
 
+                    crate::languages::apply_symbol_filters(&mut symbols, config);
                     report.stats.symbols_found += symbols.len();
-                    
-                    if !config.include_private {
-                         symbols.retain(|s| s.visibility == crate::domain::Visibility::Public);
-                    }
-                    
                     report.symbols.extend(symbols);
                 }
                 Err(e) => {
