@@ -46,13 +46,13 @@ pub(crate) fn detect_routes(
 }
 
 fn parse_decorator_line(line: &str) -> Option<(String, String)> {
-    static DECORATOR_RE: OnceLock<Regex> = OnceLock::new();
-    static PATH_RE: OnceLock<Regex> = OnceLock::new();
-    static METHODS_RE: OnceLock<Regex> = OnceLock::new();
-    let decorator_re = DECORATOR_RE.get_or_init(|| Regex::new(r"^\s*@([A-Za-z0-9_\.]+)\((.+)\)\s*$").unwrap());
-    let path_re = PATH_RE.get_or_init(|| Regex::new(r#"['"]([^'"]+)['"]"#).unwrap());
+    static DECORATOR_RE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
+    static PATH_RE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
+    static METHODS_RE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
+    let decorator_re = DECORATOR_RE.get_or_init(|| Regex::new(r"^\s*@([A-Za-z0-9_\.]+)\((.+)\)\s*$")).as_ref().ok()?;
+    let path_re = PATH_RE.get_or_init(|| Regex::new(r#"['"]([^'"]+)['"]"#)).as_ref().ok()?;
     let methods_re =
-        METHODS_RE.get_or_init(|| Regex::new(r#"(?i)methods\s*=\s*\[?\s*['"]([A-Za-z]+)['"]"#).unwrap());
+        METHODS_RE.get_or_init(|| Regex::new(r#"(?i)methods\s*=\s*\[?\s*['"]([A-Za-z]+)['"]"#)).as_ref().ok()?;
 
     let caps = decorator_re.captures(line)?;
     let decorator = caps.get(1)?.as_str();
@@ -83,8 +83,11 @@ fn parse_decorator_line(line: &str) -> Option<(String, String)> {
 }
 
 fn parse_def_line(line: &str) -> Option<&str> {
-    static DEF_RE: OnceLock<Regex> = OnceLock::new();
-    let def_re = DEF_RE.get_or_init(|| Regex::new(r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)").unwrap());
+    static DEF_RE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
+    let def_re = DEF_RE
+        .get_or_init(|| Regex::new(r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)"))
+        .as_ref()
+        .ok()?;
     def_re.captures(line).and_then(|c| c.get(1)).map(|m| m.as_str())
 }
 

@@ -36,7 +36,7 @@ pub fn collect_importers(
             Err(_) => continue,
         };
 
-        let relative = normalize_relative_path(path, root_dir);
+        let relative = crate::paths::normalize_relative_path(path, root_dir);
         let module_path = module_path_from_file(&relative);
         module_map.insert(module_path.clone(), relative.clone());
 
@@ -71,7 +71,7 @@ pub fn collect_importers(
                         &mut all_cache,
                     );
                     for symbol_id in symbol_ids {
-                        add_importer(importers, symbol_id, file.clone());
+                        add_importer(importers, &symbol_id, &file);
                     }
                 }
                 continue;
@@ -89,7 +89,7 @@ pub fn collect_importers(
                     &mut HashSet::new(),
                 );
                 for symbol_id in symbol_ids {
-                    add_importer(importers, symbol_id, file.clone());
+                    add_importer(importers, &symbol_id, &file);
                 }
             }
         }
@@ -247,19 +247,4 @@ fn module_path_from_file(file_path: &str) -> Vec<String> {
         return Vec::new();
     }
     path.split('/').map(|s| s.to_string()).collect()
-}
-
-fn normalize_relative_path(path: &Path, root_dir: &Path) -> String {
-    let relative = pathdiff::diff_paths(path, root_dir).unwrap_or_else(|| path.to_path_buf());
-    normalize_path(&relative)
-}
-
-fn normalize_path(path: &Path) -> String {
-    let mut parts = Vec::new();
-    for component in path.components() {
-        if let std::path::Component::Normal(part) = component {
-            parts.push(part.to_string_lossy());
-        }
-    }
-    parts.join("/")
 }

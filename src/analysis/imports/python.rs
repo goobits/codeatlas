@@ -3,6 +3,7 @@ use crate::domain::Language;
 use crate::languages::python::parser;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::Arc;
 
 pub fn collect_importers(
     root_dir: &Path,
@@ -13,6 +14,29 @@ pub fn collect_importers(
         return;
     };
 
+    let (modules, module_by_name) = load_modules(root_dir);
+    if modules.is_empty() {
+        return;
+    }
+
+    let mut export_cache: HashMap<(String, String), Arc<Vec<String>>> = HashMap::new();
+    let mut all_cache: HashMap<String, Arc<Vec<String>>> = HashMap::new();
+
+    for (file, info) in &modules {
+        process_imports(
+            file,
+            info,
+            &module_by_name,
+            &modules,
+            symbols_by_file,
+            importers,
+            &mut export_cache,
+            &mut all_cache,
+        );
+    }
+}
+
+fn load_modules(root_dir: &Path) -> (HashMap<String, ModuleInfo>, HashMap<String, String>) {
     let mut modules: HashMap<String, ModuleInfo> = HashMap::new();
     let mut module_by_name: HashMap<String, String> = HashMap::new();
 
@@ -41,7 +65,7 @@ pub fn collect_importers(
             Err(_) => continue,
         };
 
-        let relative = normalize_relative_path(path, root_dir);
+        let relative = crate::paths::normalize_relative_path(path, root_dir);
         let module_name = module_name_from_path(&relative);
         module_by_name.insert(module_name.clone(), relative.clone());
 
@@ -61,93 +85,114 @@ pub fn collect_importers(
         );
     }
 
-    let mut export_cache: HashMap<(String, String), Vec<String>> = HashMap::new();
-    let mut all_cache: HashMap<String, Vec<String>> = HashMap::new();
+    (modules, module_by_name)
+}
 
-    for (file, info) in &modules {
-        for import in &info.imports {
-            let import_target = if import.module.is_empty() {
-                None
-            } else {
-                Some(resolve_module_name(&import.module, &info.module_name, import.level))
-            };
-
-            if import.module.is_empty() {
-                for (idx, module) in import.names.iter().enumerate() {
-                    if let Some(target) = module_by_name.get(module) {
-                        let symbol_ids = resolve_all_exports(
-                            target,
-                            &modules,
-                            symbols_by_file,
-                            &mut export_cache,
-                            &mut all_cache,
-                        );
-                        for symbol_id in symbol_ids {
-                            add_importer(importers, symbol_id, file.clone());
-                        }
-                    } else if let Some(alias) = import
+fn process_imports(
+    file: &str,
+    info: &ModuleInfo,
+    module_by_name: &HashMap<String, String>,
+    modules: &HashMap<String, ModuleInfo>,
+    symbols_by_file: &HashMap<String, HashMap<String, String>>,
+    importers: &mut Importers,
+    export_cache: &mut HashMap<(String, String), Arc<Vec<String>>>,
+    all_cache: &mut HashMap<String, Arc<Vec<String>>>,
+) {
+    for import in &info.imports {
+        if import.module.is_empty() && import.level > 0 {
+            let base_module = resolve_module_name("", &info.module_name, import.level);
+            if let Some(target_file) = module_by_name.get(&base_module) {
+                for (idx, name) in import.names.iter().enumerate() {
+                    let export_name = import
                         .aliases
                         .get(idx)
                         .and_then(|alias| alias.as_ref())
-                    {
-                        if let Some(target) = module_by_name.get(alias) {
-                            let symbol_ids = resolve_all_exports(
-                                target,
-                                &modules,
-                                symbols_by_file,
-                                &mut export_cache,
-                                &mut all_cache,
-                            );
-                            for symbol_id in symbol_ids {
-                                add_importer(importers, symbol_id, file.clone());
-                            }
-                        }
-                    }
+                        .unwrap_or(name);
+                    let symbol_ids = resolve_export(
+                        target_file,
+                        export_name,
+                        modules,
+                        symbols_by_file,
+                        export_cache,
+                        all_cache,
+                        &mut HashSet::new(),
+                    );
+                    add_importers(importers, file, symbol_ids);
                 }
-                continue;
             }
+            continue;
+        }
 
-            let Some(module_name) = import_target else {
-                continue;
-            };
-            let Some(target_file) = module_by_name.get(&module_name) else {
-                continue;
-            };
+        let import_target = if import.module.is_empty() {
+            None
+        } else {
+            Some(resolve_module_name(&import.module, &info.module_name, import.level))
+        };
 
-            if import.is_star {
-                let symbol_ids = resolve_all_exports(
-                    target_file,
-                    &modules,
-                    symbols_by_file,
-                    &mut export_cache,
-                    &mut all_cache,
-                );
-                for symbol_id in symbol_ids {
-                    add_importer(importers, symbol_id, file.clone());
+        if import.module.is_empty() {
+            for (idx, module) in import.names.iter().enumerate() {
+                let mut targets = Vec::new();
+                if let Some(target) = module_by_name.get(module) {
+                    targets.push(target);
                 }
-                continue;
-            }
-
-            for (idx, name) in import.names.iter().enumerate() {
-                let export_name = import
+                if let Some(alias) = import
                     .aliases
                     .get(idx)
                     .and_then(|alias| alias.as_ref())
-                    .unwrap_or(name)
-                    .clone();
-                let symbol_ids = resolve_export(
-                    target_file,
-                    &export_name,
-                    &modules,
-                    symbols_by_file,
-                    &mut export_cache,
-                    &mut all_cache,
-                    &mut HashSet::new(),
-                );
-                for symbol_id in symbol_ids {
-                    add_importer(importers, symbol_id, file.clone());
+                {
+                    if let Some(target) = module_by_name.get(alias) {
+                        targets.push(target);
+                    }
+                }
+                for target in targets {
+                    let symbol_ids = resolve_all_exports(
+                        target,
+                        modules,
+                        symbols_by_file,
+                        export_cache,
+                        all_cache,
+                    );
+                    add_importers(importers, file, symbol_ids);
                 }
             }
+            continue;
+        }
+
+        let Some(module_name) = import_target else {
+            continue;
+        };
+        let Some(target_file) = module_by_name.get(&module_name) else {
+            continue;
+        };
+
+        if import.is_star {
+            let symbol_ids = resolve_all_exports(
+                target_file,
+                modules,
+                symbols_by_file,
+                export_cache,
+                all_cache,
+            );
+            add_importers(importers, file, symbol_ids);
+            continue;
+        }
+
+        for (idx, name) in import.names.iter().enumerate() {
+            let export_name = import
+                .aliases
+                .get(idx)
+                .and_then(|alias| alias.as_ref())
+                .unwrap_or(name);
+            let symbol_ids = resolve_export(
+                target_file,
+                export_name,
+                modules,
+                symbols_by_file,
+                export_cache,
+                all_cache,
+                &mut HashSet::new(),
+            );
+            add_importers(importers, file, symbol_ids);
         }
     }
 }
@@ -159,15 +204,21 @@ struct ModuleInfo {
     file_path: String,
 }
 
+fn add_importers(importers: &mut Importers, file: &str, symbol_ids: Arc<Vec<String>>) {
+    for symbol_id in symbol_ids.iter() {
+        add_importer(importers, symbol_id, file);
+    }
+}
+
 fn resolve_all_exports(
     file: &str,
     modules: &HashMap<String, ModuleInfo>,
     symbols_by_file: &HashMap<String, HashMap<String, String>>,
-    export_cache: &mut HashMap<(String, String), Vec<String>>,
-    all_cache: &mut HashMap<String, Vec<String>>,
-) -> Vec<String> {
+    export_cache: &mut HashMap<(String, String), Arc<Vec<String>>>,
+    all_cache: &mut HashMap<String, Arc<Vec<String>>>,
+) -> Arc<Vec<String>> {
     if let Some(cached) = all_cache.get(file) {
-        return cached.clone();
+        return Arc::clone(cached);
     }
     let names = module_export_names(file, modules, symbols_by_file);
     let mut ids = Vec::new();
@@ -181,11 +232,12 @@ fn resolve_all_exports(
             all_cache,
             &mut HashSet::new(),
         );
-        ids.extend(resolved);
+        ids.extend(resolved.iter().cloned());
     }
     ids.sort();
     ids.dedup();
-    all_cache.insert(file.to_string(), ids.clone());
+    let ids = Arc::new(ids);
+    all_cache.insert(file.to_string(), Arc::clone(&ids));
     ids
 }
 
@@ -194,33 +246,35 @@ fn resolve_export(
     name: &str,
     modules: &HashMap<String, ModuleInfo>,
     symbols_by_file: &HashMap<String, HashMap<String, String>>,
-    export_cache: &mut HashMap<(String, String), Vec<String>>,
-    all_cache: &mut HashMap<String, Vec<String>>,
+    export_cache: &mut HashMap<(String, String), Arc<Vec<String>>>,
+    all_cache: &mut HashMap<String, Arc<Vec<String>>>,
     visited: &mut HashSet<(String, String)>,
-) -> Vec<String> {
+) -> Arc<Vec<String>> {
     let key = (file.to_string(), name.to_string());
     if let Some(cached) = export_cache.get(&key) {
-        return cached.clone();
+        return Arc::clone(cached);
     }
     if !visited.insert(key.clone()) {
-        return Vec::new();
+        return Arc::new(Vec::new());
     }
 
     if let Some(symbols) = symbols_by_file.get(file) {
         if let Some(id) = symbols.get(name) {
-            export_cache.insert(key.clone(), vec![id.clone()]);
-            return vec![id.clone()];
+            let ids = Arc::new(vec![id.clone()]);
+            export_cache.insert(key.clone(), Arc::clone(&ids));
+            return ids;
         }
     }
 
     let exports = module_export_names(file, modules, symbols_by_file);
     if !exports.contains(&name.to_string()) {
-        export_cache.insert(key, Vec::new());
-        return Vec::new();
+        let empty = Arc::new(Vec::new());
+        export_cache.insert(key, Arc::clone(&empty));
+        return empty;
     }
 
     let mut ids = Vec::new();
-        if let Some(info) = modules.get(file) {
+    if let Some(info) = modules.get(file) {
             let import_map = import_name_map(&info.imports, &info.module_name);
             if let Some((module_name, imported)) = import_map.name_map.get(name) {
             if let Some(target) = modules
@@ -235,7 +289,7 @@ fn resolve_export(
                         symbols_by_file,
                         export_cache,
                         all_cache,
-                    ));
+                    ).iter().cloned());
                 } else {
                     ids.extend(resolve_export(
                         &target,
@@ -245,7 +299,7 @@ fn resolve_export(
                         export_cache,
                         all_cache,
                         visited,
-                    ));
+                    ).iter().cloned());
                 }
             }
         }
@@ -262,7 +316,7 @@ fn resolve_export(
                         symbols_by_file,
                         export_cache,
                         all_cache,
-                    ));
+                    ).iter().cloned());
                 }
             }
         }
@@ -270,7 +324,8 @@ fn resolve_export(
 
     ids.sort();
     ids.dedup();
-    export_cache.insert(key, ids.clone());
+    let ids = Arc::new(ids);
+    export_cache.insert(key, Arc::clone(&ids));
     ids
 }
 
@@ -339,6 +394,20 @@ fn import_name_map(imports: &[parser::PythonImport], current_module: &str) -> Im
     let mut star_modules = Vec::new();
     for import in imports {
         if import.module.is_empty() {
+            if import.level > 0 {
+                let module = resolve_module_name("", current_module, import.level);
+                for (idx, name) in import.names.iter().enumerate() {
+                    let alias = import
+                        .aliases
+                        .get(idx)
+                        .and_then(|alias| alias.as_ref())
+                        .map(|alias| alias.as_str())
+                        .unwrap_or(name);
+                    map.insert(alias.to_string(), (module.clone(), name.clone()));
+                }
+                continue;
+            }
+
             for (idx, module) in import.names.iter().enumerate() {
                 let alias = import
                     .aliases
@@ -399,19 +468,4 @@ fn module_name_from_path(path: &str) -> String {
         return trimmed.replace('/', ".");
     }
     path.replace('/', ".")
-}
-
-fn normalize_relative_path(path: &Path, root_dir: &Path) -> String {
-    let relative = pathdiff::diff_paths(path, root_dir).unwrap_or_else(|| path.to_path_buf());
-    normalize_path(&relative)
-}
-
-fn normalize_path(path: &Path) -> String {
-    let mut parts = Vec::new();
-    for component in path.components() {
-        if let std::path::Component::Normal(part) = component {
-            parts.push(part.to_string_lossy());
-        }
-    }
-    parts.join("/")
 }

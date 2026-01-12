@@ -39,7 +39,7 @@ pub fn collect_importers(
             continue;
         }
 
-        let relative = normalize_relative_path(path, root_dir);
+        let relative = crate::paths::normalize_relative_path(path, root_dir);
         let info = match parser::parse_module_info(path, root_dir) {
             Ok(info) => info,
             Err(_) => continue,
@@ -73,7 +73,7 @@ pub fn collect_importers(
                     &mut all_cache,
                 );
                 for symbol_id in symbol_ids {
-                    add_importer(importers, symbol_id, file.clone());
+                    add_importer(importers, &symbol_id, &file);
                 }
                 continue;
             }
@@ -90,7 +90,7 @@ pub fn collect_importers(
                     &mut HashSet::new(),
                 );
                 for symbol_id in symbol_ids {
-                    add_importer(importers, symbol_id, file.clone());
+                    add_importer(importers, &symbol_id, &file);
                 }
             }
 
@@ -106,7 +106,7 @@ pub fn collect_importers(
                     &mut HashSet::new(),
                 );
                 for symbol_id in symbol_ids {
-                    add_importer(importers, symbol_id, file.clone());
+                    add_importer(importers, &symbol_id, &file);
                 }
             }
         }
@@ -281,25 +281,10 @@ fn resolve_ts_module(root_dir: &Path, from_file: &str, spec: &str) -> Option<Str
     for candidate in candidates {
         if candidate.is_file() {
             if root_dir.as_os_str().is_empty() {
-                return Some(normalize_path(&candidate));
+                return Some(crate::paths::normalize_path(&candidate));
             }
-            return Some(normalize_relative_path(&candidate, root_dir));
+            return Some(crate::paths::normalize_relative_path(&candidate, root_dir));
         }
     }
     None
-}
-
-fn normalize_relative_path(path: &Path, root_dir: &Path) -> String {
-    let relative = pathdiff::diff_paths(path, root_dir).unwrap_or_else(|| path.to_path_buf());
-    normalize_path(&relative)
-}
-
-fn normalize_path(path: &Path) -> String {
-    let mut parts = Vec::new();
-    for component in path.components() {
-        if let std::path::Component::Normal(part) = component {
-            parts.push(part.to_string_lossy());
-        }
-    }
-    parts.join("/")
 }

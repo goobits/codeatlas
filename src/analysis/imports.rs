@@ -38,8 +38,11 @@ fn build_symbol_index(
     index
 }
 
-pub fn add_importer(importers: &mut Importers, symbol_id: String, importer: String) {
-    importers.entry(symbol_id).or_default().insert(importer);
+pub fn add_importer(importers: &mut Importers, symbol_id: &str, importer: &str) {
+    importers
+        .entry(symbol_id.to_string())
+        .or_default()
+        .insert(importer.to_string());
 }
 
 pub fn to_import_usage(importers: &Importers) -> Vec<ImportUsage> {

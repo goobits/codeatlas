@@ -56,7 +56,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
     let entrypoints = config
         .entrypoints
         .as_ref()
-        .map(|entries| normalize_entrypoints(entries, root_dir));
+        .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
 
     let mut modules: std::collections::HashMap<String, ModuleInfo> = std::collections::HashMap::new();
     let mut module_by_name: std::collections::HashMap<String, String> = std::collections::HashMap::new();
@@ -94,7 +94,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
             }
         };
 
-        let relative = normalize_relative_path(path, root_dir);
+        let relative = crate::paths::normalize_relative_path(path, root_dir);
         if let Some(ref entrypoints) = entrypoints {
             if !entrypoints.contains(&relative) {
                 // Still parse so we can resolve exports for audit mode.
@@ -248,6 +248,20 @@ fn module_export_names(
     }
     for import in &info.imports {
         if import.module.is_empty() {
+            if import.level > 0 {
+                for (idx, name) in import.names.iter().enumerate() {
+                    let alias = import
+                        .aliases
+                        .get(idx)
+                        .and_then(|a| a.as_ref())
+                        .map(|a| a.as_str())
+                        .unwrap_or(name);
+                    if !alias.starts_with('_') {
+                        names.insert(alias.to_string());
+                    }
+                }
+                continue;
+            }
             for (idx, module) in import.names.iter().enumerate() {
                 let alias = import
                     .aliases
@@ -289,6 +303,19 @@ fn import_name_map(imports: &[parser::PythonImport], current_module: &str) -> Im
     let mut star_modules = Vec::new();
     for import in imports {
         if import.module.is_empty() {
+            if import.level > 0 {
+                let module = resolve_module_name("", current_module, import.level);
+                for (idx, name) in import.names.iter().enumerate() {
+                    let alias = import
+                        .aliases
+                        .get(idx)
+                        .and_then(|a| a.as_ref())
+                        .map(|a| a.as_str())
+                        .unwrap_or(name);
+                    map.insert(alias.to_string(), (module.clone(), name.clone()));
+                }
+                continue;
+            }
             for (idx, module) in import.names.iter().enumerate() {
                 let alias = import
                     .aliases
@@ -349,36 +376,4 @@ fn module_name_from_path(path: &str) -> String {
         return trimmed.replace('/', ".");
     }
     path.replace('/', ".")
-}
-
-fn normalize_entrypoints(entries: &[String], root_dir: &Path) -> std::collections::HashSet<String> {
-    entries
-        .iter()
-        .map(|entry| normalize_entrypoint(entry, root_dir))
-        .collect()
-}
-
-fn normalize_entrypoint(entry: &str, root_dir: &Path) -> String {
-    let entry_path = Path::new(entry);
-    let relative = if entry_path.is_absolute() {
-        pathdiff::diff_paths(entry_path, root_dir).unwrap_or_else(|| entry_path.to_path_buf())
-    } else {
-        entry_path.to_path_buf()
-    };
-    normalize_path(&relative)
-}
-
-fn normalize_relative_path(path: &Path, root_dir: &Path) -> String {
-    let relative = pathdiff::diff_paths(path, root_dir).unwrap_or_else(|| path.to_path_buf());
-    normalize_path(&relative)
-}
-
-fn normalize_path(path: &Path) -> String {
-    let mut parts = Vec::new();
-    for component in path.components() {
-        if let std::path::Component::Normal(part) = component {
-            parts.push(part.to_string_lossy());
-        }
-    }
-    parts.join("/")
 }

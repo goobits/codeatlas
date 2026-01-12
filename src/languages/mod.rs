@@ -6,8 +6,7 @@ use crate::domain::{
     Language, LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol,
     SymbolKind, Visibility,
 };
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use walkdir::DirEntry;
 
 pub fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageScanner>> {
@@ -96,7 +95,7 @@ where
     let entrypoints = config
         .entrypoints
         .as_ref()
-        .map(|entries| normalize_entrypoints(entries, root_dir));
+        .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
     let mut report = ScanReport {
         stats: ScanStats::default(),
         symbols: vec![],
@@ -120,7 +119,7 @@ where
         }
 
         if let Some(ref entrypoints) = entrypoints {
-            let relative = normalize_relative_path(path, root_dir);
+            let relative = crate::paths::normalize_relative_path(path, root_dir);
             if !entrypoints.contains(&relative) {
                 continue;
             }
@@ -167,36 +166,4 @@ where
     }
 
     report
-}
-
-fn normalize_entrypoints(entries: &[String], root_dir: &Path) -> HashSet<String> {
-    entries
-        .iter()
-        .map(|entry| normalize_entrypoint(entry, root_dir))
-        .collect()
-}
-
-fn normalize_entrypoint(entry: &str, root_dir: &Path) -> String {
-    let entry_path = Path::new(entry);
-    let relative = if entry_path.is_absolute() {
-        pathdiff::diff_paths(entry_path, root_dir).unwrap_or_else(|| entry_path.to_path_buf())
-    } else {
-        PathBuf::from(entry_path)
-    };
-    normalize_path(&relative)
-}
-
-fn normalize_relative_path(path: &Path, root_dir: &Path) -> String {
-    let relative = pathdiff::diff_paths(path, root_dir).unwrap_or_else(|| path.to_path_buf());
-    normalize_path(&relative)
-}
-
-fn normalize_path(path: &Path) -> String {
-    let mut parts = Vec::new();
-    for component in path.components() {
-        if let std::path::Component::Normal(part) = component {
-            parts.push(part.to_string_lossy());
-        }
-    }
-    parts.join("/")
 }

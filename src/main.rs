@@ -2,6 +2,7 @@ mod analysis;
 mod domain;
 mod languages;
 mod outputs;
+mod paths;
 
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;

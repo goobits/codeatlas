@@ -52,7 +52,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
     let entrypoints = config
         .entrypoints
         .as_ref()
-        .map(|entries| normalize_entrypoints(entries, root_dir));
+        .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
 
     let mut modules: std::collections::HashMap<String, ModuleInfo> = std::collections::HashMap::new();
     let mut module_map: std::collections::HashMap<Vec<String>, String> = std::collections::HashMap::new();
@@ -85,7 +85,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
             }
         };
 
-        let relative = normalize_relative_path(path, root_dir);
+        let relative = crate::paths::normalize_relative_path(path, root_dir);
         let module_path = module_path_from_file(&relative);
         module_map.insert(module_path.clone(), relative.clone());
         match parser::parse_module_info(path, root_dir, &source) {
@@ -262,36 +262,4 @@ fn module_path_from_file(file_path: &str) -> Vec<String> {
         return Vec::new();
     }
     path.split('/').map(|s| s.to_string()).collect()
-}
-
-fn normalize_entrypoints(entries: &[String], root_dir: &Path) -> std::collections::HashSet<String> {
-    entries
-        .iter()
-        .map(|entry| normalize_entrypoint(entry, root_dir))
-        .collect()
-}
-
-fn normalize_entrypoint(entry: &str, root_dir: &Path) -> String {
-    let entry_path = Path::new(entry);
-    let relative = if entry_path.is_absolute() {
-        pathdiff::diff_paths(entry_path, root_dir).unwrap_or_else(|| entry_path.to_path_buf())
-    } else {
-        entry_path.to_path_buf()
-    };
-    normalize_path(&relative)
-}
-
-fn normalize_relative_path(path: &Path, root_dir: &Path) -> String {
-    let relative = pathdiff::diff_paths(path, root_dir).unwrap_or_else(|| path.to_path_buf());
-    normalize_path(&relative)
-}
-
-fn normalize_path(path: &Path) -> String {
-    let mut parts = Vec::new();
-    for component in path.components() {
-        if let std::path::Component::Normal(part) = component {
-            parts.push(part.to_string_lossy());
-        }
-    }
-    parts.join("/")
 }
