@@ -1,4 +1,5 @@
 const DEFAULT_IGNORES: &[&str] = &[
+    "tests",
     "tests/fixtures",
     "target",
     "node_modules",

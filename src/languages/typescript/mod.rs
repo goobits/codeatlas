@@ -1,3 +1,4 @@
+use crate::analysis::ignore;
 use crate::domain::{Language, LanguageScanner, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
 use std::path::Path;
 
@@ -19,6 +20,10 @@ impl LanguageScanner for TypeScriptScanner {
             |e| {
                 if e.depth() == 0 {
                     return true;
+                }
+                let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
+                if ignore::is_ignored_path(&relative, config.no_default_ignore) {
+                    return false;
                 }
                 let name = e.file_name().to_string_lossy();
                 !name.starts_with(".")
@@ -66,6 +71,10 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
     for entry in walker.filter_entry(|e| {
         if e.depth() == 0 {
             return true;
+        }
+        let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
+        if ignore::is_ignored_path(&relative, config.no_default_ignore) {
+            return false;
         }
         let name = e.file_name().to_string_lossy();
         !name.starts_with(".")

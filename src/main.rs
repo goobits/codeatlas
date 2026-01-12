@@ -13,7 +13,7 @@ use domain::ScanConfig;
 
 #[derive(Parser)]
 #[command(name = "codeatlas")]
-#[command(about = "Generate a high-density 'Public Surface Map' of a codebase.")]
+#[command(about = "Generate a high-density 'Public Surface Map' of a codebase. Errors are skipped by default.")]
 struct Cli {
     /// Path to the repo root
     #[arg(default_value = ".")]
@@ -51,7 +51,7 @@ struct Cli {
     #[arg(long, default_value_t = false)]
     imports: bool,
 
-    /// Disable default ignore list (tests/fixtures, target, node_modules, etc.)
+    /// Disable default ignore list (tests, target, node_modules, etc.)
     #[arg(long, default_value_t = false)]
     no_default_ignore: bool,
 }

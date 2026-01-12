@@ -1,7 +1,7 @@
 use crate::domain::ScanReport;
 use std::path::Path;
 
-mod ignore;
+pub(crate) mod ignore;
 mod imports;
 mod unused_public;
 
