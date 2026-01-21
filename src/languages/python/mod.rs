@@ -5,7 +5,7 @@ use std::path::Path;
 pub mod parser;
 pub mod frameworks;
 
-pub struct PythonScanner;
+pub(crate) struct PythonScanner;
 
 impl LanguageScanner for PythonScanner {
     fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {

@@ -5,7 +5,7 @@ use std::path::Path;
 pub mod parser;
 pub mod frameworks;
 
-pub struct TypeScriptScanner;
+pub(crate) struct TypeScriptScanner;
 
 impl LanguageScanner for TypeScriptScanner {
     fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {
