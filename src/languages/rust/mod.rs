@@ -5,7 +5,7 @@ use std::path::Path;
 pub mod parser;
 pub mod frameworks;
 
-pub struct RustScanner;
+pub(crate) struct RustScanner;
 
 impl LanguageScanner for RustScanner {
     fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {
