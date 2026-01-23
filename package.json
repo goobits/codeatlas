@@ -1,5 +1,5 @@
 {
-	"name": "codeatlas",
+	"name": "@goobits/codeatlas",
 	"version": "0.2.1",
 	"description": "Generate a high-density 'Public Surface Map' of a codebase",
 	"type": "commonjs",
