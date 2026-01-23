@@ -7,6 +7,7 @@ const { spawnSync } = require('child_process')
 const allowedBumps = new Set(['patch', 'minor', 'major', 'premajor', 'preminor', 'prepatch', 'prerelease'])
 const bump = process.argv[2] || 'patch'
 const nodeModulesPath = path.join(process.cwd(), 'node_modules')
+const packageJsonPath = path.join(process.cwd(), 'package.json')
 
 if (!allowedBumps.has(bump)) {
 	console.error(`Unknown bump type: ${bump}`)
@@ -35,15 +36,96 @@ const runCapture = (cmd, args) => {
 	return result.stdout || ''
 }
 
+const readPackageJson = () => JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
+
 const repoDirty = () => {
 	const output = runCapture('git', ['status', '--porcelain'])
 	return output.trim().length > 0
 }
 
-const readVersion = () => {
-	const pkgPath = path.join(process.cwd(), 'package.json')
-	const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
-	return pkg.version
+const readVersion = () => readPackageJson().version
+
+const parseVersion = (version) => {
+	const match = /^(\d+)\.(\d+)\.(\d+)(-.+)?$/.exec(version)
+	if (!match) return null
+	return {
+		major: Number.parseInt(match[1], 10),
+		minor: Number.parseInt(match[2], 10),
+		patch: Number.parseInt(match[3], 10),
+		prerelease: match[4] || ''
+	}
+}
+
+const compareVersions = (a, b) => {
+	if (a.major !== b.major) return a.major - b.major
+	if (a.minor !== b.minor) return a.minor - b.minor
+	if (a.patch !== b.patch) return a.patch - b.patch
+	if (a.prerelease === b.prerelease) return 0
+	if (!a.prerelease) return 1
+	if (!b.prerelease) return -1
+	return a.prerelease.localeCompare(b.prerelease)
+}
+
+const bumpVersion = (base, bumpType) => {
+	const parsed = parseVersion(base)
+	if (!parsed) return null
+	const next = { ...parsed, prerelease: '' }
+
+	switch (bumpType) {
+		case 'major':
+			next.major += 1
+			next.minor = 0
+			next.patch = 0
+			break
+		case 'minor':
+			next.minor += 1
+			next.patch = 0
+			break
+		case 'patch':
+			next.patch += 1
+			break
+		default:
+			return null
+	}
+
+	return `${next.major}.${next.minor}.${next.patch}`
+}
+
+const getPublishedVersion = (packageName) => {
+	const result = spawnSync('npm', ['view', packageName, 'version', '--json'], { encoding: 'utf8' })
+	if (result.error || result.status !== 0) {
+		return null
+	}
+	const raw = (result.stdout || '').trim()
+	if (!raw) return null
+	try {
+		const parsed = JSON.parse(raw)
+		return typeof parsed === 'string' ? parsed : null
+	} catch {
+		return raw
+	}
+}
+
+const resolveNextVersion = () => {
+	if (!['major', 'minor', 'patch'].includes(bump)) {
+		return null
+	}
+
+	const pkg = readPackageJson()
+	const current = pkg.version
+	const published = getPublishedVersion(pkg.name)
+	if (!published) {
+		return bumpVersion(current, bump)
+	}
+
+	const currentParsed = parseVersion(current)
+	const publishedParsed = parseVersion(published)
+	if (!currentParsed || !publishedParsed) {
+		return bumpVersion(current, bump)
+	}
+
+	const base = compareVersions(currentParsed, publishedParsed) <= 0 ? published : current
+	return bumpVersion(base, bump)
 }
 
 const main = () => {
@@ -56,7 +138,12 @@ const main = () => {
 		process.exit(1)
 	}
 
-	run('pnpm', ['version', bump, '--no-git-tag-version'])
+	const nextVersion = resolveNextVersion()
+	if (nextVersion) {
+		run('pnpm', ['version', nextVersion, '--no-git-tag-version'])
+	} else {
+		run('pnpm', ['version', bump, '--no-git-tag-version'])
+	}
 
 	const version = readVersion()
 	run('git', ['add', 'package.json'])
