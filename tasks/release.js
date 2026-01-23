@@ -6,6 +6,7 @@ const { spawnSync } = require('child_process')
 
 const allowedBumps = new Set(['patch', 'minor', 'major', 'premajor', 'preminor', 'prepatch', 'prerelease'])
 const bump = process.argv[2] || 'patch'
+const nodeModulesPath = path.join(process.cwd(), 'node_modules')
 
 if (!allowedBumps.has(bump)) {
 	console.error(`Unknown bump type: ${bump}`)
@@ -46,6 +47,10 @@ const readVersion = () => {
 }
 
 const main = () => {
+	if (!fs.existsSync(nodeModulesPath)) {
+		run('pnpm', ['install', '--ignore-workspace'])
+	}
+
 	if (repoDirty()) {
 		console.error('Working tree is dirty. Commit or stash changes before releasing.')
 		process.exit(1)
