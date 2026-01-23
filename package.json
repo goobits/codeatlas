@@ -1,0 +1,27 @@
+{
+	"name": "codeatlas",
+	"version": "0.1.0",
+	"description": "Generate a high-density 'Public Surface Map' of a codebase",
+	"type": "commonjs",
+	"scripts": {
+		"release": "node tasks/release.js patch",
+		"release:minor": "node tasks/release.js minor",
+		"release:major": "node tasks/release.js major"
+	},
+	"bin": {
+		"codeatlas": "bin/codeatlas.js"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"files": [
+		"bin/**",
+		"src/**",
+		"Cargo.toml",
+		"Cargo.lock",
+		"README.md"
+	],
+	"dependencies": {
+		"tar": "^6.2.0"
+	}
+}

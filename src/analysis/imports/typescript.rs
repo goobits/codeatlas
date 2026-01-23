@@ -78,8 +78,8 @@ pub(crate) fn collect_importers(
                 continue;
             }
 
-            if import.default {
-                let symbol_ids = resolve_export(
+            if let Some(default_name) = &import.default {
+                let mut symbol_ids = resolve_export(
                     root_dir,
                     &target,
                     "default",
@@ -89,8 +89,28 @@ pub(crate) fn collect_importers(
                     &mut all_cache,
                     &mut HashSet::new(),
                 );
-                for symbol_id in symbol_ids {
-                    add_importer(importers, &symbol_id, &file);
+                if symbol_ids.is_empty() {
+                    symbol_ids = resolve_export(
+                        root_dir,
+                        &target,
+                        default_name,
+                        &modules,
+                        symbols_by_file,
+                        &mut export_cache,
+                        &mut all_cache,
+                        &mut HashSet::new(),
+                    );
+                }
+                if symbol_ids.is_empty() {
+                    if let Some(symbols) = symbols_by_file.get(&target) {
+                        for symbol_id in symbols.values() {
+                            add_importer(importers, symbol_id, &file);
+                        }
+                    }
+                } else {
+                    for symbol_id in symbol_ids {
+                        add_importer(importers, &symbol_id, &file);
+                    }
                 }
             }
 
@@ -199,6 +219,35 @@ fn resolve_export(
     }
     if !visited.insert(key.clone()) {
         return Vec::new();
+    }
+
+    if name == "default" {
+        if let Some(info) = modules.get(file) {
+            if let Some(default_name) = &info.exports.default_export {
+                if let Some(symbols) = symbols_by_file.get(file) {
+                    if let Some(id) = symbols.get(default_name) {
+                        export_cache.insert(key.clone(), vec![id.clone()]);
+                        return vec![id.clone()];
+                    }
+                }
+            }
+        }
+
+        if let Some(symbols) = symbols_by_file.get(file) {
+            if symbols.len() == 1 {
+                if let Some((_, id)) = symbols.iter().next() {
+                    export_cache.insert(key.clone(), vec![id.clone()]);
+                    return vec![id.clone()];
+                }
+            }
+
+            if let Some(stem) = Path::new(file).file_stem().and_then(|s| s.to_str()) {
+                if let Some(id) = symbols.get(stem) {
+                    export_cache.insert(key.clone(), vec![id.clone()]);
+                    return vec![id.clone()];
+                }
+            }
+        }
     }
 
     if let Some(symbols) = symbols_by_file.get(file) {

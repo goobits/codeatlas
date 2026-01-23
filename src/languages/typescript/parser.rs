@@ -21,16 +21,17 @@ pub(crate) struct ReExport {
 }
 
 pub(crate) struct ExportInfo {
-    pub local_exports: Vec<String>,
-    pub re_exports: Vec<ReExport>,
-    pub export_all: Vec<String>,
+	pub local_exports: Vec<String>,
+	pub re_exports: Vec<ReExport>,
+	pub export_all: Vec<String>,
+	pub default_export: Option<String>,
 }
 
 pub(crate) struct ImportInfo {
-    pub source: String,
-    pub named: Vec<String>,
-    pub default: bool,
-    pub namespace: bool,
+	pub source: String,
+	pub named: Vec<String>,
+	pub default: Option<String>,
+	pub namespace: bool,
 }
 
 pub(crate) struct TypeScriptModuleInfo {
@@ -236,9 +237,10 @@ impl Visit for SymbolVisitor {
 }
 
 fn collect_exports(module: &Module) -> ExportInfo {
-    let mut local_exports = Vec::new();
-    let mut re_exports = Vec::new();
-    let mut export_all = Vec::new();
+	let mut local_exports = Vec::new();
+	let mut re_exports = Vec::new();
+	let mut export_all = Vec::new();
+	let mut default_export = None;
 
     for item in &module.body {
         let ModuleItem::ModuleDecl(decl) = item else { continue };
@@ -262,71 +264,94 @@ fn collect_exports(module: &Module) -> ExportInfo {
                 }
                 _ => {}
             },
-            ModuleDecl::ExportNamed(named) => {
-                let source = named.src.as_ref().map(|s| s.value.to_string());
-                let mut names = Vec::new();
-                for specifier in &named.specifiers {
-                    if let ExportSpecifier::Named(named_spec) = specifier {
-                        let exported = export_name_to_string(
-                            named_spec.exported.as_ref().unwrap_or(&named_spec.orig),
-                        );
-                        let original = export_name_to_string(&named_spec.orig);
-                        names.push(ExportName { exported, original });
-                    }
-                }
-                if let Some(source) = source {
-                    re_exports.push(ReExport { source, names });
-                } else {
-                    for name in names {
-                        local_exports.push(name.exported);
-                    }
-                }
-            }
-            ModuleDecl::ExportAll(all) => {
-                export_all.push(all.src.value.to_string());
-            }
-            ModuleDecl::ExportDefaultDecl(_) | ModuleDecl::ExportDefaultExpr(_) => {
-                local_exports.push("default".to_string());
-            }
-            _ => {}
-        }
-    }
+			ModuleDecl::ExportNamed(named) => {
+				let source = named.src.as_ref().map(|s| s.value.to_string());
+				let mut names = Vec::new();
+				for specifier in &named.specifiers {
+					if let ExportSpecifier::Named(named_spec) = specifier {
+						let exported = export_name_to_string(
+							named_spec.exported.as_ref().unwrap_or(&named_spec.orig),
+						);
+						let original = export_name_to_string(&named_spec.orig);
+						names.push(ExportName { exported, original });
+					}
+				}
+				if let Some(source) = source {
+					re_exports.push(ReExport { source, names });
+				} else {
+					for name in names {
+						if name.exported == "default" {
+							default_export.get_or_insert_with(|| name.original.clone());
+						}
+						local_exports.push(name.exported);
+					}
+				}
+			}
+			ModuleDecl::ExportAll(all) => {
+				export_all.push(all.src.value.to_string());
+			}
+			ModuleDecl::ExportDefaultDecl(default_decl) => {
+				local_exports.push("default".to_string());
+				match &default_decl.decl {
+					DefaultDecl::Class(class) => {
+						if let Some(ident) = &class.ident {
+							default_export.get_or_insert_with(|| ident.sym.to_string());
+						}
+					}
+					DefaultDecl::Fn(function) => {
+						if let Some(ident) = &function.ident {
+							default_export.get_or_insert_with(|| ident.sym.to_string());
+						}
+					}
+					_ => {}
+				}
+			}
+			ModuleDecl::ExportDefaultExpr(default_expr) => {
+				local_exports.push("default".to_string());
+				if let Expr::Ident(ident) = &*default_expr.expr {
+					default_export.get_or_insert_with(|| ident.sym.to_string());
+				}
+			}
+			_ => {}
+		}
+	}
 
-    ExportInfo {
-        local_exports,
-        re_exports,
-        export_all,
-    }
+	ExportInfo {
+		local_exports,
+		re_exports,
+		export_all,
+		default_export,
+	}
 }
 
 fn collect_imports(module: &Module) -> Vec<ImportInfo> {
-    let mut imports = Vec::new();
-    for item in &module.body {
-        let ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) = item else {
-            continue;
-        };
+	let mut imports = Vec::new();
+	for item in &module.body {
+		let ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) = item else {
+			continue;
+		};
 
-        let mut named = Vec::new();
-        let mut default = false;
-        let mut namespace = false;
+		let mut named = Vec::new();
+		let mut default = None;
+		let mut namespace = false;
 
-        for specifier in &import_decl.specifiers {
-            match specifier {
-                ImportSpecifier::Named(named_spec) => {
-                    let imported = named_spec
-                        .imported
-                        .as_ref()
-                        .map(export_name_to_string)
-                        .unwrap_or_else(|| named_spec.local.sym.to_string());
-                    named.push(imported);
-                }
-                ImportSpecifier::Default(_) => {
-                    default = true;
-                }
-                ImportSpecifier::Namespace(_) => {
-                    namespace = true;
-                }
-            }
+		for specifier in &import_decl.specifiers {
+			match specifier {
+				ImportSpecifier::Named(named_spec) => {
+					let imported = named_spec
+						.imported
+						.as_ref()
+						.map(export_name_to_string)
+						.unwrap_or_else(|| named_spec.local.sym.to_string());
+					named.push(imported);
+				}
+				ImportSpecifier::Default(default_spec) => {
+					default = Some(default_spec.local.sym.to_string());
+				}
+				ImportSpecifier::Namespace(_) => {
+					namespace = true;
+				}
+			}
         }
 
         imports.push(ImportInfo {
