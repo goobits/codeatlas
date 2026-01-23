@@ -175,7 +175,9 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                     .iter()
                     .find(|spec| spec.exported == *name)
                 {
-                    if let Some(target) = resolve_ts_module(root_dir, &file, &re_export.source) {
+                    if let Some(target) =
+                        resolve_ts_module(root_dir, &file, &re_export.source, &modules)
+                    {
                         let mut names = std::collections::HashSet::new();
                         names.insert(spec.original.clone());
                         queue.push_back((target, Some(names)));
@@ -186,7 +188,9 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
 
         for re_export in &info.exports.re_exports {
             if is_all {
-                if let Some(target) = resolve_ts_module(root_dir, &file, &re_export.source) {
+                if let Some(target) =
+                    resolve_ts_module(root_dir, &file, &re_export.source, &modules)
+                {
                     let mut names = std::collections::HashSet::new();
                     for spec in &re_export.names {
                         names.insert(spec.original.clone());
@@ -198,7 +202,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
 
         if is_all {
             for source in &info.exports.export_all {
-                if let Some(target) = resolve_ts_module(root_dir, &file, source) {
+                if let Some(target) = resolve_ts_module(root_dir, &file, source, &modules) {
                     queue.push_back((target, None));
                 }
             }
@@ -228,7 +232,12 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
     report
 }
 
-fn resolve_ts_module(root_dir: &Path, from_file: &str, spec: &str) -> Option<String> {
+fn resolve_ts_module(
+    root_dir: &Path,
+    from_file: &str,
+    spec: &str,
+    modules: &std::collections::HashMap<String, ModuleInfo>,
+) -> Option<String> {
     if !spec.starts_with('.') {
         return None;
     }
@@ -247,8 +256,9 @@ fn resolve_ts_module(root_dir: &Path, from_file: &str, spec: &str) -> Option<Str
         raw.join("index.jsx"),
     ];
     for candidate in candidates {
-        if candidate.is_file() {
-            return Some(crate::paths::normalize_relative_path(&candidate, root_dir));
+        let relative = crate::paths::normalize_relative_path(&candidate, root_dir);
+        if modules.contains_key(&relative) {
+            return Some(relative);
         }
     }
     None
