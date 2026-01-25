@@ -1,19 +1,10 @@
-const SIMPLE_IGNORES: &[&str] = &[
-	"tests",
-	"__tests__",
-	"__test__",
-	"__mocks__",
-	"target",
-	"node_modules",
-	"dist",
-	"build",
-    "coverage",
-    ".git",
-];
 
-const COMPLEX_IGNORES: &[&str] = &[
-	"tests/fixtures",
-];
+fn is_ignored_part(part: &str) -> bool {
+    match part {
+        "tests" | "__tests__" | "__test__" | "__mocks__" | "target" | "node_modules" | "dist" | "build" | "coverage" | ".git" => true,
+        _ => false,
+    }
+}
 
 pub(crate) fn is_ignored_dir(name: &str, no_default_ignore: bool) -> bool {
     if no_default_ignore {
@@ -22,7 +13,7 @@ pub(crate) fn is_ignored_dir(name: &str, no_default_ignore: bool) -> bool {
     if name.starts_with('.') {
         return true;
     }
-    SIMPLE_IGNORES.iter().any(|entry| entry == &name) || COMPLEX_IGNORES.iter().any(|entry| entry == &name)
+    is_ignored_part(name)
 }
 
 pub(crate) fn is_ignored_path(path: &str, no_default_ignore: bool) -> bool {
@@ -30,29 +21,11 @@ pub(crate) fn is_ignored_path(path: &str, no_default_ignore: bool) -> bool {
 		return false;
 	}
 
-	for entry in COMPLEX_IGNORES {
-		let entry = *entry;
-        let mut start = 0;
-        while let Some(pos) = path[start..].find(entry) {
-            let abs_pos = start + pos;
-            let valid_start = abs_pos == 0 || path.as_bytes()[abs_pos - 1] == b'/';
-            let valid_end = abs_pos + entry.len() == path.len()
-                || path.as_bytes()[abs_pos + entry.len()] == b'/';
-
-            if valid_start && valid_end {
-                return true;
-            }
-            start = abs_pos + 1;
+    for part in path.split('/') {
+        if is_ignored_part(part) {
+            return true;
         }
     }
-
-    for part in path.split('/') {
-        for entry in SIMPLE_IGNORES {
-            if *entry == part {
-                return true;
-            }
-		}
-	}
 
 	false
 }
