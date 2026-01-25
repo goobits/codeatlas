@@ -49,12 +49,21 @@ pub(crate) fn collect_importers(
             Err(_) => continue,
         };
 
+        let mut public_uses_map: HashMap<String, Vec<usize>> = HashMap::new();
+        for (i, export) in info.public_uses.iter().enumerate() {
+            public_uses_map
+                .entry(export.alias.clone())
+                .or_default()
+                .push(i);
+        }
+
         modules.insert(
             relative.clone(),
             ModuleInfo {
                 uses: info.uses,
                 public_uses: info.public_uses,
                 module_path,
+                public_uses_map,
             },
         );
     }
@@ -104,6 +113,7 @@ struct ModuleInfo {
     uses: Vec<parser::UseExport>,
     public_uses: Vec<parser::UseExport>,
     module_path: Vec<String>,
+    public_uses_map: HashMap<String, Vec<usize>>,
 }
 
 fn resolve_all_exports(
@@ -165,10 +175,13 @@ fn resolve_export(
 
     let mut ids = Vec::new();
     if let Some(info) = modules.get(file) {
-        for export in &info.public_uses {
-            if export.alias == name {
+        if let Some(indices) = info.public_uses_map.get(name) {
+            for &i in indices {
+                let export = &info.public_uses[i];
                 if export.is_glob {
-                    if let Some(target) = resolve_rust_use_module(&info.module_path, export, module_map) {
+                    if let Some(target) =
+                        resolve_rust_use_module(&info.module_path, export, module_map)
+                    {
                         ids.extend(resolve_all_exports(
                             &target,
                             modules,
