@@ -59,7 +59,7 @@ pub(crate) fn collect_importers(
 
     for (file, info) in &modules {
         for import in &info.imports {
-            let Some(target) = resolve_ts_module(root_dir, file, &import.source) else {
+            let Some(target) = resolve_ts_module(root_dir, file, &import.source, &modules) else {
                 continue;
             };
 
@@ -168,7 +168,7 @@ fn resolve_all_exports(
     }
 
     for re_export in &info.exports.re_exports {
-        if let Some(target) = resolve_ts_module(root_dir, file, &re_export.source) {
+        if let Some(target) = resolve_ts_module(root_dir, file, &re_export.source, modules) {
             for spec in &re_export.names {
                 ids.extend(resolve_export(
                     root_dir,
@@ -185,7 +185,7 @@ fn resolve_all_exports(
     }
 
     for source in &info.exports.export_all {
-        if let Some(target) = resolve_ts_module(root_dir, file, source) {
+        if let Some(target) = resolve_ts_module(root_dir, file, source, modules) {
             ids.extend(resolve_all_exports(
                 root_dir,
                 &target,
@@ -265,7 +265,7 @@ fn resolve_export(
     let mut ids = Vec::new();
     for re_export in &info.exports.re_exports {
         if let Some(spec) = re_export.names.iter().find(|spec| spec.exported == name) {
-            if let Some(target) = resolve_ts_module(root_dir, file, &re_export.source) {
+            if let Some(target) = resolve_ts_module(root_dir, file, &re_export.source, modules) {
                 ids.extend(resolve_export(
                     root_dir,
                     &target,
@@ -281,7 +281,7 @@ fn resolve_export(
     }
 
     for source in &info.exports.export_all {
-        if let Some(target) = resolve_ts_module(root_dir, file, source) {
+        if let Some(target) = resolve_ts_module(root_dir, file, source, modules) {
             ids.extend(resolve_export(
                 root_dir,
                 &target,
@@ -301,7 +301,12 @@ fn resolve_export(
     ids
 }
 
-fn resolve_ts_module(root_dir: &Path, from_file: &str, spec: &str) -> Option<String> {
+fn resolve_ts_module(
+    root_dir: &Path,
+    from_file: &str,
+    spec: &str,
+    modules: &HashMap<String, ModuleInfo>,
+) -> Option<String> {
     if !spec.starts_with('.') {
         return None;
     }
@@ -328,11 +333,14 @@ fn resolve_ts_module(root_dir: &Path, from_file: &str, spec: &str) -> Option<Str
     ];
 
     for candidate in candidates {
-        if candidate.is_file() {
-            if root_dir.as_os_str().is_empty() {
-                return Some(crate::paths::normalize_path(&candidate));
-            }
-            return Some(crate::paths::normalize_relative_path(&candidate, root_dir));
+        let relative = if root_dir.as_os_str().is_empty() {
+            crate::paths::normalize_path(&candidate)
+        } else {
+            crate::paths::normalize_relative_path(&candidate, root_dir)
+        };
+
+        if modules.contains_key(&relative) {
+            return Some(relative);
         }
     }
     None
