@@ -1,4 +1,4 @@
-use super::{add_importer, Importers};
+use super::{add_file_edge, add_importer, FileEdges, Importers};
 use crate::domain::Language;
 use crate::languages::typescript::parser;
 use std::collections::{HashMap, HashSet};
@@ -8,11 +8,10 @@ pub(crate) fn collect_importers(
     root_dir: &Path,
     symbol_index: &HashMap<Language, HashMap<String, HashMap<String, String>>>,
     importers: &mut Importers,
+    file_edges: &mut FileEdges,
     no_default_ignore: bool,
 ) {
-    let Some(symbols_by_file) = symbol_index.get(&Language::TypeScript) else {
-        return;
-    };
+    let symbols_by_file = symbol_index.get(&Language::TypeScript);
 
     let mut modules: HashMap<String, ModuleInfo> = HashMap::new();
 
@@ -60,6 +59,14 @@ pub(crate) fn collect_importers(
     for (file, info) in &modules {
         for import in &info.imports {
             let Some(target) = resolve_ts_module(root_dir, file, &import.source, &modules) else {
+                continue;
+            };
+
+            // Always track file edge for any resolved import
+            add_file_edge(file_edges, file, &target);
+
+            // Track symbol-level imports if we have public symbols
+            let Some(symbols_by_file) = symbols_by_file else {
                 continue;
             };
 

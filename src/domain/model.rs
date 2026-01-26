@@ -9,6 +9,16 @@ pub struct ScanReport {
     pub skipped_files: Vec<SkippedFile>,
     pub imports: Vec<ImportUsage>,
     pub unused_public: Vec<UnusedPublic>,
+    /// Direct file-to-file dependency edges (for visualization)
+    #[serde(default)]
+    pub file_edges: Vec<FileEdge>,
+}
+
+/// A dependency edge from one file to another.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct FileEdge {
+    pub from: String,
+    pub to: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

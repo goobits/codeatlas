@@ -1,4 +1,4 @@
-use super::{add_importer, Importers};
+use super::{add_file_edge, add_importer, FileEdges, Importers};
 use crate::domain::Language;
 use crate::languages::python::parser;
 use std::collections::{HashMap, HashSet};
@@ -9,11 +9,10 @@ pub(crate) fn collect_importers(
     root_dir: &Path,
     symbol_index: &HashMap<Language, HashMap<String, HashMap<String, String>>>,
     importers: &mut Importers,
+    file_edges: &mut FileEdges,
     no_default_ignore: bool,
 ) {
-    let Some(symbols_by_file) = symbol_index.get(&Language::Python) else {
-        return;
-    };
+    let symbols_by_file = symbol_index.get(&Language::Python);
 
     let (modules, module_by_name) = load_modules(root_dir, no_default_ignore);
     if modules.is_empty() {
@@ -31,6 +30,7 @@ pub(crate) fn collect_importers(
             &modules,
             symbols_by_file,
             importers,
+            file_edges,
             &mut export_cache,
             &mut all_cache,
         );
@@ -98,8 +98,9 @@ fn process_imports(
     info: &ModuleInfo,
     module_by_name: &HashMap<String, String>,
     modules: &HashMap<String, ModuleInfo>,
-    symbols_by_file: &HashMap<String, HashMap<String, String>>,
+    symbols_by_file: Option<&HashMap<String, HashMap<String, String>>>,
     importers: &mut Importers,
+    file_edges: &mut FileEdges,
     export_cache: &mut HashMap<(String, String), Arc<Vec<String>>>,
     all_cache: &mut HashMap<String, Arc<Vec<String>>>,
 ) {
@@ -107,22 +108,28 @@ fn process_imports(
         if import.module.is_empty() && import.level > 0 {
             let base_module = resolve_module_name("", &info.module_name, import.level);
             if let Some(target_file) = module_by_name.get(&base_module) {
-                for (idx, name) in import.names.iter().enumerate() {
-                    let export_name = import
-                        .aliases
-                        .get(idx)
-                        .and_then(|alias| alias.as_ref())
-                        .unwrap_or(name);
-                    let symbol_ids = resolve_export(
-                        target_file,
-                        export_name,
-                        modules,
-                        symbols_by_file,
-                        export_cache,
-                        all_cache,
-                        &mut HashSet::new(),
-                    );
-                    add_importers(importers, file, symbol_ids);
+                // Always track file edge
+                add_file_edge(file_edges, file, target_file);
+
+                // Track symbol-level imports if we have public symbols
+                if let Some(symbols_by_file) = symbols_by_file {
+                    for (idx, name) in import.names.iter().enumerate() {
+                        let export_name = import
+                            .aliases
+                            .get(idx)
+                            .and_then(|alias| alias.as_ref())
+                            .unwrap_or(name);
+                        let symbol_ids = resolve_export(
+                            target_file,
+                            export_name,
+                            modules,
+                            symbols_by_file,
+                            export_cache,
+                            all_cache,
+                            &mut HashSet::new(),
+                        );
+                        add_importers(importers, file, symbol_ids);
+                    }
                 }
             }
             continue;
@@ -150,14 +157,20 @@ fn process_imports(
                     }
                 }
                 for target in targets {
-                    let symbol_ids = resolve_all_exports(
-                        target,
-                        modules,
-                        symbols_by_file,
-                        export_cache,
-                        all_cache,
-                    );
-                    add_importers(importers, file, symbol_ids);
+                    // Always track file edge
+                    add_file_edge(file_edges, file, target);
+
+                    // Track symbol-level imports if we have public symbols
+                    if let Some(symbols_by_file) = symbols_by_file {
+                        let symbol_ids = resolve_all_exports(
+                            target,
+                            modules,
+                            symbols_by_file,
+                            export_cache,
+                            all_cache,
+                        );
+                        add_importers(importers, file, symbol_ids);
+                    }
                 }
             }
             continue;
@@ -170,34 +183,40 @@ fn process_imports(
             continue;
         };
 
-        if import.is_star {
-            let symbol_ids = resolve_all_exports(
-                target_file,
-                modules,
-                symbols_by_file,
-                export_cache,
-                all_cache,
-            );
-            add_importers(importers, file, symbol_ids);
-            continue;
-        }
+        // Always track file edge
+        add_file_edge(file_edges, file, target_file);
 
-        for (idx, name) in import.names.iter().enumerate() {
-            let export_name = import
-                .aliases
-                .get(idx)
-                .and_then(|alias| alias.as_ref())
-                .unwrap_or(name);
-            let symbol_ids = resolve_export(
-                target_file,
-                export_name,
-                modules,
-                symbols_by_file,
-                export_cache,
-                all_cache,
-                &mut HashSet::new(),
-            );
-            add_importers(importers, file, symbol_ids);
+        // Track symbol-level imports if we have public symbols
+        if let Some(symbols_by_file) = symbols_by_file {
+            if import.is_star {
+                let symbol_ids = resolve_all_exports(
+                    target_file,
+                    modules,
+                    symbols_by_file,
+                    export_cache,
+                    all_cache,
+                );
+                add_importers(importers, file, symbol_ids);
+                continue;
+            }
+
+            for (idx, name) in import.names.iter().enumerate() {
+                let export_name = import
+                    .aliases
+                    .get(idx)
+                    .and_then(|alias| alias.as_ref())
+                    .unwrap_or(name);
+                let symbol_ids = resolve_export(
+                    target_file,
+                    export_name,
+                    modules,
+                    symbols_by_file,
+                    export_cache,
+                    all_cache,
+                    &mut HashSet::new(),
+                );
+                add_importers(importers, file, symbol_ids);
+            }
         }
     }
 }

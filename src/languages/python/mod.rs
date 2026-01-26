@@ -13,7 +13,7 @@ pub mod frameworks;
 // ============================================================================
 
 /// Python language definition for the pluggable system.
-pub struct PythonLanguage;
+pub(crate) struct PythonLanguage;
 
 impl LanguageDefinition for PythonLanguage {
     fn name(&self) -> &'static str {
@@ -63,7 +63,7 @@ impl LanguageDefinition for PythonLanguage {
 }
 
 /// Module resolver for Python import resolution.
-pub struct PythonModuleResolver;
+pub(crate) struct PythonModuleResolver;
 
 impl ModuleResolver for PythonModuleResolver {
     fn parse_module_info(
@@ -226,6 +226,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         skipped_files: vec![],
         imports: vec![],
         unused_public: vec![],
+        file_edges: vec![],
     };
 
     let entrypoints = config

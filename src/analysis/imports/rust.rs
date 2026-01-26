@@ -1,4 +1,4 @@
-use super::{add_importer, Importers};
+use super::{add_file_edge, add_importer, FileEdges, Importers};
 use crate::domain::Language;
 use crate::languages::rust::parser;
 use std::collections::{HashMap, HashSet};
@@ -8,11 +8,10 @@ pub(crate) fn collect_importers(
     root_dir: &Path,
     symbol_index: &HashMap<Language, HashMap<String, HashMap<String, String>>>,
     importers: &mut Importers,
+    file_edges: &mut FileEdges,
     no_default_ignore: bool,
 ) {
-    let Some(symbols_by_file) = symbol_index.get(&Language::Rust) else {
-        return;
-    };
+    let symbols_by_file = symbol_index.get(&Language::Rust);
 
     let mut modules: HashMap<String, ModuleInfo> = HashMap::new();
     let mut module_map: HashMap<Vec<String>, String> = HashMap::new();
@@ -62,6 +61,7 @@ pub(crate) fn collect_importers(
             ModuleInfo {
                 uses: info.uses,
                 public_uses: info.public_uses,
+                public_mods: info.public_mods,
                 module_path,
                 public_uses_map,
             },
@@ -72,37 +72,50 @@ pub(crate) fn collect_importers(
     let mut all_cache: HashMap<String, Vec<String>> = HashMap::new();
 
     for (file, info) in &modules {
-        for import in &info.uses {
-            if import.is_glob {
-                if let Some(target) = resolve_rust_use_module(&info.module_path, import, &module_map) {
-                    let symbol_ids = resolve_all_exports(
-                        &target,
-                        &modules,
-                        &module_map,
-                        symbols_by_file,
-                        &mut export_cache,
-                        &mut all_cache,
-                    );
-                    for symbol_id in symbol_ids {
-                        add_importer(importers, &symbol_id, file);
-                    }
-                }
-                continue;
+        // Track mod declarations as file dependencies
+        for mod_name in &info.public_mods {
+            let mut child_path = info.module_path.clone();
+            child_path.push(mod_name.clone());
+            if let Some(target) = module_map.get(&child_path) {
+                add_file_edge(file_edges, file, target);
             }
+        }
 
+        // Track use statements as file dependencies
+        for import in &info.uses {
             if let Some(target) = resolve_rust_use_module(&info.module_path, import, &module_map) {
-                let symbol_ids = resolve_export(
-                    &target,
-                    &import.name,
-                    &modules,
-                    &module_map,
-                    symbols_by_file,
-                    &mut export_cache,
-                    &mut all_cache,
-                    &mut HashSet::new(),
-                );
-                for symbol_id in symbol_ids {
-                    add_importer(importers, &symbol_id, file);
+                // Always add file edge for any resolved import
+                add_file_edge(file_edges, file, &target);
+
+                // Track symbol-level imports if we have public symbols
+                if let Some(symbols_by_file) = symbols_by_file {
+                    if import.is_glob {
+                        let symbol_ids = resolve_all_exports(
+                            &target,
+                            &modules,
+                            &module_map,
+                            symbols_by_file,
+                            &mut export_cache,
+                            &mut all_cache,
+                        );
+                        for symbol_id in symbol_ids {
+                            add_importer(importers, &symbol_id, file);
+                        }
+                    } else {
+                        let symbol_ids = resolve_export(
+                            &target,
+                            &import.name,
+                            &modules,
+                            &module_map,
+                            symbols_by_file,
+                            &mut export_cache,
+                            &mut all_cache,
+                            &mut HashSet::new(),
+                        );
+                        for symbol_id in symbol_ids {
+                            add_importer(importers, &symbol_id, file);
+                        }
+                    }
                 }
             }
         }
@@ -112,6 +125,7 @@ pub(crate) fn collect_importers(
 struct ModuleInfo {
     uses: Vec<parser::UseExport>,
     public_uses: Vec<parser::UseExport>,
+    public_mods: Vec<String>,
     module_path: Vec<String>,
     public_uses_map: HashMap<String, Vec<usize>>,
 }

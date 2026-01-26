@@ -169,7 +169,7 @@ impl LanguageRegistry {
 ///
 /// This implements the LanguageScanner trait by delegating to the
 /// language definition's methods.
-pub struct GenericScanner {
+pub(crate) struct GenericScanner {
     language: Arc<dyn LanguageDefinition>,
 }
 

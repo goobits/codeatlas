@@ -13,7 +13,7 @@ pub mod frameworks;
 // ============================================================================
 
 /// TypeScript/JavaScript language definition for the pluggable system.
-pub struct TypeScriptLanguage;
+pub(crate) struct TypeScriptLanguage;
 
 impl LanguageDefinition for TypeScriptLanguage {
     fn name(&self) -> &'static str {
@@ -62,7 +62,7 @@ impl LanguageDefinition for TypeScriptLanguage {
 }
 
 /// Module resolver for TypeScript import resolution.
-pub struct TypeScriptModuleResolver;
+pub(crate) struct TypeScriptModuleResolver;
 
 impl ModuleResolver for TypeScriptModuleResolver {
     fn parse_module_info(
@@ -204,6 +204,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         skipped_files: vec![],
         imports: vec![],
         unused_public: vec![],
+        file_edges: vec![],
     };
 
     let entrypoints = config

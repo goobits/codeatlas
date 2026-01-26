@@ -2,13 +2,11 @@ use crate::domain::{ScanReport, Symbol, SymbolKind, Visibility};
 use std::collections::{HashMap, HashSet};
 
 /// W3C Accessible color palette (WCAG 2.1 AA compliant)
-mod colors {
-    pub const CORE: &str = "#1a365d";      // Navy - domain/core modules
-    pub const LANG: &str = "#744210";      // Brown - language modules
-    pub const OUTPUT: &str = "#276749";    // Forest - output modules
-    pub const UTIL: &str = "#285e61";      // Teal - utilities
-    pub const DEFAULT: &str = "#4a5568";   // Slate - default
-}
+const COLOR_CORE: &str = "#1a365d";      // Navy - domain/core modules
+const COLOR_LANG: &str = "#744210";      // Brown - language modules
+const COLOR_OUTPUT: &str = "#276749";    // Forest - output modules
+const COLOR_UTIL: &str = "#285e61";      // Teal - utilities
+const COLOR_DEFAULT: &str = "#4a5568";   // Slate - default
 
 pub(crate) fn render(report: &ScanReport) -> String {
     let mut output = String::new();
@@ -25,11 +23,11 @@ pub(crate) fn render(report: &ScanReport) -> String {
     output.push_str("flowchart TB\n");
 
     // Style definitions
-    output.push_str(&format!("  classDef core fill:{},stroke:#2d3748,color:#fff\n", colors::CORE));
-    output.push_str(&format!("  classDef lang fill:{},stroke:#2d3748,color:#fff\n", colors::LANG));
-    output.push_str(&format!("  classDef output fill:{},stroke:#2d3748,color:#fff\n", colors::OUTPUT));
-    output.push_str(&format!("  classDef util fill:{},stroke:#2d3748,color:#fff\n", colors::UTIL));
-    output.push_str(&format!("  classDef default fill:{},stroke:#2d3748,color:#fff\n", colors::DEFAULT));
+    output.push_str(&format!("  classDef core fill:{},stroke:#2d3748,color:#fff\n", COLOR_CORE));
+    output.push_str(&format!("  classDef lang fill:{},stroke:#2d3748,color:#fff\n", COLOR_LANG));
+    output.push_str(&format!("  classDef output fill:{},stroke:#2d3748,color:#fff\n", COLOR_OUTPUT));
+    output.push_str(&format!("  classDef util fill:{},stroke:#2d3748,color:#fff\n", COLOR_UTIL));
+    output.push_str(&format!("  classDef default fill:{},stroke:#2d3748,color:#fff\n", COLOR_DEFAULT));
     output.push_str("\n");
 
     // Build file -> symbols map
@@ -38,7 +36,7 @@ pub(crate) fn render(report: &ScanReport) -> String {
         files.entry(&sym.file_path).or_default().push(sym);
     }
 
-    // Build dependency map from imports
+    // Build dependency map from file_edges (primary) and imports (fallback)
     let mut deps: HashMap<String, HashSet<String>> = HashMap::new();
     let mut all_files: HashSet<String> = HashSet::new();
 
@@ -46,18 +44,30 @@ pub(crate) fn render(report: &ScanReport) -> String {
         all_files.insert(sym.file_path.clone());
     }
 
-    for import in &report.imports {
-        // Parse import ID format: "lang:file:kind#name"
-        let parts: Vec<&str> = import.id.splitn(3, ':').collect();
-        if parts.len() >= 2 {
-            let target_file = parts[1].to_string();
-            all_files.insert(target_file.clone());
+    // Use file_edges if available (more complete)
+    if !report.file_edges.is_empty() {
+        for edge in &report.file_edges {
+            all_files.insert(edge.from.clone());
+            all_files.insert(edge.to.clone());
+            deps.entry(edge.from.clone())
+                .or_default()
+                .insert(edge.to.clone());
+        }
+    } else {
+        // Fallback to extracting from imports (backward compatibility)
+        for import in &report.imports {
+            // Parse import ID format: "lang:file:kind#name"
+            let parts: Vec<&str> = import.id.splitn(3, ':').collect();
+            if parts.len() >= 2 {
+                let target_file = parts[1].to_string();
+                all_files.insert(target_file.clone());
 
-            for importer in &import.importers {
-                all_files.insert(importer.clone());
-                deps.entry(importer.clone())
-                    .or_default()
-                    .insert(target_file.clone());
+                for importer in &import.importers {
+                    all_files.insert(importer.clone());
+                    deps.entry(importer.clone())
+                        .or_default()
+                        .insert(target_file.clone());
+                }
             }
         }
     }
@@ -159,19 +169,13 @@ fn build_node_content(file: &str, symbols: Option<&Vec<&Symbol>>) -> String {
         return escape_mermaid(&short_name);
     }
 
-    // Limit symbols shown to avoid huge nodes
-    let max_symbols = 6;
+    // Show all symbols - no truncation
     let mut lines = vec![format!("<b>{}</b>", escape_mermaid(&short_name))];
 
     let mut sorted_syms: Vec<_> = symbols.iter().collect();
     sorted_syms.sort_by_key(|s| (&s.kind, &s.name));
 
-    for (i, sym) in sorted_syms.iter().enumerate() {
-        if i >= max_symbols {
-            let remaining = sorted_syms.len() - max_symbols;
-            lines.push(format!("<i>+{} more</i>", remaining));
-            break;
-        }
+    for sym in sorted_syms.iter() {
         let vis = visibility_icon(&sym.visibility);
         let kind = kind_abbrev(sym.kind);
         lines.push(format!("{} {} {}", vis, kind, escape_mermaid(&sym.name)));

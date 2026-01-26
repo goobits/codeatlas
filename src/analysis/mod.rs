@@ -10,7 +10,8 @@ pub(crate) fn build_importers(
     root_dir: &Path,
     no_default_ignore: bool,
 ) -> imports::Importers {
-    imports::build_importers(report, root_dir, no_default_ignore)
+    let (importers, _file_edges) = imports::build_importers(report, root_dir, no_default_ignore);
+    importers
 }
 
 pub(crate) fn annotate_imports(
@@ -18,8 +19,9 @@ pub(crate) fn annotate_imports(
     root_dir: &Path,
     no_default_ignore: bool,
 ) -> imports::Importers {
-    let importers = build_importers(report, root_dir, no_default_ignore);
+    let (importers, file_edges) = imports::build_importers(report, root_dir, no_default_ignore);
     report.imports = imports::to_import_usage(&importers);
+    report.file_edges = file_edges.into_iter().collect();
     importers
 }
 

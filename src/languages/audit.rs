@@ -25,7 +25,7 @@ use std::path::Path;
 /// * `config` - Scan configuration (must have entrypoints set)
 /// * `lang` - Language definition for the language being scanned
 /// * `resolver` - Module resolver for import/export resolution
-pub fn scan_audit_mode(
+pub(crate) fn scan_audit_mode(
     root_dir: &Path,
     config: &ScanConfig,
     lang: &dyn LanguageDefinition,

@@ -13,7 +13,7 @@ pub mod frameworks;
 // ============================================================================
 
 /// Rust language definition for the pluggable system.
-pub struct RustLanguage;
+pub(crate) struct RustLanguage;
 
 impl LanguageDefinition for RustLanguage {
     fn name(&self) -> &'static str {
@@ -63,7 +63,7 @@ impl LanguageDefinition for RustLanguage {
 }
 
 /// Module resolver for Rust module/use resolution.
-pub struct RustModuleResolver;
+pub(crate) struct RustModuleResolver;
 
 impl ModuleResolver for RustModuleResolver {
     fn parse_module_info(
@@ -228,6 +228,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         skipped_files: vec![],
         imports: vec![],
         unused_public: vec![],
+        file_edges: vec![],
     };
 
     let entrypoints = config

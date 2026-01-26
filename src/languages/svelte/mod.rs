@@ -12,7 +12,7 @@ use walkdir::DirEntry;
 // ============================================================================
 
 /// Svelte/SvelteKit language definition for the pluggable system.
-pub struct SvelteLanguage;
+pub(crate) struct SvelteLanguage;
 
 impl LanguageDefinition for SvelteLanguage {
     fn name(&self) -> &'static str {

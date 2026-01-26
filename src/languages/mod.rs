@@ -125,6 +125,7 @@ pub(crate) fn scan_all(root_dir: &Path, config: &ScanConfig, scanners: Vec<Box<d
         skipped_files: vec![],
         imports: vec![],
         unused_public: vec![],
+        file_edges: vec![],
     };
 
     for report in reports {
@@ -269,6 +270,7 @@ where
         skipped_files: vec![],
         imports: vec![],
         unused_public: vec![],
+        file_edges: vec![],
     };
 
     for result in results {
@@ -386,6 +388,7 @@ pub(crate) fn scan_language_with_definition(
         skipped_files: vec![],
         imports: vec![],
         unused_public: vec![],
+        file_edges: vec![],
     };
 
     for result in results {
