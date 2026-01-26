@@ -104,9 +104,11 @@ enum Commands {
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum OutputFormat {
+    /// ASCII tree view (default)
     Tree,
+    /// Mermaid diagram
     Mermaid,
-    Compact,
+    /// JSON for tooling
     Json,
 }
 
@@ -150,18 +152,22 @@ fn run_scan(path: &Path, format: OutputFormat, include_private: bool, out: Optio
         include_private,
         entrypoints: None,
         suggest: false,
-        imports: false,
+        imports: true, // Always analyze imports for dependency visualization
         no_default_ignore: false,
     };
 
     let scanners = languages::get_scanners_auto(path);
     if scanners.is_empty() {
         eprintln!("No supported languages found in {}", path.display());
-        eprintln!("Supported: TypeScript/JavaScript (.ts, .js), Python (.py), Rust (.rs)");
+        eprintln!("Supported: TypeScript/JavaScript (.ts, .js), Python (.py), Rust (.rs), Svelte (.svelte)");
         return 1;
     }
 
-    let report = languages::scan_all(path, &config, scanners);
+    let mut report = languages::scan_all(path, &config, scanners);
+
+    // Always run import analysis for dependency edges
+    analysis::annotate_imports(&mut report, path, false);
+
     let output = render_format(&report, format);
     output_result(output, out, format);
     0
@@ -435,7 +441,6 @@ fn render_format(report: &domain::ScanReport, format: OutputFormat) -> String {
     match format {
         OutputFormat::Tree => outputs::text_tree::render(report),
         OutputFormat::Mermaid => outputs::mermaid::render(report),
-        OutputFormat::Compact => outputs::compact::render(report),
         OutputFormat::Json => outputs::json::render(report).unwrap_or_else(|e| {
             format!("Error: {}", e)
         }),
@@ -450,9 +455,8 @@ fn output_result(content: String, out: Option<PathBuf>, format: OutputFormat) {
         }
 
         let filename = match format {
-            OutputFormat::Tree => "atlas.tree",
+            OutputFormat::Tree => "atlas.txt",
             OutputFormat::Mermaid => "atlas.mmd",
-            OutputFormat::Compact => "atlas.txt",
             OutputFormat::Json => "atlas.json",
         };
         let out_path = out_dir.join(filename);
