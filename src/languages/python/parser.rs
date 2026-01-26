@@ -108,10 +108,13 @@ impl SymbolVisitor {
             ast::Stmt::FunctionDef(f) => {
                 let name = f.name.as_str().to_string();
                 let vis = determine_visibility(&name);
-                let sig = format!("def {}(...)", name);
+                let args_str = format_py_args(&f.args);
+                let ret_str = format_py_returns(&f.returns);
+                let dec_str = format_decorators(&f.decorator_list);
+                let sig = format!("{}def {}({}){}", dec_str, name, args_str, ret_str);
                 let symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, sig);
                 self.symbols.push(symbol);
-                
+
                 if self.recurse_into_functions {
                     self.visit_suite(&f.body);
                 }
@@ -119,9 +122,19 @@ impl SymbolVisitor {
             ast::Stmt::ClassDef(c) => {
                 let name = c.name.as_str().to_string();
                 let vis = determine_visibility(&name);
-                let sig = format!("class {}", name);
+
+                // Build class signature with bases
+                let bases: Vec<String> = c.bases.iter().map(format_py_expr).collect();
+                let bases_str = if bases.is_empty() {
+                    String::new()
+                } else {
+                    format!("({})", bases.join(", "))
+                };
+                let dec_str = format_decorators(&c.decorator_list);
+                let sig = format!("{}class {}{}", dec_str, name, bases_str);
+
                 let mut symbol = self.create_symbol(name, SymbolKind::Class, vis, c.range, sig);
-                
+
                 // Visit children to find methods
                 let mut child_visitor = SymbolVisitor {
                     symbols: Vec::new(),
@@ -131,18 +144,16 @@ impl SymbolVisitor {
                     recurse_into_functions: false,
                 };
                 child_visitor.visit_suite(&c.body);
-                
-                // Adapt child symbols (which are currently top-level in child_visitor) to be children of this class
-                // And change their kind to Method if they are functions
+
+                // Adapt child symbols to be children of this class
                 for mut child in child_visitor.symbols {
                     if child.kind == SymbolKind::Function {
                         child.kind = SymbolKind::Method;
-                        // Adjust ID?
-                        child.id = child.id.replace(":fn#", ":method#");
+                        child.id = child.id.replace(":def#", ":method#");
                     }
                     symbol.children.push(child);
                 }
-                
+
                 self.symbols.push(symbol);
             },
             _ => {}
@@ -166,6 +177,106 @@ fn kind_to_str(kind: SymbolKind) -> &'static str {
         SymbolKind::Function => "def",
         SymbolKind::Method => "method",
         _ => "sym",
+    }
+}
+
+/// Format Python function arguments to a signature string
+fn format_py_args(args: &ast::Arguments) -> String {
+    let mut params = Vec::new();
+
+    // Regular positional args (ArgWithDefault has .def field containing Arg)
+    for arg in &args.args {
+        let name = arg.def.arg.as_str();
+        let type_str = arg.def.annotation.as_ref()
+            .map(|ann| format!(": {}", format_py_expr(ann)))
+            .unwrap_or_default();
+        params.push(format!("{}{}", name, type_str));
+    }
+
+    // *args
+    if let Some(vararg) = &args.vararg {
+        let name = vararg.arg.as_str();
+        params.push(format!("*{}", name));
+    }
+
+    // **kwargs
+    if let Some(kwarg) = &args.kwarg {
+        let name = kwarg.arg.as_str();
+        params.push(format!("**{}", name));
+    }
+
+    params.join(", ")
+}
+
+/// Format Python return type annotation
+fn format_py_returns(returns: &Option<Box<ast::Expr>>) -> String {
+    returns.as_ref()
+        .map(|r| format!(" -> {}", format_py_expr(r)))
+        .unwrap_or_default()
+}
+
+/// Format Python expression (simplified, for type annotations)
+fn format_py_expr(expr: &ast::Expr) -> String {
+    match expr {
+        ast::Expr::Name(name) => name.id.as_str().to_string(),
+        ast::Expr::Attribute(attr) => {
+            format!("{}.{}", format_py_expr(&attr.value), attr.attr.as_str())
+        }
+        ast::Expr::Subscript(sub) => {
+            format!("{}[{}]", format_py_expr(&sub.value), format_py_expr(&sub.slice))
+        }
+        ast::Expr::Tuple(tuple) => {
+            let elems: Vec<String> = tuple.elts.iter().map(format_py_expr).collect();
+            elems.join(", ")
+        }
+        ast::Expr::List(list) => {
+            let elems: Vec<String> = list.elts.iter().map(format_py_expr).collect();
+            format!("[{}]", elems.join(", "))
+        }
+        ast::Expr::Constant(c) => {
+            match &c.value {
+                ast::Constant::Str(s) => format!("\"{}\"", s),
+                ast::Constant::Int(i) => i.to_string(),
+                ast::Constant::Float(f) => f.to_string(),
+                ast::Constant::Bool(b) => if *b { "True" } else { "False" }.to_string(),
+                ast::Constant::None => "None".to_string(),
+                _ => "...".to_string(),
+            }
+        }
+        ast::Expr::BinOp(bin) => {
+            // For Union types like `int | str`
+            format!("{} | {}", format_py_expr(&bin.left), format_py_expr(&bin.right))
+        }
+        _ => "...".to_string(),
+    }
+}
+
+/// Format class/function decorators
+fn format_decorators(decorators: &[ast::Expr]) -> String {
+    if decorators.is_empty() {
+        return String::new();
+    }
+
+    let dec_names: Vec<String> = decorators.iter().take(2).map(|d| {
+        match d {
+            ast::Expr::Name(n) => format!("@{}", n.id.as_str()),
+            ast::Expr::Call(c) => {
+                if let ast::Expr::Name(n) = &*c.func {
+                    format!("@{}(...)", n.id.as_str())
+                } else {
+                    "@...".to_string()
+                }
+            }
+            _ => "@...".to_string(),
+        }
+    }).collect();
+
+    if decorators.len() > 2 {
+        format!("{} ", dec_names.join(" "))
+    } else if !dec_names.is_empty() {
+        format!("{} ", dec_names.join(" "))
+    } else {
+        String::new()
     }
 }
 

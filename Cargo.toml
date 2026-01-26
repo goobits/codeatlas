@@ -28,3 +28,4 @@ swc_core = { version = "*", features = ["ecma_parser", "ecma_ast", "ecma_visit",
 
 # Utilities
 pathdiff = "0.2"
+rayon = "1.10"

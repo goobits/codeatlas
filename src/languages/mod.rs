@@ -1,12 +1,14 @@
 pub mod typescript;
 pub mod python;
 pub mod rust;
+pub mod svelte;
 
 use crate::domain::{
     Language, LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol,
     SymbolKind, Visibility,
 };
-use std::path::Path;
+use rayon::prelude::*;
+use std::path::{Path, PathBuf};
 use walkdir::DirEntry;
 
 pub(crate) fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageScanner>> {
@@ -28,6 +30,10 @@ pub(crate) fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageSc
         scanners.push(Box::new(rust::RustScanner));
     }
 
+    if all || has("svelte") {
+        scanners.push(Box::new(svelte::SvelteScanner));
+    }
+
     scanners
 }
 
@@ -36,6 +42,7 @@ pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>
     let mut has_ts = false;
     let mut has_py = false;
     let mut has_rs = false;
+    let mut has_svelte = false;
 
     // Quick scan for language indicators
     let walker = walkdir::WalkDir::new(root_dir)
@@ -44,7 +51,7 @@ pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>
         .filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
             // Skip common non-source directories
-            !matches!(name.as_ref(), "node_modules" | "target" | ".git" | "dist" | "build" | "__pycache__" | ".venv" | "venv")
+            !matches!(name.as_ref(), "node_modules" | "target" | ".git" | "dist" | "build" | "__pycache__" | ".venv" | "venv" | ".svelte-kit")
         });
 
     for entry in walker.flatten() {
@@ -54,21 +61,23 @@ pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>
                     "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" => has_ts = true,
                     "py" => has_py = true,
                     "rs" => has_rs = true,
+                    "svelte" => has_svelte = true,
                     _ => {}
                 }
             }
-            // Also check for Cargo.toml, package.json, pyproject.toml
+            // Also check for config files
             let name = entry.file_name().to_string_lossy();
             match name.as_ref() {
                 "Cargo.toml" => has_rs = true,
                 "package.json" => has_ts = true,
                 "pyproject.toml" | "setup.py" | "requirements.txt" => has_py = true,
+                "svelte.config.js" | "svelte.config.ts" => has_svelte = true,
                 _ => {}
             }
         }
 
         // Early exit if we found all languages
-        if has_ts && has_py && has_rs {
+        if has_ts && has_py && has_rs && has_svelte {
             break;
         }
     }
@@ -84,11 +93,21 @@ pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>
     if has_rs {
         scanners.push(Box::new(rust::RustScanner));
     }
+    if has_svelte {
+        scanners.push(Box::new(svelte::SvelteScanner));
+    }
 
     scanners
 }
 
 pub(crate) fn scan_all(root_dir: &Path, config: &ScanConfig, scanners: Vec<Box<dyn LanguageScanner>>) -> ScanReport {
+    // Run language scanners in parallel
+    let reports: Vec<ScanReport> = scanners
+        .into_par_iter()
+        .map(|scanner| scanner.scan(root_dir, config))
+        .collect();
+
+    // Combine all reports
     let mut combined_report = ScanReport {
         stats: ScanStats::default(),
         symbols: vec![],
@@ -98,19 +117,17 @@ pub(crate) fn scan_all(root_dir: &Path, config: &ScanConfig, scanners: Vec<Box<d
         unused_public: vec![],
     };
 
-    for scanner in scanners {
-        let report = scanner.scan(root_dir, config);
-        
+    for report in reports {
         combined_report.stats.files_scanned += report.stats.files_scanned;
         combined_report.stats.files_skipped += report.stats.files_skipped;
         combined_report.stats.symbols_found += report.stats.symbols_found;
         combined_report.stats.routes_found += report.stats.routes_found;
-        
+
         combined_report.symbols.extend(report.symbols);
         combined_report.routes.extend(report.routes);
         combined_report.skipped_files.extend(report.skipped_files);
     }
-    
+
     combined_report
 }
 
@@ -134,6 +151,13 @@ pub(crate) fn apply_symbol_filters(symbols: &mut Vec<Symbol>, config: &ScanConfi
     symbols.retain_mut(|symbol| keep_symbol(symbol, config));
 }
 
+/// Result of scanning a single file
+struct FileResult {
+    symbols: Vec<Symbol>,
+    routes: Vec<Route>,
+    skipped: Option<SkippedFile>,
+}
+
 pub(crate) fn scan_language<F, P, D>(
     root_dir: &Path,
     config: &ScanConfig,
@@ -141,30 +165,25 @@ pub(crate) fn scan_language<F, P, D>(
     filter_entry: F,
     is_language_file: fn(&Path) -> bool,
     needs_source: bool,
-    mut parse_file: P,
-    mut detect_routes: D,
+    parse_file: P,
+    detect_routes: D,
 ) -> ScanReport
 where
-    F: Fn(&DirEntry) -> bool,
-    P: FnMut(&Path, &Path, Option<&str>) -> anyhow::Result<Vec<Symbol>>,
-    D: FnMut(&Path, &str, &mut [Symbol]) -> Vec<Route>,
+    F: Fn(&DirEntry) -> bool + Sync,
+    P: Fn(&Path, &Path, Option<&str>) -> anyhow::Result<Vec<Symbol>> + Sync,
+    D: Fn(&Path, &str, &mut [Symbol]) -> Vec<Route> + Sync,
 {
     let entrypoints = config
         .entrypoints
         .as_ref()
         .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
-    let mut report = ScanReport {
-        stats: ScanStats::default(),
-        symbols: vec![],
-        routes: vec![],
-        skipped_files: vec![],
-        imports: vec![],
-        unused_public: vec![],
-    };
+
+    // Collect all file paths first (serial walk, parallel parse)
+    let mut files_to_scan: Vec<PathBuf> = Vec::new();
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
 
-    for entry in walker.filter_entry(filter_entry) {
+    for entry in walker.filter_entry(&filter_entry) {
         let entry = match entry {
             Ok(e) => e,
             Err(_) => continue,
@@ -182,43 +201,76 @@ where
             }
         }
 
-        let source = if needs_source {
-            match std::fs::read_to_string(path) {
-                Ok(content) => Some(content),
-                Err(e) => {
-                    report.stats.files_skipped += 1;
-                    report.skipped_files.push(SkippedFile {
+        files_to_scan.push(path.to_path_buf());
+    }
+
+    // Process files in parallel
+    let results: Vec<FileResult> = files_to_scan
+        .par_iter()
+        .map(|path| {
+            let source = if needs_source {
+                match std::fs::read_to_string(path) {
+                    Ok(content) => Some(content),
+                    Err(e) => {
+                        return FileResult {
+                            symbols: vec![],
+                            routes: vec![],
+                            skipped: Some(SkippedFile {
+                                path: path.to_string_lossy().to_string(),
+                                reason: e.to_string(),
+                                language,
+                            }),
+                        };
+                    }
+                }
+            } else {
+                None
+            };
+
+            match parse_file(path, root_dir, source.as_deref()) {
+                Ok(mut symbols) => {
+                    let file_routes = detect_routes(path, source.as_deref().unwrap_or(""), &mut symbols);
+                    apply_symbol_filters(&mut symbols, config);
+
+                    FileResult {
+                        symbols,
+                        routes: file_routes,
+                        skipped: None,
+                    }
+                }
+                Err(e) => FileResult {
+                    symbols: vec![],
+                    routes: vec![],
+                    skipped: Some(SkippedFile {
                         path: path.to_string_lossy().to_string(),
                         reason: e.to_string(),
                         language,
-                    });
-                    continue;
-                }
+                    }),
+                },
             }
+        })
+        .collect();
+
+    // Combine results
+    let mut report = ScanReport {
+        stats: ScanStats::default(),
+        symbols: vec![],
+        routes: vec![],
+        skipped_files: vec![],
+        imports: vec![],
+        unused_public: vec![],
+    };
+
+    for result in results {
+        if let Some(skipped) = result.skipped {
+            report.stats.files_skipped += 1;
+            report.skipped_files.push(skipped);
         } else {
-            None
-        };
-
-        match parse_file(path, root_dir, source.as_deref()) {
-            Ok(mut symbols) => {
-                report.stats.files_scanned += 1;
-
-                let file_routes = detect_routes(path, source.as_deref().unwrap_or(""), &mut symbols);
-                report.stats.routes_found += file_routes.len();
-                report.routes.extend(file_routes);
-
-                apply_symbol_filters(&mut symbols, config);
-                report.stats.symbols_found += symbols.len();
-                report.symbols.extend(symbols);
-            }
-            Err(e) => {
-                report.stats.files_skipped += 1;
-                report.skipped_files.push(SkippedFile {
-                    path: path.to_string_lossy().to_string(),
-                    reason: e.to_string(),
-                    language,
-                });
-            }
+            report.stats.files_scanned += 1;
+            report.stats.symbols_found += result.symbols.len();
+            report.stats.routes_found += result.routes.len();
+            report.symbols.extend(result.symbols);
+            report.routes.extend(result.routes);
         }
     }
 
