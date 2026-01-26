@@ -1,9 +1,69 @@
 mod parser;
 
 use crate::domain::{Language, LanguageScanner, Route, ScanConfig, ScanReport, Symbol};
+use crate::languages::definition::LanguageDefinition;
 use crate::languages::scan_language;
+use anyhow::Result;
 use std::path::Path;
 use walkdir::DirEntry;
+
+// ============================================================================
+// New Pluggable System Implementation
+// ============================================================================
+
+/// Svelte/SvelteKit language definition for the pluggable system.
+pub struct SvelteLanguage;
+
+impl LanguageDefinition for SvelteLanguage {
+    fn name(&self) -> &'static str {
+        "Svelte"
+    }
+
+    fn id(&self) -> &'static str {
+        "svelte"
+    }
+
+    fn language(&self) -> Language {
+        Language::TypeScript // Svelte scripts use TS/JS
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["svelte"]
+    }
+
+    fn config_files(&self) -> &'static [&'static str] {
+        &["svelte.config.js", "svelte.config.ts"]
+    }
+
+    fn ignored_dirs(&self) -> &'static [&'static str] {
+        &["node_modules", ".svelte-kit", ".vercel", "build", "dist"]
+    }
+
+    fn needs_source(&self) -> bool {
+        true // Svelte parser needs source content
+    }
+
+    fn parse_file(&self, path: &Path, root: &Path, source: Option<&str>) -> Result<Vec<Symbol>> {
+        let source = source.unwrap_or("");
+        parser::parse_file(path, root, source)
+    }
+
+    fn detect_routes(&self, path: &Path, source: &str, symbols: &mut [Symbol]) -> Vec<Route> {
+        detect_routes(path, source, symbols)
+    }
+
+    fn is_language_file(&self, path: &Path) -> bool {
+        // Override to also check for SvelteKit special files
+        matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("svelte")
+        ) || is_sveltekit_script(path)
+    }
+}
+
+// ============================================================================
+// Legacy Scanner (kept for backwards compatibility during transition)
+// ============================================================================
 
 pub(crate) struct SvelteScanner;
 

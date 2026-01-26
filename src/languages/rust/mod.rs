@@ -1,9 +1,182 @@
 use crate::analysis::ignore;
-use crate::domain::{Language, LanguageScanner, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::domain::{Language, LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::languages::definition::{LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver};
+use anyhow::Result;
+use std::collections::HashSet;
 use std::path::Path;
 
 pub mod parser;
 pub mod frameworks;
+
+// ============================================================================
+// New Pluggable System Implementation
+// ============================================================================
+
+/// Rust language definition for the pluggable system.
+pub struct RustLanguage;
+
+impl LanguageDefinition for RustLanguage {
+    fn name(&self) -> &'static str {
+        "Rust"
+    }
+
+    fn id(&self) -> &'static str {
+        "rs"
+    }
+
+    fn language(&self) -> Language {
+        Language::Rust
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["rs"]
+    }
+
+    fn config_files(&self) -> &'static [&'static str] {
+        &["Cargo.toml", "Cargo.lock"]
+    }
+
+    fn ignored_dirs(&self) -> &'static [&'static str] {
+        &["target", ".cargo"]
+    }
+
+    fn needs_source(&self) -> bool {
+        true // Rust parser needs source content
+    }
+
+    fn parse_file(&self, path: &Path, root: &Path, source: Option<&str>) -> Result<Vec<Symbol>> {
+        let source = source.ok_or_else(|| anyhow::anyhow!("Missing source for Rust parser"))?;
+        parser::parse_file(path, root, source)
+    }
+
+    fn detect_routes(&self, path: &Path, source: &str, symbols: &mut [Symbol]) -> Vec<Route> {
+        frameworks::detect_routes(path, source, symbols)
+    }
+
+    fn supports_audit_mode(&self) -> bool {
+        true
+    }
+
+    fn create_module_resolver(&self) -> Option<Box<dyn ModuleResolver>> {
+        Some(Box::new(RustModuleResolver))
+    }
+}
+
+/// Module resolver for Rust module/use resolution.
+pub struct RustModuleResolver;
+
+impl ModuleResolver for RustModuleResolver {
+    fn parse_module_info(
+        &self,
+        path: &Path,
+        root: &Path,
+        source: &str,
+    ) -> Result<Box<dyn ModuleInfoTrait>> {
+        let info = parser::parse_module_info(path, root, source)?;
+        let relative = crate::paths::normalize_relative_path(path, root);
+        let module_path = module_path_from_file(&relative);
+        Ok(Box::new(RustModuleInfo {
+            symbols: info.symbols,
+            public_mods: info.public_mods,
+            public_uses: info.public_uses,
+            module_path,
+        }))
+    }
+
+    fn resolve_import(
+        &self,
+        current_file: &str,
+        import_path: &str,
+        root: &Path,
+    ) -> Option<String> {
+        // For Rust, import_path is typically a crate path like "crate::foo::bar"
+        // Convert to file path
+        let parts: Vec<&str> = import_path.split("::").collect();
+        if parts.is_empty() {
+            return None;
+        }
+
+        let skip = if parts[0] == "crate" { 1 } else { 0 };
+        let module_parts: Vec<&str> = parts.iter().skip(skip).copied().collect();
+
+        if module_parts.is_empty() {
+            return Some("src/lib.rs".to_string());
+        }
+
+        // Try various file paths
+        let module_path = module_parts.join("/");
+        let candidates = [
+            format!("src/{}.rs", module_path),
+            format!("src/{}/mod.rs", module_path),
+        ];
+
+        for candidate in candidates {
+            let full_path = root.join(&candidate);
+            if full_path.exists() {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+}
+
+/// Module info wrapper for Rust.
+struct RustModuleInfo {
+    symbols: Vec<Symbol>,
+    public_mods: Vec<String>,
+    public_uses: Vec<parser::UseExport>,
+    module_path: Vec<String>,
+}
+
+impl ModuleInfoTrait for RustModuleInfo {
+    fn symbols(&self) -> Vec<Symbol> {
+        self.symbols.clone()
+    }
+
+    fn exported_names(&self) -> HashSet<String> {
+        self.symbols
+            .iter()
+            .filter(|s| s.visibility == crate::domain::Visibility::Public)
+            .map(|s| s.name.clone())
+            .collect()
+    }
+
+    fn imports(&self) -> Vec<(String, Vec<String>)> {
+        // Rust uses `pub use` for re-exports and `mod` for submodules
+        // Map public_uses to import-like structure
+        self.public_uses
+            .iter()
+            .map(|u| {
+                let path = u.module_path.join("::");
+                (path, vec![u.name.clone()])
+            })
+            .collect()
+    }
+
+    fn reexports(&self) -> Vec<(String, Vec<String>)> {
+        self.public_uses
+            .iter()
+            .filter(|u| !u.is_glob)
+            .map(|u| {
+                let path = u.module_path.join("::");
+                (path, vec![u.alias.clone()])
+            })
+            .collect()
+    }
+
+    fn export_all(&self) -> Vec<String> {
+        // Glob re-exports (pub use foo::*)
+        self.public_uses
+            .iter()
+            .filter(|u| u.is_glob)
+            .map(|u| u.module_path.join("::"))
+            .collect()
+    }
+}
+
+// ============================================================================
+// Legacy Scanner (kept for backwards compatibility during transition)
+// ============================================================================
 
 pub(crate) struct RustScanner;
 

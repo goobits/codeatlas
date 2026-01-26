@@ -1,9 +1,155 @@
 use crate::analysis::ignore;
-use crate::domain::{Language, LanguageScanner, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::domain::{Language, LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::languages::definition::{LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver};
+use anyhow::Result;
+use std::collections::HashSet;
 use std::path::Path;
 
 pub mod parser;
 pub mod frameworks;
+
+// ============================================================================
+// New Pluggable System Implementation
+// ============================================================================
+
+/// TypeScript/JavaScript language definition for the pluggable system.
+pub struct TypeScriptLanguage;
+
+impl LanguageDefinition for TypeScriptLanguage {
+    fn name(&self) -> &'static str {
+        "TypeScript"
+    }
+
+    fn id(&self) -> &'static str {
+        "ts"
+    }
+
+    fn language(&self) -> Language {
+        Language::TypeScript
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["ts", "tsx", "js", "jsx", "mjs", "cjs"]
+    }
+
+    fn config_files(&self) -> &'static [&'static str] {
+        &["package.json", "tsconfig.json", "jsconfig.json"]
+    }
+
+    fn ignored_dirs(&self) -> &'static [&'static str] {
+        &["node_modules", "dist", "build", "coverage", ".next", ".nuxt"]
+    }
+
+    fn needs_source(&self) -> bool {
+        false // TypeScript parser reads files directly
+    }
+
+    fn parse_file(&self, path: &Path, root: &Path, _source: Option<&str>) -> Result<Vec<Symbol>> {
+        parser::parse_file(path, root)
+    }
+
+    fn detect_routes(&self, path: &Path, source: &str, symbols: &mut [Symbol]) -> Vec<Route> {
+        frameworks::detect_routes(path, source, symbols)
+    }
+
+    fn supports_audit_mode(&self) -> bool {
+        true
+    }
+
+    fn create_module_resolver(&self) -> Option<Box<dyn ModuleResolver>> {
+        Some(Box::new(TypeScriptModuleResolver))
+    }
+}
+
+/// Module resolver for TypeScript import resolution.
+pub struct TypeScriptModuleResolver;
+
+impl ModuleResolver for TypeScriptModuleResolver {
+    fn parse_module_info(
+        &self,
+        path: &Path,
+        root: &Path,
+        _source: &str,
+    ) -> Result<Box<dyn ModuleInfoTrait>> {
+        let info = parser::parse_module_info(path, root)?;
+        Ok(Box::new(TypeScriptModuleInfo {
+            symbols: info.symbols,
+            exports: info.exports,
+        }))
+    }
+
+    fn resolve_import(
+        &self,
+        current_file: &str,
+        import_path: &str,
+        root: &Path,
+    ) -> Option<String> {
+        if !import_path.starts_with('.') {
+            return None; // External dependency
+        }
+        let from_path = root.join(current_file);
+        let base_dir = from_path.parent()?;
+        let raw = base_dir.join(import_path);
+        let candidates = [
+            raw.clone(),
+            raw.with_extension("ts"),
+            raw.with_extension("tsx"),
+            raw.with_extension("js"),
+            raw.with_extension("jsx"),
+            raw.join("index.ts"),
+            raw.join("index.tsx"),
+            raw.join("index.js"),
+            raw.join("index.jsx"),
+        ];
+        for candidate in candidates {
+            if candidate.exists() {
+                return Some(crate::paths::normalize_relative_path(&candidate, root));
+            }
+        }
+        None
+    }
+}
+
+/// Module info wrapper for TypeScript.
+struct TypeScriptModuleInfo {
+    symbols: Vec<Symbol>,
+    exports: parser::ExportInfo,
+}
+
+impl ModuleInfoTrait for TypeScriptModuleInfo {
+    fn symbols(&self) -> Vec<Symbol> {
+        self.symbols.clone()
+    }
+
+    fn exported_names(&self) -> HashSet<String> {
+        self.exports.local_exports.iter().cloned().collect()
+    }
+
+    fn imports(&self) -> Vec<(String, Vec<String>)> {
+        // For now, we don't track imports in the basic module info
+        // This could be extended to parse import statements
+        vec![]
+    }
+
+    fn reexports(&self) -> Vec<(String, Vec<String>)> {
+        self.exports
+            .re_exports
+            .iter()
+            .map(|re| {
+                let names: Vec<String> = re.names.iter().map(|s| s.original.clone()).collect();
+                (re.source.clone(), names)
+            })
+            .collect()
+    }
+
+    fn export_all(&self) -> Vec<String> {
+        self.exports.export_all.clone()
+    }
+}
+
+// ============================================================================
+// Legacy Scanner (kept for backwards compatibility during transition)
+// ============================================================================
 
 pub(crate) struct TypeScriptScanner;
 

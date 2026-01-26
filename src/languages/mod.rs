@@ -1,7 +1,17 @@
+// Language modules
 pub mod typescript;
 pub mod python;
 pub mod rust;
 pub mod svelte;
+
+// Pluggable language system
+pub mod definition;
+pub mod registry;
+pub mod audit;
+
+// Re-export key types for external use
+pub use definition::{LanguageDefinition, ModuleInfo, ModuleResolver, make_symbol_id};
+pub use registry::LanguageRegistry;
 
 use crate::domain::{
     Language, LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol,
@@ -230,6 +240,123 @@ where
             match parse_file(path, root_dir, source.as_deref()) {
                 Ok(mut symbols) => {
                     let file_routes = detect_routes(path, source.as_deref().unwrap_or(""), &mut symbols);
+                    apply_symbol_filters(&mut symbols, config);
+
+                    FileResult {
+                        symbols,
+                        routes: file_routes,
+                        skipped: None,
+                    }
+                }
+                Err(e) => FileResult {
+                    symbols: vec![],
+                    routes: vec![],
+                    skipped: Some(SkippedFile {
+                        path: path.to_string_lossy().to_string(),
+                        reason: e.to_string(),
+                        language,
+                    }),
+                },
+            }
+        })
+        .collect();
+
+    // Combine results
+    let mut report = ScanReport {
+        stats: ScanStats::default(),
+        symbols: vec![],
+        routes: vec![],
+        skipped_files: vec![],
+        imports: vec![],
+        unused_public: vec![],
+    };
+
+    for result in results {
+        if let Some(skipped) = result.skipped {
+            report.stats.files_skipped += 1;
+            report.skipped_files.push(skipped);
+        } else {
+            report.stats.files_scanned += 1;
+            report.stats.symbols_found += result.symbols.len();
+            report.stats.routes_found += result.routes.len();
+            report.symbols.extend(result.symbols);
+            report.routes.extend(result.routes);
+        }
+    }
+
+    report
+}
+
+/// Scan using a LanguageDefinition (new pluggable system).
+/// This function uses the language definition's methods for all language-specific behavior.
+pub(crate) fn scan_language_with_definition(
+    root_dir: &Path,
+    config: &ScanConfig,
+    lang: &dyn LanguageDefinition,
+) -> ScanReport {
+    let entrypoints = config
+        .entrypoints
+        .as_ref()
+        .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
+
+    // Collect all file paths first (serial walk, parallel parse)
+    let mut files_to_scan: Vec<PathBuf> = Vec::new();
+
+    let walker = walkdir::WalkDir::new(root_dir).into_iter();
+
+    for entry in walker.filter_entry(|e| {
+        let name = e.file_name().to_string_lossy();
+        !lang.should_ignore_dir(&name)
+    }) {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let path = entry.path();
+        if path.is_dir() || !lang.is_language_file(path) {
+            continue;
+        }
+
+        if let Some(ref entrypoints) = entrypoints {
+            let relative = crate::paths::normalize_relative_path(path, root_dir);
+            if !entrypoints.contains(&relative) {
+                continue;
+            }
+        }
+
+        files_to_scan.push(path.to_path_buf());
+    }
+
+    let language = lang.language();
+    let needs_source = lang.needs_source();
+
+    // Process files in parallel
+    let results: Vec<FileResult> = files_to_scan
+        .par_iter()
+        .map(|path| {
+            let source = if needs_source {
+                match std::fs::read_to_string(path) {
+                    Ok(content) => Some(content),
+                    Err(e) => {
+                        return FileResult {
+                            symbols: vec![],
+                            routes: vec![],
+                            skipped: Some(SkippedFile {
+                                path: path.to_string_lossy().to_string(),
+                                reason: e.to_string(),
+                                language,
+                            }),
+                        };
+                    }
+                }
+            } else {
+                None
+            };
+
+            match lang.parse_file(path, root_dir, source.as_deref()) {
+                Ok(mut symbols) => {
+                    let file_routes = lang.detect_routes(path, source.as_deref().unwrap_or(""), &mut symbols);
                     apply_symbol_filters(&mut symbols, config);
 
                     FileResult {
