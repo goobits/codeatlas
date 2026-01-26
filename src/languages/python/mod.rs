@@ -9,9 +9,10 @@ pub mod parser;
 pub mod frameworks;
 
 // ============================================================================
-// New Pluggable System Implementation
+// New Pluggable System Implementation (for future use)
 // ============================================================================
 
+#[allow(dead_code)]
 /// Python language definition for the pluggable system.
 pub(crate) struct PythonLanguage;
 
@@ -62,6 +63,7 @@ impl LanguageDefinition for PythonLanguage {
     }
 }
 
+#[allow(dead_code)]
 /// Module resolver for Python import resolution.
 pub(crate) struct PythonModuleResolver;
 
@@ -118,6 +120,7 @@ impl ModuleResolver for PythonModuleResolver {
     }
 }
 
+#[allow(dead_code)]
 /// Module info wrapper for Python.
 struct PythonModuleInfo {
     symbols: Vec<Symbol>,
@@ -184,7 +187,7 @@ impl LanguageScanner for PythonScanner {
             root_dir,
             config,
             Language::Python,
-            |e| {
+            |e: &walkdir::DirEntry| {
                 if e.depth() == 0 {
                     return true;
                 }

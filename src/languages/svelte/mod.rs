@@ -8,9 +8,10 @@ use std::path::Path;
 use walkdir::DirEntry;
 
 // ============================================================================
-// New Pluggable System Implementation
+// New Pluggable System Implementation (for future use)
 // ============================================================================
 
+#[allow(dead_code)]
 /// Svelte/SvelteKit language definition for the pluggable system.
 pub(crate) struct SvelteLanguage;
 

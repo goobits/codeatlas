@@ -9,8 +9,10 @@ pub mod definition;
 pub mod registry;
 pub mod audit;
 
-// Re-export key types for external use
+// Re-export key types for external use (available for future plugins)
+#[allow(unused_imports)]
 pub use definition::{LanguageDefinition, ModuleInfo, ModuleResolver, make_symbol_id};
+#[allow(unused_imports)]
 pub use registry::LanguageRegistry;
 
 use crate::domain::{
@@ -56,11 +58,10 @@ pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>
 
     // Quick scan for language indicators
     let walker = walkdir::WalkDir::new(root_dir)
-        .max_depth(5) // Don't go too deep for detection
+        .max_depth(5)
         .into_iter()
         .filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
-            // Skip common non-source directories
             !matches!(name.as_ref(), "node_modules" | "target" | ".git" | "dist" | "build" | "__pycache__" | ".venv" | "venv" | ".svelte-kit")
         });
 
@@ -75,7 +76,6 @@ pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>
                     _ => {}
                 }
             }
-            // Also check for config files
             let name = entry.file_name().to_string_lossy();
             match name.as_ref() {
                 "Cargo.toml" => has_rs = true,
@@ -86,7 +86,6 @@ pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>
             }
         }
 
-        // Early exit if we found all languages
         if has_ts && has_py && has_rs && has_svelte {
             break;
         }
@@ -291,6 +290,7 @@ where
 
 /// Scan using a LanguageDefinition (new pluggable system).
 /// This function uses the language definition's methods for all language-specific behavior.
+#[allow(dead_code)]
 pub(crate) fn scan_language_with_definition(
     root_dir: &Path,
     config: &ScanConfig,

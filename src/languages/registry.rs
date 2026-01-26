@@ -5,6 +5,10 @@
 //! - Auto-detecting languages in a directory
 //! - Creating scanners for specific languages
 
+// NOTE: This module defines the pluggable language system for future use.
+// The registry exists but is not yet wired into the main code path.
+#![allow(dead_code)]
+
 use super::definition::LanguageDefinition;
 use crate::domain::{LanguageScanner, ScanConfig, ScanReport};
 use std::path::Path;

@@ -21,6 +21,10 @@
 //! }
 //! ```
 
+// NOTE: This module defines the pluggable language system for future use.
+// The trait implementations exist but are not yet wired into the main code path.
+#![allow(dead_code)]
+
 use crate::domain::{Language, Route, Symbol};
 use anyhow::Result;
 use std::collections::HashSet;

@@ -9,9 +9,10 @@ pub mod parser;
 pub mod frameworks;
 
 // ============================================================================
-// New Pluggable System Implementation
+// New Pluggable System Implementation (for future use)
 // ============================================================================
 
+#[allow(dead_code)]
 /// Rust language definition for the pluggable system.
 pub(crate) struct RustLanguage;
 
@@ -62,6 +63,7 @@ impl LanguageDefinition for RustLanguage {
     }
 }
 
+#[allow(dead_code)]
 /// Module resolver for Rust module/use resolution.
 pub(crate) struct RustModuleResolver;
 
@@ -85,7 +87,7 @@ impl ModuleResolver for RustModuleResolver {
 
     fn resolve_import(
         &self,
-        current_file: &str,
+        _current_file: &str,
         import_path: &str,
         root: &Path,
     ) -> Option<String> {
@@ -120,6 +122,7 @@ impl ModuleResolver for RustModuleResolver {
     }
 }
 
+#[allow(dead_code)]
 /// Module info wrapper for Rust.
 struct RustModuleInfo {
     symbols: Vec<Symbol>,
@@ -190,7 +193,7 @@ impl LanguageScanner for RustScanner {
             root_dir,
             config,
             Language::Rust,
-            |e| {
+            |e: &walkdir::DirEntry| {
                 if e.depth() == 0 {
                     return true;
                 }

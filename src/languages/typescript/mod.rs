@@ -9,9 +9,10 @@ pub mod parser;
 pub mod frameworks;
 
 // ============================================================================
-// New Pluggable System Implementation
+// New Pluggable System Implementation (for future use)
 // ============================================================================
 
+#[allow(dead_code)]
 /// TypeScript/JavaScript language definition for the pluggable system.
 pub(crate) struct TypeScriptLanguage;
 
@@ -61,6 +62,7 @@ impl LanguageDefinition for TypeScriptLanguage {
     }
 }
 
+#[allow(dead_code)]
 /// Module resolver for TypeScript import resolution.
 pub(crate) struct TypeScriptModuleResolver;
 
@@ -110,6 +112,7 @@ impl ModuleResolver for TypeScriptModuleResolver {
     }
 }
 
+#[allow(dead_code)]
 /// Module info wrapper for TypeScript.
 struct TypeScriptModuleInfo {
     symbols: Vec<Symbol>,
@@ -163,7 +166,7 @@ impl LanguageScanner for TypeScriptScanner {
             root_dir,
             config,
             Language::TypeScript,
-            |e| {
+            |e: &walkdir::DirEntry| {
                 if e.depth() == 0 {
                     return true;
                 }
