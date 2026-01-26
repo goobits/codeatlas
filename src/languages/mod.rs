@@ -15,16 +15,73 @@ pub(crate) fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageSc
     let all = langs.is_none();
     let set = langs.unwrap_or_default();
     let has = |value: &str| set.iter().any(|lang| lang == value);
-    
+
     if all || has("ts") || has("js") {
         scanners.push(Box::new(typescript::TypeScriptScanner));
     }
-    
+
     if all || has("py") {
         scanners.push(Box::new(python::PythonScanner));
     }
-    
+
     if all || has("rs") {
+        scanners.push(Box::new(rust::RustScanner));
+    }
+
+    scanners
+}
+
+/// Auto-detect languages present in the directory and return appropriate scanners
+pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>> {
+    let mut has_ts = false;
+    let mut has_py = false;
+    let mut has_rs = false;
+
+    // Quick scan for language indicators
+    let walker = walkdir::WalkDir::new(root_dir)
+        .max_depth(5) // Don't go too deep for detection
+        .into_iter()
+        .filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            // Skip common non-source directories
+            !matches!(name.as_ref(), "node_modules" | "target" | ".git" | "dist" | "build" | "__pycache__" | ".venv" | "venv")
+        });
+
+    for entry in walker.flatten() {
+        if entry.file_type().is_file() {
+            if let Some(ext) = entry.path().extension() {
+                match ext.to_string_lossy().as_ref() {
+                    "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" => has_ts = true,
+                    "py" => has_py = true,
+                    "rs" => has_rs = true,
+                    _ => {}
+                }
+            }
+            // Also check for Cargo.toml, package.json, pyproject.toml
+            let name = entry.file_name().to_string_lossy();
+            match name.as_ref() {
+                "Cargo.toml" => has_rs = true,
+                "package.json" => has_ts = true,
+                "pyproject.toml" | "setup.py" | "requirements.txt" => has_py = true,
+                _ => {}
+            }
+        }
+
+        // Early exit if we found all languages
+        if has_ts && has_py && has_rs {
+            break;
+        }
+    }
+
+    let mut scanners: Vec<Box<dyn LanguageScanner>> = Vec::new();
+
+    if has_ts {
+        scanners.push(Box::new(typescript::TypeScriptScanner));
+    }
+    if has_py {
+        scanners.push(Box::new(python::PythonScanner));
+    }
+    if has_rs {
         scanners.push(Box::new(rust::RustScanner));
     }
 
