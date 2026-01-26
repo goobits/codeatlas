@@ -96,6 +96,9 @@ pub enum SymbolKind {
     Struct,
     Const,
     Decorator,
+    Enum,
+    Trait,
+    TypeAlias,
 }
 
 impl fmt::Display for Language {

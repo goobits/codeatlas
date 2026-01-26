@@ -1,7 +1,7 @@
 use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
 use std::path::Path;
-use syn::{visit::Visit, ItemFn, ItemStruct, ItemImpl, Visibility as SynVis};
+use syn::{visit::Visit, ItemFn, ItemStruct, ItemImpl, ItemEnum, ItemTrait, ItemConst, ItemType, Visibility as SynVis};
 
 pub(crate) struct UseExport {
     pub module_path: Vec<String>,
@@ -148,6 +148,10 @@ fn kind_to_str(kind: SymbolKind) -> &'static str {
         SymbolKind::Function => "fn",
         SymbolKind::Method => "fn",
         SymbolKind::Struct => "struct",
+        SymbolKind::Enum => "enum",
+        SymbolKind::Trait => "trait",
+        SymbolKind::Const => "const",
+        SymbolKind::TypeAlias => "type",
         _ => "sym",
     }
 }
@@ -239,6 +243,52 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                  }
              }
          }
+    }
+
+    fn visit_item_enum(&mut self, node: &'ast ItemEnum) {
+        let name = node.ident.to_string();
+        let vis = map_vis(&node.vis);
+        let sig = format!("enum {}", name);
+
+        self.symbols.push(self.create_symbol(name, SymbolKind::Enum, vis, node.ident.span(), sig));
+    }
+
+    fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
+        let name = node.ident.to_string();
+        let vis = map_vis(&node.vis);
+        let sig = format!("trait {}", name);
+
+        let idx = self.symbols.len();
+        self.symbols.push(self.create_symbol(name.clone(), SymbolKind::Trait, vis, node.ident.span(), sig));
+
+        // Collect trait methods as children
+        for item in &node.items {
+            if let syn::TraitItem::Fn(method) = item {
+                let m_name = method.sig.ident.to_string();
+                let m_sig = format!("fn {}(...)", m_name);
+                // Trait methods are public by default (part of the trait's contract)
+                let m_vis = Visibility::Public;
+
+                let sym = self.create_symbol(m_name, SymbolKind::Method, m_vis, method.sig.ident.span(), m_sig);
+                self.symbols[idx].children.push(sym);
+            }
+        }
+    }
+
+    fn visit_item_const(&mut self, node: &'ast ItemConst) {
+        let name = node.ident.to_string();
+        let vis = map_vis(&node.vis);
+        let sig = format!("const {}", name);
+
+        self.symbols.push(self.create_symbol(name, SymbolKind::Const, vis, node.ident.span(), sig));
+    }
+
+    fn visit_item_type(&mut self, node: &'ast ItemType) {
+        let name = node.ident.to_string();
+        let vis = map_vis(&node.vis);
+        let sig = format!("type {}", name);
+
+        self.symbols.push(self.create_symbol(name, SymbolKind::TypeAlias, vis, node.ident.span(), sig));
     }
 }
 
