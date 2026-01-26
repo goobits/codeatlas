@@ -12,3 +12,8 @@
 
 # OS
 .DS_Store
+
+# Scan output directories
+/table/
+/json/
+/mermaid/
