@@ -77,7 +77,7 @@ fn parse_module(file_path: &Path) -> Result<(Module, Lrc<SourceMap>)> {
 
     let lexer = Lexer::new(
         Syntax::Typescript(TsConfig {
-            tsx: file_path.extension().map_or(false, |e| e == "tsx"),
+            tsx: file_path.extension().is_some_and(|e| e == "tsx"),
             decorators: true,
             ..Default::default()
         }),

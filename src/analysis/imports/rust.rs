@@ -84,7 +84,7 @@ pub(crate) fn collect_importers(
                         &mut all_cache,
                     );
                     for symbol_id in symbol_ids {
-                        add_importer(importers, &symbol_id, &file);
+                        add_importer(importers, &symbol_id, file);
                     }
                 }
                 continue;
@@ -102,7 +102,7 @@ pub(crate) fn collect_importers(
                     &mut HashSet::new(),
                 );
                 for symbol_id in symbol_ids {
-                    add_importer(importers, &symbol_id, &file);
+                    add_importer(importers, &symbol_id, file);
                 }
             }
         }
@@ -241,11 +241,10 @@ fn resolve_rust_use_module(
         path.extend(export.module_path.iter().cloned());
     }
 
-    if export.is_glob {
-        if export.name != "*" {
+    if export.is_glob
+        && export.name != "*" {
             path.push(export.name.clone());
         }
-    }
 
     module_map.get(&path).cloned()
 }

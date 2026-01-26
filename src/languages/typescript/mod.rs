@@ -40,7 +40,7 @@ impl LanguageScanner for TypeScriptScanner {
             },
             false,
             |path, root, _source| parser::parse_file(path, root),
-            |path, source, symbols| frameworks::detect_routes(path, source, symbols),
+            frameworks::detect_routes,
         )
     }
 }
@@ -218,7 +218,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 .filter(|sym| names.contains(&sym.name))
                 .collect();
             let file_routes =
-                frameworks::detect_routes(&Path::new(&file), "", &mut symbols);
+                frameworks::detect_routes(Path::new(&file), "", &mut symbols);
             report.stats.routes_found += file_routes.len();
             report.routes.extend(file_routes);
 

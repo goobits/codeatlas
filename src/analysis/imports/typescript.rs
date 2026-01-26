@@ -73,7 +73,7 @@ pub(crate) fn collect_importers(
                     &mut all_cache,
                 );
                 for symbol_id in symbol_ids {
-                    add_importer(importers, &symbol_id, &file);
+                    add_importer(importers, &symbol_id, file);
                 }
                 continue;
             }
@@ -104,12 +104,12 @@ pub(crate) fn collect_importers(
                 if symbol_ids.is_empty() {
                     if let Some(symbols) = symbols_by_file.get(&target) {
                         for symbol_id in symbols.values() {
-                            add_importer(importers, symbol_id, &file);
+                            add_importer(importers, symbol_id, file);
                         }
                     }
                 } else {
                     for symbol_id in symbol_ids {
-                        add_importer(importers, &symbol_id, &file);
+                        add_importer(importers, &symbol_id, file);
                     }
                 }
             }
@@ -126,7 +126,7 @@ pub(crate) fn collect_importers(
                     &mut HashSet::new(),
                 );
                 for symbol_id in symbol_ids {
-                    add_importer(importers, &symbol_id, &file);
+                    add_importer(importers, &symbol_id, file);
                 }
             }
         }

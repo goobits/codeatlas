@@ -38,7 +38,7 @@ impl LanguageScanner for PythonScanner {
             |path, root, source| parser::parse_file(path, root, source.ok_or_else(|| {
                 anyhow::anyhow!("Missing source for python parser")
             })?),
-            |path, source, symbols| frameworks::detect_routes(path, source, symbols),
+            frameworks::detect_routes,
         )
     }
 }
@@ -224,7 +224,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 .filter(|sym| names.contains(&sym.name))
                 .collect();
 
-            let file_routes = frameworks::detect_routes(&Path::new(&file), &info.source, &mut symbols);
+            let file_routes = frameworks::detect_routes(Path::new(&file), &info.source, &mut symbols);
             report.stats.routes_found += file_routes.len();
             report.routes.extend(file_routes);
 

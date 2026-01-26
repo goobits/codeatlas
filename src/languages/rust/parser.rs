@@ -26,7 +26,7 @@ pub(crate) fn parse_module_info(
     root_dir: &Path,
     source: &str,
 ) -> Result<RustModuleInfo> {
-    let syntax = syn::parse_file(&source)?;
+    let syntax = syn::parse_file(source)?;
 
     let relative_path = pathdiff::diff_paths(file_path, root_dir)
         .unwrap_or(file_path.to_path_buf())

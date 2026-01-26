@@ -15,7 +15,7 @@ pub(crate) fn render(report: &ScanReport) -> String {
             report.symbols.len(),
             report.stats.files_scanned
         ));
-        output.push_str(&format!("  Your public API surface looks clean.\n\n"));
+        output.push_str(&"  Your public API surface looks clean.\n\n".to_string());
         return output;
     }
 

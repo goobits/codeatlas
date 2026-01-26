@@ -61,7 +61,7 @@ fn parse_decorator_line(line: &str) -> Option<(String, String)> {
     let path = path_re.captures(args).and_then(|c| c.get(1)).map(|m| m.as_str().to_string())?;
     let method = decorator
         .split('.')
-        .last()
+        .next_back()
         .unwrap_or("")
         .to_lowercase();
 

@@ -8,7 +8,7 @@ mod paths;
 mod tests;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use domain::ScanConfig;
 
 #[derive(Parser)]
@@ -91,6 +91,15 @@ enum Commands {
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
+
+    /// Compare current scan against a baseline JSON file
+    Diff {
+        /// Path to baseline JSON file from previous `codeatlas ci --baseline`
+        baseline: PathBuf,
+        /// Path to scan (default: current directory)
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -117,6 +126,9 @@ fn main() {
         Some(Commands::Map { path, out }) => {
             run_map(&path, out)
         }
+        Some(Commands::Diff { baseline, path }) => {
+            run_diff(&baseline, &path)
+        }
         None => {
             // Legacy mode: check if any old flags were used
             if cli.format.is_some() || cli.suggest || cli.imports || cli.languages.is_some() {
@@ -132,7 +144,7 @@ fn main() {
 }
 
 /// Scan command: show public API surface
-fn run_scan(path: &PathBuf, format: OutputFormat, include_private: bool, out: Option<PathBuf>) -> i32 {
+fn run_scan(path: &Path, format: OutputFormat, include_private: bool, out: Option<PathBuf>) -> i32 {
     let config = ScanConfig {
         include_types: true,
         include_private,
@@ -156,7 +168,7 @@ fn run_scan(path: &PathBuf, format: OutputFormat, include_private: bool, out: Op
 }
 
 /// Audit command: find issues with actionable suggestions
-fn run_audit(path: &PathBuf) -> i32 {
+fn run_audit(path: &Path) -> i32 {
     let config = ScanConfig {
         include_types: true,
         include_private: false,
@@ -188,7 +200,7 @@ fn run_audit(path: &PathBuf) -> i32 {
 }
 
 /// CI command: exit non-zero if issues found
-fn run_ci(path: &PathBuf, fail_unused: bool, baseline: Option<PathBuf>) -> i32 {
+fn run_ci(path: &Path, fail_unused: bool, baseline: Option<PathBuf>) -> i32 {
     let config = ScanConfig {
         include_types: true,
         include_private: false,
@@ -246,7 +258,7 @@ fn run_ci(path: &PathBuf, fail_unused: bool, baseline: Option<PathBuf>) -> i32 {
 }
 
 /// Map command: generate Mermaid diagram
-fn run_map(path: &PathBuf, out: Option<PathBuf>) -> i32 {
+fn run_map(path: &Path, out: Option<PathBuf>) -> i32 {
     let config = ScanConfig {
         include_types: true,
         include_private: false,
@@ -277,6 +289,106 @@ fn run_map(path: &PathBuf, out: Option<PathBuf>) -> i32 {
         println!("{}", output);
     }
     0
+}
+
+/// Diff command: compare current scan against baseline
+fn run_diff(baseline_path: &Path, path: &Path) -> i32 {
+    use colored::*;
+
+    // Load baseline
+    let baseline_content = match std::fs::read_to_string(baseline_path) {
+        Ok(content) => content,
+        Err(e) => {
+            eprintln!("Error reading baseline file: {}", e);
+            return 1;
+        }
+    };
+
+    let baseline: domain::ScanReport = match serde_json::from_str(&baseline_content) {
+        Ok(report) => report,
+        Err(e) => {
+            eprintln!("Error parsing baseline JSON: {}", e);
+            return 1;
+        }
+    };
+
+    // Scan current state
+    let config = ScanConfig {
+        include_types: true,
+        include_private: false,
+        entrypoints: None,
+        suggest: true,
+        imports: true,
+        no_default_ignore: false,
+    };
+
+    let scanners = languages::get_scanners_auto(path);
+    if scanners.is_empty() {
+        eprintln!("No supported languages found in {}", path.display());
+        return 1;
+    }
+
+    let mut current = languages::scan_all(path, &config, scanners);
+    let importers = analysis::annotate_imports(&mut current, path, false);
+    analysis::annotate_unused_public(&mut current, &importers, false);
+
+    // Compare symbols
+    let baseline_ids: std::collections::HashSet<_> = baseline.symbols.iter().map(|s| &s.id).collect();
+    let current_ids: std::collections::HashSet<_> = current.symbols.iter().map(|s| &s.id).collect();
+
+    let added: Vec<_> = current.symbols.iter()
+        .filter(|s| !baseline_ids.contains(&s.id))
+        .collect();
+    let removed: Vec<_> = baseline.symbols.iter()
+        .filter(|s| !current_ids.contains(&s.id))
+        .collect();
+
+    // Output
+    println!("\n{}", " CodeAtlas Diff ".on_blue().white().bold());
+    println!("{}\n", "================".blue());
+
+    let has_changes = !added.is_empty() || !removed.is_empty();
+
+    if added.is_empty() && removed.is_empty() {
+        println!("{} No public API changes detected.\n", "✓".green().bold());
+        println!("  Baseline: {} symbols", baseline.symbols.len());
+        println!("  Current:  {} symbols", current.symbols.len());
+        return 0;
+    }
+
+    if !added.is_empty() {
+        println!("{} {} NEW public symbol(s):\n", "+".green().bold(), added.len());
+        for sym in &added {
+            println!("  {} {}", "+".green(), sym.id.yellow());
+            println!("    {} Review: Is this intentionally public?", "→".dimmed());
+        }
+        println!();
+    }
+
+    if !removed.is_empty() {
+        println!("{} {} REMOVED public symbol(s):\n", "-".red().bold(), removed.len());
+        for sym in &removed {
+            println!("  {} {}", "-".red(), sym.id.yellow());
+            println!("    {} Warning: This may be a breaking change!", "→".dimmed());
+        }
+        println!();
+    }
+
+    println!("{}", "-".repeat(50).dimmed());
+    println!("\n{}", "Summary:".white().bold());
+    println!("  Baseline: {} symbols", baseline.symbols.len());
+    println!("  Current:  {} symbols", current.symbols.len());
+    println!("  Added:    {}", format!("+{}", added.len()).green());
+    println!("  Removed:  {}", format!("-{}", removed.len()).red());
+
+    if has_changes {
+        println!("\n{}", "CI Note:".white().bold());
+        println!("  This command exits with code 1 when changes are detected.");
+        println!("  Use in CI: {} || echo 'API changed'", "codeatlas diff baseline.json".cyan());
+        1
+    } else {
+        0
+    }
 }
 
 /// Legacy mode: support old flag-based CLI
