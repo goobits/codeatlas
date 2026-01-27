@@ -1,49 +1,161 @@
 use crate::analysis::ignore;
-use crate::domain::{Language, LanguageScanner, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::domain::{Language, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::languages::definition::{LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver};
+use anyhow::Result;
+use std::collections::HashSet;
 use std::path::Path;
 
 pub mod parser;
 pub mod frameworks;
 
-pub(crate) struct TypeScriptScanner;
+// ============================================================================
+// New Pluggable System Implementation (for future use)
+// ============================================================================
 
-impl LanguageScanner for TypeScriptScanner {
-    fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {
-        if config.entrypoints.is_some() {
-            return scan_audit_mode(root_dir, config);
-        }
+/// TypeScript/JavaScript language definition for the pluggable system.
+pub(crate) struct TypeScriptLanguage;
 
-        crate::languages::scan_language(
-            root_dir,
-            config,
-            Language::TypeScript,
-            |e| {
-                if e.depth() == 0 {
-                    return true;
-                }
-                let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
-                if ignore::is_ignored_path(&relative, config.no_default_ignore) {
-                    return false;
-                }
-                let name = e.file_name().to_string_lossy();
-                !name.starts_with(".")
-                    && name != "node_modules"
-                    && name != "dist"
-                    && name != "build"
-                    && name != "coverage"
-            },
-            |path| {
-                matches!(
-                    path.extension().and_then(|s| s.to_str()),
-                    Some("ts") | Some("tsx") | Some("js") | Some("jsx")
-                )
-            },
-            false,
-            |path, root, _source| parser::parse_file(path, root),
-            |path, source, symbols| frameworks::detect_routes(path, source, symbols),
-        )
+impl LanguageDefinition for TypeScriptLanguage {
+    fn name(&self) -> &'static str {
+        "TypeScript"
+    }
+
+    fn id(&self) -> &'static str {
+        "ts"
+    }
+
+    fn language(&self) -> Language {
+        Language::TypeScript
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["ts", "tsx", "js", "jsx", "mjs", "cjs"]
+    }
+
+    fn config_files(&self) -> &'static [&'static str] {
+        &["package.json", "tsconfig.json", "jsconfig.json"]
+    }
+
+    fn ignored_dirs(&self) -> &'static [&'static str] {
+        &["node_modules", "dist", "build", "coverage", ".next", ".nuxt", "target", "__pycache__"]
+    }
+
+    fn needs_source(&self) -> bool {
+        false // TypeScript parser reads files directly
+    }
+
+    fn parse_file(&self, path: &Path, root: &Path, _source: Option<&str>) -> Result<Vec<Symbol>> {
+        parser::parse_file(path, root)
+    }
+
+    fn detect_routes(&self, path: &Path, source: &str, symbols: &mut [Symbol]) -> Vec<Route> {
+        frameworks::detect_routes(path, source, symbols)
+    }
+
+    fn supports_audit_mode(&self) -> bool {
+        true
+    }
+
+    fn audit_scan(&self, root_dir: &Path, config: &ScanConfig) -> Option<ScanReport> {
+        Some(scan_audit_mode(root_dir, config))
+    }
+
+    fn create_module_resolver(&self) -> Option<Box<dyn ModuleResolver>> {
+        Some(Box::new(TypeScriptModuleResolver))
     }
 }
+
+/// Module resolver for TypeScript import resolution.
+#[allow(dead_code)]
+pub(crate) struct TypeScriptModuleResolver;
+
+impl ModuleResolver for TypeScriptModuleResolver {
+    fn parse_module_info(
+        &self,
+        path: &Path,
+        root: &Path,
+        _source: &str,
+    ) -> Result<Box<dyn ModuleInfoTrait>> {
+        let info = parser::parse_module_info(path, root)?;
+        Ok(Box::new(TypeScriptModuleInfo {
+            symbols: info.symbols,
+            exports: info.exports,
+        }))
+    }
+
+    fn resolve_import(
+        &self,
+        current_file: &str,
+        import_path: &str,
+        root: &Path,
+    ) -> Option<String> {
+        if !import_path.starts_with('.') {
+            return None; // External dependency
+        }
+        let from_path = root.join(current_file);
+        let base_dir = from_path.parent()?;
+        let raw = base_dir.join(import_path);
+        let candidates = [
+            raw.clone(),
+            raw.with_extension("ts"),
+            raw.with_extension("tsx"),
+            raw.with_extension("js"),
+            raw.with_extension("jsx"),
+            raw.join("index.ts"),
+            raw.join("index.tsx"),
+            raw.join("index.js"),
+            raw.join("index.jsx"),
+        ];
+        for candidate in candidates {
+            if candidate.exists() {
+                return Some(crate::paths::normalize_relative_path(&candidate, root));
+            }
+        }
+        None
+    }
+}
+
+/// Module info wrapper for TypeScript.
+#[allow(dead_code)]
+struct TypeScriptModuleInfo {
+    symbols: Vec<Symbol>,
+    exports: parser::ExportInfo,
+}
+
+impl ModuleInfoTrait for TypeScriptModuleInfo {
+    fn symbols(&self) -> Vec<Symbol> {
+        self.symbols.clone()
+    }
+
+    fn exported_names(&self) -> HashSet<String> {
+        self.exports.local_exports.iter().cloned().collect()
+    }
+
+    fn imports(&self) -> Vec<(String, Vec<String>)> {
+        // For now, we don't track imports in the basic module info
+        // This could be extended to parse import statements
+        vec![]
+    }
+
+    fn reexports(&self) -> Vec<(String, Vec<String>)> {
+        self.exports
+            .re_exports
+            .iter()
+            .map(|re| {
+                let names: Vec<String> = re.names.iter().map(|s| s.original.clone()).collect();
+                (re.source.clone(), names)
+            })
+            .collect()
+    }
+
+    fn export_all(&self) -> Vec<String> {
+        self.exports.export_all.clone()
+    }
+}
+
+// ============================================================================
+// Audit Mode Implementation
+// ============================================================================
 
 struct ModuleInfo {
     symbols: Vec<Symbol>,
@@ -58,6 +170,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         skipped_files: vec![],
         imports: vec![],
         unused_public: vec![],
+        file_edges: vec![],
     };
 
     let entrypoints = config
@@ -218,7 +331,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 .filter(|sym| names.contains(&sym.name))
                 .collect();
             let file_routes =
-                frameworks::detect_routes(&Path::new(&file), "", &mut symbols);
+                frameworks::detect_routes(Path::new(&file), "", &mut symbols);
             report.stats.routes_found += file_routes.len();
             report.routes.extend(file_routes);
 

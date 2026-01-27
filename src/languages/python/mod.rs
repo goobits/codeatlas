@@ -1,47 +1,182 @@
 use crate::analysis::ignore;
-use crate::domain::{Language, LanguageScanner, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::domain::{Language, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::languages::definition::{LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver};
+use anyhow::Result;
+use std::collections::HashSet;
 use std::path::Path;
 
 pub mod parser;
 pub mod frameworks;
 
-pub(crate) struct PythonScanner;
+// ============================================================================
+// New Pluggable System Implementation (for future use)
+// ============================================================================
 
-impl LanguageScanner for PythonScanner {
-    fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {
-        if config.entrypoints.is_some() {
-            return scan_audit_mode(root_dir, config);
-        }
+/// Python language definition for the pluggable system.
+pub(crate) struct PythonLanguage;
 
-        crate::languages::scan_language(
-            root_dir,
-            config,
-            Language::Python,
-            |e| {
-                if e.depth() == 0 {
-                    return true;
-                }
-                let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
-                if ignore::is_ignored_path(&relative, config.no_default_ignore) {
-                    return false;
-                }
-                let name = e.file_name().to_string_lossy();
-                !name.starts_with(".")
-                    && name != "__pycache__"
-                    && name != "venv"
-                    && name != "build"
-                    && name != "dist"
-                    && !name.ends_with(".egg-info")
-            },
-            |path| path.extension().and_then(|s| s.to_str()) == Some("py"),
-            true,
-            |path, root, source| parser::parse_file(path, root, source.ok_or_else(|| {
-                anyhow::anyhow!("Missing source for python parser")
-            })?),
-            |path, source, symbols| frameworks::detect_routes(path, source, symbols),
-        )
+impl LanguageDefinition for PythonLanguage {
+    fn name(&self) -> &'static str {
+        "Python"
+    }
+
+    fn id(&self) -> &'static str {
+        "py"
+    }
+
+    fn language(&self) -> Language {
+        Language::Python
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["py", "pyi"]
+    }
+
+    fn config_files(&self) -> &'static [&'static str] {
+        &["pyproject.toml", "setup.py", "requirements.txt", "Pipfile"]
+    }
+
+    fn ignored_dirs(&self) -> &'static [&'static str] {
+        &["__pycache__", "venv", ".venv", "build", "dist", ".eggs", ".tox", ".pytest_cache", "target", "node_modules"]
+    }
+
+    fn needs_source(&self) -> bool {
+        true // Python parser needs source content
+    }
+
+    fn parse_file(&self, path: &Path, root: &Path, source: Option<&str>) -> Result<Vec<Symbol>> {
+        let source = source.ok_or_else(|| anyhow::anyhow!("Missing source for Python parser"))?;
+        parser::parse_file(path, root, source)
+    }
+
+    fn detect_routes(&self, path: &Path, source: &str, symbols: &mut [Symbol]) -> Vec<Route> {
+        frameworks::detect_routes(path, source, symbols)
+    }
+
+    fn supports_audit_mode(&self) -> bool {
+        true
+    }
+
+    fn audit_scan(&self, root_dir: &Path, config: &ScanConfig) -> Option<ScanReport> {
+        Some(scan_audit_mode(root_dir, config))
+    }
+
+    fn create_module_resolver(&self) -> Option<Box<dyn ModuleResolver>> {
+        Some(Box::new(PythonModuleResolver))
     }
 }
+
+/// Module resolver for Python import resolution.
+#[allow(dead_code)]
+pub(crate) struct PythonModuleResolver;
+
+impl ModuleResolver for PythonModuleResolver {
+    fn parse_module_info(
+        &self,
+        path: &Path,
+        root: &Path,
+        source: &str,
+    ) -> Result<Box<dyn ModuleInfoTrait>> {
+        let info = parser::parse_module_info(path, root, source)?;
+        let relative = crate::paths::normalize_relative_path(path, root);
+        let module_name = module_name_from_path(&relative);
+        Ok(Box::new(PythonModuleInfo {
+            symbols: info.symbols,
+            exports: info.exports,
+            imports: info.imports,
+            module_name,
+        }))
+    }
+
+    fn resolve_import(
+        &self,
+        current_file: &str,
+        import_path: &str,
+        root: &Path,
+    ) -> Option<String> {
+        // Convert Python module path to file path
+        let module_file = import_path.replace('.', "/");
+        let candidates = [
+            format!("{}.py", module_file),
+            format!("{}/__init__.py", module_file),
+        ];
+        for candidate in candidates {
+            let full_path = root.join(&candidate);
+            if full_path.exists() {
+                return Some(candidate);
+            }
+        }
+        // Try relative import from current file's directory
+        if let Some(parent) = Path::new(current_file).parent() {
+            let relative_candidates = [
+                parent.join(format!("{}.py", module_file)),
+                parent.join(format!("{}/__init__.py", module_file)),
+            ];
+            for candidate in relative_candidates {
+                let full_path = root.join(&candidate);
+                if full_path.exists() {
+                    return Some(candidate.to_string_lossy().to_string());
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Module info wrapper for Python.
+#[allow(dead_code)]
+struct PythonModuleInfo {
+    symbols: Vec<Symbol>,
+    exports: Option<Vec<String>>,
+    imports: Vec<parser::PythonImport>,
+    module_name: String,
+}
+
+impl ModuleInfoTrait for PythonModuleInfo {
+    fn symbols(&self) -> Vec<Symbol> {
+        self.symbols.clone()
+    }
+
+    fn exported_names(&self) -> HashSet<String> {
+        if let Some(ref exports) = self.exports {
+            return exports.iter().cloned().collect();
+        }
+        // If no __all__, export all non-private symbols
+        self.symbols
+            .iter()
+            .filter(|s| !s.name.starts_with('_'))
+            .map(|s| s.name.clone())
+            .collect()
+    }
+
+    fn imports(&self) -> Vec<(String, Vec<String>)> {
+        self.imports
+            .iter()
+            .filter(|imp| !imp.module.is_empty())
+            .map(|imp| {
+                let module = resolve_module_name(&imp.module, &self.module_name, imp.level);
+                (module, imp.names.clone())
+            })
+            .collect()
+    }
+
+    fn reexports(&self) -> Vec<(String, Vec<String>)> {
+        // Python doesn't have explicit re-exports, but star imports act similarly
+        vec![]
+    }
+
+    fn export_all(&self) -> Vec<String> {
+        self.imports
+            .iter()
+            .filter(|imp| imp.is_star)
+            .map(|imp| resolve_module_name(&imp.module, &self.module_name, imp.level))
+            .collect()
+    }
+}
+
+// ============================================================================
+// Audit Mode Implementation
+// ============================================================================
 
 struct ModuleInfo {
     symbols: Vec<Symbol>,
@@ -59,6 +194,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         skipped_files: vec![],
         imports: vec![],
         unused_public: vec![],
+        file_edges: vec![],
     };
 
     let entrypoints = config
@@ -224,7 +360,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 .filter(|sym| names.contains(&sym.name))
                 .collect();
 
-            let file_routes = frameworks::detect_routes(&Path::new(&file), &info.source, &mut symbols);
+            let file_routes = frameworks::detect_routes(Path::new(&file), &info.source, &mut symbols);
             report.stats.routes_found += file_routes.len();
             report.routes.extend(file_routes);
 

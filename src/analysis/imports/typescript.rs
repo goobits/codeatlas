@@ -1,4 +1,4 @@
-use super::{add_importer, Importers};
+use super::{add_file_edge, add_importer, FileEdges, Importers};
 use crate::domain::Language;
 use crate::languages::typescript::parser;
 use std::collections::{HashMap, HashSet};
@@ -8,11 +8,10 @@ pub(crate) fn collect_importers(
     root_dir: &Path,
     symbol_index: &HashMap<Language, HashMap<String, HashMap<String, String>>>,
     importers: &mut Importers,
+    file_edges: &mut FileEdges,
     no_default_ignore: bool,
 ) {
-    let Some(symbols_by_file) = symbol_index.get(&Language::TypeScript) else {
-        return;
-    };
+    let symbols_by_file = symbol_index.get(&Language::TypeScript);
 
     let mut modules: HashMap<String, ModuleInfo> = HashMap::new();
 
@@ -63,6 +62,14 @@ pub(crate) fn collect_importers(
                 continue;
             };
 
+            // Always track file edge for any resolved import
+            add_file_edge(file_edges, file, &target);
+
+            // Track symbol-level imports if we have public symbols
+            let Some(symbols_by_file) = symbols_by_file else {
+                continue;
+            };
+
             if import.namespace {
                 let symbol_ids = resolve_all_exports(
                     root_dir,
@@ -73,7 +80,7 @@ pub(crate) fn collect_importers(
                     &mut all_cache,
                 );
                 for symbol_id in symbol_ids {
-                    add_importer(importers, &symbol_id, &file);
+                    add_importer(importers, &symbol_id, file);
                 }
                 continue;
             }
@@ -104,12 +111,12 @@ pub(crate) fn collect_importers(
                 if symbol_ids.is_empty() {
                     if let Some(symbols) = symbols_by_file.get(&target) {
                         for symbol_id in symbols.values() {
-                            add_importer(importers, symbol_id, &file);
+                            add_importer(importers, symbol_id, file);
                         }
                     }
                 } else {
                     for symbol_id in symbol_ids {
-                        add_importer(importers, &symbol_id, &file);
+                        add_importer(importers, &symbol_id, file);
                     }
                 }
             }
@@ -126,7 +133,7 @@ pub(crate) fn collect_importers(
                     &mut HashSet::new(),
                 );
                 for symbol_id in symbol_ids {
-                    add_importer(importers, &symbol_id, &file);
+                    add_importer(importers, &symbol_id, file);
                 }
             }
         }

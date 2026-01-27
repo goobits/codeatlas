@@ -1,37 +1,51 @@
+// Language modules
 pub mod typescript;
 pub mod python;
 pub mod rust;
+pub mod svelte;
+
+// Pluggable language system
+pub mod definition;
+pub mod registry;
+pub mod audit;
+
+// Re-export key types for external use
+pub use definition::LanguageDefinition;
+pub use registry::LanguageRegistry;
 
 use crate::domain::{
-    Language, LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol,
+    LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol,
     SymbolKind, Visibility,
 };
-use std::path::Path;
-use walkdir::DirEntry;
+use rayon::prelude::*;
+use std::path::{Path, PathBuf};
 
+/// Get scanners for specified languages using the pluggable registry system.
 pub(crate) fn get_scanners(langs: Option<Vec<String>>) -> Vec<Box<dyn LanguageScanner>> {
-    let mut scanners: Vec<Box<dyn LanguageScanner>> = Vec::new();
+    let registry = LanguageRegistry::with_defaults();
+    match langs {
+        None => registry.get_scanners(None),
+        Some(ids) => {
+            let id_refs: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
+            registry.get_scanners(Some(&id_refs))
+        }
+    }
+}
 
-    let all = langs.is_none();
-    let set = langs.unwrap_or_default();
-    let has = |value: &str| set.iter().any(|lang| lang == value);
-    
-    if all || has("ts") || has("js") {
-        scanners.push(Box::new(typescript::TypeScriptScanner));
-    }
-    
-    if all || has("py") {
-        scanners.push(Box::new(python::PythonScanner));
-    }
-    
-    if all || has("rs") {
-        scanners.push(Box::new(rust::RustScanner));
-    }
-
-    scanners
+/// Auto-detect languages present in the directory and return appropriate scanners.
+pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>> {
+    let registry = LanguageRegistry::with_defaults();
+    registry.get_scanners_auto(root_dir)
 }
 
 pub(crate) fn scan_all(root_dir: &Path, config: &ScanConfig, scanners: Vec<Box<dyn LanguageScanner>>) -> ScanReport {
+    // Run language scanners in parallel
+    let reports: Vec<ScanReport> = scanners
+        .into_par_iter()
+        .map(|scanner| scanner.scan(root_dir, config))
+        .collect();
+
+    // Combine all reports
     let mut combined_report = ScanReport {
         stats: ScanStats::default(),
         symbols: vec![],
@@ -39,21 +53,20 @@ pub(crate) fn scan_all(root_dir: &Path, config: &ScanConfig, scanners: Vec<Box<d
         skipped_files: vec![],
         imports: vec![],
         unused_public: vec![],
+        file_edges: vec![],
     };
 
-    for scanner in scanners {
-        let report = scanner.scan(root_dir, config);
-        
+    for report in reports {
         combined_report.stats.files_scanned += report.stats.files_scanned;
         combined_report.stats.files_skipped += report.stats.files_skipped;
         combined_report.stats.symbols_found += report.stats.symbols_found;
         combined_report.stats.routes_found += report.stats.routes_found;
-        
+
         combined_report.symbols.extend(report.symbols);
         combined_report.routes.extend(report.routes);
         combined_report.skipped_files.extend(report.skipped_files);
     }
-    
+
     combined_report
 }
 
@@ -77,44 +90,45 @@ pub(crate) fn apply_symbol_filters(symbols: &mut Vec<Symbol>, config: &ScanConfi
     symbols.retain_mut(|symbol| keep_symbol(symbol, config));
 }
 
-pub(crate) fn scan_language<F, P, D>(
+/// Result of scanning a single file
+struct FileResult {
+    symbols: Vec<Symbol>,
+    routes: Vec<Route>,
+    skipped: Option<SkippedFile>,
+}
+
+/// Scan using a LanguageDefinition (pluggable system).
+/// This function uses the language definition's methods for all language-specific behavior.
+pub(crate) fn scan_language_with_definition(
     root_dir: &Path,
     config: &ScanConfig,
-    language: Language,
-    filter_entry: F,
-    is_language_file: fn(&Path) -> bool,
-    needs_source: bool,
-    mut parse_file: P,
-    mut detect_routes: D,
-) -> ScanReport
-where
-    F: Fn(&DirEntry) -> bool,
-    P: FnMut(&Path, &Path, Option<&str>) -> anyhow::Result<Vec<Symbol>>,
-    D: FnMut(&Path, &str, &mut [Symbol]) -> Vec<Route>,
-{
+    lang: &dyn LanguageDefinition,
+) -> ScanReport {
     let entrypoints = config
         .entrypoints
         .as_ref()
         .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
-    let mut report = ScanReport {
-        stats: ScanStats::default(),
-        symbols: vec![],
-        routes: vec![],
-        skipped_files: vec![],
-        imports: vec![],
-        unused_public: vec![],
-    };
+
+    // Collect all file paths first (serial walk, parallel parse)
+    let mut files_to_scan: Vec<PathBuf> = Vec::new();
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
 
-    for entry in walker.filter_entry(filter_entry) {
+    for entry in walker.filter_entry(|e| {
+        // Don't filter the root directory
+        if e.depth() == 0 {
+            return true;
+        }
+        let name = e.file_name().to_string_lossy();
+        !lang.should_ignore_dir(&name)
+    }) {
         let entry = match entry {
             Ok(e) => e,
             Err(_) => continue,
         };
 
         let path = entry.path();
-        if path.is_dir() || !is_language_file(path) {
+        if path.is_dir() || !lang.is_language_file(path) {
             continue;
         }
 
@@ -125,43 +139,80 @@ where
             }
         }
 
-        let source = if needs_source {
-            match std::fs::read_to_string(path) {
-                Ok(content) => Some(content),
-                Err(e) => {
-                    report.stats.files_skipped += 1;
-                    report.skipped_files.push(SkippedFile {
+        files_to_scan.push(path.to_path_buf());
+    }
+
+    let language = lang.language();
+    let needs_source = lang.needs_source();
+
+    // Process files in parallel
+    let results: Vec<FileResult> = files_to_scan
+        .par_iter()
+        .map(|path| {
+            let source = if needs_source {
+                match std::fs::read_to_string(path) {
+                    Ok(content) => Some(content),
+                    Err(e) => {
+                        return FileResult {
+                            symbols: vec![],
+                            routes: vec![],
+                            skipped: Some(SkippedFile {
+                                path: path.to_string_lossy().to_string(),
+                                reason: e.to_string(),
+                                language,
+                            }),
+                        };
+                    }
+                }
+            } else {
+                None
+            };
+
+            match lang.parse_file(path, root_dir, source.as_deref()) {
+                Ok(mut symbols) => {
+                    let file_routes = lang.detect_routes(path, source.as_deref().unwrap_or(""), &mut symbols);
+                    apply_symbol_filters(&mut symbols, config);
+
+                    FileResult {
+                        symbols,
+                        routes: file_routes,
+                        skipped: None,
+                    }
+                }
+                Err(e) => FileResult {
+                    symbols: vec![],
+                    routes: vec![],
+                    skipped: Some(SkippedFile {
                         path: path.to_string_lossy().to_string(),
                         reason: e.to_string(),
                         language,
-                    });
-                    continue;
-                }
+                    }),
+                },
             }
+        })
+        .collect();
+
+    // Combine results
+    let mut report = ScanReport {
+        stats: ScanStats::default(),
+        symbols: vec![],
+        routes: vec![],
+        skipped_files: vec![],
+        imports: vec![],
+        unused_public: vec![],
+        file_edges: vec![],
+    };
+
+    for result in results {
+        if let Some(skipped) = result.skipped {
+            report.stats.files_skipped += 1;
+            report.skipped_files.push(skipped);
         } else {
-            None
-        };
-
-        match parse_file(path, root_dir, source.as_deref()) {
-            Ok(mut symbols) => {
-                report.stats.files_scanned += 1;
-
-                let file_routes = detect_routes(path, source.as_deref().unwrap_or(""), &mut symbols);
-                report.stats.routes_found += file_routes.len();
-                report.routes.extend(file_routes);
-
-                apply_symbol_filters(&mut symbols, config);
-                report.stats.symbols_found += symbols.len();
-                report.symbols.extend(symbols);
-            }
-            Err(e) => {
-                report.stats.files_skipped += 1;
-                report.skipped_files.push(SkippedFile {
-                    path: path.to_string_lossy().to_string(),
-                    reason: e.to_string(),
-                    language,
-                });
-            }
+            report.stats.files_scanned += 1;
+            report.stats.symbols_found += result.symbols.len();
+            report.stats.routes_found += result.routes.len();
+            report.symbols.extend(result.symbols);
+            report.routes.extend(result.routes);
         }
     }
 

@@ -1,4 +1,4 @@
-use crate::domain::{ImportUsage, Language, ScanReport, Symbol, Visibility};
+use crate::domain::{FileEdge, ImportUsage, Language, ScanReport, Symbol, Visibility};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -7,13 +7,15 @@ mod rust;
 mod typescript;
 
 pub(crate) type Importers = HashMap<String, HashSet<String>>;
+pub(crate) type FileEdges = HashSet<FileEdge>;
 
 pub(crate) fn build_importers(
     report: &ScanReport,
     root_dir: &Path,
     no_default_ignore: bool,
-) -> Importers {
+) -> (Importers, FileEdges) {
     let mut importers = HashMap::new();
+    let mut file_edges = HashSet::new();
 
     let public_symbols: Vec<&Symbol> = report
         .symbols
@@ -23,11 +25,21 @@ pub(crate) fn build_importers(
 
     let symbol_index = build_symbol_index(&public_symbols);
 
-    python::collect_importers(root_dir, &symbol_index, &mut importers, no_default_ignore);
-    rust::collect_importers(root_dir, &symbol_index, &mut importers, no_default_ignore);
-    typescript::collect_importers(root_dir, &symbol_index, &mut importers, no_default_ignore);
+    python::collect_importers(root_dir, &symbol_index, &mut importers, &mut file_edges, no_default_ignore);
+    rust::collect_importers(root_dir, &symbol_index, &mut importers, &mut file_edges, no_default_ignore);
+    typescript::collect_importers(root_dir, &symbol_index, &mut importers, &mut file_edges, no_default_ignore);
 
-    importers
+    (importers, file_edges)
+}
+
+/// Add a file-to-file dependency edge
+pub(crate) fn add_file_edge(file_edges: &mut FileEdges, from: &str, to: &str) {
+    if from != to {
+        file_edges.insert(FileEdge {
+            from: from.to_string(),
+            to: to.to_string(),
+        });
+    }
 }
 
 fn build_symbol_index(

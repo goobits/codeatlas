@@ -11,7 +11,7 @@ pub struct ScanConfig {
     pub no_default_ignore: bool,
 }
 
-pub trait LanguageScanner {
+pub trait LanguageScanner: Send + Sync {
     /// Parse all files in the config.
     /// MUST catch panics/errors internally and return them in ScanReport.skipped_files.
     fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport;
