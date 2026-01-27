@@ -1,5 +1,5 @@
 use crate::analysis::ignore;
-use crate::domain::{Language, LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::domain::{Language, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
 use crate::languages::definition::{LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver};
 use anyhow::Result;
 use std::collections::HashSet;
@@ -12,7 +12,6 @@ pub mod frameworks;
 // New Pluggable System Implementation (for future use)
 // ============================================================================
 
-#[allow(dead_code)]
 /// Rust language definition for the pluggable system.
 pub(crate) struct RustLanguage;
 
@@ -58,13 +57,17 @@ impl LanguageDefinition for RustLanguage {
         true
     }
 
+    fn audit_scan(&self, root_dir: &Path, config: &ScanConfig) -> Option<ScanReport> {
+        Some(scan_audit_mode(root_dir, config))
+    }
+
     fn create_module_resolver(&self) -> Option<Box<dyn ModuleResolver>> {
         Some(Box::new(RustModuleResolver))
     }
 }
 
-#[allow(dead_code)]
 /// Module resolver for Rust module/use resolution.
+#[allow(dead_code)]
 pub(crate) struct RustModuleResolver;
 
 impl ModuleResolver for RustModuleResolver {
@@ -122,8 +125,8 @@ impl ModuleResolver for RustModuleResolver {
     }
 }
 
-#[allow(dead_code)]
 /// Module info wrapper for Rust.
+#[allow(dead_code)]
 struct RustModuleInfo {
     symbols: Vec<Symbol>,
     public_mods: Vec<String>,
@@ -178,41 +181,8 @@ impl ModuleInfoTrait for RustModuleInfo {
 }
 
 // ============================================================================
-// Legacy Scanner (kept for backwards compatibility during transition)
+// Audit Mode Implementation
 // ============================================================================
-
-pub(crate) struct RustScanner;
-
-impl LanguageScanner for RustScanner {
-    fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {
-        if config.entrypoints.is_some() {
-            return scan_audit_mode(root_dir, config);
-        }
-
-        crate::languages::scan_language(
-            root_dir,
-            config,
-            Language::Rust,
-            |e: &walkdir::DirEntry| {
-                if e.depth() == 0 {
-                    return true;
-                }
-                let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
-                if ignore::is_ignored_path(&relative, config.no_default_ignore) {
-                    return false;
-                }
-                let name = e.file_name().to_string_lossy();
-                !name.starts_with(".") && name != "target"
-            },
-            |path| path.extension().and_then(|s| s.to_str()) == Some("rs"),
-            true,
-            |path, root, source| parser::parse_file(path, root, source.ok_or_else(|| {
-                anyhow::anyhow!("Missing source for rust parser")
-            })?),
-            frameworks::detect_routes,
-        )
-    }
-}
 
 struct ModuleInfo {
     symbols: Vec<Symbol>,

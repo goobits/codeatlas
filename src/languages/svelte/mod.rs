@@ -1,17 +1,14 @@
 mod parser;
 
-use crate::domain::{Language, LanguageScanner, Route, ScanConfig, ScanReport, Symbol};
+use crate::domain::{Language, Route, Symbol};
 use crate::languages::definition::LanguageDefinition;
-use crate::languages::scan_language;
 use anyhow::Result;
 use std::path::Path;
-use walkdir::DirEntry;
 
 // ============================================================================
 // New Pluggable System Implementation (for future use)
 // ============================================================================
 
-#[allow(dead_code)]
 /// Svelte/SvelteKit language definition for the pluggable system.
 pub(crate) struct SvelteLanguage;
 
@@ -37,7 +34,7 @@ impl LanguageDefinition for SvelteLanguage {
     }
 
     fn ignored_dirs(&self) -> &'static [&'static str] {
-        &["node_modules", ".svelte-kit", ".vercel", "build", "dist"]
+        &["node_modules", ".svelte-kit", ".vercel", "build", "dist", "target", "__pycache__"]
     }
 
     fn needs_source(&self) -> bool {
@@ -63,41 +60,8 @@ impl LanguageDefinition for SvelteLanguage {
 }
 
 // ============================================================================
-// Legacy Scanner (kept for backwards compatibility during transition)
+// Helper Functions
 // ============================================================================
-
-pub(crate) struct SvelteScanner;
-
-impl LanguageScanner for SvelteScanner {
-    fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {
-        scan_language(
-            root_dir,
-            config,
-            Language::TypeScript, // Svelte scripts are TS/JS
-            filter_entry,
-            is_svelte_file,
-            true, // needs source
-            |path, root, source| parser::parse_file(path, root, source.unwrap_or("")),
-            detect_routes,
-        )
-    }
-}
-
-fn filter_entry(entry: &DirEntry) -> bool {
-    let name = entry.file_name().to_string_lossy();
-    // Skip common non-source directories
-    !matches!(
-        name.as_ref(),
-        "node_modules" | ".git" | "dist" | "build" | ".svelte-kit" | ".vercel"
-    )
-}
-
-fn is_svelte_file(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|e| e.to_str()),
-        Some("svelte")
-    ) || is_sveltekit_script(path)
-}
 
 /// Check if this is a SvelteKit special file (+page.ts, +server.ts, etc.)
 fn is_sveltekit_script(path: &Path) -> bool {

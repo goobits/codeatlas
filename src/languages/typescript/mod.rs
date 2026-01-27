@@ -1,5 +1,5 @@
 use crate::analysis::ignore;
-use crate::domain::{Language, LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::domain::{Language, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
 use crate::languages::definition::{LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver};
 use anyhow::Result;
 use std::collections::HashSet;
@@ -12,7 +12,6 @@ pub mod frameworks;
 // New Pluggable System Implementation (for future use)
 // ============================================================================
 
-#[allow(dead_code)]
 /// TypeScript/JavaScript language definition for the pluggable system.
 pub(crate) struct TypeScriptLanguage;
 
@@ -38,7 +37,7 @@ impl LanguageDefinition for TypeScriptLanguage {
     }
 
     fn ignored_dirs(&self) -> &'static [&'static str] {
-        &["node_modules", "dist", "build", "coverage", ".next", ".nuxt"]
+        &["node_modules", "dist", "build", "coverage", ".next", ".nuxt", "target", "__pycache__"]
     }
 
     fn needs_source(&self) -> bool {
@@ -57,13 +56,17 @@ impl LanguageDefinition for TypeScriptLanguage {
         true
     }
 
+    fn audit_scan(&self, root_dir: &Path, config: &ScanConfig) -> Option<ScanReport> {
+        Some(scan_audit_mode(root_dir, config))
+    }
+
     fn create_module_resolver(&self) -> Option<Box<dyn ModuleResolver>> {
         Some(Box::new(TypeScriptModuleResolver))
     }
 }
 
-#[allow(dead_code)]
 /// Module resolver for TypeScript import resolution.
+#[allow(dead_code)]
 pub(crate) struct TypeScriptModuleResolver;
 
 impl ModuleResolver for TypeScriptModuleResolver {
@@ -112,8 +115,8 @@ impl ModuleResolver for TypeScriptModuleResolver {
     }
 }
 
-#[allow(dead_code)]
 /// Module info wrapper for TypeScript.
+#[allow(dead_code)]
 struct TypeScriptModuleInfo {
     symbols: Vec<Symbol>,
     exports: parser::ExportInfo,
@@ -151,48 +154,8 @@ impl ModuleInfoTrait for TypeScriptModuleInfo {
 }
 
 // ============================================================================
-// Legacy Scanner (kept for backwards compatibility during transition)
+// Audit Mode Implementation
 // ============================================================================
-
-pub(crate) struct TypeScriptScanner;
-
-impl LanguageScanner for TypeScriptScanner {
-    fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {
-        if config.entrypoints.is_some() {
-            return scan_audit_mode(root_dir, config);
-        }
-
-        crate::languages::scan_language(
-            root_dir,
-            config,
-            Language::TypeScript,
-            |e: &walkdir::DirEntry| {
-                if e.depth() == 0 {
-                    return true;
-                }
-                let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
-                if ignore::is_ignored_path(&relative, config.no_default_ignore) {
-                    return false;
-                }
-                let name = e.file_name().to_string_lossy();
-                !name.starts_with(".")
-                    && name != "node_modules"
-                    && name != "dist"
-                    && name != "build"
-                    && name != "coverage"
-            },
-            |path| {
-                matches!(
-                    path.extension().and_then(|s| s.to_str()),
-                    Some("ts") | Some("tsx") | Some("js") | Some("jsx")
-                )
-            },
-            false,
-            |path, root, _source| parser::parse_file(path, root),
-            frameworks::detect_routes,
-        )
-    }
-}
 
 struct ModuleInfo {
     symbols: Vec<Symbol>,

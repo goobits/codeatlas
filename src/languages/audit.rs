@@ -6,9 +6,6 @@
 //! Each language that supports audit mode provides a `ModuleResolver` that knows
 //! how to parse module information and resolve imports for that language.
 
-// NOTE: This module defines generic audit mode for the pluggable language system.
-// It is not yet wired into the main code path.
-#![allow(dead_code)]
 
 use super::definition::{LanguageDefinition, ModuleResolver};
 use crate::domain::{ScanConfig, ScanReport};

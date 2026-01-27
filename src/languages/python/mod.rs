@@ -1,5 +1,5 @@
 use crate::analysis::ignore;
-use crate::domain::{Language, LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::domain::{Language, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
 use crate::languages::definition::{LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver};
 use anyhow::Result;
 use std::collections::HashSet;
@@ -12,7 +12,6 @@ pub mod frameworks;
 // New Pluggable System Implementation (for future use)
 // ============================================================================
 
-#[allow(dead_code)]
 /// Python language definition for the pluggable system.
 pub(crate) struct PythonLanguage;
 
@@ -38,7 +37,7 @@ impl LanguageDefinition for PythonLanguage {
     }
 
     fn ignored_dirs(&self) -> &'static [&'static str] {
-        &["__pycache__", "venv", ".venv", "build", "dist", ".eggs", ".tox", ".pytest_cache"]
+        &["__pycache__", "venv", ".venv", "build", "dist", ".eggs", ".tox", ".pytest_cache", "target", "node_modules"]
     }
 
     fn needs_source(&self) -> bool {
@@ -58,13 +57,17 @@ impl LanguageDefinition for PythonLanguage {
         true
     }
 
+    fn audit_scan(&self, root_dir: &Path, config: &ScanConfig) -> Option<ScanReport> {
+        Some(scan_audit_mode(root_dir, config))
+    }
+
     fn create_module_resolver(&self) -> Option<Box<dyn ModuleResolver>> {
         Some(Box::new(PythonModuleResolver))
     }
 }
 
-#[allow(dead_code)]
 /// Module resolver for Python import resolution.
+#[allow(dead_code)]
 pub(crate) struct PythonModuleResolver;
 
 impl ModuleResolver for PythonModuleResolver {
@@ -120,8 +123,8 @@ impl ModuleResolver for PythonModuleResolver {
     }
 }
 
-#[allow(dead_code)]
 /// Module info wrapper for Python.
+#[allow(dead_code)]
 struct PythonModuleInfo {
     symbols: Vec<Symbol>,
     exports: Option<Vec<String>>,
@@ -172,46 +175,8 @@ impl ModuleInfoTrait for PythonModuleInfo {
 }
 
 // ============================================================================
-// Legacy Scanner (kept for backwards compatibility during transition)
+// Audit Mode Implementation
 // ============================================================================
-
-pub(crate) struct PythonScanner;
-
-impl LanguageScanner for PythonScanner {
-    fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {
-        if config.entrypoints.is_some() {
-            return scan_audit_mode(root_dir, config);
-        }
-
-        crate::languages::scan_language(
-            root_dir,
-            config,
-            Language::Python,
-            |e: &walkdir::DirEntry| {
-                if e.depth() == 0 {
-                    return true;
-                }
-                let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
-                if ignore::is_ignored_path(&relative, config.no_default_ignore) {
-                    return false;
-                }
-                let name = e.file_name().to_string_lossy();
-                !name.starts_with(".")
-                    && name != "__pycache__"
-                    && name != "venv"
-                    && name != "build"
-                    && name != "dist"
-                    && !name.ends_with(".egg-info")
-            },
-            |path| path.extension().and_then(|s| s.to_str()) == Some("py"),
-            true,
-            |path, root, source| parser::parse_file(path, root, source.ok_or_else(|| {
-                anyhow::anyhow!("Missing source for python parser")
-            })?),
-            frameworks::detect_routes,
-        )
-    }
-}
 
 struct ModuleInfo {
     symbols: Vec<Symbol>,

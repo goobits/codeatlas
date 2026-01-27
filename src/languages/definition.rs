@@ -21,11 +21,8 @@
 //! }
 //! ```
 
-// NOTE: This module defines the pluggable language system for future use.
-// The trait implementations exist but are not yet wired into the main code path.
-#![allow(dead_code)]
 
-use crate::domain::{Language, Route, Symbol};
+use crate::domain::{Language, Route, ScanConfig, ScanReport, Symbol};
 use anyhow::Result;
 use std::collections::HashSet;
 use std::path::Path;
@@ -90,12 +87,19 @@ pub trait LanguageDefinition: Send + Sync {
     // =========================================================================
 
     /// Whether this language supports audit mode (entrypoint-based scanning).
-    /// Override and return true if you implement `create_module_resolver()`.
+    /// Override and return true if you implement `audit_scan()`.
     fn supports_audit_mode(&self) -> bool {
         false
     }
 
-    /// Create a module resolver for audit mode.
+    /// Perform audit mode scanning (entrypoint-based unused export detection).
+    /// Default implementation returns None, falling back to normal scan.
+    /// Override this to provide language-specific audit mode.
+    fn audit_scan(&self, _root_dir: &Path, _config: &ScanConfig) -> Option<ScanReport> {
+        None
+    }
+
+    /// Create a module resolver for audit mode (for future generic audit implementation).
     /// Only called if `supports_audit_mode()` returns true.
     fn create_module_resolver(&self) -> Option<Box<dyn ModuleResolver>> {
         None
@@ -121,6 +125,7 @@ pub trait LanguageDefinition: Send + Sync {
 
 /// Module information extracted during audit mode.
 /// Each language's parser returns this when scanning for dependency analysis.
+#[allow(dead_code)]
 pub trait ModuleInfo: Send + Sync {
     /// All symbols defined in this module
     fn symbols(&self) -> Vec<Symbol>;
@@ -147,6 +152,7 @@ pub trait ModuleInfo: Send + Sync {
 
 /// Resolves module imports to file paths for audit mode.
 /// Each language implements this differently based on its module system.
+#[allow(dead_code)]
 pub trait ModuleResolver: Send + Sync {
     /// Parse a file and return its module information for audit mode.
     fn parse_module_info(
@@ -174,6 +180,7 @@ pub trait ModuleResolver: Send + Sync {
 }
 
 /// Helper to create a symbol ID in the standard format: "lang:path:kind#name"
+#[allow(dead_code)]
 pub fn make_symbol_id(lang_id: &str, file_path: &str, kind: &str, name: &str) -> String {
     format!("{}:{}:{}#{}", lang_id, file_path, kind, name)
 }
