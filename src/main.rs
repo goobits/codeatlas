@@ -8,12 +8,14 @@ mod paths;
 mod tests;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use std::path::{Path, PathBuf};
 use domain::ScanConfig;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "codeatlas")]
-#[command(about = "Map your codebase's public API surface. Find unused exports, visualize dependencies.")]
+#[command(
+    about = "Map your codebase's public API surface. Find unused exports, visualize dependencies."
+)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -116,21 +118,20 @@ fn main() {
     let cli = Cli::parse();
 
     let exit_code = match cli.command {
-        Some(Commands::Scan { path, format, all, out }) => {
-            run_scan(&path, format, all, out)
-        }
-        Some(Commands::Audit { path }) => {
-            run_audit(&path)
-        }
-        Some(Commands::Ci { path, fail_unused, baseline }) => {
-            run_ci(&path, fail_unused, baseline)
-        }
-        Some(Commands::Map { path, out }) => {
-            run_map(&path, out)
-        }
-        Some(Commands::Diff { baseline, path }) => {
-            run_diff(&baseline, &path)
-        }
+        Some(Commands::Scan {
+            path,
+            format,
+            all,
+            out,
+        }) => run_scan(&path, format, all, out),
+        Some(Commands::Audit { path }) => run_audit(&path),
+        Some(Commands::Ci {
+            path,
+            fail_unused,
+            baseline,
+        }) => run_ci(&path, fail_unused, baseline),
+        Some(Commands::Map { path, out }) => run_map(&path, out),
+        Some(Commands::Diff { baseline, path }) => run_diff(&baseline, &path),
         None => {
             // Legacy mode: check if any old flags were used
             if cli.format.is_some() || cli.suggest || cli.imports || cli.languages.is_some() {
@@ -339,13 +340,18 @@ fn run_diff(baseline_path: &Path, path: &Path) -> i32 {
     analysis::annotate_unused_public(&mut current, &importers, false);
 
     // Compare symbols
-    let baseline_ids: std::collections::HashSet<_> = baseline.symbols.iter().map(|s| &s.id).collect();
+    let baseline_ids: std::collections::HashSet<_> =
+        baseline.symbols.iter().map(|s| &s.id).collect();
     let current_ids: std::collections::HashSet<_> = current.symbols.iter().map(|s| &s.id).collect();
 
-    let added: Vec<_> = current.symbols.iter()
+    let added: Vec<_> = current
+        .symbols
+        .iter()
         .filter(|s| !baseline_ids.contains(&s.id))
         .collect();
-    let removed: Vec<_> = baseline.symbols.iter()
+    let removed: Vec<_> = baseline
+        .symbols
+        .iter()
         .filter(|s| !current_ids.contains(&s.id))
         .collect();
 
@@ -363,7 +369,11 @@ fn run_diff(baseline_path: &Path, path: &Path) -> i32 {
     }
 
     if !added.is_empty() {
-        println!("{} {} NEW public symbol(s):\n", "+".green().bold(), added.len());
+        println!(
+            "{} {} NEW public symbol(s):\n",
+            "+".green().bold(),
+            added.len()
+        );
         for sym in &added {
             println!("  {} {}", "+".green(), sym.id.yellow());
             println!("    {} Review: Is this intentionally public?", "→".dimmed());
@@ -372,10 +382,17 @@ fn run_diff(baseline_path: &Path, path: &Path) -> i32 {
     }
 
     if !removed.is_empty() {
-        println!("{} {} REMOVED public symbol(s):\n", "-".red().bold(), removed.len());
+        println!(
+            "{} {} REMOVED public symbol(s):\n",
+            "-".red().bold(),
+            removed.len()
+        );
         for sym in &removed {
             println!("  {} {}", "-".red(), sym.id.yellow());
-            println!("    {} Warning: This may be a breaking change!", "→".dimmed());
+            println!(
+                "    {} Warning: This may be a breaking change!",
+                "→".dimmed()
+            );
         }
         println!();
     }
@@ -390,7 +407,10 @@ fn run_diff(baseline_path: &Path, path: &Path) -> i32 {
     if has_changes {
         println!("\n{}", "CI Note:".white().bold());
         println!("  This command exits with code 1 when changes are detected.");
-        println!("  Use in CI: {} || echo 'API changed'", "codeatlas diff baseline.json".cyan());
+        println!(
+            "  Use in CI: {} || echo 'API changed'",
+            "codeatlas diff baseline.json".cyan()
+        );
         1
     } else {
         0
@@ -441,9 +461,9 @@ fn render_format(report: &domain::ScanReport, format: OutputFormat) -> String {
     match format {
         OutputFormat::Tree => outputs::text_tree::render(report),
         OutputFormat::Mermaid => outputs::mermaid::render(report),
-        OutputFormat::Json => outputs::json::render(report).unwrap_or_else(|e| {
-            format!("Error: {}", e)
-        }),
+        OutputFormat::Json => {
+            outputs::json::render(report).unwrap_or_else(|e| format!("Error: {}", e))
+        }
     }
 }
 

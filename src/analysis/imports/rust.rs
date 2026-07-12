@@ -70,6 +70,11 @@ pub(crate) fn collect_importers(
 
     let mut export_cache: HashMap<(String, String), Vec<String>> = HashMap::new();
     let mut all_cache: HashMap<String, Vec<String>> = HashMap::new();
+    let graph = ExportGraph {
+        modules: &modules,
+        module_map: &module_map,
+        symbols_by_file,
+    };
 
     for (file, info) in &modules {
         // Track mod declarations as file dependencies
@@ -88,16 +93,10 @@ pub(crate) fn collect_importers(
                 add_file_edge(file_edges, file, &target);
 
                 // Track symbol-level imports if we have public symbols
-                if let Some(symbols_by_file) = symbols_by_file {
+                if symbols_by_file.is_some() {
                     if import.is_glob {
-                        let symbol_ids = resolve_all_exports(
-                            &target,
-                            &modules,
-                            &module_map,
-                            symbols_by_file,
-                            &mut export_cache,
-                            &mut all_cache,
-                        );
+                        let symbol_ids =
+                            resolve_all_exports(&target, &graph, &mut export_cache, &mut all_cache);
                         for symbol_id in symbol_ids {
                             add_importer(importers, &symbol_id, file);
                         }
@@ -105,9 +104,7 @@ pub(crate) fn collect_importers(
                         let symbol_ids = resolve_export(
                             &target,
                             &import.name,
-                            &modules,
-                            &module_map,
-                            symbols_by_file,
+                            &graph,
                             &mut export_cache,
                             &mut all_cache,
                             &mut HashSet::new(),
@@ -130,11 +127,15 @@ struct ModuleInfo {
     public_uses_map: HashMap<String, Vec<usize>>,
 }
 
+struct ExportGraph<'a> {
+    modules: &'a HashMap<String, ModuleInfo>,
+    module_map: &'a HashMap<Vec<String>, String>,
+    symbols_by_file: Option<&'a HashMap<String, HashMap<String, String>>>,
+}
+
 fn resolve_all_exports(
     file: &str,
-    modules: &HashMap<String, ModuleInfo>,
-    module_map: &HashMap<Vec<String>, String>,
-    symbols_by_file: &HashMap<String, HashMap<String, String>>,
+    graph: &ExportGraph<'_>,
     export_cache: &mut HashMap<(String, String), Vec<String>>,
     all_cache: &mut HashMap<String, Vec<String>>,
 ) -> Vec<String> {
@@ -142,14 +143,12 @@ fn resolve_all_exports(
         return cached.clone();
     }
     let mut ids = Vec::new();
-    if let Some(symbols) = symbols_by_file.get(file) {
+    if let Some(symbols) = graph.symbols_by_file.and_then(|symbols| symbols.get(file)) {
         for name in symbols.keys() {
             ids.extend(resolve_export(
                 file,
                 name,
-                modules,
-                module_map,
-                symbols_by_file,
+                graph,
                 export_cache,
                 all_cache,
                 &mut HashSet::new(),
@@ -165,9 +164,7 @@ fn resolve_all_exports(
 fn resolve_export(
     file: &str,
     name: &str,
-    modules: &HashMap<String, ModuleInfo>,
-    module_map: &HashMap<Vec<String>, String>,
-    symbols_by_file: &HashMap<String, HashMap<String, String>>,
+    graph: &ExportGraph<'_>,
     export_cache: &mut HashMap<(String, String), Vec<String>>,
     all_cache: &mut HashMap<String, Vec<String>>,
     visited: &mut HashSet<(String, String)>,
@@ -180,7 +177,7 @@ fn resolve_export(
         return Vec::new();
     }
 
-    if let Some(symbols) = symbols_by_file.get(file) {
+    if let Some(symbols) = graph.symbols_by_file.and_then(|symbols| symbols.get(file)) {
         if let Some(id) = symbols.get(name) {
             export_cache.insert(key.clone(), vec![id.clone()]);
             return vec![id.clone()];
@@ -188,32 +185,23 @@ fn resolve_export(
     }
 
     let mut ids = Vec::new();
-    if let Some(info) = modules.get(file) {
+    if let Some(info) = graph.modules.get(file) {
         if let Some(indices) = info.public_uses_map.get(name) {
             for &i in indices {
                 let export = &info.public_uses[i];
                 if export.is_glob {
                     if let Some(target) =
-                        resolve_rust_use_module(&info.module_path, export, module_map)
+                        resolve_rust_use_module(&info.module_path, export, graph.module_map)
                     {
-                        ids.extend(resolve_all_exports(
-                            &target,
-                            modules,
-                            module_map,
-                            symbols_by_file,
-                            export_cache,
-                            all_cache,
-                        ));
+                        ids.extend(resolve_all_exports(&target, graph, export_cache, all_cache));
                     }
                 } else if let Some(target) =
-                    resolve_rust_use_module(&info.module_path, export, module_map)
+                    resolve_rust_use_module(&info.module_path, export, graph.module_map)
                 {
                     ids.extend(resolve_export(
                         &target,
                         &export.name,
-                        modules,
-                        module_map,
-                        symbols_by_file,
+                        graph,
                         export_cache,
                         all_cache,
                         visited,
@@ -255,10 +243,9 @@ fn resolve_rust_use_module(
         path.extend(export.module_path.iter().cloned());
     }
 
-    if export.is_glob
-        && export.name != "*" {
-            path.push(export.name.clone());
-        }
+    if export.is_glob && export.name != "*" {
+        path.push(export.name.clone());
+    }
 
     module_map.get(&path).cloned()
 }

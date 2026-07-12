@@ -1,5 +1,5 @@
-use crate::analysis::imports::Importers;
 use crate::analysis::ignore;
+use crate::analysis::imports::Importers;
 use crate::domain::{ScanReport, UnusedPublic, Visibility};
 
 pub(crate) fn compute(
@@ -16,7 +16,10 @@ pub(crate) fn compute(
         if ignore::is_ignored_path(&symbol.file_path, no_default_ignore) {
             continue;
         }
-        if importers.get(&symbol.id).is_none_or(|files| files.is_empty()) {
+        if importers
+            .get(&symbol.id)
+            .is_none_or(|files| files.is_empty())
+        {
             unused.push(UnusedPublic {
                 id: symbol.id.clone(),
                 suggestion: suggestion_for(symbol.language),

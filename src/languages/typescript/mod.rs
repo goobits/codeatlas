@@ -1,12 +1,14 @@
 use crate::analysis::ignore;
 use crate::domain::{Language, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
-use crate::languages::definition::{LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver};
+use crate::languages::definition::{
+    LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver,
+};
 use anyhow::Result;
 use std::collections::HashSet;
 use std::path::Path;
 
-pub mod parser;
 pub mod frameworks;
+pub mod parser;
 
 // ============================================================================
 // New Pluggable System Implementation (for future use)
@@ -37,7 +39,16 @@ impl LanguageDefinition for TypeScriptLanguage {
     }
 
     fn ignored_dirs(&self) -> &'static [&'static str] {
-        &["node_modules", "dist", "build", "coverage", ".next", ".nuxt", "target", "__pycache__"]
+        &[
+            "node_modules",
+            "dist",
+            "build",
+            "coverage",
+            ".next",
+            ".nuxt",
+            "target",
+            "__pycache__",
+        ]
     }
 
     fn needs_source(&self) -> bool {
@@ -83,12 +94,7 @@ impl ModuleResolver for TypeScriptModuleResolver {
         }))
     }
 
-    fn resolve_import(
-        &self,
-        current_file: &str,
-        import_path: &str,
-        root: &Path,
-    ) -> Option<String> {
+    fn resolve_import(&self, current_file: &str, import_path: &str, root: &Path) -> Option<String> {
         if !import_path.starts_with('.') {
             return None; // External dependency
         }
@@ -178,7 +184,8 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         .as_ref()
         .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
 
-    let mut modules: std::collections::HashMap<String, ModuleInfo> = std::collections::HashMap::new();
+    let mut modules: std::collections::HashMap<String, ModuleInfo> =
+        std::collections::HashMap::new();
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
     for entry in walker.filter_entry(|e| {
@@ -283,11 +290,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
             }
 
             for re_export in &info.exports.re_exports {
-                if let Some(spec) = re_export
-                    .names
-                    .iter()
-                    .find(|spec| spec.exported == *name)
-                {
+                if let Some(spec) = re_export.names.iter().find(|spec| spec.exported == *name) {
                     if let Some(target) =
                         resolve_ts_module(root_dir, &file, &re_export.source, &modules)
                     {
@@ -320,7 +323,6 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 }
             }
         }
-
     }
 
     for (file, info) in modules {
@@ -330,8 +332,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 .into_iter()
                 .filter(|sym| names.contains(&sym.name))
                 .collect();
-            let file_routes =
-                frameworks::detect_routes(Path::new(&file), "", &mut symbols);
+            let file_routes = frameworks::detect_routes(Path::new(&file), "", &mut symbols);
             report.stats.routes_found += file_routes.len();
             report.routes.extend(file_routes);
 

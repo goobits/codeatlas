@@ -47,9 +47,15 @@ pub(crate) fn render(report: &ScanReport) -> String {
             let prefix = if is_last { "└" } else { "├" };
 
             let kind_icon = match sym.kind {
-                crate::domain::SymbolKind::Class | crate::domain::SymbolKind::Struct => "S".yellow(),
-                crate::domain::SymbolKind::Function | crate::domain::SymbolKind::Method => "f".magenta(),
-                crate::domain::SymbolKind::Interface | crate::domain::SymbolKind::Trait => "T".cyan(),
+                crate::domain::SymbolKind::Class | crate::domain::SymbolKind::Struct => {
+                    "S".yellow()
+                }
+                crate::domain::SymbolKind::Function | crate::domain::SymbolKind::Method => {
+                    "f".magenta()
+                }
+                crate::domain::SymbolKind::Interface | crate::domain::SymbolKind::Trait => {
+                    "T".cyan()
+                }
                 crate::domain::SymbolKind::Enum => "E".blue(),
                 crate::domain::SymbolKind::Const => "c".white(),
                 crate::domain::SymbolKind::TypeAlias => "t".white(),
@@ -57,11 +63,21 @@ pub(crate) fn render(report: &ScanReport) -> String {
             };
             let vis_icon = visibility_icon(&sym.visibility);
 
-            output.push_str(&format!("{}── {} {} {}\n", prefix.blue(), vis_icon, kind_icon, sym.name));
+            output.push_str(&format!(
+                "{}── {} {} {}\n",
+                prefix.blue(),
+                vis_icon,
+                kind_icon,
+                sym.name
+            ));
 
             for (j, child) in sym.children.iter().enumerate() {
                 let child_prefix = if i == symbols.len() - 1 { " " } else { "│" };
-                let child_branch = if j == sym.children.len() - 1 { "└" } else { "├" };
+                let child_branch = if j == sym.children.len() - 1 {
+                    "└"
+                } else {
+                    "├"
+                };
                 let child_vis = visibility_icon(&child.visibility);
                 output.push_str(&format!(
                     "{}   {}── {} {}\n",
@@ -126,11 +142,7 @@ pub(crate) fn render(report: &ScanReport) -> String {
             report.routes.len()
         ));
         for route in &report.routes {
-            output.push_str(&format!(
-                "  {} {}\n",
-                route.method.cyan(),
-                route.path
-            ));
+            output.push_str(&format!("  {} {}\n", route.method.cyan(), route.path));
         }
     }
 

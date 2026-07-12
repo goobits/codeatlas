@@ -6,8 +6,8 @@ use swc_core::common::{
     sync::Lrc,
     SourceMap,
 };
-use swc_core::ecma::parser::{lexer::Lexer, Parser, StringInput, Syntax, TsConfig};
 use swc_core::ecma::ast::*;
+use swc_core::ecma::parser::{lexer::Lexer, Parser, StringInput, Syntax, TsConfig};
 use swc_core::ecma::visit::{Visit, VisitWith};
 
 pub(crate) struct ExportName {
@@ -21,17 +21,17 @@ pub(crate) struct ReExport {
 }
 
 pub(crate) struct ExportInfo {
-	pub local_exports: Vec<String>,
-	pub re_exports: Vec<ReExport>,
-	pub export_all: Vec<String>,
-	pub default_export: Option<String>,
+    pub local_exports: Vec<String>,
+    pub re_exports: Vec<ReExport>,
+    pub export_all: Vec<String>,
+    pub default_export: Option<String>,
 }
 
 pub(crate) struct ImportInfo {
-	pub source: String,
-	pub named: Vec<String>,
-	pub default: Option<String>,
-	pub namespace: bool,
+    pub source: String,
+    pub named: Vec<String>,
+    pub default: Option<String>,
+    pub namespace: bool,
 }
 
 pub(crate) struct TypeScriptModuleInfo {
@@ -149,8 +149,9 @@ fn kind_to_str(kind: SymbolKind) -> &'static str {
 
 /// Format function/method parameters to readable string
 fn format_params(params: &[Param]) -> String {
-    params.iter()
-        .map(|p| format_param(p))
+    params
+        .iter()
+        .map(format_param)
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -165,19 +166,20 @@ fn format_param(param: &Param) -> String {
             s
         }
         Pat::Rest(rest) => {
-            format!("...{}", match &*rest.arg {
-                Pat::Ident(ident) => ident.id.sym.to_string(),
-                _ => "args".to_string(),
-            })
+            format!(
+                "...{}",
+                match &*rest.arg {
+                    Pat::Ident(ident) => ident.id.sym.to_string(),
+                    _ => "args".to_string(),
+                }
+            )
         }
         Pat::Object(_) => "{ ... }".to_string(),
         Pat::Array(_) => "[ ... ]".to_string(),
-        Pat::Assign(assign) => {
-            match &*assign.left {
-                Pat::Ident(ident) => format!("{} = ...", ident.id.sym),
-                _ => "_ = ...".to_string(),
-            }
-        }
+        Pat::Assign(assign) => match &*assign.left {
+            Pat::Ident(ident) => format!("{} = ...", ident.id.sym),
+            _ => "_ = ...".to_string(),
+        },
         _ => "_".to_string(),
     };
 
@@ -205,23 +207,21 @@ fn format_entity_name(name: &TsEntityName) -> String {
 
 fn format_ts_type(ts_type: &TsType) -> String {
     match ts_type {
-        TsType::TsKeywordType(kw) => {
-            match kw.kind {
-                TsKeywordTypeKind::TsStringKeyword => "string".to_string(),
-                TsKeywordTypeKind::TsNumberKeyword => "number".to_string(),
-                TsKeywordTypeKind::TsBooleanKeyword => "boolean".to_string(),
-                TsKeywordTypeKind::TsVoidKeyword => "void".to_string(),
-                TsKeywordTypeKind::TsAnyKeyword => "any".to_string(),
-                TsKeywordTypeKind::TsNullKeyword => "null".to_string(),
-                TsKeywordTypeKind::TsUndefinedKeyword => "undefined".to_string(),
-                TsKeywordTypeKind::TsNeverKeyword => "never".to_string(),
-                TsKeywordTypeKind::TsUnknownKeyword => "unknown".to_string(),
-                TsKeywordTypeKind::TsObjectKeyword => "object".to_string(),
-                TsKeywordTypeKind::TsBigIntKeyword => "bigint".to_string(),
-                TsKeywordTypeKind::TsSymbolKeyword => "symbol".to_string(),
-                TsKeywordTypeKind::TsIntrinsicKeyword => "intrinsic".to_string(),
-            }
-        }
+        TsType::TsKeywordType(kw) => match kw.kind {
+            TsKeywordTypeKind::TsStringKeyword => "string".to_string(),
+            TsKeywordTypeKind::TsNumberKeyword => "number".to_string(),
+            TsKeywordTypeKind::TsBooleanKeyword => "boolean".to_string(),
+            TsKeywordTypeKind::TsVoidKeyword => "void".to_string(),
+            TsKeywordTypeKind::TsAnyKeyword => "any".to_string(),
+            TsKeywordTypeKind::TsNullKeyword => "null".to_string(),
+            TsKeywordTypeKind::TsUndefinedKeyword => "undefined".to_string(),
+            TsKeywordTypeKind::TsNeverKeyword => "never".to_string(),
+            TsKeywordTypeKind::TsUnknownKeyword => "unknown".to_string(),
+            TsKeywordTypeKind::TsObjectKeyword => "object".to_string(),
+            TsKeywordTypeKind::TsBigIntKeyword => "bigint".to_string(),
+            TsKeywordTypeKind::TsSymbolKeyword => "symbol".to_string(),
+            TsKeywordTypeKind::TsIntrinsicKeyword => "intrinsic".to_string(),
+        },
         TsType::TsTypeRef(type_ref) => {
             let name = format_entity_name(&type_ref.type_name);
             if let Some(params) = &type_ref.type_params {
@@ -233,43 +233,43 @@ fn format_ts_type(ts_type: &TsType) -> String {
         }
         TsType::TsArrayType(arr) => format!("{}[]", format_ts_type(&arr.elem_type)),
         TsType::TsTupleType(tuple) => {
-            let elems: Vec<String> = tuple.elem_types.iter().map(|e| format_ts_type(&e.ty)).collect();
+            let elems: Vec<String> = tuple
+                .elem_types
+                .iter()
+                .map(|e| format_ts_type(&e.ty))
+                .collect();
             format!("[{}]", elems.join(", "))
         }
-        TsType::TsUnionOrIntersectionType(ui) => {
-            match ui {
-                TsUnionOrIntersectionType::TsUnionType(union) => {
-                    let types: Vec<String> = union.types.iter().map(|t| format_ts_type(t)).collect();
-                    types.join(" | ")
-                }
-                TsUnionOrIntersectionType::TsIntersectionType(inter) => {
-                    let types: Vec<String> = inter.types.iter().map(|t| format_ts_type(t)).collect();
-                    types.join(" & ")
-                }
+        TsType::TsUnionOrIntersectionType(ui) => match ui {
+            TsUnionOrIntersectionType::TsUnionType(union) => {
+                let types: Vec<String> = union.types.iter().map(|t| format_ts_type(t)).collect();
+                types.join(" | ")
             }
-        }
-        TsType::TsFnOrConstructorType(fn_type) => {
-            match fn_type {
-                TsFnOrConstructorType::TsFnType(fn_ty) => {
-                    let params_str = fn_ty.params.iter()
-                        .map(|p| format_ts_fn_param(p))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let ret = format_ts_type(&fn_ty.type_ann.type_ann);
-                    format!("({}) => {}", params_str, ret)
-                }
-                TsFnOrConstructorType::TsConstructorType(_) => "new(...) => ...".to_string(),
+            TsUnionOrIntersectionType::TsIntersectionType(inter) => {
+                let types: Vec<String> = inter.types.iter().map(|t| format_ts_type(t)).collect();
+                types.join(" & ")
             }
-        }
+        },
+        TsType::TsFnOrConstructorType(fn_type) => match fn_type {
+            TsFnOrConstructorType::TsFnType(fn_ty) => {
+                let params_str = fn_ty
+                    .params
+                    .iter()
+                    .map(format_ts_fn_param)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret = format_ts_type(&fn_ty.type_ann.type_ann);
+                format!("({}) => {}", params_str, ret)
+            }
+            TsFnOrConstructorType::TsConstructorType(_) => "new(...) => ...".to_string(),
+        },
         TsType::TsTypeLit(_) => "{ ... }".to_string(),
-        TsType::TsLitType(lit) => {
-            match &lit.lit {
-                TsLit::Str(s) => format!("\"{}\"", s.value),
-                TsLit::Number(n) => n.value.to_string(),
-                TsLit::Bool(b) => b.value.to_string(),
-                _ => "literal".to_string(),
-            }
-        }
+        TsType::TsLitType(lit) => match &lit.lit {
+            TsLit::Str(s) => format!("\"{}\"", s.value),
+            TsLit::Number(n) => n.value.to_string(),
+            TsLit::Bool(b) => b.value.to_string(),
+            _ => "literal".to_string(),
+        },
         _ => "...".to_string(),
     }
 }
@@ -285,10 +285,13 @@ fn format_ts_fn_param(param: &TsFnParam) -> String {
             }
         }
         TsFnParam::Rest(rest) => {
-            format!("...{}", match &*rest.arg {
-                Pat::Ident(id) => id.id.sym.to_string(),
-                _ => "args".to_string(),
-            })
+            format!(
+                "...{}",
+                match &*rest.arg {
+                    Pat::Ident(id) => id.id.sym.to_string(),
+                    _ => "args".to_string(),
+                }
+            )
         }
         _ => "_".to_string(),
     }
@@ -317,16 +320,27 @@ impl Visit for SymbolVisitor {
         let name = ident.sym.to_string();
 
         // Check for extends
-        let extends = n.class.super_class.as_ref().map(|s| {
-            if let Expr::Ident(id) = &**s {
-                format!(" extends {}", id.sym)
-            } else {
-                String::new()
-            }
-        }).unwrap_or_default();
+        let extends = n
+            .class
+            .super_class
+            .as_ref()
+            .map(|s| {
+                if let Expr::Ident(id) = &**s {
+                    format!(" extends {}", id.sym)
+                } else {
+                    String::new()
+                }
+            })
+            .unwrap_or_default();
 
         let sig = format!("class {}{}", name, extends);
-        let mut symbol = self.create_symbol(name, SymbolKind::Class, Visibility::Internal, n.class.span, sig);
+        let mut symbol = self.create_symbol(
+            name,
+            SymbolKind::Class,
+            Visibility::Internal,
+            n.class.span,
+            sig,
+        );
 
         for member in &n.class.body {
             if let ClassMember::Method(m) = member {
@@ -335,7 +349,9 @@ impl Visit for SymbolVisitor {
                     let params = format_params(&m.function.params);
                     let ret = format_return_type(&m.function);
                     let m_sig = format!("{}({}){}", m_name, params, ret);
-                    let m_vis = if m.accessibility == Some(Accessibility::Private) || m_name.starts_with('#') {
+                    let m_vis = if m.accessibility == Some(Accessibility::Private)
+                        || m_name.starts_with('#')
+                    {
                         Visibility::Private
                     } else if m.accessibility == Some(Accessibility::Protected) {
                         Visibility::Internal
@@ -343,7 +359,8 @@ impl Visit for SymbolVisitor {
                         Visibility::Public
                     };
 
-                    let m_sym = self.create_symbol(m_name, SymbolKind::Method, m_vis, m.span, m_sig);
+                    let m_sym =
+                        self.create_symbol(m_name, SymbolKind::Method, m_vis, m.span, m_sig);
                     symbol.children.push(m_sym);
                 }
             }
@@ -357,10 +374,16 @@ impl Visit for SymbolVisitor {
         let params = format_params(&n.function.params);
         let ret = format_return_type(&n.function);
         let sig = format!("function {}({}){}", name, params, ret);
-        let symbol = self.create_symbol(name, SymbolKind::Function, Visibility::Internal, n.function.span, sig);
+        let symbol = self.create_symbol(
+            name,
+            SymbolKind::Function,
+            Visibility::Internal,
+            n.function.span,
+            sig,
+        );
         self.symbols.push(symbol);
     }
-    
+
     fn visit_call_expr(&mut self, n: &CallExpr) {
         if let Callee::Expr(expr) = &n.callee {
             if let Expr::Member(member) = &**expr {
@@ -368,31 +391,37 @@ impl Visit for SymbolVisitor {
                     let method_name = prop.sym.to_string();
                     const HTTP_METHODS: &[&str] = &["get", "post", "put", "delete", "patch"];
                     if HTTP_METHODS.contains(&method_name.as_str()) {
-                         let obj_name = if let Expr::Ident(id) = &*member.obj {
-                             id.sym.to_string()
-                         } else {
-                             "unknown".to_string()
-                         };
-                         
-                         let name = format!("{}.{}", obj_name, method_name);
-                         
-                         let mut sig_args = String::new();
-                         if let Some(arg) = n.args.first() {
-                             if let Expr::Lit(Lit::Str(s)) = &*arg.expr {
-                                 sig_args = format!("'{}', ...", s.value);
-                             }
-                         }
-                         
-                         if !sig_args.is_empty() {
-                             let sig = format!("{}({})", name, sig_args);
-                             let symbol = self.create_symbol(name, SymbolKind::Function, Visibility::Internal, n.span, sig);
-                             self.symbols.push(symbol);
-                         }
+                        let obj_name = if let Expr::Ident(id) = &*member.obj {
+                            id.sym.to_string()
+                        } else {
+                            "unknown".to_string()
+                        };
+
+                        let name = format!("{}.{}", obj_name, method_name);
+
+                        let mut sig_args = String::new();
+                        if let Some(arg) = n.args.first() {
+                            if let Expr::Lit(Lit::Str(s)) = &*arg.expr {
+                                sig_args = format!("'{}', ...", s.value);
+                            }
+                        }
+
+                        if !sig_args.is_empty() {
+                            let sig = format!("{}({})", name, sig_args);
+                            let symbol = self.create_symbol(
+                                name,
+                                SymbolKind::Function,
+                                Visibility::Internal,
+                                n.span,
+                                sig,
+                            );
+                            self.symbols.push(symbol);
+                        }
                     }
                 }
             }
         }
-        
+
         n.callee.visit_with(self);
         for arg in &n.args {
             arg.visit_with(self);
@@ -404,14 +433,18 @@ impl Visit for SymbolVisitor {
 
         // Check for extends
         let extends = if !n.extends.is_empty() {
-            let ext_names: Vec<String> = n.extends.iter().filter_map(|e| {
-                // e.expr is Box<Expr>, extract name from identifier
-                if let Expr::Ident(id) = &*e.expr {
-                    Some(id.sym.to_string())
-                } else {
-                    None
-                }
-            }).collect();
+            let ext_names: Vec<String> = n
+                .extends
+                .iter()
+                .filter_map(|e| {
+                    // e.expr is Box<Expr>, extract name from identifier
+                    if let Expr::Ident(id) = &*e.expr {
+                        Some(id.sym.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             if ext_names.is_empty() {
                 String::new()
             } else {
@@ -422,7 +455,13 @@ impl Visit for SymbolVisitor {
         };
 
         let sig = format!("interface {}{}", name, extends);
-        let mut symbol = self.create_symbol(name, SymbolKind::Interface, Visibility::Internal, n.span, sig);
+        let mut symbol = self.create_symbol(
+            name,
+            SymbolKind::Interface,
+            Visibility::Internal,
+            n.span,
+            sig,
+        );
 
         // Extract interface members
         for member in &n.body.body {
@@ -430,26 +469,41 @@ impl Visit for SymbolVisitor {
                 TsTypeElement::TsMethodSignature(method) => {
                     if let Expr::Ident(id) = &*method.key {
                         let m_name = id.sym.to_string();
-                        let params: Vec<String> = method.params.iter()
-                            .map(format_ts_fn_param)
-                            .collect();
-                        let ret = method.type_ann.as_ref()
+                        let params: Vec<String> =
+                            method.params.iter().map(format_ts_fn_param).collect();
+                        let ret = method
+                            .type_ann
+                            .as_ref()
                             .map(|t| format!(" -> {}", format_ts_type(&t.type_ann)))
                             .unwrap_or_default();
                         let m_sig = format!("{}({}){}", m_name, params.join(", "), ret);
-                        let m_sym = self.create_symbol(m_name, SymbolKind::Method, Visibility::Public, method.span, m_sig);
+                        let m_sym = self.create_symbol(
+                            m_name,
+                            SymbolKind::Method,
+                            Visibility::Public,
+                            method.span,
+                            m_sig,
+                        );
                         symbol.children.push(m_sym);
                     }
                 }
                 TsTypeElement::TsPropertySignature(prop) => {
                     if let Expr::Ident(id) = &*prop.key {
                         let p_name = id.sym.to_string();
-                        let type_str = prop.type_ann.as_ref()
+                        let type_str = prop
+                            .type_ann
+                            .as_ref()
                             .map(|t| format!(": {}", format_ts_type(&t.type_ann)))
                             .unwrap_or_default();
                         let optional = if prop.optional { "?" } else { "" };
                         let p_sig = format!("{}{}{}", p_name, optional, type_str);
-                        let p_sym = self.create_symbol(p_name, SymbolKind::Const, Visibility::Public, prop.span, p_sig);
+                        let p_sym = self.create_symbol(
+                            p_name,
+                            SymbolKind::Const,
+                            Visibility::Public,
+                            prop.span,
+                            p_sig,
+                        );
                         symbol.children.push(p_sym);
                     }
                 }
@@ -462,13 +516,15 @@ impl Visit for SymbolVisitor {
 }
 
 fn collect_exports(module: &Module) -> ExportInfo {
-	let mut local_exports = Vec::new();
-	let mut re_exports = Vec::new();
-	let mut export_all = Vec::new();
-	let mut default_export = None;
+    let mut local_exports = Vec::new();
+    let mut re_exports = Vec::new();
+    let mut export_all = Vec::new();
+    let mut default_export = None;
 
     for item in &module.body {
-        let ModuleItem::ModuleDecl(decl) = item else { continue };
+        let ModuleItem::ModuleDecl(decl) = item else {
+            continue;
+        };
         match decl {
             ModuleDecl::ExportDecl(export_decl) => match &export_decl.decl {
                 Decl::Class(class_decl) => {
@@ -489,94 +545,94 @@ fn collect_exports(module: &Module) -> ExportInfo {
                 }
                 _ => {}
             },
-			ModuleDecl::ExportNamed(named) => {
-				let source = named.src.as_ref().map(|s| s.value.to_string());
-				let mut names = Vec::new();
-				for specifier in &named.specifiers {
-					if let ExportSpecifier::Named(named_spec) = specifier {
-						let exported = export_name_to_string(
-							named_spec.exported.as_ref().unwrap_or(&named_spec.orig),
-						);
-						let original = export_name_to_string(&named_spec.orig);
-						names.push(ExportName { exported, original });
-					}
-				}
-				if let Some(source) = source {
-					re_exports.push(ReExport { source, names });
-				} else {
-					for name in names {
-						if name.exported == "default" {
-							default_export.get_or_insert_with(|| name.original.clone());
-						}
-						local_exports.push(name.exported);
-					}
-				}
-			}
-			ModuleDecl::ExportAll(all) => {
-				export_all.push(all.src.value.to_string());
-			}
-			ModuleDecl::ExportDefaultDecl(default_decl) => {
-				local_exports.push("default".to_string());
-				match &default_decl.decl {
-					DefaultDecl::Class(class) => {
-						if let Some(ident) = &class.ident {
-							default_export.get_or_insert_with(|| ident.sym.to_string());
-						}
-					}
-					DefaultDecl::Fn(function) => {
-						if let Some(ident) = &function.ident {
-							default_export.get_or_insert_with(|| ident.sym.to_string());
-						}
-					}
-					_ => {}
-				}
-			}
-			ModuleDecl::ExportDefaultExpr(default_expr) => {
-				local_exports.push("default".to_string());
-				if let Expr::Ident(ident) = &*default_expr.expr {
-					default_export.get_or_insert_with(|| ident.sym.to_string());
-				}
-			}
-			_ => {}
-		}
-	}
+            ModuleDecl::ExportNamed(named) => {
+                let source = named.src.as_ref().map(|s| s.value.to_string());
+                let mut names = Vec::new();
+                for specifier in &named.specifiers {
+                    if let ExportSpecifier::Named(named_spec) = specifier {
+                        let exported = export_name_to_string(
+                            named_spec.exported.as_ref().unwrap_or(&named_spec.orig),
+                        );
+                        let original = export_name_to_string(&named_spec.orig);
+                        names.push(ExportName { exported, original });
+                    }
+                }
+                if let Some(source) = source {
+                    re_exports.push(ReExport { source, names });
+                } else {
+                    for name in names {
+                        if name.exported == "default" {
+                            default_export.get_or_insert_with(|| name.original.clone());
+                        }
+                        local_exports.push(name.exported);
+                    }
+                }
+            }
+            ModuleDecl::ExportAll(all) => {
+                export_all.push(all.src.value.to_string());
+            }
+            ModuleDecl::ExportDefaultDecl(default_decl) => {
+                local_exports.push("default".to_string());
+                match &default_decl.decl {
+                    DefaultDecl::Class(class) => {
+                        if let Some(ident) = &class.ident {
+                            default_export.get_or_insert_with(|| ident.sym.to_string());
+                        }
+                    }
+                    DefaultDecl::Fn(function) => {
+                        if let Some(ident) = &function.ident {
+                            default_export.get_or_insert_with(|| ident.sym.to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            ModuleDecl::ExportDefaultExpr(default_expr) => {
+                local_exports.push("default".to_string());
+                if let Expr::Ident(ident) = &*default_expr.expr {
+                    default_export.get_or_insert_with(|| ident.sym.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
 
-	ExportInfo {
-		local_exports,
-		re_exports,
-		export_all,
-		default_export,
-	}
+    ExportInfo {
+        local_exports,
+        re_exports,
+        export_all,
+        default_export,
+    }
 }
 
 fn collect_imports(module: &Module) -> Vec<ImportInfo> {
-	let mut imports = Vec::new();
-	for item in &module.body {
-		let ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) = item else {
-			continue;
-		};
+    let mut imports = Vec::new();
+    for item in &module.body {
+        let ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) = item else {
+            continue;
+        };
 
-		let mut named = Vec::new();
-		let mut default = None;
-		let mut namespace = false;
+        let mut named = Vec::new();
+        let mut default = None;
+        let mut namespace = false;
 
-		for specifier in &import_decl.specifiers {
-			match specifier {
-				ImportSpecifier::Named(named_spec) => {
-					let imported = named_spec
-						.imported
-						.as_ref()
-						.map(export_name_to_string)
-						.unwrap_or_else(|| named_spec.local.sym.to_string());
-					named.push(imported);
-				}
-				ImportSpecifier::Default(default_spec) => {
-					default = Some(default_spec.local.sym.to_string());
-				}
-				ImportSpecifier::Namespace(_) => {
-					namespace = true;
-				}
-			}
+        for specifier in &import_decl.specifiers {
+            match specifier {
+                ImportSpecifier::Named(named_spec) => {
+                    let imported = named_spec
+                        .imported
+                        .as_ref()
+                        .map(export_name_to_string)
+                        .unwrap_or_else(|| named_spec.local.sym.to_string());
+                    named.push(imported);
+                }
+                ImportSpecifier::Default(default_spec) => {
+                    default = Some(default_spec.local.sym.to_string());
+                }
+                ImportSpecifier::Namespace(_) => {
+                    namespace = true;
+                }
+            }
         }
 
         imports.push(ImportInfo {

@@ -1,7 +1,10 @@
 use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
 use std::path::Path;
-use syn::{visit::Visit, ItemFn, ItemStruct, ItemImpl, ItemEnum, ItemTrait, ItemConst, ItemType, Visibility as SynVis};
+use syn::{
+    visit::Visit, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemType,
+    Visibility as SynVis,
+};
 
 pub(crate) struct UseExport {
     pub module_path: Vec<String>,
@@ -82,7 +85,7 @@ impl SymbolVisitor {
         name: String,
         kind: SymbolKind,
         visibility: Visibility,
-        span: proc_macro2::Span, 
+        span: proc_macro2::Span,
         signature: String,
     ) -> Symbol {
         let start = span.start();
@@ -130,7 +133,10 @@ impl SymbolVisitor {
             method
         };
 
-        self.pending_methods.entry(type_name).or_default().push(method);
+        self.pending_methods
+            .entry(type_name)
+            .or_default()
+            .push(method);
     }
 }
 
@@ -138,7 +144,7 @@ fn map_vis(v: &SynVis) -> Visibility {
     match v {
         SynVis::Public(_) => Visibility::Public,
         SynVis::Restricted(_) => Visibility::Internal, // pub(crate) etc
-        SynVis::Inherited => Visibility::Internal, // private to module
+        SynVis::Inherited => Visibility::Internal,     // private to module
     }
 }
 
@@ -161,8 +167,10 @@ fn format_fn_signature(sig: &syn::Signature) -> String {
     let name = sig.ident.to_string();
 
     // Extract parameters
-    let params: Vec<String> = sig.inputs.iter().map(|arg| {
-        match arg {
+    let params: Vec<String> = sig
+        .inputs
+        .iter()
+        .map(|arg| match arg {
             syn::FnArg::Receiver(r) => {
                 let mut s = String::new();
                 if r.reference.is_some() {
@@ -182,8 +190,8 @@ fn format_fn_signature(sig: &syn::Signature) -> String {
                 let type_str = format_type(&pat_type.ty);
                 format!("{}: {}", pat_name, type_str)
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     // Extract return type
     let ret = match &sig.output {
@@ -198,34 +206,43 @@ fn format_fn_signature(sig: &syn::Signature) -> String {
 fn format_type(ty: &syn::Type) -> String {
     match ty {
         syn::Type::Path(type_path) => {
-            let segments: Vec<String> = type_path.path.segments.iter().map(|seg| {
-                let name = seg.ident.to_string();
-                match &seg.arguments {
-                    syn::PathArguments::None => name,
-                    syn::PathArguments::AngleBracketed(args) => {
-                        let inner: Vec<String> = args.args.iter().filter_map(|arg| {
-                            match arg {
-                                syn::GenericArgument::Type(t) => Some(format_type(t)),
-                                syn::GenericArgument::Lifetime(lt) => Some(format!("'{}", lt.ident)),
-                                _ => None,
+            let segments: Vec<String> = type_path
+                .path
+                .segments
+                .iter()
+                .map(|seg| {
+                    let name = seg.ident.to_string();
+                    match &seg.arguments {
+                        syn::PathArguments::None => name,
+                        syn::PathArguments::AngleBracketed(args) => {
+                            let inner: Vec<String> = args
+                                .args
+                                .iter()
+                                .filter_map(|arg| match arg {
+                                    syn::GenericArgument::Type(t) => Some(format_type(t)),
+                                    syn::GenericArgument::Lifetime(lt) => {
+                                        Some(format!("'{}", lt.ident))
+                                    }
+                                    _ => None,
+                                })
+                                .collect();
+                            if inner.is_empty() {
+                                name
+                            } else {
+                                format!("{}<{}>", name, inner.join(", "))
                             }
-                        }).collect();
-                        if inner.is_empty() {
-                            name
-                        } else {
-                            format!("{}<{}>", name, inner.join(", "))
+                        }
+                        syn::PathArguments::Parenthesized(args) => {
+                            let inputs: Vec<String> = args.inputs.iter().map(format_type).collect();
+                            let ret = match &args.output {
+                                syn::ReturnType::Default => String::new(),
+                                syn::ReturnType::Type(_, t) => format!(" -> {}", format_type(t)),
+                            };
+                            format!("{}({}){}", name, inputs.join(", "), ret)
                         }
                     }
-                    syn::PathArguments::Parenthesized(args) => {
-                        let inputs: Vec<String> = args.inputs.iter().map(format_type).collect();
-                        let ret = match &args.output {
-                            syn::ReturnType::Default => String::new(),
-                            syn::ReturnType::Type(_, t) => format!(" -> {}", format_type(t)),
-                        };
-                        format!("{}({}){}", name, inputs.join(", "), ret)
-                    }
-                }
-            }).collect();
+                })
+                .collect();
             segments.join("::")
         }
         syn::Type::Reference(r) => {
@@ -265,31 +282,39 @@ fn format_type(ty: &syn::Type) -> String {
             s
         }
         syn::Type::ImplTrait(it) => {
-            let bounds: Vec<String> = it.bounds.iter().filter_map(|b| {
-                match b {
-                    syn::TypeParamBound::Trait(t) => {
-                        Some(t.path.segments.iter()
+            let bounds: Vec<String> = it
+                .bounds
+                .iter()
+                .filter_map(|b| match b {
+                    syn::TypeParamBound::Trait(t) => Some(
+                        t.path
+                            .segments
+                            .iter()
                             .map(|s| s.ident.to_string())
                             .collect::<Vec<_>>()
-                            .join("::"))
-                    }
+                            .join("::"),
+                    ),
                     _ => None,
-                }
-            }).collect();
+                })
+                .collect();
             format!("impl {}", bounds.join(" + "))
         }
         syn::Type::TraitObject(to) => {
-            let bounds: Vec<String> = to.bounds.iter().filter_map(|b| {
-                match b {
-                    syn::TypeParamBound::Trait(t) => {
-                        Some(t.path.segments.iter()
+            let bounds: Vec<String> = to
+                .bounds
+                .iter()
+                .filter_map(|b| match b {
+                    syn::TypeParamBound::Trait(t) => Some(
+                        t.path
+                            .segments
+                            .iter()
                             .map(|s| s.ident.to_string())
                             .collect::<Vec<_>>()
-                            .join("::"))
-                    }
+                            .join("::"),
+                    ),
                     _ => None,
-                }
-            }).collect();
+                })
+                .collect();
             format!("dyn {}", bounds.join(" + "))
         }
         _ => "...".to_string(),
@@ -302,7 +327,13 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
         let vis = map_vis(&node.vis);
         let sig = format_fn_signature(&node.sig);
 
-        self.symbols.push(self.create_symbol(name, SymbolKind::Function, vis, node.sig.ident.span(), sig));
+        self.symbols.push(self.create_symbol(
+            name,
+            SymbolKind::Function,
+            vis,
+            node.sig.ident.span(),
+            sig,
+        ));
     }
 
     fn visit_item_struct(&mut self, node: &'ast ItemStruct) {
@@ -312,11 +343,15 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
         // Build signature with field names
         let sig = match &node.fields {
             syn::Fields::Named(fields) => {
-                let field_strs: Vec<String> = fields.named.iter().map(|f| {
-                    let fname = f.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
-                    let ftype = format_type(&f.ty);
-                    format!("{}: {}", fname, ftype)
-                }).collect();
+                let field_strs: Vec<String> = fields
+                    .named
+                    .iter()
+                    .map(|f| {
+                        let fname = f.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
+                        let ftype = format_type(&f.ty);
+                        format!("{}: {}", fname, ftype)
+                    })
+                    .collect();
                 if field_strs.len() <= 3 {
                     format!("struct {} {{ {} }}", name, field_strs.join(", "))
                 } else {
@@ -324,84 +359,108 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                 }
             }
             syn::Fields::Unnamed(fields) => {
-                let field_strs: Vec<String> = fields.unnamed.iter().map(|f| format_type(&f.ty)).collect();
+                let field_strs: Vec<String> =
+                    fields.unnamed.iter().map(|f| format_type(&f.ty)).collect();
                 format!("struct {}({})", name, field_strs.join(", "))
             }
             syn::Fields::Unit => format!("struct {}", name),
         };
 
         let idx = self.symbols.len();
-        self.symbols.push(self.create_symbol(name.clone(), SymbolKind::Struct, vis, node.ident.span(), sig));
+        self.symbols.push(self.create_symbol(
+            name.clone(),
+            SymbolKind::Struct,
+            vis,
+            node.ident.span(),
+            sig,
+        ));
         self.struct_indices.insert(name.clone(), idx);
 
         if let Some(methods) = self.pending_methods.remove(&name) {
             self.symbols[idx].children.extend(methods);
         }
     }
-    
+
     fn visit_item_impl(&mut self, node: &'ast ItemImpl) {
-         // Try to find the type name
-         if let Some((_, trait_path, _)) = &node.trait_ {
-             let trait_name = trait_path
-                 .segments
-                 .last()
-                 .map(|s| s.ident.to_string())
-                 .unwrap_or("?".to_string());
-             let type_name = match &*node.self_ty {
-                 syn::Type::Path(type_path) => type_path
-                     .path
-                     .segments
-                     .last()
-                     .map(|s| s.ident.to_string())
-                     .unwrap_or("?".to_string()),
-                 _ => "?".to_string(),
-             };
-             let parent_idx = self.struct_indices.get(&type_name).copied();
+        // Try to find the type name
+        if let Some((_, trait_path, _)) = &node.trait_ {
+            let trait_name = trait_path
+                .segments
+                .last()
+                .map(|s| s.ident.to_string())
+                .unwrap_or("?".to_string());
+            let type_name = match &*node.self_ty {
+                syn::Type::Path(type_path) => type_path
+                    .path
+                    .segments
+                    .last()
+                    .map(|s| s.ident.to_string())
+                    .unwrap_or("?".to_string()),
+                _ => "?".to_string(),
+            };
+            let parent_idx = self.struct_indices.get(&type_name).copied();
 
-             for item in &node.items {
-                 if let syn::ImplItem::Fn(method) = item {
-                     let m_name = method.sig.ident.to_string();
-                     let m_vis = map_vis(&method.vis);
-                     let m_sig = format_fn_signature(&method.sig);
+            for item in &node.items {
+                if let syn::ImplItem::Fn(method) = item {
+                    let m_name = method.sig.ident.to_string();
+                    let m_vis = map_vis(&method.vis);
+                    let m_sig = format_fn_signature(&method.sig);
 
-                     let sym = self.create_symbol(m_name.clone(), SymbolKind::Method, m_vis, method.sig.ident.span(), m_sig);
+                    let sym = self.create_symbol(
+                        m_name.clone(),
+                        SymbolKind::Method,
+                        m_vis,
+                        method.sig.ident.span(),
+                        m_sig,
+                    );
 
-                     if let Some(idx) = parent_idx {
-                         let mut sym = sym;
-                         sym.signature = format!("{}::{}", trait_name, sym.signature);
-                         self.symbols[idx].children.push(sym);
-                     } else if type_name != "?" {
-                         self.push_pending(type_name.clone(), sym, Some(trait_name.clone()));
-                     } else {
-                         let mut orphan = sym;
-                         orphan.name = format!("{}::{}", trait_name, orphan.name);
-                         self.symbols.push(orphan);
-                     }
-                 }
-             }
-         } else if let syn::Type::Path(type_path) = &*node.self_ty {
-             // Inherent impl
-             let type_name = type_path.path.segments.last().map(|s| s.ident.to_string()).unwrap_or("?".to_string());
+                    if let Some(idx) = parent_idx {
+                        let mut sym = sym;
+                        sym.signature = format!("{}::{}", trait_name, sym.signature);
+                        self.symbols[idx].children.push(sym);
+                    } else if type_name != "?" {
+                        self.push_pending(type_name.clone(), sym, Some(trait_name.clone()));
+                    } else {
+                        let mut orphan = sym;
+                        orphan.name = format!("{}::{}", trait_name, orphan.name);
+                        self.symbols.push(orphan);
+                    }
+                }
+            }
+        } else if let syn::Type::Path(type_path) = &*node.self_ty {
+            // Inherent impl
+            let type_name = type_path
+                .path
+                .segments
+                .last()
+                .map(|s| s.ident.to_string())
+                .unwrap_or("?".to_string());
 
-             // Check if we have seen this struct
-             let parent_idx = self.struct_indices.get(&type_name).copied();
+            // Check if we have seen this struct
+            let parent_idx = self.struct_indices.get(&type_name).copied();
 
-             for item in &node.items {
-                 if let syn::ImplItem::Fn(method) = item {
-                     let m_name = method.sig.ident.to_string();
-                     let m_vis = map_vis(&method.vis);
-                     let m_sig = format_fn_signature(&method.sig);
+            for item in &node.items {
+                if let syn::ImplItem::Fn(method) = item {
+                    let m_name = method.sig.ident.to_string();
+                    let m_vis = map_vis(&method.vis);
+                    let m_sig = format_fn_signature(&method.sig);
 
-                     let sym = self.create_symbol(m_name, SymbolKind::Method, m_vis, method.sig.ident.span(), m_sig);
+                    let sym = self.create_symbol(
+                        m_name,
+                        SymbolKind::Method,
+                        m_vis,
+                        method.sig.ident.span(),
+                        m_sig,
+                    );
 
-                     if let Some(idx) = parent_idx {
-                         self.symbols[idx].children.push(sym);
-                     } else {
-                         self.push_pending(type_name.clone(), sym, None);
-                     }
-                 }
-             }
-         }
+                    if let Some(idx) = parent_idx {
+                        self.symbols[idx].children.push(sym);
+                    } else {
+                        self.push_pending(type_name.clone(), sym, None);
+                    }
+                }
+            }
+        }
     }
 
     fn visit_item_enum(&mut self, node: &'ast ItemEnum) {
@@ -416,7 +475,8 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
             format!("enum {} {{ {}, ... }}", name, variants[..4].join(", "))
         };
 
-        self.symbols.push(self.create_symbol(name, SymbolKind::Enum, vis, node.ident.span(), sig));
+        self.symbols
+            .push(self.create_symbol(name, SymbolKind::Enum, vis, node.ident.span(), sig));
     }
 
     fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
@@ -425,7 +485,13 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
         let sig = format!("trait {}", name);
 
         let idx = self.symbols.len();
-        self.symbols.push(self.create_symbol(name.clone(), SymbolKind::Trait, vis, node.ident.span(), sig));
+        self.symbols.push(self.create_symbol(
+            name.clone(),
+            SymbolKind::Trait,
+            vis,
+            node.ident.span(),
+            sig,
+        ));
 
         // Collect trait methods as children
         for item in &node.items {
@@ -435,7 +501,13 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                 // Trait methods are public by default (part of the trait's contract)
                 let m_vis = Visibility::Public;
 
-                let sym = self.create_symbol(m_name, SymbolKind::Method, m_vis, method.sig.ident.span(), m_sig);
+                let sym = self.create_symbol(
+                    m_name,
+                    SymbolKind::Method,
+                    m_vis,
+                    method.sig.ident.span(),
+                    m_sig,
+                );
                 self.symbols[idx].children.push(sym);
             }
         }
@@ -447,7 +519,8 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
         let type_str = format_type(&node.ty);
         let sig = format!("const {}: {}", name, type_str);
 
-        self.symbols.push(self.create_symbol(name, SymbolKind::Const, vis, node.ident.span(), sig));
+        self.symbols
+            .push(self.create_symbol(name, SymbolKind::Const, vis, node.ident.span(), sig));
     }
 
     fn visit_item_type(&mut self, node: &'ast ItemType) {
@@ -456,7 +529,13 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
         let type_str = format_type(&node.ty);
         let sig = format!("type {} = {}", name, type_str);
 
-        self.symbols.push(self.create_symbol(name, SymbolKind::TypeAlias, vis, node.ident.span(), sig));
+        self.symbols.push(self.create_symbol(
+            name,
+            SymbolKind::TypeAlias,
+            vis,
+            node.ident.span(),
+            sig,
+        ));
     }
 }
 

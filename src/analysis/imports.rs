@@ -25,9 +25,27 @@ pub(crate) fn build_importers(
 
     let symbol_index = build_symbol_index(&public_symbols);
 
-    python::collect_importers(root_dir, &symbol_index, &mut importers, &mut file_edges, no_default_ignore);
-    rust::collect_importers(root_dir, &symbol_index, &mut importers, &mut file_edges, no_default_ignore);
-    typescript::collect_importers(root_dir, &symbol_index, &mut importers, &mut file_edges, no_default_ignore);
+    python::collect_importers(
+        root_dir,
+        &symbol_index,
+        &mut importers,
+        &mut file_edges,
+        no_default_ignore,
+    );
+    rust::collect_importers(
+        root_dir,
+        &symbol_index,
+        &mut importers,
+        &mut file_edges,
+        no_default_ignore,
+    );
+    typescript::collect_importers(
+        root_dir,
+        &symbol_index,
+        &mut importers,
+        &mut file_edges,
+        no_default_ignore,
+    );
 
     (importers, file_edges)
 }
@@ -49,7 +67,9 @@ fn build_symbol_index(
     for symbol in symbols {
         let by_lang = index.entry(symbol.language).or_default();
         let by_file = by_lang.entry(symbol.file_path.clone()).or_default();
-        by_file.entry(symbol.name.clone()).or_insert_with(|| symbol.id.clone());
+        by_file
+            .entry(symbol.name.clone())
+            .or_insert_with(|| symbol.id.clone());
     }
     index
 }

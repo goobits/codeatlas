@@ -8,6 +8,7 @@ const allowedBumps = new Set(['patch', 'minor', 'major', 'premajor', 'preminor',
 const bump = process.argv[2] || 'patch'
 const nodeModulesPath = path.join(process.cwd(), 'node_modules')
 const packageJsonPath = path.join(process.cwd(), 'package.json')
+const cargoTomlPath = path.join(process.cwd(), 'Cargo.toml')
 
 if (!allowedBumps.has(bump)) {
 	console.error(`Unknown bump type: ${bump}`)
@@ -37,6 +38,18 @@ const runCapture = (cmd, args) => {
 }
 
 const readPackageJson = () => JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
+
+const syncCargoVersion = (version) => {
+	const cargoToml = fs.readFileSync(cargoTomlPath, 'utf8')
+	const nextCargoToml = cargoToml.replace(
+		/(\[package\][\s\S]*?\nversion\s*=\s*")[^"]+("\s*\n)/,
+		`$1${version}$2`
+	)
+	if (nextCargoToml === cargoToml) {
+		throw new Error('Could not update [package].version in Cargo.toml')
+	}
+	fs.writeFileSync(cargoTomlPath, nextCargoToml)
+}
 
 const repoDirty = () => {
 	const output = runCapture('git', ['status', '--porcelain'])
@@ -146,10 +159,14 @@ const main = () => {
 	}
 
 	const version = readVersion()
-	run('git', ['add', 'package.json'])
+	syncCargoVersion(version)
+	run('cargo', ['check', '--jobs', '1'])
+	run('cargo', ['test', '--locked', '--jobs', '1'])
+	run('node', ['tasks/check-package.js'])
+	run('git', ['add', 'package.json', 'pnpm-lock.yaml', 'Cargo.toml', 'Cargo.lock'])
 	run('git', ['commit', '-m', `v${version}`])
-
-	run('pnpm', ['publish', '--access', 'public'])
+	run('git', ['tag', `v${version}`])
+	console.log(`Created v${version}. Push the commit and tag to run the release workflow.`)
 }
 
 try {

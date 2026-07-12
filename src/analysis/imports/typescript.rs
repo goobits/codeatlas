@@ -93,7 +93,6 @@ pub(crate) fn collect_importers(
                     &modules,
                     symbols_by_file,
                     &mut export_cache,
-                    &mut all_cache,
                     &mut HashSet::new(),
                 );
                 if symbol_ids.is_empty() {
@@ -104,7 +103,6 @@ pub(crate) fn collect_importers(
                         &modules,
                         symbols_by_file,
                         &mut export_cache,
-                        &mut all_cache,
                         &mut HashSet::new(),
                     );
                 }
@@ -129,7 +127,6 @@ pub(crate) fn collect_importers(
                     &modules,
                     symbols_by_file,
                     &mut export_cache,
-                    &mut all_cache,
                     &mut HashSet::new(),
                 );
                 for symbol_id in symbol_ids {
@@ -169,7 +166,6 @@ fn resolve_all_exports(
             modules,
             symbols_by_file,
             export_cache,
-            all_cache,
             &mut HashSet::new(),
         ));
     }
@@ -184,7 +180,6 @@ fn resolve_all_exports(
                     modules,
                     symbols_by_file,
                     export_cache,
-                    all_cache,
                     &mut HashSet::new(),
                 ));
             }
@@ -217,7 +212,6 @@ fn resolve_export(
     modules: &HashMap<String, ModuleInfo>,
     symbols_by_file: &HashMap<String, HashMap<String, String>>,
     export_cache: &mut HashMap<(String, String), Vec<String>>,
-    all_cache: &mut HashMap<String, Vec<String>>,
     visited: &mut HashSet<(String, String)>,
 ) -> Vec<String> {
     let key = (file.to_string(), name.to_string());
@@ -280,7 +274,6 @@ fn resolve_export(
                     modules,
                     symbols_by_file,
                     export_cache,
-                    all_cache,
                     visited,
                 ));
             }
@@ -296,7 +289,6 @@ fn resolve_export(
                 modules,
                 symbols_by_file,
                 export_cache,
-                all_cache,
                 visited,
             ));
         }

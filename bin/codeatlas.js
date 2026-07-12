@@ -5,7 +5,6 @@ const os = require('os')
 const path = require('path')
 const https = require('https')
 const { spawnSync } = require('child_process')
-const tar = require('tar')
 
 const rootDir = path.resolve(__dirname, '..')
 const pkg = require(path.join(rootDir, 'package.json'))
@@ -113,6 +112,7 @@ const downloadFile = (url, destPath, redirects = 0) => new Promise((resolve, rej
 
 const extractTar = async (archivePath, destDir) => {
 	log('extracting', archivePath)
+	const tar = require('tar')
 	await tar.x({
 		file: archivePath,
 		cwd: destDir,

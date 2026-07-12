@@ -60,8 +60,8 @@ pub struct Symbol {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Route {
-    pub method: String,        // "GET", "POST", etc.
-    pub path: String,          // "/v1/users/:id"
+    pub method: String, // "GET", "POST", etc.
+    pub path: String,   // "/v1/users/:id"
     pub handler_id: Option<String>,
     pub source_framework: String,
     pub file_path: String,

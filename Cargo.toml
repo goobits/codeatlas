@@ -1,7 +1,10 @@
 [package]
 name = "codeatlas"
-version = "0.1.0"
+version = "0.2.3"
 edition = "2021"
+description = "Generate a high-density public API surface map of a codebase"
+license-file = "LICENSE"
+repository = "https://github.com/goobits/codeatlas"
 
 [dependencies]
 # CLI & Error Handling
@@ -24,7 +27,7 @@ rustpython-parser = { version = "0.3", features = ["location"] }
 rustpython-ast = "0.3"
 
 # TypeScript/JS Parsing (via swc_core to ensure version alignment)
-swc_core = { version = "*", features = ["ecma_parser", "ecma_ast", "ecma_visit", "common", "common_tty"] }
+swc_core = { version = "0.91.1", features = ["ecma_parser", "ecma_ast", "ecma_visit", "common", "common_tty"] }
 
 # Utilities
 pathdiff = "0.2"

@@ -1,9 +1,17 @@
-
 fn is_ignored_part(part: &str) -> bool {
-    match part {
-        "tests" | "__tests__" | "__test__" | "__mocks__" | "target" | "node_modules" | "dist" | "build" | "coverage" | ".git" => true,
-        _ => false,
-    }
+    matches!(
+        part,
+        "tests"
+            | "__tests__"
+            | "__test__"
+            | "__mocks__"
+            | "target"
+            | "node_modules"
+            | "dist"
+            | "build"
+            | "coverage"
+            | ".git"
+    )
 }
 
 pub(crate) fn is_ignored_dir(name: &str, no_default_ignore: bool) -> bool {
@@ -17,9 +25,9 @@ pub(crate) fn is_ignored_dir(name: &str, no_default_ignore: bool) -> bool {
 }
 
 pub(crate) fn is_ignored_path(path: &str, no_default_ignore: bool) -> bool {
-	if no_default_ignore {
-		return false;
-	}
+    if no_default_ignore {
+        return false;
+    }
 
     for part in path.split('/') {
         if is_ignored_part(part) {
@@ -27,7 +35,7 @@ pub(crate) fn is_ignored_path(path: &str, no_default_ignore: bool) -> bool {
         }
     }
 
-	false
+    false
 }
 
 #[cfg(test)]
@@ -69,5 +77,4 @@ mod tests {
         // no_default_ignore
         assert!(!is_ignored_path("target", true));
     }
-
 }

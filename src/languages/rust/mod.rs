@@ -1,12 +1,14 @@
 use crate::analysis::ignore;
 use crate::domain::{Language, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
-use crate::languages::definition::{LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver};
+use crate::languages::definition::{
+    LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver,
+};
 use anyhow::Result;
 use std::collections::HashSet;
 use std::path::Path;
 
-pub mod parser;
 pub mod frameworks;
+pub mod parser;
 
 // ============================================================================
 // New Pluggable System Implementation (for future use)
@@ -209,8 +211,10 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         .as_ref()
         .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
 
-    let mut modules: std::collections::HashMap<String, ModuleInfo> = std::collections::HashMap::new();
-    let mut module_map: std::collections::HashMap<Vec<String>, String> = std::collections::HashMap::new();
+    let mut modules: std::collections::HashMap<String, ModuleInfo> =
+        std::collections::HashMap::new();
+    let mut module_map: std::collections::HashMap<Vec<String>, String> =
+        std::collections::HashMap::new();
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
     for entry in walker.filter_entry(|e| {
@@ -339,7 +343,9 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         for export in &info.public_uses {
             if is_all || export_names.contains(&export.alias) {
                 if export.is_glob {
-                    if let Some(target) = resolve_rust_use_module(&info.module_path, export, &module_map) {
+                    if let Some(target) =
+                        resolve_rust_use_module(&info.module_path, export, &module_map)
+                    {
                         queue.push_back((target, None));
                     }
                 } else if let Some(target) =
@@ -361,7 +367,8 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 .filter(|sym| names.contains(&sym.name))
                 .collect();
 
-            let file_routes = frameworks::detect_routes(Path::new(&file), &info.source, &mut symbols);
+            let file_routes =
+                frameworks::detect_routes(Path::new(&file), &info.source, &mut symbols);
             report.stats.routes_found += file_routes.len();
             report.routes.extend(file_routes);
 
@@ -418,7 +425,11 @@ fn module_path_from_file(file_path: &str) -> Vec<String> {
     let path = file_path.strip_suffix(".rs").unwrap_or(file_path);
     let path = path.trim_start_matches("src/");
     if path.ends_with("/mod") {
-        return path.trim_end_matches("/mod").split('/').map(|s| s.to_string()).collect();
+        return path
+            .trim_end_matches("/mod")
+            .split('/')
+            .map(|s| s.to_string())
+            .collect();
     }
     if path == "lib" || path == "main" || path.ends_with("/lib") || path.ends_with("/main") {
         return Vec::new();

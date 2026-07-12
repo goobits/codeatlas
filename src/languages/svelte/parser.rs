@@ -29,13 +29,12 @@ fn parse_svelte_file(relative_path: &str, source: &str) -> Result<Vec<Symbol>> {
     let scripts = extract_script_blocks(source);
 
     for (script_content, script_start_line) in scripts {
-        let mut script_symbols = parse_script_content(relative_path, &script_content, script_start_line)?;
+        let mut script_symbols =
+            parse_script_content(relative_path, &script_content, script_start_line)?;
         symbols.append(&mut script_symbols);
     }
 
     // Also detect component props from <script> exports
-    detect_component_exports(relative_path, source, &mut symbols);
-
     Ok(symbols)
 }
 
@@ -49,9 +48,7 @@ fn parse_script_file(file_path: &Path, root_dir: &Path) -> Result<Vec<Symbol>> {
 /// Returns Vec of (content, start_line)
 fn extract_script_blocks(source: &str) -> Vec<(String, u32)> {
     static SCRIPT_RE: OnceLock<Regex> = OnceLock::new();
-    let re = SCRIPT_RE.get_or_init(|| {
-        Regex::new(r"(?s)<script[^>]*>(.*?)</script>").unwrap()
-    });
+    let re = SCRIPT_RE.get_or_init(|| Regex::new(r"(?s)<script[^>]*>(.*?)</script>").unwrap());
 
     let mut results = Vec::new();
 
@@ -70,7 +67,11 @@ fn extract_script_blocks(source: &str) -> Vec<(String, u32)> {
 }
 
 /// Parse JavaScript/TypeScript content from a script block
-fn parse_script_content(relative_path: &str, content: &str, line_offset: u32) -> Result<Vec<Symbol>> {
+fn parse_script_content(
+    relative_path: &str,
+    content: &str,
+    line_offset: u32,
+) -> Result<Vec<Symbol>> {
     let mut symbols = Vec::new();
 
     // Simple regex-based parsing for common patterns
@@ -108,9 +109,8 @@ fn parse_script_content(relative_path: &str, content: &str, line_offset: u32) ->
 
     // Detect exported const/let: export const name = ... or export let name
     static EXPORT_VAR_RE: OnceLock<Regex> = OnceLock::new();
-    let export_var = EXPORT_VAR_RE.get_or_init(|| {
-        Regex::new(r"export\s+(const|let)\s+(\w+)(?:\s*:\s*([^=;]+))?").unwrap()
-    });
+    let export_var = EXPORT_VAR_RE
+        .get_or_init(|| Regex::new(r"export\s+(const|let)\s+(\w+)(?:\s*:\s*([^=;]+))?").unwrap());
 
     for cap in export_var.captures_iter(content) {
         let kind_str = cap.get(1).unwrap().as_str();
@@ -120,7 +120,12 @@ fn parse_script_content(relative_path: &str, content: &str, line_offset: u32) ->
         let line = content[..match_start].matches('\n').count() as u32 + line_offset;
 
         // Skip function exports (already handled above)
-        if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+        if name
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
             continue; // Likely a component or class
         }
 
@@ -130,18 +135,11 @@ fn parse_script_content(relative_path: &str, content: &str, line_offset: u32) ->
             format!("export {} {}: {}", kind_str, name, type_ann)
         };
 
-        // In Svelte, `export let` creates a component prop
-        let visibility = if kind_str == "let" {
-            Visibility::Public // Props are public interface
-        } else {
-            Visibility::Public
-        };
-
         symbols.push(Symbol {
             id: format!("svelte:{}:var#{}", relative_path, name),
             name,
             kind: SymbolKind::Const,
-            visibility,
+            visibility: Visibility::Public,
             language: Language::TypeScript,
             file_path: relative_path.to_string(),
             span: Some(Span {
@@ -156,17 +154,4 @@ fn parse_script_content(relative_path: &str, content: &str, line_offset: u32) ->
     }
 
     Ok(symbols)
-}
-
-/// Detect component props from export let statements
-/// Currently a placeholder for future Svelte-specific prop detection
-fn detect_component_exports(relative_path: &str, _source: &str, _symbols: &mut Vec<Symbol>) {
-    // Check if this is a component file (not +page.server.ts etc.)
-    if relative_path.contains("+page.server") || relative_path.contains("+server") {
-        return;
-    }
-
-    // Props are already captured by parse_script_content above
-    // This function is reserved for future Svelte-specific processing
-    // (e.g., detecting $: reactive statements, store subscriptions, etc.)
 }

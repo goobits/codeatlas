@@ -5,7 +5,6 @@
 //! - Auto-detecting languages in a directory
 //! - Creating scanners for specific languages
 
-
 use super::definition::LanguageDefinition;
 use crate::domain::{LanguageScanner, ScanConfig, ScanReport};
 use std::path::Path;
@@ -59,10 +58,7 @@ impl LanguageRegistry {
     /// Find a language by its ID (e.g., "ts", "py", "rs").
     #[allow(dead_code)]
     pub fn find_by_id(&self, id: &str) -> Option<Arc<dyn LanguageDefinition>> {
-        self.languages
-            .iter()
-            .find(|lang| lang.id() == id)
-            .cloned()
+        self.languages.iter().find(|lang| lang.id() == id).cloned()
     }
 
     /// Auto-detect which languages are present in a directory.
@@ -192,7 +188,12 @@ impl LanguageScanner for GenericScanner {
             }
             // Fall back to generic audit mode if resolver is available
             if let Some(resolver) = self.language.create_module_resolver() {
-                return super::audit::scan_audit_mode(root_dir, config, self.language.as_ref(), resolver);
+                return super::audit::scan_audit_mode(
+                    root_dir,
+                    config,
+                    self.language.as_ref(),
+                    resolver,
+                );
             }
         }
 

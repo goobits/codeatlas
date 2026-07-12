@@ -1,12 +1,14 @@
 use crate::analysis::ignore;
 use crate::domain::{Language, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
-use crate::languages::definition::{LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver};
+use crate::languages::definition::{
+    LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver,
+};
 use anyhow::Result;
 use std::collections::HashSet;
 use std::path::Path;
 
-pub mod parser;
 pub mod frameworks;
+pub mod parser;
 
 // ============================================================================
 // New Pluggable System Implementation (for future use)
@@ -37,7 +39,18 @@ impl LanguageDefinition for PythonLanguage {
     }
 
     fn ignored_dirs(&self) -> &'static [&'static str] {
-        &["__pycache__", "venv", ".venv", "build", "dist", ".eggs", ".tox", ".pytest_cache", "target", "node_modules"]
+        &[
+            "__pycache__",
+            "venv",
+            ".venv",
+            "build",
+            "dist",
+            ".eggs",
+            ".tox",
+            ".pytest_cache",
+            "target",
+            "node_modules",
+        ]
     }
 
     fn needs_source(&self) -> bool {
@@ -88,12 +101,7 @@ impl ModuleResolver for PythonModuleResolver {
         }))
     }
 
-    fn resolve_import(
-        &self,
-        current_file: &str,
-        import_path: &str,
-        root: &Path,
-    ) -> Option<String> {
+    fn resolve_import(&self, current_file: &str, import_path: &str, root: &Path) -> Option<String> {
         // Convert Python module path to file path
         let module_file = import_path.replace('.', "/");
         let candidates = [
@@ -202,8 +210,10 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         .as_ref()
         .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
 
-    let mut modules: std::collections::HashMap<String, ModuleInfo> = std::collections::HashMap::new();
-    let mut module_by_name: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut modules: std::collections::HashMap<String, ModuleInfo> =
+        std::collections::HashMap::new();
+    let mut module_by_name: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
     for entry in walker.filter_entry(|e| {
@@ -360,7 +370,8 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 .filter(|sym| names.contains(&sym.name))
                 .collect();
 
-            let file_routes = frameworks::detect_routes(Path::new(&file), &info.source, &mut symbols);
+            let file_routes =
+                frameworks::detect_routes(Path::new(&file), &info.source, &mut symbols);
             report.stats.routes_found += file_routes.len();
             report.routes.extend(file_routes);
 

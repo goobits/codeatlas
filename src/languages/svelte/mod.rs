@@ -34,7 +34,15 @@ impl LanguageDefinition for SvelteLanguage {
     }
 
     fn ignored_dirs(&self) -> &'static [&'static str] {
-        &["node_modules", ".svelte-kit", ".vercel", "build", "dist", "target", "__pycache__"]
+        &[
+            "node_modules",
+            ".svelte-kit",
+            ".vercel",
+            "build",
+            "dist",
+            "target",
+            "__pycache__",
+        ]
     }
 
     fn needs_source(&self) -> bool {
@@ -52,10 +60,8 @@ impl LanguageDefinition for SvelteLanguage {
 
     fn is_language_file(&self, path: &Path) -> bool {
         // Override to also check for SvelteKit special files
-        matches!(
-            path.extension().and_then(|e| e.to_str()),
-            Some("svelte")
-        ) || is_sveltekit_script(path)
+        matches!(path.extension().and_then(|e| e.to_str()), Some("svelte"))
+            || is_sveltekit_script(path)
     }
 }
 
@@ -68,14 +74,21 @@ fn is_sveltekit_script(path: &Path) -> bool {
     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
         matches!(
             name,
-            "+page.ts" | "+page.js"
-                | "+page.server.ts" | "+page.server.js"
-                | "+layout.ts" | "+layout.js"
-                | "+layout.server.ts" | "+layout.server.js"
-                | "+server.ts" | "+server.js"
+            "+page.ts"
+                | "+page.js"
+                | "+page.server.ts"
+                | "+page.server.js"
+                | "+layout.ts"
+                | "+layout.js"
+                | "+layout.server.ts"
+                | "+layout.server.js"
+                | "+server.ts"
+                | "+server.js"
                 | "+error.svelte"
-                | "hooks.server.ts" | "hooks.server.js"
-                | "hooks.client.ts" | "hooks.client.js"
+                | "hooks.server.ts"
+                | "hooks.server.js"
+                | "hooks.client.ts"
+                | "hooks.client.js"
         )
     } else {
         false

@@ -6,7 +6,6 @@
 //! Each language that supports audit mode provides a `ModuleResolver` that knows
 //! how to parse module information and resolve imports for that language.
 
-
 use super::definition::{LanguageDefinition, ModuleResolver};
 use crate::domain::{ScanConfig, ScanReport};
 use std::path::Path;

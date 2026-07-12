@@ -21,7 +21,6 @@
 //! }
 //! ```
 
-
 use crate::domain::{Language, Route, ScanConfig, ScanReport, Symbol};
 use anyhow::Result;
 use std::collections::HashSet;
@@ -171,12 +170,7 @@ pub trait ModuleResolver: Send + Sync {
     ///
     /// # Returns
     /// Resolved file path relative to root, or None if unresolvable (external dep)
-    fn resolve_import(
-        &self,
-        current_file: &str,
-        import_path: &str,
-        root: &Path,
-    ) -> Option<String>;
+    fn resolve_import(&self, current_file: &str, import_path: &str, root: &Path) -> Option<String>;
 }
 
 /// Helper to create a symbol ID in the standard format: "lang:path:kind#name"

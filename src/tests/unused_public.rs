@@ -2,13 +2,16 @@ use crate::analysis;
 use crate::domain::ScanConfig;
 use crate::languages;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn fixture_root(path: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join(path)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join(path)
 }
 
-fn collect_unused_ids(root: &PathBuf, language: &str) -> HashSet<String> {
+fn collect_unused_ids(root: &Path, language: &str) -> HashSet<String> {
     let config = ScanConfig {
         include_types: true,
         include_private: false,
@@ -21,7 +24,11 @@ fn collect_unused_ids(root: &PathBuf, language: &str) -> HashSet<String> {
     let mut report = languages::scan_all(root, &config, scanners);
     let importers = analysis::annotate_imports(&mut report, root, config.no_default_ignore);
     analysis::annotate_unused_public(&mut report, &importers, config.no_default_ignore);
-    report.unused_public.into_iter().map(|entry| entry.id).collect()
+    report
+        .unused_public
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect()
 }
 
 #[test]

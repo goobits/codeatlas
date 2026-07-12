@@ -1,11 +1,13 @@
 {
 	"name": "@goobits/codeatlas",
-	"private": true,
-	"license": "UNLICENSED",
+	"license": "SEE LICENSE IN LICENSE",
 	"version": "0.2.3",
 	"description": "Generate a high-density 'Public Surface Map' of a codebase",
 	"type": "commonjs",
+	"packageManager": "pnpm@10.25.0",
 	"scripts": {
+		"check": "cargo fmt --check && cargo test --locked --jobs 1 && cargo clippy --all-targets --jobs 1 -- -D warnings",
+		"pack:check": "node tasks/check-package.js",
 		"release": "node tasks/release.js patch",
 		"release:minor": "node tasks/release.js minor",
 		"release:major": "node tasks/release.js major"
@@ -14,16 +16,23 @@
 		"codeatlas": "bin/codeatlas.js"
 	},
 	"engines": {
-		"node": ">=18"
+		"node": ">=22"
 	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/goobits/codeatlas.git"
+	},
+	"bugs": "https://github.com/goobits/codeatlas/issues",
+	"homepage": "https://github.com/goobits/codeatlas#readme",
 	"files": [
 		"bin/**",
 		"src/**",
 		"Cargo.toml",
 		"Cargo.lock",
+		"LICENSE",
 		"README.md"
 	],
 	"dependencies": {
-		"tar": "^6.2.0"
+		"tar": "^7.5.19"
 	}
 }

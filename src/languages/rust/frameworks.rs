@@ -12,11 +12,23 @@ pub(crate) fn detect_routes(
     let symbol_info = build_symbol_info(symbols);
 
     for (method, path, handler) in parse_attribute_routes(source) {
-        routes.push(build_route(file_path, &symbol_info, &method, &path, &handler));
+        routes.push(build_route(
+            file_path,
+            &symbol_info,
+            &method,
+            &path,
+            &handler,
+        ));
     }
 
     for (method, path, handler) in parse_builder_routes(source) {
-        routes.push(build_route(file_path, &symbol_info, &method, &path, &handler));
+        routes.push(build_route(
+            file_path,
+            &symbol_info,
+            &method,
+            &path,
+            &handler,
+        ));
     }
 
     routes
@@ -65,16 +77,8 @@ fn parse_builder_routes(source: &str) -> Vec<(String, String, String)> {
     route_re
         .captures_iter(source)
         .map(|caps| {
-            let handler = caps[3]
-                .split("::")
-                .last()
-                .unwrap_or(&caps[3])
-                .to_string();
-            (
-                caps[2].to_uppercase(),
-                caps[1].to_string(),
-                handler,
-            )
+            let handler = caps[3].split("::").last().unwrap_or(&caps[3]).to_string();
+            (caps[2].to_uppercase(), caps[1].to_string(), handler)
         })
         .collect()
 }

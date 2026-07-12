@@ -2,11 +2,11 @@ use crate::domain::{ScanReport, Symbol, SymbolKind, Visibility};
 use std::collections::{HashMap, HashSet};
 
 /// W3C Accessible color palette (WCAG 2.1 AA compliant)
-const COLOR_CORE: &str = "#1a365d";      // Navy - domain/core modules
-const COLOR_LANG: &str = "#744210";      // Brown - language modules
-const COLOR_OUTPUT: &str = "#276749";    // Forest - output modules
-const COLOR_UTIL: &str = "#285e61";      // Teal - utilities
-const COLOR_DEFAULT: &str = "#4a5568";   // Slate - default
+const COLOR_CORE: &str = "#1a365d"; // Navy - domain/core modules
+const COLOR_LANG: &str = "#744210"; // Brown - language modules
+const COLOR_OUTPUT: &str = "#276749"; // Forest - output modules
+const COLOR_UTIL: &str = "#285e61"; // Teal - utilities
+const COLOR_DEFAULT: &str = "#4a5568"; // Slate - default
 
 pub(crate) fn render(report: &ScanReport) -> String {
     let mut output = String::new();
@@ -23,12 +23,27 @@ pub(crate) fn render(report: &ScanReport) -> String {
     output.push_str("flowchart TB\n");
 
     // Style definitions
-    output.push_str(&format!("  classDef core fill:{},stroke:#2d3748,color:#fff\n", COLOR_CORE));
-    output.push_str(&format!("  classDef lang fill:{},stroke:#2d3748,color:#fff\n", COLOR_LANG));
-    output.push_str(&format!("  classDef output fill:{},stroke:#2d3748,color:#fff\n", COLOR_OUTPUT));
-    output.push_str(&format!("  classDef util fill:{},stroke:#2d3748,color:#fff\n", COLOR_UTIL));
-    output.push_str(&format!("  classDef default fill:{},stroke:#2d3748,color:#fff\n", COLOR_DEFAULT));
-    output.push_str("\n");
+    output.push_str(&format!(
+        "  classDef core fill:{},stroke:#2d3748,color:#fff\n",
+        COLOR_CORE
+    ));
+    output.push_str(&format!(
+        "  classDef lang fill:{},stroke:#2d3748,color:#fff\n",
+        COLOR_LANG
+    ));
+    output.push_str(&format!(
+        "  classDef output fill:{},stroke:#2d3748,color:#fff\n",
+        COLOR_OUTPUT
+    ));
+    output.push_str(&format!(
+        "  classDef util fill:{},stroke:#2d3748,color:#fff\n",
+        COLOR_UTIL
+    ));
+    output.push_str(&format!(
+        "  classDef default fill:{},stroke:#2d3748,color:#fff\n",
+        COLOR_DEFAULT
+    ));
+    output.push('\n');
 
     // Build file -> symbols map
     let mut files: HashMap<&String, Vec<&Symbol>> = HashMap::new();
@@ -140,7 +155,11 @@ pub(crate) fn render(report: &ScanReport) -> String {
         for route in &report.routes {
             let route_id = sanitize_id(&format!("route_{}_{}", route.method, route.path));
             let label = format!("{} {}", route.method, route.path);
-            output.push_str(&format!("  {}{{{{ {} }}}}\n", route_id, escape_mermaid(&label)));
+            output.push_str(&format!(
+                "  {}{{{{ {} }}}}\n",
+                route_id,
+                escape_mermaid(&label)
+            ));
 
             // Link route to handler file if known
             if let Some(ref handler_id) = route.handler_id {

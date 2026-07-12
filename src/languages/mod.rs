@@ -1,21 +1,21 @@
 // Language modules
-pub mod typescript;
 pub mod python;
 pub mod rust;
 pub mod svelte;
+pub mod typescript;
 
 // Pluggable language system
+pub mod audit;
 pub mod definition;
 pub mod registry;
-pub mod audit;
 
 // Re-export key types for external use
 pub use definition::LanguageDefinition;
 pub use registry::LanguageRegistry;
 
 use crate::domain::{
-    LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol,
-    SymbolKind, Visibility,
+    LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol, SymbolKind,
+    Visibility,
 };
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
@@ -38,7 +38,11 @@ pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>
     registry.get_scanners_auto(root_dir)
 }
 
-pub(crate) fn scan_all(root_dir: &Path, config: &ScanConfig, scanners: Vec<Box<dyn LanguageScanner>>) -> ScanReport {
+pub(crate) fn scan_all(
+    root_dir: &Path,
+    config: &ScanConfig,
+    scanners: Vec<Box<dyn LanguageScanner>>,
+) -> ScanReport {
     // Run language scanners in parallel
     let reports: Vec<ScanReport> = scanners
         .into_par_iter()
@@ -72,7 +76,9 @@ pub(crate) fn scan_all(root_dir: &Path, config: &ScanConfig, scanners: Vec<Box<d
 
 pub(crate) fn apply_symbol_filters(symbols: &mut Vec<Symbol>, config: &ScanConfig) {
     fn keep_symbol(symbol: &mut Symbol, config: &ScanConfig) -> bool {
-        symbol.children.retain_mut(|child| keep_symbol(child, config));
+        symbol
+            .children
+            .retain_mut(|child| keep_symbol(child, config));
         if !config.include_private && symbol.visibility != Visibility::Public {
             return false;
         }
@@ -170,7 +176,8 @@ pub(crate) fn scan_language_with_definition(
 
             match lang.parse_file(path, root_dir, source.as_deref()) {
                 Ok(mut symbols) => {
-                    let file_routes = lang.detect_routes(path, source.as_deref().unwrap_or(""), &mut symbols);
+                    let file_routes =
+                        lang.detect_routes(path, source.as_deref().unwrap_or(""), &mut symbols);
                     apply_symbol_filters(&mut symbols, config);
 
                     FileResult {

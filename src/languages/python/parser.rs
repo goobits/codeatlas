@@ -1,8 +1,8 @@
 use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
-use rustpython_parser::{ast, Parse};
 use rustpython_parser::source_code::LineIndex;
 use rustpython_parser::text_size::TextRange;
+use rustpython_parser::{ast, Parse};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -96,7 +96,7 @@ impl SymbolVisitor {
             children: vec![],
         }
     }
-    
+
     fn visit_suite(&mut self, suite: &[ast::Stmt]) {
         for stmt in suite {
             self.visit_stmt(stmt);
@@ -118,7 +118,7 @@ impl SymbolVisitor {
                 if self.recurse_into_functions {
                     self.visit_suite(&f.body);
                 }
-            },
+            }
             ast::Stmt::ClassDef(c) => {
                 let name = c.name.as_str().to_string();
                 let vis = determine_visibility(&name);
@@ -155,7 +155,7 @@ impl SymbolVisitor {
                 }
 
                 self.symbols.push(symbol);
-            },
+            }
             _ => {}
         }
     }
@@ -187,7 +187,10 @@ fn format_py_args(args: &ast::Arguments) -> String {
     // Regular positional args (ArgWithDefault has .def field containing Arg)
     for arg in &args.args {
         let name = arg.def.arg.as_str();
-        let type_str = arg.def.annotation.as_ref()
+        let type_str = arg
+            .def
+            .annotation
+            .as_ref()
             .map(|ann| format!(": {}", format_py_expr(ann)))
             .unwrap_or_default();
         params.push(format!("{}{}", name, type_str));
@@ -210,7 +213,8 @@ fn format_py_args(args: &ast::Arguments) -> String {
 
 /// Format Python return type annotation
 fn format_py_returns(returns: &Option<Box<ast::Expr>>) -> String {
-    returns.as_ref()
+    returns
+        .as_ref()
         .map(|r| format!(" -> {}", format_py_expr(r)))
         .unwrap_or_default()
 }
@@ -223,7 +227,11 @@ fn format_py_expr(expr: &ast::Expr) -> String {
             format!("{}.{}", format_py_expr(&attr.value), attr.attr.as_str())
         }
         ast::Expr::Subscript(sub) => {
-            format!("{}[{}]", format_py_expr(&sub.value), format_py_expr(&sub.slice))
+            format!(
+                "{}[{}]",
+                format_py_expr(&sub.value),
+                format_py_expr(&sub.slice)
+            )
         }
         ast::Expr::Tuple(tuple) => {
             let elems: Vec<String> = tuple.elts.iter().map(format_py_expr).collect();
@@ -233,19 +241,21 @@ fn format_py_expr(expr: &ast::Expr) -> String {
             let elems: Vec<String> = list.elts.iter().map(format_py_expr).collect();
             format!("[{}]", elems.join(", "))
         }
-        ast::Expr::Constant(c) => {
-            match &c.value {
-                ast::Constant::Str(s) => format!("\"{}\"", s),
-                ast::Constant::Int(i) => i.to_string(),
-                ast::Constant::Float(f) => f.to_string(),
-                ast::Constant::Bool(b) => if *b { "True" } else { "False" }.to_string(),
-                ast::Constant::None => "None".to_string(),
-                _ => "...".to_string(),
-            }
-        }
+        ast::Expr::Constant(c) => match &c.value {
+            ast::Constant::Str(s) => format!("\"{}\"", s),
+            ast::Constant::Int(i) => i.to_string(),
+            ast::Constant::Float(f) => f.to_string(),
+            ast::Constant::Bool(b) => if *b { "True" } else { "False" }.to_string(),
+            ast::Constant::None => "None".to_string(),
+            _ => "...".to_string(),
+        },
         ast::Expr::BinOp(bin) => {
             // For Union types like `int | str`
-            format!("{} | {}", format_py_expr(&bin.left), format_py_expr(&bin.right))
+            format!(
+                "{} | {}",
+                format_py_expr(&bin.left),
+                format_py_expr(&bin.right)
+            )
         }
         _ => "...".to_string(),
     }
@@ -257,8 +267,10 @@ fn format_decorators(decorators: &[ast::Expr]) -> String {
         return String::new();
     }
 
-    let dec_names: Vec<String> = decorators.iter().take(2).map(|d| {
-        match d {
+    let dec_names: Vec<String> = decorators
+        .iter()
+        .take(2)
+        .map(|d| match d {
             ast::Expr::Name(n) => format!("@{}", n.id.as_str()),
             ast::Expr::Call(c) => {
                 if let ast::Expr::Name(n) = &*c.func {
@@ -268,21 +280,17 @@ fn format_decorators(decorators: &[ast::Expr]) -> String {
                 }
             }
             _ => "@...".to_string(),
-        }
-    }).collect();
+        })
+        .collect();
 
-    if decorators.len() > 2 {
-        format!("{} ", dec_names.join(" "))
-    } else if !dec_names.is_empty() {
+    if !dec_names.is_empty() {
         format!("{} ", dec_names.join(" "))
     } else {
         String::new()
     }
 }
 
-fn collect_exports_and_imports(
-    suite: &[ast::Stmt],
-) -> (Option<Vec<String>>, Vec<PythonImport>) {
+fn collect_exports_and_imports(suite: &[ast::Stmt]) -> (Option<Vec<String>>, Vec<PythonImport>) {
     let mut exports = None;
     let mut imports = Vec::new();
 
@@ -322,7 +330,11 @@ fn collect_exports_and_imports(
                 }
             }
             ast::Stmt::ImportFrom(import) => {
-                let module = import.module.as_ref().map(|m| m.as_str().to_string()).unwrap_or_default();
+                let module = import
+                    .module
+                    .as_ref()
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default();
                 let mut names = Vec::new();
                 let mut is_star = false;
                 let mut aliases = Vec::new();
