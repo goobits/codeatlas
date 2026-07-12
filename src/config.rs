@@ -1,0 +1,119 @@
+use anyhow::{Context, Result};
+use serde::Deserialize;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct CodeAtlasConfig {
+    pub root: Option<PathBuf>,
+    pub languages: Vec<String>,
+    pub entrypoints: Vec<String>,
+    pub include_private: bool,
+    pub include_types: bool,
+    pub no_default_ignore: bool,
+    pub package_exports: bool,
+    pub docs: DocsConfig,
+}
+
+impl Default for CodeAtlasConfig {
+    fn default() -> Self {
+        Self {
+            root: None,
+            languages: Vec::new(),
+            entrypoints: Vec::new(),
+            include_private: false,
+            include_types: true,
+            no_default_ignore: false,
+            package_exports: true,
+            docs: DocsConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct DocsConfig {
+    pub output: Option<PathBuf>,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProjectConfig {
+    pub root: PathBuf,
+    pub config: CodeAtlasConfig,
+    pub config_dir: PathBuf,
+}
+
+impl ProjectConfig {
+    pub(crate) fn load(path: &Path, config_path: Option<&Path>) -> Result<Self> {
+        let discovered = config_path.map(Path::to_path_buf).or_else(|| {
+            path.join("codeatlas.json")
+                .is_file()
+                .then(|| path.join("codeatlas.json"))
+        });
+
+        let (config, config_dir) = if let Some(config_path) = discovered {
+            let absolute = if config_path.is_absolute() {
+                config_path
+            } else {
+                std::env::current_dir()?.join(config_path)
+            };
+            let source = std::fs::read_to_string(&absolute)
+                .with_context(|| format!("Could not read {}", absolute.display()))?;
+            let config = serde_json::from_str(&source)
+                .with_context(|| format!("Invalid CodeAtlas config at {}", absolute.display()))?;
+            let config_dir = absolute
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("."));
+            (config, config_dir)
+        } else {
+            (CodeAtlasConfig::default(), std::env::current_dir()?)
+        };
+
+        let root = config
+            .root
+            .as_ref()
+            .map(|root| config_dir.join(root))
+            .unwrap_or_else(|| path.to_path_buf());
+        let root = root.canonicalize().with_context(|| {
+            format!("CodeAtlas project root does not exist: {}", root.display())
+        })?;
+
+        Ok(Self {
+            root,
+            config,
+            config_dir,
+        })
+    }
+
+    pub(crate) fn docs_output(&self, cli_output: Option<&Path>) -> Option<PathBuf> {
+        cli_output.map(Path::to_path_buf).or_else(|| {
+            self.config
+                .docs
+                .output
+                .as_ref()
+                .map(|path| self.config_dir.join(path))
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CodeAtlasConfig;
+
+    #[test]
+    fn config_rejects_unknown_fields() {
+        let error = serde_json::from_str::<CodeAtlasConfig>(r#"{"unknown":true}"#)
+            .expect_err("unknown config field should fail");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn config_defaults_to_public_documented_types() {
+        let config = serde_json::from_str::<CodeAtlasConfig>("{}").expect("default config");
+        assert!(config.include_types);
+        assert!(config.package_exports);
+        assert!(!config.include_private);
+    }
+}

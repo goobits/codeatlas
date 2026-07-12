@@ -1,0 +1,6 @@
+{
+	"entrypoints": ["src/index.ts", "src/math.ts"],
+	"docs": {
+		"title": "Fixture API"
+	}
+}

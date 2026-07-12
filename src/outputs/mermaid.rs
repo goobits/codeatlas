@@ -269,6 +269,7 @@ fn kind_abbrev(kind: SymbolKind) -> &'static str {
         SymbolKind::Trait => "T",
         SymbolKind::Enum => "E",
         SymbolKind::Const => "c",
+        SymbolKind::Property => "p",
         SymbolKind::TypeAlias => "t",
         SymbolKind::Module => "M",
         SymbolKind::Decorator => "@",

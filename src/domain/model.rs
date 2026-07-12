@@ -1,8 +1,15 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanReport {
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
+    #[serde(default = "default_tool_version")]
+    pub tool_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<PackageInfo>,
     pub stats: ScanStats,
     pub symbols: Vec<Symbol>,
     pub routes: Vec<Route>,
@@ -12,6 +19,46 @@ pub struct ScanReport {
     /// Direct file-to-file dependency edges (for visualization)
     #[serde(default)]
     pub file_edges: Vec<FileEdge>,
+}
+
+impl Default for ScanReport {
+    fn default() -> Self {
+        Self {
+            schema_version: default_schema_version(),
+            tool_version: default_tool_version(),
+            package: None,
+            stats: ScanStats::default(),
+            symbols: Vec::new(),
+            routes: Vec::new(),
+            skipped_files: Vec::new(),
+            imports: Vec::new(),
+            unused_public: Vec::new(),
+            file_edges: Vec::new(),
+        }
+    }
+}
+
+fn default_schema_version() -> u32 {
+    1
+}
+
+fn default_tool_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PackageInfo {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exports: Vec<PackageExport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PackageExport {
+    pub public_path: String,
+    pub source_path: String,
 }
 
 /// A dependency edge from one file to another.
@@ -55,7 +102,43 @@ pub struct Symbol {
     pub file_path: String,
     pub span: Option<Span>,
     pub signature: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docs: Option<SymbolDocs>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub export_paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
     pub children: Vec<Symbol>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct SymbolDocs {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remarks: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deprecated: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stability: Option<Stability>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub returns: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub throws: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Stability {
+    Experimental,
+    Beta,
+    Stable,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +188,7 @@ pub enum SymbolKind {
     Interface,
     Struct,
     Const,
+    Property,
     Decorator,
     Enum,
     Trait,

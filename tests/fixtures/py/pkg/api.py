@@ -1,4 +1,5 @@
 def public_func():
+    """Return the public fixture value."""
     return 1
 
 

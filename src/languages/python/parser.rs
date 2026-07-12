@@ -93,6 +93,9 @@ impl SymbolVisitor {
             file_path: self.relative_path.clone(),
             span,
             signature,
+            docs: None,
+            export_paths: vec![],
+            package: None,
             children: vec![],
         }
     }
@@ -133,7 +136,8 @@ impl SymbolVisitor {
                 let dec_str = format_decorators(&c.decorator_list);
                 let sig = format!("{}class {}{}", dec_str, name, bases_str);
 
-                let mut symbol = self.create_symbol(name, SymbolKind::Class, vis, c.range, sig);
+                let mut symbol =
+                    self.create_symbol(name.clone(), SymbolKind::Class, vis, c.range, sig);
 
                 // Visit children to find methods
                 let mut child_visitor = SymbolVisitor {
@@ -149,7 +153,8 @@ impl SymbolVisitor {
                 for mut child in child_visitor.symbols {
                     if child.kind == SymbolKind::Function {
                         child.kind = SymbolKind::Method;
-                        child.id = child.id.replace(":def#", ":method#");
+                        child.id =
+                            format!("py:{}:method#{}.{}", self.relative_path, name, child.name);
                     }
                     symbol.children.push(child);
                 }

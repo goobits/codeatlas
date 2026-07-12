@@ -1,10 +1,10 @@
 use crate::analysis::ignore;
-use crate::domain::{Language, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::domain::{Language, Route, ScanConfig, ScanReport, SkippedFile, Symbol};
 use crate::languages::definition::{
     LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver,
 };
 use anyhow::Result;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 
 pub mod frameworks;
@@ -169,23 +169,82 @@ struct ModuleInfo {
 }
 
 fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
-    let mut report = ScanReport {
-        stats: ScanStats::default(),
-        symbols: vec![],
-        routes: vec![],
-        skipped_files: vec![],
-        imports: vec![],
-        unused_public: vec![],
-        file_edges: vec![],
-    };
-
     let entrypoints = config
         .entrypoints
         .as_ref()
-        .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
+        .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir))
+        .unwrap_or_default();
+    let (modules, skipped_files) = parse_modules(root_dir, config.no_default_ignore);
+    let allowed = resolve_allowed(root_dir, &entrypoints, &modules);
+    let mut report = ScanReport::default();
+    report.stats.files_skipped = skipped_files.len();
+    report.skipped_files = skipped_files;
 
-    let mut modules: std::collections::HashMap<String, ModuleInfo> =
-        std::collections::HashMap::new();
+    for (file, info) in modules {
+        if let Some(names) = allowed.get(&file) {
+            let mut symbols: Vec<Symbol> = info
+                .symbols
+                .into_iter()
+                .filter(|symbol| names.contains(&symbol.name))
+                .collect();
+            let file_routes = frameworks::detect_routes(Path::new(&file), "", &mut symbols);
+            report.stats.routes_found += file_routes.len();
+            report.routes.extend(file_routes);
+
+            crate::languages::apply_symbol_filters(&mut symbols, config);
+            report.stats.symbols_found += symbols.len();
+            report.symbols.extend(symbols);
+            report.stats.files_scanned += 1;
+        }
+    }
+
+    report
+}
+
+pub(crate) fn reachable_symbol_ids_by_entrypoint(
+    root_dir: &Path,
+    entrypoints: &[String],
+    no_default_ignore: bool,
+) -> HashMap<String, HashSet<String>> {
+    let (modules, _) = parse_modules(root_dir, no_default_ignore);
+    let mut result = HashMap::new();
+    for original_entrypoint in entrypoints {
+        let normalized = crate::paths::normalize_entrypoints(
+            std::slice::from_ref(original_entrypoint),
+            root_dir,
+        );
+        let allowed = resolve_allowed(root_dir, &normalized, &modules);
+        let mut ids = HashSet::new();
+        for (file, names) in allowed {
+            let Some(info) = modules.get(&file) else {
+                continue;
+            };
+            for symbol in &info.symbols {
+                if names.contains(&symbol.name) {
+                    collect_public_symbol_ids(symbol, &mut ids);
+                }
+            }
+        }
+        result.insert(original_entrypoint.clone(), ids);
+    }
+    result
+}
+
+fn collect_public_symbol_ids(symbol: &Symbol, ids: &mut HashSet<String>) {
+    if symbol.visibility == crate::domain::Visibility::Public {
+        ids.insert(symbol.id.clone());
+    }
+    for child in &symbol.children {
+        collect_public_symbol_ids(child, ids);
+    }
+}
+
+fn parse_modules(
+    root_dir: &Path,
+    no_default_ignore: bool,
+) -> (HashMap<String, ModuleInfo>, Vec<SkippedFile>) {
+    let mut modules = HashMap::new();
+    let mut skipped_files = Vec::new();
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
     for entry in walker.filter_entry(|e| {
@@ -193,7 +252,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
             return true;
         }
         let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
-        if ignore::is_ignored_path(&relative, config.no_default_ignore) {
+        if ignore::is_ignored_path(&relative, no_default_ignore) {
             return false;
         }
         let name = e.file_name().to_string_lossy();
@@ -230,8 +289,7 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 );
             }
             Err(e) => {
-                report.stats.files_skipped += 1;
-                report.skipped_files.push(SkippedFile {
+                skipped_files.push(SkippedFile {
                     path: path.to_string_lossy().to_string(),
                     reason: e.to_string(),
                     language: Language::TypeScript,
@@ -240,21 +298,25 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         }
     }
 
-    let entry_files = entrypoints.unwrap_or_default();
-    let mut allowed: std::collections::HashMap<String, std::collections::HashSet<String>> =
-        std::collections::HashMap::new();
-    let mut queue: std::collections::VecDeque<(String, Option<std::collections::HashSet<String>>)> =
-        std::collections::VecDeque::new();
+    (modules, skipped_files)
+}
+
+fn resolve_allowed(
+    root_dir: &Path,
+    entry_files: &HashSet<String>,
+    modules: &HashMap<String, ModuleInfo>,
+) -> HashMap<String, HashSet<String>> {
+    let mut allowed: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut queue: VecDeque<(String, Option<HashSet<String>>)> = VecDeque::new();
 
     for entry in entry_files {
-        if modules.contains_key(&entry) {
-            queue.push_back((entry, None));
+        if modules.contains_key(entry) {
+            queue.push_back((entry.clone(), None));
         }
     }
 
-    let mut processed_all: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut processed_names: std::collections::HashMap<String, std::collections::HashSet<String>> =
-        std::collections::HashMap::new();
+    let mut processed_all = HashSet::new();
+    let mut processed_names: HashMap<String, HashSet<String>> = HashMap::new();
     while let Some((file, names)) = queue.pop_front() {
         let info = match modules.get(&file) {
             Some(info) => info,
@@ -284,17 +346,22 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         let current_allowed = allowed.entry(file.clone()).or_default();
 
         for name in &export_names {
-            if info.symbols.iter().any(|sym| sym.name == *name) {
-                current_allowed.insert(name.clone());
+            let local_name = if name == "default" {
+                info.exports.default_export.as_ref().unwrap_or(name)
+            } else {
+                name
+            };
+            if info.symbols.iter().any(|symbol| symbol.name == *local_name) {
+                current_allowed.insert(local_name.clone());
                 continue;
             }
 
             for re_export in &info.exports.re_exports {
                 if let Some(spec) = re_export.names.iter().find(|spec| spec.exported == *name) {
                     if let Some(target) =
-                        resolve_ts_module(root_dir, &file, &re_export.source, &modules)
+                        resolve_ts_module(root_dir, &file, &re_export.source, modules)
                     {
-                        let mut names = std::collections::HashSet::new();
+                        let mut names = HashSet::new();
                         names.insert(spec.original.clone());
                         queue.push_back((target, Some(names)));
                     }
@@ -304,10 +371,9 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
 
         for re_export in &info.exports.re_exports {
             if is_all {
-                if let Some(target) =
-                    resolve_ts_module(root_dir, &file, &re_export.source, &modules)
+                if let Some(target) = resolve_ts_module(root_dir, &file, &re_export.source, modules)
                 {
-                    let mut names = std::collections::HashSet::new();
+                    let mut names = HashSet::new();
                     for spec in &re_export.names {
                         names.insert(spec.original.clone());
                     }
@@ -318,32 +384,14 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
 
         if is_all {
             for source in &info.exports.export_all {
-                if let Some(target) = resolve_ts_module(root_dir, &file, source, &modules) {
+                if let Some(target) = resolve_ts_module(root_dir, &file, source, modules) {
                     queue.push_back((target, None));
                 }
             }
         }
     }
 
-    for (file, info) in modules {
-        if let Some(names) = allowed.get(&file) {
-            let mut symbols: Vec<Symbol> = info
-                .symbols
-                .into_iter()
-                .filter(|sym| names.contains(&sym.name))
-                .collect();
-            let file_routes = frameworks::detect_routes(Path::new(&file), "", &mut symbols);
-            report.stats.routes_found += file_routes.len();
-            report.routes.extend(file_routes);
-
-            crate::languages::apply_symbol_filters(&mut symbols, config);
-            report.stats.symbols_found += symbols.len();
-            report.symbols.extend(symbols);
-            report.stats.files_scanned += 1;
-        }
-    }
-
-    report
+    allowed
 }
 
 fn resolve_ts_module(

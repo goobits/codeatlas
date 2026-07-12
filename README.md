@@ -1,85 +1,99 @@
-# codeatlas
+# CodeAtlas
 
-Generate a high-density public surface map of a codebase. Code Atlas scans TypeScript, Python, and Rust to produce a compact report of exported symbols, routes, imports, and unused public APIs.
+CodeAtlas maps the public API surface of TypeScript, JavaScript, Svelte, Python,
+and Rust projects. It produces deterministic JSON, Markdown, dependency trees,
+Mermaid diagrams, and unused-export audits from source code and package exports.
 
-## Quick start
-
-```bash
-npx @goobits/codeatlas --help
-npx @goobits/codeatlas . --format json --out .codeatlas --suggest --imports
-```
-
-## Common usage
+## Quick Start
 
 ```bash
-# Compact console output
-npx @goobits/codeatlas . --format compact
-
-# Mermaid diagram
-npx @goobits/codeatlas . --format mermaid --out .codeatlas
-
-# JSON for CI diffs or scripts
-npx @goobits/codeatlas . --format json --out .codeatlas --suggest --imports
+npx @goobits/codeatlas scan .
+npx @goobits/codeatlas audit .
+npx @goobits/codeatlas docs . --out docs/API-Reference.md
 ```
 
-Output files (when using `--out`):
-- tree: `atlas.tree`
-- mermaid: `atlas.mmd`
-- compact: `atlas.txt`
-- json: `atlas.json`
-
-## Options
-
-```
-  -l, --languages <LANGUAGES>      Comma-separated list: ts, py, rs (default: all)
-  -f, --format <FORMAT>            tree | mermaid | compact | json
-  -o, --out <OUT>                  Output directory (prints to stdout if omitted)
-      --include-types              Include type definitions/interfaces
-      --include-private            Include private members
-      --entrypoints <ENTRYPOINTS>  Audit mode entrypoints (comma-separated)
-      --suggest                    Include unused_public analysis
-      --imports                    Include import graph
-      --no-default-ignore          Disable default ignore list
-```
-
-## Audit mode (entrypoints)
-
-Audit mode limits the report to exports reachable from entrypoints.
+Use `CODEATLAS_BINARY_PATH` to run a locally built binary through the npm
+wrapper:
 
 ```bash
-npx @goobits/codeatlas src/index.ts --entrypoints src/index.ts --format json --out .codeatlas
+CODEATLAS_BINARY_PATH=/path/to/codeatlas npx @goobits/codeatlas --version
 ```
 
-## Default ignores
+## Commands
 
-By default, Code Atlas ignores common build and test artifacts:
+| Command | Purpose |
+| --- | --- |
+| `scan` | Show the public surface as a tree, Mermaid, or versioned JSON report |
+| `audit` | Report public exports with no detected consumers |
+| `ci` | Write a JSON baseline and fail on configured audit findings |
+| `diff` | Compare the current public symbols with a JSON baseline |
+| `map` | Generate a Mermaid dependency diagram |
+| `docs` | Generate deterministic Markdown from public exports and source docs |
 
+Run `codeatlas <command> --help` for command-specific options.
+
+## Configuration
+
+CodeAtlas automatically reads `codeatlas.json` from the scanned directory, or
+an explicit file passed through `--config`. Unknown fields fail validation so a
+misspelled setting cannot silently weaken a check.
+
+```json
+{
+	"root": "packages/example",
+	"languages": ["ts"],
+	"entrypoints": ["src/index.ts"],
+	"docs": {
+		"title": "Example API Reference",
+		"output": "docs/API-Reference.md"
+	}
+}
 ```
-tests
-tests/fixtures
-__tests__
-__test__
-__mocks__
-target
-node_modules
-dist
-build
-coverage
-.git
+
+Paths in the config are relative to the config file. Supported fields are:
+
+- `root`: project or package root
+- `languages`: any of `ts`, `py`, `rs`, or `svelte`
+- `entrypoints`: public source entrypoints used by scans and audits
+- `include_private`: include internal and private symbols
+- `include_types`: include classes, interfaces, structs, and methods
+- `no_default_ignore`: include normally ignored build and test directories
+- `package_exports`: discover public entrypoints from `package.json` exports
+- `docs.title` and `docs.output`: generated Markdown ownership
+
+For TypeScript packages, `docs` discovers `package.json` exports when explicit
+entrypoints are absent. Source JSDoc is the documentation owner; CodeAtlas does
+not synthesize descriptions for undocumented symbols.
+
+## Documentation Checks
+
+Generate the canonical reference:
+
+```bash
+codeatlas docs --config codeatlas.json
 ```
 
-Use `--no-default-ignore` to disable these filters.
+Fail CI when the committed reference is missing or stale:
 
-## Environment variables
-
-```
-CODEATLAS_BINARY_PATH   Use a specific binary (skips download/build)
-CODEATLAS_CACHE_DIR     Override binary cache location
-CODEATLAS_REPO          Override GitHub repo for release assets (default: goobits/codeatlas)
-CODEATLAS_DEBUG=1       Enable wrapper debug logging
+```bash
+codeatlas docs --config codeatlas.json --check
 ```
 
-## Notes
+The JSON report contains `schema_version`, `tool_version`, package metadata,
+public export paths, source signatures, structured documentation, routes,
+imports, and unused-public findings. New report fields are additive and older
+baselines remain readable.
 
-- If no prebuilt binary is available, Code Atlas falls back to `cargo build --release`.
-- The CLI is designed for CI-friendly output and API surface regression checks.
+## Release Model
+
+Git tags build native archives for Linux, macOS, and Windows and publish the npm
+wrapper with provenance. If a matching archive is unavailable, the wrapper
+builds from source with Cargo.
+
+Required release secret:
+
+```text
+NPM_TOKEN
+```
+
+The software is distributed under the terms in `LICENSE`.

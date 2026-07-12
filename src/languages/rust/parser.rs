@@ -107,6 +107,9 @@ impl SymbolVisitor {
             file_path: self.relative_path.clone(),
             span: span_obj,
             signature,
+            docs: None,
+            export_paths: vec![],
+            package: None,
             children: vec![],
         }
     }
@@ -125,6 +128,8 @@ impl SymbolVisitor {
     }
 
     fn push_pending(&mut self, type_name: String, method: Symbol, trait_name: Option<String>) {
+        let mut method = method;
+        self.qualify_child(&type_name, &mut method);
         let method = if let Some(trait_name) = trait_name {
             let mut updated = method;
             updated.signature = format!("{}::{}", trait_name, updated.signature);
@@ -137,6 +142,16 @@ impl SymbolVisitor {
             .entry(type_name)
             .or_default()
             .push(method);
+    }
+
+    fn qualify_child(&self, parent: &str, child: &mut Symbol) {
+        child.id = format!(
+            "rs:{}:{}#{}.{}",
+            self.relative_path,
+            kind_to_str(child.kind),
+            parent,
+            child.name
+        );
     }
 }
 
@@ -416,6 +431,7 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
 
                     if let Some(idx) = parent_idx {
                         let mut sym = sym;
+                        self.qualify_child(&type_name, &mut sym);
                         sym.signature = format!("{}::{}", trait_name, sym.signature);
                         self.symbols[idx].children.push(sym);
                     } else if type_name != "?" {
@@ -423,6 +439,7 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                     } else {
                         let mut orphan = sym;
                         orphan.name = format!("{}::{}", trait_name, orphan.name);
+                        self.qualify_child(&trait_name, &mut orphan);
                         self.symbols.push(orphan);
                     }
                 }
@@ -445,7 +462,7 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                     let m_vis = map_vis(&method.vis);
                     let m_sig = format_fn_signature(&method.sig);
 
-                    let sym = self.create_symbol(
+                    let mut sym = self.create_symbol(
                         m_name,
                         SymbolKind::Method,
                         m_vis,
@@ -454,6 +471,7 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                     );
 
                     if let Some(idx) = parent_idx {
+                        self.qualify_child(&type_name, &mut sym);
                         self.symbols[idx].children.push(sym);
                     } else {
                         self.push_pending(type_name.clone(), sym, None);
@@ -501,13 +519,14 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                 // Trait methods are public by default (part of the trait's contract)
                 let m_vis = Visibility::Public;
 
-                let sym = self.create_symbol(
+                let mut sym = self.create_symbol(
                     m_name,
                     SymbolKind::Method,
                     m_vis,
                     method.sig.ident.span(),
                     m_sig,
                 );
+                self.qualify_child(&name, &mut sym);
                 self.symbols[idx].children.push(sym);
             }
         }

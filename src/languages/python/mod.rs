@@ -1,5 +1,5 @@
 use crate::analysis::ignore;
-use crate::domain::{Language, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol};
+use crate::domain::{Language, Route, ScanConfig, ScanReport, SkippedFile, Symbol};
 use crate::languages::definition::{
     LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver,
 };
@@ -195,15 +195,7 @@ struct ModuleInfo {
 }
 
 fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
-    let mut report = ScanReport {
-        stats: ScanStats::default(),
-        symbols: vec![],
-        routes: vec![],
-        skipped_files: vec![],
-        imports: vec![],
-        unused_public: vec![],
-        file_edges: vec![],
-    };
+    let mut report = ScanReport::default();
 
     let entrypoints = config
         .entrypoints

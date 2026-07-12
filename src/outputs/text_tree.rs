@@ -58,6 +58,7 @@ pub(crate) fn render(report: &ScanReport) -> String {
                 }
                 crate::domain::SymbolKind::Enum => "E".blue(),
                 crate::domain::SymbolKind::Const => "c".white(),
+                crate::domain::SymbolKind::Property => "p".white(),
                 crate::domain::SymbolKind::TypeAlias => "t".white(),
                 _ => "?".white(),
             };

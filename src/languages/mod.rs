@@ -14,8 +14,7 @@ pub use definition::LanguageDefinition;
 pub use registry::LanguageRegistry;
 
 use crate::domain::{
-    LanguageScanner, Route, ScanConfig, ScanReport, ScanStats, SkippedFile, Symbol, SymbolKind,
-    Visibility,
+    LanguageScanner, Route, ScanConfig, ScanReport, SkippedFile, Symbol, SymbolKind, Visibility,
 };
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
@@ -50,15 +49,7 @@ pub(crate) fn scan_all(
         .collect();
 
     // Combine all reports
-    let mut combined_report = ScanReport {
-        stats: ScanStats::default(),
-        symbols: vec![],
-        routes: vec![],
-        skipped_files: vec![],
-        imports: vec![],
-        unused_public: vec![],
-        file_edges: vec![],
-    };
+    let mut combined_report = ScanReport::default();
 
     for report in reports {
         combined_report.stats.files_scanned += report.stats.files_scanned;
@@ -200,15 +191,7 @@ pub(crate) fn scan_language_with_definition(
         .collect();
 
     // Combine results
-    let mut report = ScanReport {
-        stats: ScanStats::default(),
-        symbols: vec![],
-        routes: vec![],
-        skipped_files: vec![],
-        imports: vec![],
-        unused_public: vec![],
-        file_edges: vec![],
-    };
+    let mut report = ScanReport::default();
 
     for result in results {
         if let Some(skipped) = result.skipped {
