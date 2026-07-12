@@ -1,4 +1,4 @@
-use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolKind};
+use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolKind, Visibility};
 use std::collections::BTreeMap;
 
 pub(crate) struct ApiReference<'a> {
@@ -33,7 +33,9 @@ pub(crate) fn build<'a>(report: &'a ScanReport, title: Option<&str>) -> ApiRefer
     let mut grouped: BTreeMap<String, Vec<&Symbol>> = BTreeMap::new();
 
     for symbol in &report.symbols {
-        if package_has_exports && symbol.export_paths.is_empty() {
+        if symbol.visibility != Visibility::Public
+            || package_has_exports && symbol.export_paths.is_empty()
+        {
             continue;
         }
         let group = symbol
@@ -90,8 +92,15 @@ pub(crate) fn language_tag(language: Language) -> &'static str {
 }
 
 pub(crate) fn uses_member_table(symbol: &Symbol) -> bool {
-    !symbol.children.is_empty()
+    public_children(symbol).next().is_some()
         && matches!(symbol.kind, SymbolKind::Interface | SymbolKind::TypeAlias)
+}
+
+pub(crate) fn public_children(symbol: &Symbol) -> impl Iterator<Item = &Symbol> {
+    symbol
+        .children
+        .iter()
+        .filter(|child| child.visibility == Visibility::Public)
 }
 
 pub(crate) fn member_description(symbol: &Symbol) -> String {

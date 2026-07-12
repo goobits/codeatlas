@@ -219,10 +219,10 @@ fn render_symbol(
 
     render_docs_details(output, symbol);
     if reference::uses_member_table(symbol) {
-        render_member_table(output, &symbol.children);
-    } else if !symbol.children.is_empty() {
+        render_member_table(output, reference::public_children(symbol));
+    } else if reference::public_children(symbol).next().is_some() {
         output.push_str("\t\t\t\t<div class=\"atlas-children\">\n");
-        for child in &symbol.children {
+        for child in reference::public_children(symbol) {
             render_symbol(output, child, group, heading_level + 1, false);
         }
         output.push_str("\t\t\t\t</div>\n");
@@ -274,7 +274,7 @@ fn render_docs_details(output: &mut String, symbol: &Symbol) {
     }
 }
 
-fn render_member_table(output: &mut String, members: &[Symbol]) {
+fn render_member_table<'a>(output: &mut String, members: impl Iterator<Item = &'a Symbol>) {
     output.push_str("\t\t\t\t<div class=\"atlas-table-wrap\"><table class=\"atlas-table\"><thead><tr><th>Member</th><th>Signature</th><th>Description</th></tr></thead><tbody>\n");
     for member in members {
         writeln!(

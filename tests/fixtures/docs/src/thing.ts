@@ -5,6 +5,9 @@ export interface ThingOptions {
 	 * @deprecated Use `name`.
 	 */
 	label: string
+
+	/** @internal Parser-only implementation marker. */
+	secret: string
 }
 
 /** Stable identifier for one thing. */

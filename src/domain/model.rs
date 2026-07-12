@@ -125,6 +125,8 @@ pub struct SymbolDocs {
     pub since: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stability: Option<Stability>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub internal: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

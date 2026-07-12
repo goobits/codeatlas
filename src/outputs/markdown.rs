@@ -105,15 +105,15 @@ fn render_symbol(output: &mut String, symbol: &Symbol, heading_level: usize, sho
     }
 
     if reference::uses_member_table(symbol) {
-        render_member_table(output, &symbol.children);
+        render_member_table(output, reference::public_children(symbol));
     } else {
-        for child in &symbol.children {
+        for child in reference::public_children(symbol) {
             render_symbol(output, child, heading_level + 1, false);
         }
     }
 }
 
-fn render_member_table(output: &mut String, members: &[Symbol]) {
+fn render_member_table<'a>(output: &mut String, members: impl Iterator<Item = &'a Symbol>) {
     output.push_str("**Members**\n\n| Member | Signature | Description |\n| --- | --- | --- |\n");
     for member in members {
         let description = reference::member_description(member);

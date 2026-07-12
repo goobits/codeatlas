@@ -111,6 +111,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(
         markdown.contains("| `label` | `label: string` | Deprecated: Use `name`. Legacy label. |")
     );
+    assert!(!markdown.contains("secret"));
     assert!(!markdown.contains("#### `label`"));
     assert!(!markdown.contains("internalOnly"));
     assert_eq!(markdown, outputs::markdown::render(&report, None));
@@ -122,6 +123,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(html.contains("Create a thing."));
     assert!(html.contains("<th>Member</th>"));
     assert!(html.contains("Deprecated: Use <code>name</code>. Legacy label."));
+    assert!(!html.contains("secret"));
     assert!(!html.contains("internalOnly"));
     assert_eq!(html, outputs::html::render(&report, None));
 

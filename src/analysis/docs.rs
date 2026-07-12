@@ -1,4 +1,4 @@
-use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolDocs};
+use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolDocs, Visibility};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
@@ -21,6 +21,9 @@ fn annotate_symbol(symbol: &mut Symbol, source: &str) {
 
     if let Some(raw) = raw {
         symbol.docs = parse_doc(&raw);
+        if symbol.docs.as_ref().is_some_and(|docs| docs.internal) {
+            symbol.visibility = Visibility::Internal;
+        }
     }
 
     for child in &mut symbol.children {
@@ -169,6 +172,7 @@ struct DocBuilder {
     deprecated: Option<String>,
     since: Option<String>,
     stability: Option<Stability>,
+    internal: bool,
     params: BTreeMap<String, String>,
     returns: Option<String>,
     throws: Vec<String>,
@@ -213,6 +217,10 @@ impl DocBuilder {
                 "return" | "returns" => Some(DocBlock::Returns(initial())),
                 "throws" | "throw" => Some(DocBlock::Throws(initial())),
                 "deprecated" => Some(DocBlock::Deprecated(initial())),
+                "internal" => {
+                    self.internal = true;
+                    Some(DocBlock::Ignore)
+                }
                 "since" => {
                     self.since = nonempty(value).map(|value| clean_inline_tags(&value));
                     Some(DocBlock::Ignore)
@@ -287,6 +295,7 @@ impl DocBuilder {
             deprecated: self.deprecated.map(|value| clean_inline_tags(&value)),
             since: self.since,
             stability: self.stability,
+            internal: self.internal,
             params: self
                 .params
                 .into_iter()
@@ -377,6 +386,7 @@ fn has_docs(docs: &SymbolDocs) -> bool {
         || docs.deprecated.is_some()
         || docs.since.is_some()
         || docs.stability.is_some()
+        || docs.internal
         || !docs.params.is_empty()
         || docs.returns.is_some()
         || !docs.throws.is_empty()
@@ -390,7 +400,7 @@ mod tests {
     #[test]
     fn parses_structured_jsdoc() {
         let docs = parse_doc(
-            "Create a {@link Document}.\n\nUses the active workspace.\n@remarks This is explicit\nadditional context.\n@param width - Pixel\nwidth.\n@returns The document.\n@example create({ width: 10 })\n@beta",
+            "Create a {@link Document}.\n\nUses the active workspace.\n@remarks This is explicit\nadditional context.\n@param width - Pixel\nwidth.\n@returns The document.\n@example create({ width: 10 })\n@beta\n@internal",
         )
         .expect("docs");
 
@@ -406,5 +416,6 @@ mod tests {
         assert_eq!(docs.returns.as_deref(), Some("The document."));
         assert_eq!(docs.examples, ["create({ width: 10 })"]);
         assert_eq!(docs.stability, Some(Stability::Beta));
+        assert!(docs.internal);
     }
 }
