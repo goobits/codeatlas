@@ -1,5 +1,5 @@
 use super::reference;
-use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolKind};
+use crate::domain::{ScanReport, Symbol};
 use std::fmt::Write;
 
 const STYLE: &str = include_str!("html.css");
@@ -153,7 +153,7 @@ fn render_symbol(
         heading_level,
         escape_html(&symbol.name),
         heading_level,
-        kind_label(symbol.kind)
+        reference::kind_label(symbol.kind)
     )
     .expect("writing to String cannot fail");
 
@@ -202,7 +202,7 @@ fn render_symbol(
             writeln!(
                 output,
                 "\t\t\t\t<p class=\"atlas-note\"><strong>Stability:</strong> {}</p>",
-                stability_label(stability)
+                reference::stability_label(stability)
             )
             .expect("writing to String cannot fail");
         }
@@ -211,13 +211,13 @@ fn render_symbol(
     writeln!(
         output,
         "\t\t\t\t<pre class=\"atlas-code\"><code class=\"language-{}\">{}</code></pre>",
-        language_tag(symbol.language),
+        reference::language_tag(symbol.language),
         escape_html(&symbol.signature)
     )
     .expect("writing to String cannot fail");
 
     render_docs_details(output, symbol);
-    if uses_member_table(symbol) {
+    if reference::uses_member_table(symbol) {
         render_member_table(output, &symbol.children);
     } else if !symbol.children.is_empty() {
         output.push_str("\t\t\t\t<div class=\"atlas-children\">\n");
@@ -281,36 +281,11 @@ fn render_member_table(output: &mut String, members: &[Symbol]) {
             "\t\t\t\t\t<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}</td></tr>",
             escape_html(&member.name),
             escape_html(&member.signature),
-            escape_html(&member_description(member))
+            escape_html(&reference::member_description(member))
         )
         .expect("writing to String cannot fail");
     }
     output.push_str("\t\t\t\t</tbody></table></div>\n");
-}
-
-fn member_description(symbol: &Symbol) -> String {
-    let Some(docs) = &symbol.docs else {
-        return "-".to_string();
-    };
-    let mut description = docs.summary.clone();
-    if let Some(remarks) = &docs.remarks {
-        if !description.is_empty() {
-            description.push(' ');
-        }
-        description.push_str(remarks);
-    }
-    if docs.deprecated.is_some() {
-        description = if description.is_empty() {
-            "Deprecated.".to_string()
-        } else {
-            format!("Deprecated. {}", description)
-        };
-    }
-    if description.is_empty() {
-        "-".to_string()
-    } else {
-        description
-    }
 }
 
 fn symbol_search_text(symbol: &Symbol) -> String {
@@ -341,45 +316,6 @@ fn slug(value: &str) -> String {
         }
     }
     output
-}
-
-fn uses_member_table(symbol: &Symbol) -> bool {
-    !symbol.children.is_empty()
-        && matches!(symbol.kind, SymbolKind::Interface | SymbolKind::TypeAlias)
-}
-
-fn kind_label(kind: SymbolKind) -> &'static str {
-    match kind {
-        SymbolKind::Module => "Module",
-        SymbolKind::Class => "Class",
-        SymbolKind::Method => "Method",
-        SymbolKind::Function => "Function",
-        SymbolKind::Interface => "Interface",
-        SymbolKind::Struct => "Struct",
-        SymbolKind::Const => "Constant",
-        SymbolKind::Property => "Property",
-        SymbolKind::Decorator => "Decorator",
-        SymbolKind::Enum => "Enum",
-        SymbolKind::Trait => "Trait",
-        SymbolKind::TypeAlias => "Type alias",
-    }
-}
-
-fn stability_label(stability: Stability) -> &'static str {
-    match stability {
-        Stability::Experimental => "Experimental",
-        Stability::Beta => "Beta",
-        Stability::Stable => "Stable",
-    }
-}
-
-fn language_tag(language: Language) -> &'static str {
-    match language {
-        Language::TypeScript => "ts",
-        Language::Python => "python",
-        Language::Rust => "rust",
-        Language::Unknown => "text",
-    }
 }
 
 fn escape_html(value: &str) -> String {

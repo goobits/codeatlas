@@ -1,5 +1,5 @@
 use super::reference;
-use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolKind};
+use crate::domain::{ScanReport, Symbol};
 
 pub(crate) fn render(report: &ScanReport, title: Option<&str>) -> String {
     let reference = reference::build(report, title);
@@ -31,7 +31,7 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>) -> String {
 fn render_symbol(output: &mut String, symbol: &Symbol, heading_level: usize, show_exports: bool) {
     let heading = "#".repeat(heading_level.min(6));
     output.push_str(&format!("{} `{}`\n\n", heading, symbol.name));
-    output.push_str(&format!("**Kind:** {}", kind_label(symbol.kind)));
+    output.push_str(&format!("**Kind:** {}", reference::kind_label(symbol.kind)));
 
     if show_exports && symbol.export_paths.len() > 1 {
         let paths = symbol
@@ -55,7 +55,7 @@ fn render_symbol(output: &mut String, symbol: &Symbol, heading_level: usize, sho
         if let Some(stability) = docs.stability {
             output.push_str(&format!(
                 "**Stability:** {}\n\n",
-                stability_label(stability)
+                reference::stability_label(stability)
             ));
         }
         if !docs.summary.is_empty() {
@@ -70,7 +70,7 @@ fn render_symbol(output: &mut String, symbol: &Symbol, heading_level: usize, sho
 
     output.push_str(&format!(
         "```{}\n{}\n```\n\n",
-        language_tag(symbol.language),
+        reference::language_tag(symbol.language),
         symbol.signature
     ));
 
@@ -98,13 +98,13 @@ fn render_symbol(output: &mut String, symbol: &Symbol, heading_level: usize, sho
         for example in &docs.examples {
             output.push_str(&format!(
                 "**Example**\n\n```{}\n{}\n```\n\n",
-                language_tag(symbol.language),
+                reference::language_tag(symbol.language),
                 example
             ));
         }
     }
 
-    if uses_member_table(symbol) {
+    if reference::uses_member_table(symbol) {
         render_member_table(output, &symbol.children);
     } else {
         for child in &symbol.children {
@@ -113,36 +113,10 @@ fn render_symbol(output: &mut String, symbol: &Symbol, heading_level: usize, sho
     }
 }
 
-fn uses_member_table(symbol: &Symbol) -> bool {
-    !symbol.children.is_empty()
-        && matches!(symbol.kind, SymbolKind::Interface | SymbolKind::TypeAlias)
-}
-
 fn render_member_table(output: &mut String, members: &[Symbol]) {
     output.push_str("**Members**\n\n| Member | Signature | Description |\n| --- | --- | --- |\n");
     for member in members {
-        let description = member
-            .docs
-            .as_ref()
-            .map(|docs| {
-                let mut description = docs.summary.clone();
-                if let Some(remarks) = &docs.remarks {
-                    if !description.is_empty() {
-                        description.push(' ');
-                    }
-                    description.push_str(remarks);
-                }
-                if docs.deprecated.is_some() {
-                    description = if description.is_empty() {
-                        "Deprecated.".to_string()
-                    } else {
-                        format!("Deprecated. {}", description)
-                    };
-                }
-                description
-            })
-            .filter(|description| !description.is_empty())
-            .unwrap_or_else(|| "-".to_string());
+        let description = reference::member_description(member);
         output.push_str(&format!(
             "| {} | {} | {} |\n",
             inline_code(&escape_table(&member.name)),
@@ -151,40 +125,6 @@ fn render_member_table(output: &mut String, members: &[Symbol]) {
         ));
     }
     output.push('\n');
-}
-
-fn kind_label(kind: SymbolKind) -> &'static str {
-    match kind {
-        SymbolKind::Module => "Module",
-        SymbolKind::Class => "Class",
-        SymbolKind::Method => "Method",
-        SymbolKind::Function => "Function",
-        SymbolKind::Interface => "Interface",
-        SymbolKind::Struct => "Struct",
-        SymbolKind::Const => "Constant",
-        SymbolKind::Property => "Property",
-        SymbolKind::Decorator => "Decorator",
-        SymbolKind::Enum => "Enum",
-        SymbolKind::Trait => "Trait",
-        SymbolKind::TypeAlias => "Type alias",
-    }
-}
-
-fn stability_label(stability: Stability) -> &'static str {
-    match stability {
-        Stability::Experimental => "Experimental",
-        Stability::Beta => "Beta",
-        Stability::Stable => "Stable",
-    }
-}
-
-fn language_tag(language: Language) -> &'static str {
-    match language {
-        Language::TypeScript => "ts",
-        Language::Python => "python",
-        Language::Rust => "rust",
-        Language::Unknown => "text",
-    }
 }
 
 fn escape_table(value: &str) -> String {

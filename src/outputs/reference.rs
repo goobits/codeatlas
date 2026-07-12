@@ -1,4 +1,4 @@
-use crate::domain::{ScanReport, Symbol};
+use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolKind};
 use std::collections::BTreeMap;
 
 pub(crate) struct ApiReference<'a> {
@@ -53,4 +53,68 @@ pub(crate) fn build<'a>(report: &'a ScanReport, title: Option<&str>) -> ApiRefer
         .collect();
 
     ApiReference { groups, title }
+}
+
+pub(crate) fn kind_label(kind: SymbolKind) -> &'static str {
+    match kind {
+        SymbolKind::Module => "Module",
+        SymbolKind::Class => "Class",
+        SymbolKind::Method => "Method",
+        SymbolKind::Function => "Function",
+        SymbolKind::Interface => "Interface",
+        SymbolKind::Struct => "Struct",
+        SymbolKind::Const => "Constant",
+        SymbolKind::Property => "Property",
+        SymbolKind::Decorator => "Decorator",
+        SymbolKind::Enum => "Enum",
+        SymbolKind::Trait => "Trait",
+        SymbolKind::TypeAlias => "Type alias",
+    }
+}
+
+pub(crate) fn stability_label(stability: Stability) -> &'static str {
+    match stability {
+        Stability::Experimental => "Experimental",
+        Stability::Beta => "Beta",
+        Stability::Stable => "Stable",
+    }
+}
+
+pub(crate) fn language_tag(language: Language) -> &'static str {
+    match language {
+        Language::TypeScript => "ts",
+        Language::Python => "python",
+        Language::Rust => "rust",
+        Language::Unknown => "text",
+    }
+}
+
+pub(crate) fn uses_member_table(symbol: &Symbol) -> bool {
+    !symbol.children.is_empty()
+        && matches!(symbol.kind, SymbolKind::Interface | SymbolKind::TypeAlias)
+}
+
+pub(crate) fn member_description(symbol: &Symbol) -> String {
+    let Some(docs) = &symbol.docs else {
+        return "-".to_string();
+    };
+    let mut parts = Vec::new();
+    if let Some(reason) = &docs.deprecated {
+        parts.push(if reason.is_empty() {
+            "Deprecated.".to_string()
+        } else {
+            format!("Deprecated: {}", reason)
+        });
+    }
+    if !docs.summary.is_empty() {
+        parts.push(docs.summary.clone());
+    }
+    if let Some(remarks) = &docs.remarks {
+        parts.push(remarks.clone());
+    }
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join(" ")
+    }
 }

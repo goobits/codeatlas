@@ -108,7 +108,9 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(markdown.contains("## `@example/docs/math`"));
     assert!(markdown.contains("Create a thing."));
     assert!(markdown.contains("**Members**"));
-    assert!(markdown.contains("| `label` | `label: string` | - |"));
+    assert!(
+        markdown.contains("| `label` | `label: string` | Deprecated: Use `name`. Legacy label. |")
+    );
     assert!(!markdown.contains("#### `label`"));
     assert!(!markdown.contains("internalOnly"));
     assert_eq!(markdown, outputs::markdown::render(&report, None));
@@ -119,6 +121,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(html.contains("@example/docs API Reference"));
     assert!(html.contains("Create a thing."));
     assert!(html.contains("<th>Member</th>"));
+    assert!(html.contains("Deprecated: Use `name`. Legacy label."));
     assert!(!html.contains("internalOnly"));
     assert_eq!(html, outputs::html::render(&report, None));
 

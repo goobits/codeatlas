@@ -1,5 +1,9 @@
 /** Options accepted by {@link createThing}. */
 export interface ThingOptions {
+	/**
+	 * Legacy label.
+	 * @deprecated Use `name`.
+	 */
 	label: string
 }
 
