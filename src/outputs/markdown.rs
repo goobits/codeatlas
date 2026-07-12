@@ -25,6 +25,14 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: 
         }
     }
 
+    normalize_eof(output)
+}
+
+fn normalize_eof(mut output: String) -> String {
+    while output.ends_with('\n') {
+        output.pop();
+    }
+    output.push('\n');
     output
 }
 
@@ -154,11 +162,16 @@ fn inline_code(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{escape_table, inline_code};
+    use super::{escape_table, inline_code, normalize_eof};
 
     #[test]
     fn escapes_markdown_tables() {
         assert_eq!(escape_table("one | two\nthree"), "one \\| two<br>three");
         assert_eq!(inline_code("`template`"), "```template```");
+    }
+
+    #[test]
+    fn keeps_exactly_one_trailing_newline() {
+        assert_eq!(normalize_eof("reference\n\n".to_owned()), "reference\n");
     }
 }
