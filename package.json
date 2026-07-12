@@ -1,8 +1,8 @@
 {
 	"name": "@goobits/codeatlas",
 	"license": "SEE LICENSE IN LICENSE",
-	"version": "0.2.3",
-	"description": "Generate a high-density 'Public Surface Map' of a codebase",
+	"version": "0.3.0",
+	"description": "Map, document, and diff public API surfaces across source languages",
 	"type": "commonjs",
 	"packageManager": "pnpm@10.25.0",
 	"scripts": {

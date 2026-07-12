@@ -1,8 +1,8 @@
 [package]
 name = "codeatlas"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
-description = "Generate a high-density public API surface map of a codebase"
+description = "Map, document, and diff public API surfaces across source languages"
 license-file = "LICENSE"
 repository = "https://github.com/goobits/codeatlas"
 
