@@ -89,14 +89,17 @@ enum Command {
         out: Option<PathBuf>,
     },
 
-    /// Generate deterministic Markdown API documentation
+    /// Generate deterministic API documentation
     Docs {
         /// Path to scan
         #[arg(default_value = ".")]
         path: PathBuf,
-        /// Markdown output file
+        /// Documentation output file
         #[arg(short, long)]
         out: Option<PathBuf>,
+        /// Documentation output format
+        #[arg(short, long, value_enum, default_value_t = DocsFormat::Markdown)]
+        format: DocsFormat,
         /// Fail when the output file differs instead of writing it
         #[arg(long)]
         check: bool,
@@ -125,6 +128,14 @@ pub(crate) enum OutputFormat {
     Json,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub(crate) enum DocsFormat {
+    /// Markdown reference
+    Markdown,
+    /// Standalone searchable HTML reference
+    Html,
+}
+
 pub(crate) fn run() -> i32 {
     let cli = Cli::parse();
     let config_path = cli.config.clone();
@@ -146,11 +157,13 @@ pub(crate) fn run() -> i32 {
         Some(Command::Docs {
             path,
             out,
+            format,
             check,
             title,
         }) => commands::docs::run(
             &path,
             out.as_deref(),
+            format,
             check,
             title.as_deref(),
             config_path.as_deref(),

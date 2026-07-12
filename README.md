@@ -10,6 +10,7 @@ Mermaid diagrams, and unused-export audits from source code and package exports.
 npx @goobits/codeatlas scan .
 npx @goobits/codeatlas audit .
 npx @goobits/codeatlas docs . --out docs/API-Reference.md
+npx @goobits/codeatlas docs . --format html --out docs/API-Reference.html
 ```
 
 Use `CODEATLAS_BINARY_PATH` to run a locally built binary through the npm
@@ -28,7 +29,7 @@ CODEATLAS_BINARY_PATH=/path/to/codeatlas npx @goobits/codeatlas --version
 | `ci` | Write a JSON baseline and fail on configured audit findings |
 | `diff` | Compare the current public symbols with a JSON baseline |
 | `map` | Generate a Mermaid dependency diagram |
-| `docs` | Generate deterministic Markdown from public exports and source docs |
+| `docs` | Generate deterministic Markdown or searchable HTML from public exports and source docs |
 
 Run `codeatlas <command> --help` for command-specific options.
 

@@ -1,4 +1,5 @@
 use super::{build_scan_config, exit_code, load_project, scan_project};
+use crate::cli::DocsFormat;
 use crate::{analysis, outputs, package};
 use anyhow::{Context, Result};
 use std::path::Path;
@@ -6,16 +7,18 @@ use std::path::Path;
 pub(crate) fn run(
     path: &Path,
     out: Option<&Path>,
+    format: DocsFormat,
     check: bool,
     title: Option<&str>,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(generate(path, out, check, title, config_path))
+    exit_code(generate(path, out, format, check, title, config_path))
 }
 
 fn generate(
     path: &Path,
     out: Option<&Path>,
+    format: DocsFormat,
     check: bool,
     title: Option<&str>,
     config_path: Option<&Path>,
@@ -57,7 +60,10 @@ fn generate(
     analysis::annotate_docs(&mut report, &project.root);
 
     let title = title.or(project.config.docs.title.as_deref());
-    let markdown = outputs::markdown::render(&report, title);
+    let rendered = match format {
+        DocsFormat::Markdown => outputs::markdown::render(&report, title),
+        DocsFormat::Html => outputs::html::render(&report, title),
+    };
     let output_path = project.docs_output(out);
 
     if check {
@@ -66,7 +72,7 @@ fn generate(
         let current = std::fs::read_to_string(&output_path).with_context(|| {
             format!("API documentation is missing at {}", output_path.display())
         })?;
-        if current != markdown {
+        if current != rendered {
             anyhow::bail!(
                 "API documentation is stale at {}. Run codeatlas docs without --check.",
                 output_path.display()
@@ -81,11 +87,11 @@ fn generate(
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("Could not create {}", parent.display()))?;
         }
-        std::fs::write(&output_path, markdown)
+        std::fs::write(&output_path, rendered)
             .with_context(|| format!("Could not write {}", output_path.display()))?;
         println!("API documentation written to {}", output_path.display());
     } else {
-        print!("{}", markdown);
+        print!("{}", rendered);
     }
     Ok(0)
 }

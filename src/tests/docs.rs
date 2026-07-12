@@ -113,6 +113,15 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(!markdown.contains("internalOnly"));
     assert_eq!(markdown, outputs::markdown::render(&report, None));
 
+    let html = outputs::html::render(&report, None);
+    assert!(html.starts_with("<!doctype html>"));
+    assert!(html.contains("Search public API"));
+    assert!(html.contains("@example/docs API Reference"));
+    assert!(html.contains("Create a thing."));
+    assert!(html.contains("<th>Member</th>"));
+    assert!(!html.contains("internalOnly"));
+    assert_eq!(html, outputs::html::render(&report, None));
+
     let json = outputs::json::render(&report).expect("JSON report");
     assert!(json.contains("\"schema_version\": 1"));
     assert!(json.contains("\"package\""));
