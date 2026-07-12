@@ -9,6 +9,25 @@ fn fixture_root() -> PathBuf {
         .join("docs")
 }
 
+fn fixture_report(include_private: bool) -> crate::domain::ScanReport {
+    let root = fixture_root();
+    let config = ScanConfig {
+        include_types: true,
+        include_private,
+        entrypoints: None,
+        suggest: false,
+        imports: false,
+        no_default_ignore: false,
+    };
+    let mut report = languages::scan_all(&root, &config, languages::get_scanners_auto(&root));
+    let package = package::discover(&root)
+        .expect("package manifest")
+        .expect("package metadata");
+    package::annotate(&mut report, &root, package, false);
+    analysis::annotate_docs(&mut report, &root);
+    report
+}
+
 #[test]
 fn package_exports_map_declaration_outputs_back_to_source() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -26,21 +45,7 @@ fn package_exports_map_declaration_outputs_back_to_source() {
 
 #[test]
 fn package_docs_follow_public_exports_and_jsdoc() {
-    let root = fixture_root();
-    let config = ScanConfig {
-        include_types: true,
-        include_private: false,
-        entrypoints: None,
-        suggest: false,
-        imports: false,
-        no_default_ignore: false,
-    };
-    let mut report = languages::scan_all(&root, &config, languages::get_scanners_auto(&root));
-    let package = package::discover(&root)
-        .expect("package manifest")
-        .expect("package metadata");
-    package::annotate(&mut report, &root, package, false);
-    analysis::annotate_docs(&mut report, &root);
+    let report = fixture_report(false);
 
     let create = report
         .symbols
@@ -103,7 +108,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
         .expect("add symbol");
     assert_eq!(add.export_paths, ["@example/docs/math"]);
 
-    let markdown = outputs::markdown::render(&report, None);
+    let markdown = outputs::markdown::render(&report, None, false);
     assert!(markdown.contains("# @example/docs API Reference"));
     assert!(markdown.contains("## `@example/docs/math`"));
     assert!(markdown.contains("Create a thing."));
@@ -114,9 +119,9 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(!markdown.contains("secret"));
     assert!(!markdown.contains("#### `label`"));
     assert!(!markdown.contains("internalOnly"));
-    assert_eq!(markdown, outputs::markdown::render(&report, None));
+    assert_eq!(markdown, outputs::markdown::render(&report, None, false));
 
-    let html = outputs::html::render(&report, None);
+    let html = outputs::html::render(&report, None, false);
     assert!(html.starts_with("<!doctype html>"));
     assert!(html.contains("Search public API"));
     assert!(html.contains("@example/docs API Reference"));
@@ -125,7 +130,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(html.contains("Deprecated: Use <code>name</code>. Legacy label."));
     assert!(!html.contains("secret"));
     assert!(!html.contains("internalOnly"));
-    assert_eq!(html, outputs::html::render(&report, None));
+    assert_eq!(html, outputs::html::render(&report, None, false));
 
     let json = outputs::json::render(&report).expect("JSON report");
     assert!(json.contains("\"schema_version\": 1"));
@@ -137,6 +142,37 @@ fn package_docs_follow_public_exports_and_jsdoc() {
         json,
         outputs::json::render(&reordered).expect("canonical JSON report")
     );
+}
+
+#[test]
+fn internal_interface_members_follow_include_private() {
+    let public_report = fixture_report(false);
+    let options = public_report
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "ThingOptions")
+        .expect("ThingOptions symbol");
+    let secret = options
+        .children
+        .iter()
+        .find(|child| child.name == "secret")
+        .expect("ThingOptions.secret member");
+
+    assert!(secret.docs.as_ref().is_some_and(|docs| docs.internal));
+    assert!(!outputs::markdown::render(&public_report, None, false).contains("secret"));
+    assert!(!outputs::html::render(&public_report, None, false).contains("secret"));
+
+    let private_report = fixture_report(true);
+    let private_markdown = outputs::markdown::render(&private_report, None, true);
+    assert!(private_markdown
+        .contains("| `secret` | `secret: string` | Parser-only implementation marker. |"));
+    assert!(private_markdown.contains("#### `#reset`"));
+    assert!(!private_markdown.contains("@internal"));
+
+    let private_html = outputs::html::render(&private_report, None, true);
+    assert!(private_html.contains("<td><code>secret</code></td>"));
+    assert!(private_html.contains("<code>#reset</code>"));
+    assert!(!private_html.contains("@internal"));
 }
 
 #[test]

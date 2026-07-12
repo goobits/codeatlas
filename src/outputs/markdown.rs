@@ -1,8 +1,8 @@
 use super::reference;
 use crate::domain::{ScanReport, Symbol};
 
-pub(crate) fn render(report: &ScanReport, title: Option<&str>) -> String {
-    let reference = reference::build(report, title);
+pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: bool) -> String {
+    let reference = reference::build(report, title, include_private);
 
     let mut output = String::new();
     output.push_str(&format!("# {}\n\n", reference.title));
@@ -21,14 +21,20 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>) -> String {
     for group in reference.groups {
         output.push_str(&format!("## `{}`\n\n", group.name));
         for symbol in group.symbols {
-            render_symbol(&mut output, symbol, 3, true);
+            render_symbol(&mut output, symbol, 3, true, include_private);
         }
     }
 
     output
 }
 
-fn render_symbol(output: &mut String, symbol: &Symbol, heading_level: usize, show_exports: bool) {
+fn render_symbol(
+    output: &mut String,
+    symbol: &Symbol,
+    heading_level: usize,
+    show_exports: bool,
+    include_private: bool,
+) {
     let heading = "#".repeat(heading_level.min(6));
     output.push_str(&format!("{} `{}`\n\n", heading, symbol.name));
     output.push_str(&format!("**Kind:** {}", reference::kind_label(symbol.kind)));
@@ -104,11 +110,14 @@ fn render_symbol(output: &mut String, symbol: &Symbol, heading_level: usize, sho
         }
     }
 
-    if reference::uses_member_table(symbol) {
-        render_member_table(output, reference::public_children(symbol));
+    if reference::uses_member_table(symbol, include_private) {
+        render_member_table(
+            output,
+            reference::included_children(symbol, include_private),
+        );
     } else {
-        for child in reference::public_children(symbol) {
-            render_symbol(output, child, heading_level + 1, false);
+        for child in reference::included_children(symbol, include_private) {
+            render_symbol(output, child, heading_level + 1, false, include_private);
         }
     }
 }

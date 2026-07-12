@@ -6,7 +6,7 @@ export interface ThingOptions {
 	 */
 	label: string
 
-	/** @internal Parser-only implementation marker. */
+	/** Parser-only implementation marker. @internal */
 	secret: string
 }
 

@@ -192,6 +192,11 @@ enum DocBlock {
 impl DocBuilder {
     fn push(&mut self, line: &str) {
         let trimmed = line.trim();
+        if let Some((description, tag)) = split_embedded_internal_tag(trimmed) {
+            self.push(description);
+            self.push(tag);
+            return;
+        }
         if let Some(tag) = trimmed.strip_prefix('@') {
             self.flush();
             let (name, value) = tag.split_once(char::is_whitespace).unwrap_or((tag, ""));
@@ -311,6 +316,17 @@ impl DocBuilder {
     }
 }
 
+fn split_embedded_internal_tag(line: &str) -> Option<(&str, &str)> {
+    const TAG: &str = "@internal";
+    line.match_indices(TAG).find_map(|(index, _)| {
+        let description = &line[..index];
+        let suffix = &line[index + TAG.len()..];
+        (description.ends_with(char::is_whitespace)
+            && (suffix.is_empty() || suffix.starts_with(char::is_whitespace)))
+        .then(|| (description, &line[index..]))
+    })
+}
+
 fn parse_param(value: &str) -> Option<(String, String)> {
     let value = if value.starts_with('{') {
         value.split_once('}')?.1.trim_start()
@@ -416,6 +432,14 @@ mod tests {
         assert_eq!(docs.returns.as_deref(), Some("The document."));
         assert_eq!(docs.examples, ["create({ width: 10 })"]);
         assert_eq!(docs.stability, Some(Stability::Beta));
+        assert!(docs.internal);
+    }
+
+    #[test]
+    fn parses_embedded_internal_tag() {
+        let docs = parse_doc("Product-owned runtime adapter. @internal").expect("docs");
+
+        assert_eq!(docs.summary, "Product-owned runtime adapter.");
         assert!(docs.internal);
     }
 }

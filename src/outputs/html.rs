@@ -5,8 +5,8 @@ use std::fmt::Write;
 
 const STYLE: &str = include_str!("html.css");
 
-pub(crate) fn render(report: &ScanReport, title: Option<&str>) -> String {
-    let reference = reference::build(report, title);
+pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: bool) -> String {
+    let reference = reference::build(report, title, include_private);
     let mut output = String::new();
     let escaped_title = escape_html(&reference.title);
     let package_name = report
@@ -60,7 +60,7 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>) -> String {
         )
         .expect("writing to String cannot fail");
         for symbol in &group.symbols {
-            render_symbol(&mut output, symbol, &group.name, 3, true);
+            render_symbol(&mut output, symbol, &group.name, 3, true, include_private);
         }
         output.push_str("\t\t</section>\n");
     }
@@ -136,6 +136,7 @@ fn render_symbol(
     group: &str,
     heading_level: usize,
     searchable: bool,
+    include_private: bool,
 ) {
     let heading_level = heading_level.min(6);
     let anchor = symbol_anchor(group, symbol);
@@ -218,12 +219,25 @@ fn render_symbol(
     .expect("writing to String cannot fail");
 
     render_docs_details(output, symbol);
-    if reference::uses_member_table(symbol) {
-        render_member_table(output, reference::public_children(symbol));
-    } else if reference::public_children(symbol).next().is_some() {
+    if reference::uses_member_table(symbol, include_private) {
+        render_member_table(
+            output,
+            reference::included_children(symbol, include_private),
+        );
+    } else if reference::included_children(symbol, include_private)
+        .next()
+        .is_some()
+    {
         output.push_str("\t\t\t\t<div class=\"atlas-children\">\n");
-        for child in reference::public_children(symbol) {
-            render_symbol(output, child, group, heading_level + 1, false);
+        for child in reference::included_children(symbol, include_private) {
+            render_symbol(
+                output,
+                child,
+                group,
+                heading_level + 1,
+                false,
+                include_private,
+            );
         }
         output.push_str("\t\t\t\t</div>\n");
     }

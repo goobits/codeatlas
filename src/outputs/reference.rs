@@ -11,7 +11,11 @@ pub(crate) struct ReferenceGroup<'a> {
     pub(crate) symbols: Vec<&'a Symbol>,
 }
 
-pub(crate) fn build<'a>(report: &'a ScanReport, title: Option<&str>) -> ApiReference<'a> {
+pub(crate) fn build<'a>(
+    report: &'a ScanReport,
+    title: Option<&str>,
+    include_private: bool,
+) -> ApiReference<'a> {
     let title = title
         .map(str::to_string)
         .or_else(|| {
@@ -33,7 +37,7 @@ pub(crate) fn build<'a>(report: &'a ScanReport, title: Option<&str>) -> ApiRefer
     let mut grouped: BTreeMap<String, Vec<&Symbol>> = BTreeMap::new();
 
     for symbol in &report.symbols {
-        if symbol.visibility != Visibility::Public
+        if !is_included(symbol, include_private)
             || package_has_exports && symbol.export_paths.is_empty()
         {
             continue;
@@ -91,16 +95,23 @@ pub(crate) fn language_tag(language: Language) -> &'static str {
     }
 }
 
-pub(crate) fn uses_member_table(symbol: &Symbol) -> bool {
-    public_children(symbol).next().is_some()
+pub(crate) fn uses_member_table(symbol: &Symbol, include_private: bool) -> bool {
+    included_children(symbol, include_private).next().is_some()
         && matches!(symbol.kind, SymbolKind::Interface | SymbolKind::TypeAlias)
 }
 
-pub(crate) fn public_children(symbol: &Symbol) -> impl Iterator<Item = &Symbol> {
+pub(crate) fn included_children(
+    symbol: &Symbol,
+    include_private: bool,
+) -> impl Iterator<Item = &Symbol> {
     symbol
         .children
         .iter()
-        .filter(|child| child.visibility == Visibility::Public)
+        .filter(move |child| is_included(child, include_private))
+}
+
+fn is_included(symbol: &Symbol, include_private: bool) -> bool {
+    include_private || symbol.visibility == Visibility::Public
 }
 
 pub(crate) fn member_description(symbol: &Symbol) -> String {

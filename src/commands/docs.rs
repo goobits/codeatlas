@@ -61,8 +61,8 @@ fn generate(
 
     let title = title.or(project.config.docs.title.as_deref());
     let rendered = match format {
-        DocsFormat::Markdown => outputs::markdown::render(&report, title),
-        DocsFormat::Html => outputs::html::render(&report, title),
+        DocsFormat::Markdown => outputs::markdown::render(&report, title, config.include_private),
+        DocsFormat::Html => outputs::html::render(&report, title, config.include_private),
     };
     let output_path = project.docs_output(out);
 
