@@ -307,4 +307,5 @@ a { color: var(--atlas-accent-text); }
 	.atlas-main { padding: 28px 18px 54px; }
 	.atlas-header h1 { font-size: 30px; }
 	.atlas-group__header { align-items: flex-start; }
+	.atlas-table { min-width: 640px; }
 }

@@ -121,7 +121,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(html.contains("@example/docs API Reference"));
     assert!(html.contains("Create a thing."));
     assert!(html.contains("<th>Member</th>"));
-    assert!(html.contains("Deprecated: Use `name`. Legacy label."));
+    assert!(html.contains("Deprecated: Use <code>name</code>. Legacy label."));
     assert!(!html.contains("internalOnly"));
     assert_eq!(html, outputs::html::render(&report, None));
 

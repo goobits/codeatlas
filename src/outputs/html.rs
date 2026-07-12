@@ -1,5 +1,6 @@
 use super::reference;
 use crate::domain::{ScanReport, Symbol};
+use pulldown_cmark::{html, Event, Options, Parser};
 use std::fmt::Write;
 
 const STYLE: &str = include_str!("html.css");
@@ -173,7 +174,7 @@ fn render_symbol(
             writeln!(
                 output,
                 "\t\t\t\t<p class=\"atlas-summary\">{}</p>",
-                escape_html(&docs.summary)
+                render_markdown(&docs.summary)
             )
             .expect("writing to String cannot fail");
         }
@@ -181,7 +182,7 @@ fn render_symbol(
             writeln!(
                 output,
                 "\t\t\t\t<p class=\"atlas-remarks\">{}</p>",
-                escape_html(remarks)
+                render_markdown(remarks)
             )
             .expect("writing to String cannot fail");
         }
@@ -194,7 +195,7 @@ fn render_symbol(
             writeln!(
                 output,
                 "\t\t\t\t<p class=\"atlas-note\"><strong>Deprecated:</strong> {}</p>",
-                escape_html(reason)
+                render_markdown(reason)
             )
             .expect("writing to String cannot fail");
         }
@@ -240,7 +241,7 @@ fn render_docs_details(output: &mut String, symbol: &Symbol) {
                 output,
                 "\t\t\t\t\t<tr><td><code>{}</code></td><td>{}</td></tr>",
                 escape_html(name),
-                escape_html(description)
+                render_markdown(description)
             )
             .expect("writing to String cannot fail");
         }
@@ -250,7 +251,7 @@ fn render_docs_details(output: &mut String, symbol: &Symbol) {
         writeln!(
             output,
             "\t\t\t\t<p class=\"atlas-note\"><strong>Returns:</strong> {}</p>",
-            escape_html(returns)
+            render_markdown(returns)
         )
         .expect("writing to String cannot fail");
     }
@@ -258,7 +259,7 @@ fn render_docs_details(output: &mut String, symbol: &Symbol) {
         writeln!(
             output,
             "\t\t\t\t<p class=\"atlas-note\"><strong>Throws:</strong> {}</p>",
-            escape_html(thrown)
+            render_markdown(thrown)
         )
         .expect("writing to String cannot fail");
     }
@@ -281,7 +282,7 @@ fn render_member_table(output: &mut String, members: &[Symbol]) {
             "\t\t\t\t\t<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}</td></tr>",
             escape_html(&member.name),
             escape_html(&member.signature),
-            escape_html(&reference::member_description(member))
+            render_markdown(&reference::member_description(member))
         )
         .expect("writing to String cannot fail");
     }
@@ -331,9 +332,23 @@ fn escape_attr(value: &str) -> String {
     escape_html(value)
 }
 
+fn render_markdown(value: &str) -> String {
+    let parser = Parser::new_ext(value, Options::empty()).map(|event| match event {
+        Event::Html(value) | Event::InlineHtml(value) => Event::Text(value),
+        event => event,
+    });
+    let mut output = String::new();
+    html::push_html(&mut output, parser);
+    output
+        .strip_prefix("<p>")
+        .and_then(|value| value.strip_suffix("</p>\n"))
+        .unwrap_or(&output)
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{escape_html, slug};
+    use super::{escape_html, render_markdown, slug};
 
     #[test]
     fn escapes_untrusted_source_docs() {
@@ -346,5 +361,13 @@ mod tests {
     #[test]
     fn creates_stable_ascii_anchors() {
         assert_eq!(slug("@scope/pkg: Thing.find"), "scope-pkg-thing-find");
+    }
+
+    #[test]
+    fn renders_source_markdown_without_allowing_raw_html() {
+        assert_eq!(
+            render_markdown("Use `thing.create()` and <script>bad()</script>."),
+            "Use <code>thing.create()</code> and &lt;script&gt;bad()&lt;/script&gt;."
+        );
     }
 }
