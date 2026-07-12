@@ -65,6 +65,11 @@ For TypeScript packages, `docs` discovers `package.json` exports when explicit
 entrypoints are absent. Source JSDoc is the documentation owner; CodeAtlas does
 not synthesize descriptions for undocumented symbols.
 
+All scan commands use discovered package exports by default. When an export
+points to generated declarations or JavaScript, CodeAtlas reads TypeScript
+`rootDir` and `outDir` from `tsconfig.build.json`, `tsconfig.lib.json`, or
+`tsconfig.json` and maps that target back to its maintained source file.
+
 ## Documentation Checks
 
 Generate the canonical reference:

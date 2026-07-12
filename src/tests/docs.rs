@@ -10,6 +10,21 @@ fn fixture_root() -> PathBuf {
 }
 
 #[test]
+fn package_exports_map_declaration_outputs_back_to_source() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("docs-dist");
+    let package = package::discover(&root)
+        .expect("package manifest")
+        .expect("package metadata");
+
+    assert_eq!(package.exports.len(), 1);
+    assert_eq!(package.exports[0].public_path, ".");
+    assert_eq!(package.exports[0].source_path, "src/index.ts");
+}
+
+#[test]
 fn package_docs_follow_public_exports_and_jsdoc() {
     let root = fixture_root();
     let config = ScanConfig {

@@ -26,7 +26,7 @@ fn scan(
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, include_private, false, true, None);
+    let config = build_scan_config(&project, include_private, false, true, None)?;
     let mut report = scan_project(&project, &config)?;
 
     analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
@@ -41,7 +41,7 @@ pub(crate) fn run_audit(path: &Path, config_path: Option<&Path>) -> i32 {
 
 fn audit(path: &Path, config_path: Option<&Path>) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, false, true, true, None);
+    let config = build_scan_config(&project, false, true, true, None)?;
     let mut report = scan_project(&project, &config)?;
     let importers =
         analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
@@ -72,7 +72,7 @@ fn ci(
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, false, fail_unused, fail_unused, None);
+    let config = build_scan_config(&project, false, fail_unused, fail_unused, None)?;
     let mut report = scan_project(&project, &config)?;
 
     if fail_unused {
@@ -87,6 +87,7 @@ fn ci(
 
     if let Some(baseline_path) = baseline {
         let json = outputs::json::render(&report)?;
+        create_parent_dir(&baseline_path)?;
         std::fs::write(&baseline_path, json)
             .with_context(|| format!("Could not write {}", baseline_path.display()))?;
         eprintln!("Baseline written to {}", baseline_path.display());
@@ -112,13 +113,14 @@ pub(crate) fn run_map(path: &Path, out: Option<PathBuf>, config_path: Option<&Pa
 
 fn map(path: &Path, out: Option<PathBuf>, config_path: Option<&Path>) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, false, false, true, None);
+    let config = build_scan_config(&project, false, false, true, None)?;
     let mut report = scan_project(&project, &config)?;
     analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
     annotate_report(&mut report, &project)?;
 
     let output = outputs::mermaid::render(&report);
     if let Some(out_path) = out {
+        create_parent_dir(&out_path)?;
         std::fs::write(&out_path, output)
             .with_context(|| format!("Could not write {}", out_path.display()))?;
         println!("Mermaid diagram written to {}", out_path.display());
@@ -134,16 +136,16 @@ pub(crate) fn run_legacy(cli: &Cli) -> i32 {
 
 fn legacy(cli: &Cli) -> Result<i32> {
     let project = load_project(&cli.path, cli.config.as_deref())?;
-    let config = ScanConfig {
-        include_types: cli.include_types || cli.format.is_none() || project.config.include_types,
-        include_private: cli.include_private || project.config.include_private,
-        entrypoints: cli.entrypoints.clone().or_else(|| {
-            (!project.config.entrypoints.is_empty()).then(|| project.config.entrypoints.clone())
-        }),
-        suggest: cli.suggest,
-        imports: cli.imports,
-        no_default_ignore: cli.no_default_ignore || project.config.no_default_ignore,
-    };
+    let mut config = build_scan_config(
+        &project,
+        cli.include_private,
+        cli.suggest,
+        cli.imports,
+        cli.entrypoints.clone(),
+    )?;
+    config.include_types =
+        cli.include_types || cli.format.is_none() || project.config.include_types;
+    config.no_default_ignore = cli.no_default_ignore || project.config.no_default_ignore;
 
     let scanners = if cli.languages.is_some() {
         languages::get_scanners(cli.languages.clone())
@@ -181,17 +183,30 @@ pub(super) fn build_scan_config(
     suggest: bool,
     imports: bool,
     entrypoints: Option<Vec<String>>,
-) -> ScanConfig {
+) -> Result<ScanConfig> {
     let configured_entrypoints =
         (!project.config.entrypoints.is_empty()).then(|| project.config.entrypoints.clone());
-    ScanConfig {
+    let entrypoints = match entrypoints.or(configured_entrypoints) {
+        Some(entrypoints) => Some(entrypoints),
+        None if project.config.package_exports => package::discover(&project.root)?
+            .map(|package| {
+                package
+                    .exports
+                    .into_iter()
+                    .map(|export| export.source_path)
+                    .collect::<Vec<_>>()
+            })
+            .filter(|entrypoints| !entrypoints.is_empty()),
+        None => None,
+    };
+    Ok(ScanConfig {
         include_types: project.config.include_types,
         include_private: include_private || project.config.include_private,
-        entrypoints: entrypoints.or(configured_entrypoints),
+        entrypoints,
         suggest,
         imports,
         no_default_ignore: project.config.no_default_ignore,
-    }
+    })
 }
 
 pub(super) fn scan_project(project: &ProjectConfig, config: &ScanConfig) -> Result<ScanReport> {
@@ -263,5 +278,13 @@ fn write_report(content: String, out: Option<PathBuf>, format: OutputFormat) -> 
     std::fs::write(&out_path, content)
         .with_context(|| format!("Could not write {}", out_path.display()))?;
     println!("Report written to {}", out_path.display());
+    Ok(())
+}
+
+fn create_parent_dir(path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Could not create {}", parent.display()))?;
+    }
     Ok(())
 }

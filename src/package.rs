@@ -1,8 +1,12 @@
+mod source_layout;
+
 use crate::domain::{PackageExport, PackageInfo, ScanConfig, ScanReport, Symbol};
 use anyhow::{Context, Result};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+
+use source_layout::SourceLayout;
 
 pub(crate) fn discover(root_dir: &Path) -> Result<Option<PackageInfo>> {
     let manifest_path = root_dir.join("package.json");
@@ -17,14 +21,17 @@ pub(crate) fn discover(root_dir: &Path) -> Result<Option<PackageInfo>> {
     let Some(name) = manifest.get("name").and_then(Value::as_str) else {
         return Ok(None);
     };
+    let source_layout = SourceLayout::discover(root_dir);
 
     let mut exports = Vec::new();
     if let Some(value) = manifest.get("exports") {
-        collect_exports(root_dir, ".", value, &mut exports);
+        collect_exports(root_dir, source_layout.as_ref(), ".", value, &mut exports);
     } else {
         for key in ["types", "module", "main"] {
             if let Some(target) = manifest.get(key).and_then(Value::as_str) {
-                if let Some(source_path) = normalize_existing_target(root_dir, target) {
+                if let Some(source_path) =
+                    normalize_target(root_dir, source_layout.as_ref(), target)
+                {
                     exports.push(PackageExport {
                         public_path: ".".to_string(),
                         source_path,
@@ -99,13 +106,14 @@ fn is_typescript_path(path: &str) -> bool {
 
 fn collect_exports(
     root_dir: &Path,
+    source_layout: Option<&SourceLayout>,
     public_path: &str,
     value: &Value,
     exports: &mut Vec<PackageExport>,
 ) {
     match value {
         Value::String(target) => {
-            if let Some(source_path) = normalize_existing_target(root_dir, target) {
+            if let Some(source_path) = normalize_target(root_dir, source_layout, target) {
                 exports.push(PackageExport {
                     public_path: public_path.to_string(),
                     source_path,
@@ -115,7 +123,7 @@ fn collect_exports(
         Value::Array(values) => {
             for value in values {
                 let previous_len = exports.len();
-                collect_exports(root_dir, public_path, value, exports);
+                collect_exports(root_dir, source_layout, public_path, value, exports);
                 if exports.len() > previous_len {
                     break;
                 }
@@ -125,16 +133,16 @@ fn collect_exports(
             if map.keys().any(|key| key.starts_with('.')) {
                 for (path, target) in map {
                     if path.starts_with('.') {
-                        collect_exports(root_dir, path, target, exports);
+                        collect_exports(root_dir, source_layout, path, target, exports);
                     }
                 }
                 return;
             }
 
-            for condition in ["types", "svelte", "import", "default", "require"] {
+            for condition in ["source", "types", "svelte", "import", "default", "require"] {
                 if let Some(target) = map.get(condition) {
                     let previous_len = exports.len();
-                    collect_exports(root_dir, public_path, target, exports);
+                    collect_exports(root_dir, source_layout, public_path, target, exports);
                     if exports.len() > previous_len {
                         return;
                     }
@@ -143,6 +151,16 @@ fn collect_exports(
         }
         _ => {}
     }
+}
+
+fn normalize_target(
+    root_dir: &Path,
+    source_layout: Option<&SourceLayout>,
+    target: &str,
+) -> Option<String> {
+    source_layout
+        .and_then(|layout| layout.resolve(root_dir, target))
+        .or_else(|| normalize_existing_target(root_dir, target))
 }
 
 fn normalize_existing_target(root_dir: &Path, target: &str) -> Option<String> {
