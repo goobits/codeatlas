@@ -33,8 +33,39 @@ impl Default for CodeAtlasConfig {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct DocsConfig {
+    pub canonical_url: Option<String>,
+    pub declaration_contract: bool,
+    pub description: Option<String>,
+    pub home_url: Option<String>,
+    pub include_dependency_types: bool,
     pub output: Option<PathBuf>,
+    pub require_descriptions: bool,
+    pub theme: DocsThemeConfig,
     pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct DocsThemeConfig {
+    pub dark: DocsThemePalette,
+    pub light: DocsThemePalette,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct DocsThemePalette {
+    pub accent: Option<String>,
+    pub accent_text: Option<String>,
+    pub background: Option<String>,
+    pub border: Option<String>,
+    pub code_background: Option<String>,
+    pub code_text: Option<String>,
+    pub muted: Option<String>,
+    pub surface: Option<String>,
+    pub surface_muted: Option<String>,
+    pub text: Option<String>,
+    pub warning_background: Option<String>,
+    pub warning_text: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,5 +146,40 @@ mod tests {
         assert!(config.include_types);
         assert!(config.package_exports);
         assert!(!config.include_private);
+        assert!(!config.docs.declaration_contract);
+        assert!(!config.docs.require_descriptions);
+    }
+
+    #[test]
+    fn config_reads_release_documentation_options() {
+        let config = serde_json::from_str::<CodeAtlasConfig>(
+            r##"{
+                "docs": {
+                    "canonical_url": "https://example.com/api/",
+                    "declaration_contract": true,
+                    "description": "Example API",
+                    "home_url": "https://example.com/",
+                    "require_descriptions": true,
+                    "theme": {
+                        "light": {
+                            "accent": "#6c3aed",
+                            "background": "#fafafa"
+                        }
+                    }
+                }
+            }"##,
+        )
+        .expect("documentation config");
+        assert!(config.docs.declaration_contract);
+        assert!(config.docs.require_descriptions);
+        assert_eq!(
+            config.docs.canonical_url.as_deref(),
+            Some("https://example.com/api/")
+        );
+        assert_eq!(config.docs.theme.light.accent.as_deref(), Some("#6c3aed"));
+        assert_eq!(
+            config.docs.theme.light.background.as_deref(),
+            Some("#fafafa")
+        );
     }
 }

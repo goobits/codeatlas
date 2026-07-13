@@ -1,11 +1,22 @@
 use super::reference;
+use crate::config::DocsConfig;
 use crate::domain::{ScanReport, Symbol};
 use pulldown_cmark::{html, Event, Options, Parser};
 use std::fmt::Write;
 
 const STYLE: &str = include_str!("html.css");
 
+#[cfg(test)]
 pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: bool) -> String {
+    render_with_options(report, title, include_private, &DocsConfig::default())
+}
+
+pub(crate) fn render_with_options(
+    report: &ScanReport,
+    title: Option<&str>,
+    include_private: bool,
+    options: &DocsConfig,
+) -> String {
     let reference = reference::build(report, title, include_private);
     let mut output = String::new();
     let escaped_title = escape_html(&reference.title);
@@ -14,6 +25,27 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: 
         .as_ref()
         .map(|package| package.name.as_str())
         .unwrap_or("CodeAtlas");
+    let description_meta = options
+        .description
+        .as_ref()
+        .map(|value| {
+            format!(
+                "\t<meta name=\"description\" content=\"{}\">\n",
+                escape_attr(value)
+            )
+        })
+        .unwrap_or_default();
+    let canonical_link = options
+        .canonical_url
+        .as_ref()
+        .map(|value| {
+            format!(
+                "\t<link rel=\"canonical\" href=\"{}\">\n",
+                escape_attr(value)
+            )
+        })
+        .unwrap_or_default();
+    let theme = render_theme(&options.theme);
 
     write!(
         output,
@@ -21,16 +53,26 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: 
 \t<meta charset=\"utf-8\">\n\
 \t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
 \t<meta name=\"generator\" content=\"CodeAtlas {}\">\n\
+{}{}\
 \t<title>{}</title>\n\
-\t<style>\n{}\n\t</style>\n\
+\t<style>\n{}{}\n\t</style>\n\
 </head>\n<body>\n<div class=\"atlas-layout\">\n",
         escape_attr(&report.tool_version),
+        description_meta,
+        canonical_link,
         escaped_title,
-        STYLE
+        STYLE,
+        theme
     )
     .expect("writing to String cannot fail");
 
-    render_sidebar(&mut output, &reference, package_name);
+    output.push_str("<a class=\"atlas-skip\" href=\"#main\">Skip to API reference</a>\n");
+    render_sidebar(
+        &mut output,
+        &reference,
+        package_name,
+        options.home_url.as_deref(),
+    );
     write!(
         output,
         "\t<main class=\"atlas-main\" id=\"main\">\n\
@@ -68,9 +110,16 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: 
     output.push_str(
         "\t</main>\n</div>\n<script>\n\
 \tconst search = document.querySelector('.atlas-search')\n\
+\tconst navToggle = document.querySelector('.atlas-nav-toggle')\n\
+\tconst sidebar = document.querySelector('.atlas-sidebar')\n\
 \tconst symbols = [...document.querySelectorAll('.atlas-symbol[data-search]')]\n\
 \tconst groups = [...document.querySelectorAll('.atlas-group')]\n\
 \tconst empty = document.querySelector('.atlas-empty')\n\
+\tnavToggle?.addEventListener('click', () => {\n\
+\t\tconst open = sidebar.dataset.navOpen !== 'true'\n\
+\t\tsidebar.dataset.navOpen = String(open)\n\
+\t\tnavToggle.setAttribute('aria-expanded', String(open))\n\
+\t})\n\
 \tsearch?.addEventListener('input', () => {\n\
 \t\tconst query = search.value.trim().toLocaleLowerCase()\n\
 \t\tlet visible = 0\n\
@@ -89,20 +138,67 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: 
     output
 }
 
+fn render_theme(theme: &crate::config::DocsThemeConfig) -> String {
+    let light = render_palette(&theme.light);
+    let dark = render_palette(&theme.dark);
+    let mut output = String::new();
+
+    if !light.is_empty() {
+        output.push_str("\n@media (prefers-color-scheme: light) {\n\t:root {");
+        output.push_str(&light);
+        output.push_str("\n\t}\n}\n");
+    }
+    if !dark.is_empty() {
+        output.push_str("\n@media (prefers-color-scheme: dark) {\n\t:root {");
+        output.push_str(&dark);
+        output.push_str("\n\t}\n}\n");
+    }
+
+    output
+}
+
+fn render_palette(palette: &crate::config::DocsThemePalette) -> String {
+    let values = [
+        ("--atlas-bg", palette.background.as_deref()),
+        ("--atlas-surface", palette.surface.as_deref()),
+        ("--atlas-surface-muted", palette.surface_muted.as_deref()),
+        ("--atlas-text", palette.text.as_deref()),
+        ("--atlas-muted", palette.muted.as_deref()),
+        ("--atlas-border", palette.border.as_deref()),
+        ("--atlas-accent", palette.accent.as_deref()),
+        ("--atlas-accent-text", palette.accent_text.as_deref()),
+        ("--atlas-code-bg", palette.code_background.as_deref()),
+        ("--atlas-code-text", palette.code_text.as_deref()),
+        ("--atlas-warning-bg", palette.warning_background.as_deref()),
+        ("--atlas-warning-text", palette.warning_text.as_deref()),
+    ];
+    let mut output = String::new();
+    for (name, value) in values {
+        if let Some(value) = value {
+            write!(output, "\n\t\t{}: {};", name, escape_html(value.trim()))
+                .expect("writing to String cannot fail");
+        }
+    }
+    output
+}
+
 fn render_sidebar(
     output: &mut String,
     reference: &reference::ApiReference<'_>,
     package_name: &str,
+    home_url: Option<&str>,
 ) {
     write!(
         output,
         "\t<aside class=\"atlas-sidebar\">\n\
-\t\t<a class=\"atlas-brand\" href=\"#main\">\n\
+\t\t<a class=\"atlas-brand\" href=\"{}\">\n\
 \t\t\t<span class=\"atlas-brand__product\">{}</span>\n\
 \t\t\t<span class=\"atlas-brand__title\">{}</span>\n\
 \t\t</a>\n\
 \t\t<input class=\"atlas-search\" type=\"search\" placeholder=\"Search public API\" aria-label=\"Search public API\">\n\
-\t\t<nav class=\"atlas-nav\" aria-label=\"API symbols\">\n",
+\t\t<button class=\"atlas-nav-toggle\" type=\"button\" aria-controls=\"atlas-nav\" aria-expanded=\"false\">Browse API</button>\n\
+\t\t<nav class=\"atlas-nav\" id=\"atlas-nav\" aria-label=\"API symbols\">\n",
+        escape_attr(home_url.unwrap_or("#main")),
         escape_html(package_name),
         escape_html(&reference.title)
     )
@@ -140,7 +236,7 @@ fn render_symbol(
 ) {
     let heading_level = heading_level.min(6);
     let anchor = symbol_anchor(group, symbol);
-    let search = searchable.then(|| symbol_search_text(symbol));
+    let search = searchable.then(|| symbol_search_text(symbol, include_private));
     write!(
         output,
         "\t\t\t<article class=\"atlas-symbol\" id=\"{}\"{}>\n\
@@ -303,11 +399,18 @@ fn render_member_table<'a>(output: &mut String, members: impl Iterator<Item = &'
     output.push_str("\t\t\t\t</tbody></table></div>\n");
 }
 
-fn symbol_search_text(symbol: &Symbol) -> String {
-    let mut values = vec![symbol.name.clone(), symbol.signature.clone()];
+fn symbol_search_text(symbol: &Symbol, include_private: bool) -> String {
+    let mut values = vec![
+        symbol.id.clone(),
+        symbol.name.clone(),
+        symbol.signature.clone(),
+    ];
     if let Some(docs) = &symbol.docs {
         values.push(docs.summary.clone());
         values.extend(docs.remarks.iter().cloned());
+    }
+    for child in reference::included_children(symbol, include_private) {
+        values.push(symbol_search_text(child, include_private));
     }
     values.join(" ").to_lowercase()
 }

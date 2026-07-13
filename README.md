@@ -45,6 +45,22 @@ misspelled setting cannot silently weaken a check.
 	"languages": ["ts"],
 	"entrypoints": ["src/index.ts"],
 	"docs": {
+		"canonical_url": "https://example.com/api/",
+		"declaration_contract": true,
+		"description": "Example package API reference.",
+		"home_url": "https://example.com/",
+		"include_dependency_types": true,
+		"require_descriptions": true,
+		"theme": {
+			"light": {
+				"accent": "#6c3aed",
+				"accent_text": "#5b21b6"
+			},
+			"dark": {
+				"accent": "#a78bfa",
+				"accent_text": "#c4b5fd"
+			}
+		},
 		"title": "Example API Reference",
 		"output": "docs/API-Reference.md"
 	}
@@ -60,11 +76,29 @@ Paths in the config are relative to the config file. Supported fields are:
 - `include_types`: include classes, interfaces, structs, and methods
 - `no_default_ignore`: include normally ignored build and test directories
 - `package_exports`: discover public entrypoints from `package.json` exports
-- `docs.title` and `docs.output`: generated Markdown ownership
+- `docs.include_dependency_types`: include local/workspace dependency contracts
+  reachable from exported TypeScript signatures
+- `docs.declaration_contract`: document the shipped `types` export instead of
+  mapping declarations back to source
+- `docs.require_descriptions`: fail generation when a public symbol or member
+  lacks source documentation
+- `docs.title`, `docs.description`, `docs.home_url`, and `docs.canonical_url`:
+  generated reference metadata and navigation
+- `docs.theme.light` and `docs.theme.dark`: optional semantic color overrides
+  for `background`, `surface`, `surface_muted`, `text`, `muted`, `border`,
+  `accent`, `accent_text`, `code_background`, `code_text`,
+  `warning_background`, and `warning_text`
+- `docs.output`: generated reference ownership
 
 For TypeScript packages, `docs` discovers `package.json` exports when explicit
 entrypoints are absent. Source JSDoc is the documentation owner; CodeAtlas does
-not synthesize descriptions for undocumented symbols.
+not synthesize descriptions for undocumented symbols. Dependency types are
+opt-in so a package can keep a narrow reference or generate a complete facade
+reference without copying contracts into the facade source.
+
+Use declaration-contract mode for release documentation and compatibility
+baselines. It makes the reference follow the same declaration entrypoint that
+package consumers resolve.
 
 All scan commands use discovered package exports by default. When an export
 points to generated declarations or JavaScript, CodeAtlas reads TypeScript
@@ -84,6 +118,10 @@ Fail CI when the committed reference is missing or stale:
 ```bash
 codeatlas docs --config codeatlas.json --check
 ```
+
+`diff` identifies symbols by package, kind, and exported qualified name rather
+than source file. Additions are reported without failing; removals, signature
+changes, and removed export paths exit non-zero as breaking changes.
 
 The JSON report contains `schema_version`, `tool_version`, package metadata,
 public export paths, source signatures, structured documentation, routes,

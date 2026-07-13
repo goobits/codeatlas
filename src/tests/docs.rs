@@ -1,6 +1,9 @@
+use crate::config::ProjectConfig;
 use crate::domain::ScanConfig;
-use crate::{analysis, languages, outputs, package};
+use crate::{analysis, commands, languages, outputs, package};
+use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn fixture_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -41,6 +44,20 @@ fn package_exports_map_declaration_outputs_back_to_source() {
     assert_eq!(package.exports.len(), 1);
     assert_eq!(package.exports[0].public_path, ".");
     assert_eq!(package.exports[0].source_path, "src/index.ts");
+}
+
+#[test]
+fn declaration_contract_docs_follow_the_shipped_types_target() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("docs-dist");
+    let package = package::discover_for_docs(&root, true)
+        .expect("package manifest")
+        .expect("package metadata");
+
+    assert_eq!(package.exports.len(), 1);
+    assert_eq!(package.exports[0].source_path, "dist/types/index.d.ts");
 }
 
 #[test]
@@ -128,9 +145,39 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(html.contains("Create a thing."));
     assert!(html.contains("<th>Member</th>"));
     assert!(html.contains("Deprecated: Use <code>name</code>. Legacy label."));
+    assert!(html.contains("Skip to API reference"));
+    assert!(html.contains("Browse API"));
+    assert!(html.contains("thingstore.find"));
     assert!(!html.contains("secret"));
     assert!(!html.contains("internalOnly"));
     assert_eq!(html, outputs::html::render(&report, None, false));
+
+    let options = crate::config::DocsConfig {
+        canonical_url: Some("https://example.com/api".to_string()),
+        description: Some("Example API documentation".to_string()),
+        home_url: Some("https://example.com".to_string()),
+        theme: crate::config::DocsThemeConfig {
+            dark: crate::config::DocsThemePalette {
+                accent: Some("#c4b5fd".to_string()),
+                ..crate::config::DocsThemePalette::default()
+            },
+            light: crate::config::DocsThemePalette {
+                accent: Some("#6c3aed".to_string()),
+                background: Some("#fafafa".to_string()),
+                ..crate::config::DocsThemePalette::default()
+            },
+        },
+        ..crate::config::DocsConfig::default()
+    };
+    let configured_html = outputs::html::render_with_options(&report, None, false, &options);
+    assert!(configured_html.contains("rel=\"canonical\" href=\"https://example.com/api\""));
+    assert!(configured_html.contains("content=\"Example API documentation\""));
+    assert!(configured_html.contains("class=\"atlas-brand\" href=\"https://example.com\""));
+    assert!(configured_html.contains("@media (prefers-color-scheme: light)"));
+    assert!(configured_html.contains("--atlas-accent: #6c3aed"));
+    assert!(configured_html.contains("--atlas-bg: #fafafa"));
+    assert!(configured_html.contains("@media (prefers-color-scheme: dark)"));
+    assert!(configured_html.contains("--atlas-accent: #c4b5fd"));
 
     let json = outputs::json::render(&report).expect("JSON report");
     assert!(json.contains("\"schema_version\": 1"));
@@ -142,6 +189,170 @@ fn package_docs_follow_public_exports_and_jsdoc() {
         json,
         outputs::json::render(&reordered).expect("canonical JSON report")
     );
+}
+
+#[test]
+fn configured_reports_follow_reachable_dependency_types() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "codeatlas-dependency-docs-{}-{nonce}",
+        std::process::id()
+    ));
+    let dependency = root.join("node_modules/@example/contracts");
+    let vendor = root.join("node_modules/vendor-types");
+    fs::create_dir_all(root.join("src")).expect("root source directory");
+    fs::create_dir_all(dependency.join("src")).expect("dependency source directory");
+    fs::create_dir_all(vendor.join("src")).expect("vendor source directory");
+    fs::write(
+        root.join("package.json"),
+        r#"{
+            "name": "@example/app",
+            "dependencies": {
+                "@example/contracts": "workspace:*",
+                "vendor-types": "^1.0.0"
+            },
+            "exports": { ".": { "source": "./src/index.ts" } }
+        }"#,
+    )
+    .expect("root package manifest");
+    fs::write(
+        root.join("codeatlas.json"),
+        r#"{
+            "languages": ["ts"],
+            "include_types": true,
+            "package_exports": true,
+            "docs": { "include_dependency_types": true }
+        }"#,
+    )
+    .expect("root CodeAtlas config");
+    fs::write(
+        root.join("src/index.ts"),
+        r#"
+import type { ExternalAPI } from '@example/contracts/public'
+import type { VendorAPI } from 'vendor-types'
+
+/** Public application API. */
+export interface PublicAPI {
+    /** Dependency-owned operations. */
+    readonly external: ExternalAPI
+
+    /** Vendor-owned operations remain a referenced external type. */
+    readonly vendor: VendorAPI
+}
+"#,
+    )
+    .expect("root source");
+    fs::write(
+        dependency.join("package.json"),
+        r#"{
+            "name": "@example/contracts",
+            "exports": { "./public": { "source": "./src/public.ts" } }
+        }"#,
+    )
+    .expect("dependency package manifest");
+    fs::write(
+        dependency.join("src/public.ts"),
+        r#"
+export * from './contracts.ts'
+"#,
+    )
+    .expect("dependency entrypoint");
+    fs::write(
+        dependency.join("src/contracts.ts"),
+        r#"
+/** Dependency operations exposed through the application API. */
+export interface ExternalAPI {
+    /** Load one external result. */
+    load(options: ExternalOptions): Promise<ExternalResult>
+}
+
+/** Options accepted by `ExternalAPI.load`. */
+export interface ExternalOptions {
+    /** Stable item identifier. */
+    id: string
+}
+
+/** Result returned by `ExternalAPI.load`. */
+export interface ExternalResult {
+    /** Loaded item label. */
+    label: string
+}
+
+/** Unrelated dependency contract. */
+export interface UnrelatedAPI {
+    clear(): void
+}
+"#,
+    )
+    .expect("dependency contracts");
+    fs::write(
+        vendor.join("package.json"),
+        r#"{
+            "name": "vendor-types",
+            "version": "1.0.0",
+            "exports": { ".": { "source": "./src/index.ts" } }
+        }"#,
+    )
+    .expect("vendor package manifest");
+    fs::write(
+        vendor.join("src/index.ts"),
+        "/** Third-party API that should not be copied into local docs. */\nexport interface VendorAPI {}\n",
+    )
+    .expect("vendor source");
+
+    let config = ScanConfig {
+        include_types: true,
+        include_private: false,
+        entrypoints: Some(vec!["src/index.ts".to_string()]),
+        suggest: false,
+        imports: false,
+        no_default_ignore: false,
+    };
+    let mut report = languages::scan_all(&root, &config, languages::get_scanners_auto(&root));
+    let project =
+        ProjectConfig::load(&root, Some(&root.join("codeatlas.json"))).expect("project config");
+    commands::annotate_report(&mut report, &project).expect("reachable dependency types");
+
+    for expected in ["ExternalAPI", "ExternalOptions", "ExternalResult"] {
+        assert!(
+            report.symbols.iter().any(|symbol| symbol.name == expected),
+            "missing {expected}"
+        );
+    }
+    assert!(!report
+        .symbols
+        .iter()
+        .any(|symbol| symbol.name == "UnrelatedAPI"));
+    assert!(!report
+        .symbols
+        .iter()
+        .any(|symbol| symbol.name == "VendorAPI"));
+    let external = report
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "ExternalAPI")
+        .expect("ExternalAPI symbol");
+    assert_eq!(external.package.as_deref(), Some("@example/contracts"));
+    assert_eq!(external.export_paths, ["@example/contracts/public"]);
+    assert!(external.file_path.starts_with("@example/contracts/"));
+    assert_eq!(
+        external
+            .children
+            .iter()
+            .find(|child| child.name == "load")
+            .and_then(|child| child.docs.as_ref())
+            .map(|docs| docs.summary.as_str()),
+        Some("Load one external result.")
+    );
+    let markdown = outputs::markdown::render(&report, Some("Application API"), false);
+    assert!(markdown.contains("## `@example/contracts/public`"));
+    assert!(markdown.contains("Options accepted by `ExternalAPI.load`."));
+    assert!(!markdown.contains("Unrelated dependency contract."));
+
+    fs::remove_dir_all(&root).expect("remove dependency docs fixture");
 }
 
 #[test]
@@ -232,6 +443,52 @@ export type NameKey = `name:${string}`
     assert_eq!(
         signature("NameKey"),
         Some("type NameKey = `name:${string}`")
+    );
+}
+
+#[test]
+fn typescript_signatures_preserve_generics_and_object_aliases() {
+    let source = r#"
+export interface Result<TValue extends object = Record<string, unknown>> {
+    map<TNext = TValue>(callback: (value: TValue) => TNext): Result<TNext>
+}
+export type Options<TValue = string> = {
+    readonly value: TValue
+    optional?: number
+    transform<TNext>(value: TValue): TNext
+}
+"#;
+    let report = crate::languages::typescript::parser::parse_source(source, "src/types.ts")
+        .expect("TypeScript source");
+    let signature = |name: &str| {
+        report
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .map(|symbol| symbol.signature.as_str())
+    };
+
+    assert_eq!(
+        signature("Result"),
+        Some("interface Result<TValue extends object = Record<string, unknown>>")
+    );
+    assert_eq!(
+        signature("Options"),
+        Some(
+            "type Options<TValue = string> = { readonly value: TValue; optional?: number; transform<TNext>(value: TValue): TNext }"
+        )
+    );
+    let result = report
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "Result")
+        .expect("Result interface");
+    assert_eq!(
+        result
+            .children
+            .first()
+            .map(|child| child.signature.as_str()),
+        Some("map<TNext = TValue>(callback: (value: TValue) => TNext) -> Result<TNext>")
     );
 }
 
