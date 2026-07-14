@@ -131,13 +131,11 @@ baselines remain readable.
 ## Release Model
 
 Git tags build native archives for Linux, macOS, and Windows and publish the npm
-wrapper with provenance. If a matching archive is unavailable, the wrapper
-builds from source with Cargo.
+wrapper through npm trusted publishing with automatic provenance. If a matching
+archive is unavailable, the wrapper builds from source with Cargo.
 
-Required release secret:
-
-```text
-NPM_TOKEN
-```
+The `@goobits/codeatlas` npm package must trust the GitHub repository
+`goobits/codeatlas` and workflow `release.yml` for `npm publish`. The workflow
+uses GitHub OIDC and does not use a long-lived npm token.
 
 The software is distributed under the terms in `LICENSE`.

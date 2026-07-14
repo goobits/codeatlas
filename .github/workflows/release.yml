@@ -1,83 +1,83 @@
 name: Release
 
 on:
-  push:
-    tags: ['v*']
+    push:
+        tags: ['v*']
 
 permissions:
-  contents: write
-  id-token: write
+    contents: write
+    id-token: write
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            binary: codeatlas
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            binary: codeatlas
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-            binary: codeatlas
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            binary: codeatlas
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary: codeatlas.exe
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Package binary
-        shell: bash
-        run: |
-          mkdir artifact
-          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" artifact/
-          tar -czf "codeatlas-${{ matrix.target }}.tar.gz" -C artifact "${{ matrix.binary }}"
-      - uses: actions/upload-artifact@v6
-        with:
-          name: codeatlas-${{ matrix.target }}
-          path: codeatlas-${{ matrix.target }}.tar.gz
+    build:
+        strategy:
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      target: x86_64-unknown-linux-gnu
+                      binary: codeatlas
+                    - os: ubuntu-24.04-arm
+                      target: aarch64-unknown-linux-gnu
+                      binary: codeatlas
+                    - os: macos-15-intel
+                      target: x86_64-apple-darwin
+                      binary: codeatlas
+                    - os: macos-latest
+                      target: aarch64-apple-darwin
+                      binary: codeatlas
+                    - os: windows-latest
+                      target: x86_64-pc-windows-msvc
+                      binary: codeatlas.exe
+        runs-on: ${{ matrix.os }}
+        steps:
+            - uses: actions/checkout@v6
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: ${{ matrix.target }}
+            - run: cargo build --release --locked --target ${{ matrix.target }}
+            - name: Package binary
+              shell: bash
+              run: |
+                  mkdir artifact
+                  cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" artifact/
+                  tar -czf "codeatlas-${{ matrix.target }}.tar.gz" -C artifact "${{ matrix.binary }}"
+            - uses: actions/upload-artifact@v6
+              with:
+                  name: codeatlas-${{ matrix.target }}
+                  path: codeatlas-${{ matrix.target }}.tar.gz
 
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
-        with:
-          path: artifacts
-          merge-multiple: true
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Verify release version
-        shell: bash
-        run: |
-          test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-          test "$(sed -n 's/^version = \"\(.*\)\"/\1/p' Cargo.toml | head -1)" = "${GITHUB_REF_NAME#v}"
-      - run: cargo test --locked --jobs 1
-      - name: Create or update GitHub release
-        shell: bash
-        run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" artifacts/*.tar.gz --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" artifacts/*.tar.gz --generate-notes
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - run: pnpm publish --access public --no-git-checks --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    publish:
+        needs: build
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - uses: actions/download-artifact@v6
+              with:
+                  path: artifacts
+                  merge-multiple: true
+            - uses: pnpm/action-setup@v6
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  registry-url: https://registry.npmjs.org
+                  package-manager-cache: false
+            - run: pnpm install --frozen-lockfile
+            - name: Verify release version
+              shell: bash
+              run: |
+                  test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+                  test "$(sed -n 's/^version = \"\(.*\)\"/\1/p' Cargo.toml | head -1)" = "${GITHUB_REF_NAME#v}"
+            - run: pnpm run check
+            - run: pnpm run pack:check
+            - name: Create or update GitHub release
+              shell: bash
+              run: |
+                  (cd artifacts && sha256sum *.tar.gz > SHA256SUMS)
+                  if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+                    gh release upload "$GITHUB_REF_NAME" artifacts/*.tar.gz artifacts/SHA256SUMS --clobber
+                  else
+                    gh release create "$GITHUB_REF_NAME" artifacts/*.tar.gz artifacts/SHA256SUMS --generate-notes
+                  fi
+              env:
+                  GH_TOKEN: ${{ github.token }}
+            - run: npm publish --access public
