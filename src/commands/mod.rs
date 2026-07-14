@@ -188,15 +188,17 @@ pub(super) fn build_scan_config(
         (!project.config.entrypoints.is_empty()).then(|| project.config.entrypoints.clone());
     let entrypoints = match entrypoints.or(configured_entrypoints) {
         Some(entrypoints) => Some(entrypoints),
-        None if project.config.package_exports => package::discover(&project.root)?
-            .map(|package| {
-                package
-                    .exports
-                    .into_iter()
-                    .map(|export| export.source_path)
-                    .collect::<Vec<_>>()
-            })
-            .filter(|entrypoints| !entrypoints.is_empty()),
+        None if project.config.package_exports => {
+            package::discover_for_docs(&project.root, project.config.docs.declaration_contract)?
+                .map(|package| {
+                    package
+                        .exports
+                        .into_iter()
+                        .map(|export| export.source_path)
+                        .collect::<Vec<_>>()
+                })
+                .filter(|entrypoints| !entrypoints.is_empty())
+        }
         None => None,
     };
     Ok(ScanConfig {
@@ -226,7 +228,9 @@ pub(super) fn scan_project(project: &ProjectConfig, config: &ScanConfig) -> Resu
 
 pub(super) fn annotate_report(report: &mut ScanReport, project: &ProjectConfig) -> Result<()> {
     if project.config.package_exports {
-        if let Some(package) = package::discover(&project.root)? {
+        if let Some(package) =
+            package::discover_for_docs(&project.root, project.config.docs.declaration_contract)?
+        {
             package::annotate(
                 report,
                 &project.root,
@@ -236,6 +240,27 @@ pub(super) fn annotate_report(report: &mut ScanReport, project: &ProjectConfig) 
         }
     }
     analysis::annotate_docs(report, &project.root);
+    if project.config.docs.declaration_contract {
+        package::consolidate_declaration_symbols(report);
+    }
+    if project.config.docs.include_dependency_types {
+        analysis::annotate_dependency_types(
+            report,
+            &project.root,
+            project.config.no_default_ignore,
+        )?;
+    }
+    if project.config.docs.declaration_contract
+        && report
+            .package
+            .as_ref()
+            .is_some_and(|package| !package.exports.is_empty())
+        && report.symbols.is_empty()
+    {
+        anyhow::bail!(
+            "Declaration contract has public package exports but no scanned symbols. Check that generated declaration entrypoints and their re-exports are resolvable."
+        );
+    }
     Ok(())
 }
 

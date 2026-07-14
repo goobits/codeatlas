@@ -61,6 +61,64 @@ fn declaration_contract_docs_follow_the_shipped_types_target() {
 }
 
 #[test]
+fn declaration_contract_scans_reachable_files_inside_ignored_dist() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("docs-dist");
+    let config = ScanConfig {
+        include_types: true,
+        include_private: false,
+        entrypoints: Some(vec!["dist/types/index.d.ts".to_string()]),
+        suggest: false,
+        imports: false,
+        no_default_ignore: false,
+    };
+    let report = languages::scan_all(
+        &root,
+        &config,
+        languages::get_scanners(Some(vec!["ts".to_string()])),
+    );
+
+    let symbol = report
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "createPublicValue")
+        .expect("public declaration alias");
+    assert_eq!(symbol.visibility, crate::domain::Visibility::Public);
+    assert_eq!(
+        symbol.signature,
+        "function createPublicValue(options: PublicValueOptions) -> string"
+    );
+    assert!(report
+        .symbols
+        .iter()
+        .any(|symbol| symbol.name == "PublicValueOptions"));
+    assert!(
+        !report
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "createValue"),
+        "declaration contracts must expose the shipped alias, not its private name"
+    );
+}
+
+#[test]
+fn declaration_contract_rejects_empty_public_export_scans() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("docs-dist");
+    let project =
+        ProjectConfig::load(&root, Some(&root.join("codeatlas.json"))).expect("project config");
+    let mut report = crate::domain::ScanReport::default();
+
+    let error = commands::annotate_report(&mut report, &project)
+        .expect_err("empty declaration contract must fail");
+    assert!(error.to_string().contains("no scanned symbols"));
+}
+
+#[test]
 fn package_docs_follow_public_exports_and_jsdoc() {
     let report = fixture_report(false);
 
