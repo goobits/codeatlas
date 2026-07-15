@@ -4,6 +4,9 @@
 # Node
 /node_modules/
 
+# Local agent tooling
+.llm/
+
 # IDE
 .idea/
 .vscode/
