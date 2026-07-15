@@ -19,6 +19,22 @@ pub(super) fn format_params(params: &[Param]) -> String {
         .join(", ")
 }
 
+pub(super) fn format_type_params(params: Option<&TsTypeParamDecl>) -> String {
+    params
+        .map(|params| {
+            format!(
+                "<{}>",
+                params
+                    .params
+                    .iter()
+                    .map(format_type_param)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .unwrap_or_default()
+}
+
 pub(super) fn format_binding_ident(ident: &BindingIdent) -> String {
     let mut name = ident.id.sym.to_string();
     if ident.optional {
@@ -228,7 +244,8 @@ pub(super) fn format_ts_type(ts_type: &TsType) -> String {
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!(
-                    "({}) => {}",
+                    "{}({}) => {}",
+                    format_type_params(function.type_params.as_deref()),
                     params,
                     format_ts_type(&function.type_ann.type_ann)
                 )
@@ -246,14 +263,15 @@ pub(super) fn format_ts_type(ts_type: &TsType) -> String {
                     ""
                 };
                 format!(
-                    "{}new ({}) => {}",
+                    "{}new {}({}) => {}",
                     abstract_prefix,
+                    format_type_params(function.type_params.as_deref()),
                     params,
                     format_ts_type(&function.type_ann.type_ann)
                 )
             }
         },
-        TsType::TsTypeLit(_) => "{ ... }".to_string(),
+        TsType::TsTypeLit(literal) => format_type_literal(&literal.members),
         TsType::TsLitType(literal) => match &literal.lit {
             TsLit::Str(value) => format!("\"{}\"", value.value),
             TsLit::Number(value) => value.value.to_string(),
@@ -348,7 +366,7 @@ pub(super) fn format_ts_type(ts_type: &TsType) -> String {
     }
 }
 
-fn format_type_args(args: Option<&TsTypeParamInstantiation>) -> String {
+pub(super) fn format_type_args(args: Option<&TsTypeParamInstantiation>) -> String {
     args.map(|args| {
         format!(
             "<{}>",
@@ -388,6 +406,92 @@ fn format_type_param(param: &TsTypeParam) -> String {
         .map(|default| format!(" = {}", format_ts_type(default)))
         .unwrap_or_default();
     format!("{}{}{}", param.name.sym, constraint, default)
+}
+
+fn format_type_literal(members: &[TsTypeElement]) -> String {
+    let members = members
+        .iter()
+        .filter_map(format_type_element)
+        .collect::<Vec<_>>();
+    if members.is_empty() {
+        "{}".to_string()
+    } else {
+        format!("{{ {} }}", members.join("; "))
+    }
+}
+
+fn format_type_element(member: &TsTypeElement) -> Option<String> {
+    match member {
+        TsTypeElement::TsMethodSignature(method) => {
+            let name = method.key.as_ident()?.sym.to_string();
+            let optional = if method.optional { "?" } else { "" };
+            let params = method
+                .params
+                .iter()
+                .map(format_ts_fn_param)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let return_type = method
+                .type_ann
+                .as_ref()
+                .map(|annotation| format_ts_type(&annotation.type_ann))
+                .unwrap_or_else(|| "unknown".to_string());
+            Some(format!(
+                "{}{}{}({}): {}",
+                name,
+                optional,
+                format_type_params(method.type_params.as_deref()),
+                params,
+                return_type
+            ))
+        }
+        TsTypeElement::TsPropertySignature(property) => {
+            let name = property.key.as_ident()?.sym.to_string();
+            let readonly = if property.readonly { "readonly " } else { "" };
+            let optional = if property.optional { "?" } else { "" };
+            let value = property
+                .type_ann
+                .as_ref()
+                .map(|annotation| format_ts_type(&annotation.type_ann))
+                .unwrap_or_else(|| "unknown".to_string());
+            Some(format!("{}{}{}: {}", readonly, name, optional, value))
+        }
+        TsTypeElement::TsCallSignatureDecl(call) => {
+            let params = call
+                .params
+                .iter()
+                .map(format_ts_fn_param)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let return_type = call
+                .type_ann
+                .as_ref()
+                .map(|annotation| format_ts_type(&annotation.type_ann))
+                .unwrap_or_else(|| "unknown".to_string());
+            Some(format!(
+                "{}({}): {}",
+                format_type_params(call.type_params.as_deref()),
+                params,
+                return_type
+            ))
+        }
+        TsTypeElement::TsIndexSignature(index) => {
+            let params = index
+                .params
+                .iter()
+                .map(format_ts_fn_param)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let value = index
+                .type_ann
+                .as_ref()
+                .map(|annotation| format_ts_type(&annotation.type_ann))
+                .unwrap_or_else(|| "unknown".to_string());
+            let readonly = if index.readonly { "readonly " } else { "" };
+            Some(format!("{}[{}]: {}", readonly, params, value))
+        }
+        _ => None,
+    }
 }
 
 fn format_mapped_modifier(modifier: Option<TruePlusMinus>, name: &str) -> String {

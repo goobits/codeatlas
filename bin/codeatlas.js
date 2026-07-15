@@ -4,6 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const https = require('https')
+const crypto = require('crypto')
 const { spawnSync } = require('child_process')
 
 const rootDir = path.resolve(__dirname, '..')
@@ -120,6 +121,23 @@ const extractTar = async (archivePath, destDir) => {
 	})
 }
 
+const verifyChecksum = (archivePath, checksumPath, assetName) => {
+	const line = fs.readFileSync(checksumPath, 'utf8')
+		.split(/\r?\n/)
+		.find(entry => entry.trim().endsWith(`  ${assetName}`))
+	if (!line) {
+		throw new Error(`Checksum missing for ${assetName}`)
+	}
+	const expected = line.trim().split(/\s+/)[0]
+	const actual = crypto
+		.createHash('sha256')
+		.update(fs.readFileSync(archivePath))
+		.digest('hex')
+	if (actual !== expected) {
+		throw new Error(`Checksum mismatch for ${assetName}`)
+	}
+}
+
 const buildFromSource = (binaryPath) => {
 	log('building from source')
 	const cargoCheck = spawnSync('cargo', ['--version'], { stdio: 'ignore' })
@@ -168,18 +186,27 @@ const ensureBinary = async () => {
 	const assetName = `codeatlas-${target}.tar.gz`
 	const url = `https://github.com/${repo}/releases/download/v${pkg.version}/${assetName}`
 	const archivePath = path.join(cacheDir, assetName)
+	const checksumPath = path.join(cacheDir, 'SHA256SUMS')
 
 	try {
 		await downloadFile(url, archivePath)
+		await downloadFile(
+			`https://github.com/${repo}/releases/download/v${pkg.version}/SHA256SUMS`,
+			checksumPath
+		)
+		verifyChecksum(archivePath, checksumPath, assetName)
 		await extractTar(archivePath, cacheDir)
 		if (!fileExists(binaryPath)) {
 			throw new Error('Binary missing after extraction')
 		}
 		ensureExecutable(binaryPath)
 		fs.rmSync(archivePath, { force: true })
+		fs.rmSync(checksumPath, { force: true })
 		return binaryPath
 	} catch (error) {
 		log('download failed', error.message)
+		fs.rmSync(archivePath, { force: true })
+		fs.rmSync(checksumPath, { force: true })
 		buildFromSource(binaryPath)
 		return binaryPath
 	}

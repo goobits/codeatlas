@@ -176,6 +176,13 @@ fn package_docs_follow_public_exports_and_jsdoc() {
         .iter()
         .find(|child| child.name == "find")
         .is_some_and(|child| child.id.ends_with("#ThingStore.find")));
+    let size = store
+        .children
+        .iter()
+        .find(|child| child.name == "size")
+        .expect("ThingStore.size getter");
+    assert_eq!(size.kind, crate::domain::SymbolKind::Property);
+    assert_eq!(size.signature, "get size() -> number");
     let add = report
         .symbols
         .iter()
@@ -186,6 +193,8 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     let markdown = outputs::markdown::render(&report, None, false);
     assert!(markdown.contains("# @example/docs API Reference"));
     assert!(markdown.contains("## `@example/docs/math`"));
+    assert!(markdown.contains("### Classes"));
+    assert!(markdown.contains("### Functions"));
     assert!(markdown.contains("Create a thing."));
     assert!(markdown.contains("**Members**"));
     assert!(
@@ -205,6 +214,12 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(html.contains("Deprecated: Use <code>name</code>. Legacy label."));
     assert!(html.contains("Skip to API reference"));
     assert!(html.contains("Browse API"));
+    assert!(html.contains("class=\"atlas-kind-section__title\">Classes</h3>"));
+    assert!(html.contains("class=\"atlas-nav__kind\">Functions</p>"));
+    assert!(html.contains("class=\"atlas-permalink\""));
+    assert!(html.contains("http-equiv=\"Content-Security-Policy\""));
+    assert!(html.contains("script-src &#39;sha256-"));
+    assert!(!html.contains("unsafe-inline"));
     assert!(html.contains("thingstore.find"));
     assert!(!html.contains("secret"));
     assert!(!html.contains("internalOnly"));
@@ -435,7 +450,7 @@ fn internal_interface_members_follow_include_private() {
     let private_markdown = outputs::markdown::render(&private_report, None, true);
     assert!(private_markdown
         .contains("| `secret` | `secret: string` | Parser-only implementation marker. |"));
-    assert!(private_markdown.contains("#### `#reset`"));
+    assert!(private_markdown.contains("##### `#reset`"));
     assert!(!private_markdown.contains("@internal"));
 
     let private_html = outputs::html::render(&private_report, None, true);
@@ -509,6 +524,7 @@ fn typescript_signatures_preserve_generics_and_object_aliases() {
     let source = r#"
 export interface Result<TValue extends object = Record<string, unknown>> {
     map<TNext = TValue>(callback: (value: TValue) => TNext): Result<TNext>
+    readonly save: <TFormat extends string = "blob">(value: TValue) => Promise<TFormat>
 }
 export type Options<TValue = string> = {
     readonly value: TValue
@@ -548,6 +564,51 @@ export type Options<TValue = string> = {
             .map(|child| child.signature.as_str()),
         Some("map<TNext = TValue>(callback: (value: TValue) => TNext) -> Result<TNext>")
     );
+    assert_eq!(
+        result.children.get(1).map(|child| child.signature.as_str()),
+        Some(
+            "readonly save: <TFormat extends string = \"blob\">(value: TValue) => Promise<TFormat>"
+        )
+    );
+}
+
+#[test]
+fn typescript_accessors_are_documented_as_properties() {
+    let source = r#"
+export interface Store {
+    get current(): string
+    set current(value: string)
+}
+export class StoreImpl {
+    get current(): string { return "" }
+    set current(value: string) {}
+}
+"#;
+    let report = crate::languages::typescript::parser::parse_source(source, "src/accessors.ts")
+        .expect("TypeScript accessors");
+
+    for owner in ["Store", "StoreImpl"] {
+        let symbol = report
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == owner)
+            .expect("accessor owner");
+        let accessors = symbol
+            .children
+            .iter()
+            .filter(|child| child.name == "current")
+            .collect::<Vec<_>>();
+        assert_eq!(accessors.len(), 1);
+        assert_eq!(accessors[0].kind, crate::domain::SymbolKind::Property);
+        assert!(accessors[0]
+            .signature
+            .lines()
+            .any(|signature| signature.starts_with("get current")));
+        assert!(accessors[0]
+            .signature
+            .lines()
+            .any(|signature| signature.starts_with("set current")));
+    }
 }
 
 #[test]

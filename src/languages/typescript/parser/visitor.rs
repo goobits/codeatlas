@@ -1,6 +1,7 @@
 use super::format::{
     format_binding_ident, format_constructor_param, format_params, format_pat, format_prop_name,
-    format_return_type, format_ts_fn_param, format_ts_type, kind_to_str, member_visibility,
+    format_return_type, format_ts_fn_param, format_ts_type, format_type_args, format_type_params,
+    kind_to_str, member_visibility,
 };
 use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
 use swc_core::common::{sync::Lrc, SourceMap};
@@ -70,7 +71,13 @@ impl SymbolVisitor {
                             SymbolKind::Method,
                             Visibility::Public,
                             method.span,
-                            format!("{}({}){}", name, params, return_type),
+                            format!(
+                                "{}{}({}){}",
+                                name,
+                                format_type_params(method.type_params.as_deref()),
+                                params,
+                                return_type
+                            ),
                         ));
                     }
                 }
@@ -83,12 +90,54 @@ impl SymbolVisitor {
                             .map(|annotation| format!(": {}", format_ts_type(&annotation.type_ann)))
                             .unwrap_or_default();
                         let optional = if property.optional { "?" } else { "" };
+                        let readonly = if property.readonly { "readonly " } else { "" };
                         symbols.push(self.create_symbol(
                             name.clone(),
                             SymbolKind::Property,
                             Visibility::Public,
                             property.span,
-                            format!("{}{}{}", name, optional, type_annotation),
+                            format!("{}{}{}{}", readonly, name, optional, type_annotation),
+                        ));
+                    }
+                }
+                TsTypeElement::TsGetterSignature(getter) => {
+                    if let Expr::Ident(id) = &*getter.key {
+                        let name = id.sym.to_string();
+                        let readonly = if getter.readonly { "readonly " } else { "" };
+                        let optional = if getter.optional { "?" } else { "" };
+                        let return_type = getter
+                            .type_ann
+                            .as_ref()
+                            .map(|annotation| {
+                                format!(" -> {}", format_ts_type(&annotation.type_ann))
+                            })
+                            .unwrap_or_default();
+                        symbols.push(self.create_symbol(
+                            name.clone(),
+                            SymbolKind::Property,
+                            Visibility::Public,
+                            getter.span,
+                            format!("{}get {}{}(){}", readonly, name, optional, return_type),
+                        ));
+                    }
+                }
+                TsTypeElement::TsSetterSignature(setter) => {
+                    if let Expr::Ident(id) = &*setter.key {
+                        let name = id.sym.to_string();
+                        let readonly = if setter.readonly { "readonly " } else { "" };
+                        let optional = if setter.optional { "?" } else { "" };
+                        symbols.push(self.create_symbol(
+                            name.clone(),
+                            SymbolKind::Property,
+                            Visibility::Public,
+                            setter.span,
+                            format!(
+                                "{}set {}{}({})",
+                                readonly,
+                                name,
+                                optional,
+                                format_ts_fn_param(&setter.param)
+                            ),
                         ));
                     }
                 }
@@ -140,7 +189,12 @@ impl Visit for SymbolVisitor {
             SymbolKind::Class,
             Visibility::Internal,
             declaration.class.span,
-            format!("class {}{}", name, extends),
+            format!(
+                "class {}{}{}",
+                name,
+                format_type_params(declaration.class.type_params.as_deref()),
+                extends
+            ),
         );
 
         for member in &declaration.class.body {
@@ -201,17 +255,22 @@ impl Visit for SymbolVisitor {
                         let static_prefix = if method.is_static { "static " } else { "" };
                         let optional = if method.is_optional { "?" } else { "" };
                         let signature = format!(
-                            "{}{}{}{}({}){}",
+                            "{}{}{}{}{}({}){}",
                             static_prefix,
                             method_kind,
                             name,
                             optional,
+                            format_type_params(method.function.type_params.as_deref()),
                             format_params(&method.function.params),
                             format_return_type(&method.function)
                         );
                         symbol.children.push(self.create_symbol(
                             name,
-                            SymbolKind::Method,
+                            if method.kind == MethodKind::Method {
+                                SymbolKind::Method
+                            } else {
+                                SymbolKind::Property
+                            },
                             member_visibility(method.accessibility, false),
                             method.span,
                             signature,
@@ -222,7 +281,11 @@ impl Visit for SymbolVisitor {
                     let name = format!("#{}", method.key.id.sym);
                     symbol.children.push(self.create_symbol(
                         name.clone(),
-                        SymbolKind::Method,
+                        if method.kind == MethodKind::Method {
+                            SymbolKind::Method
+                        } else {
+                            SymbolKind::Property
+                        },
                         Visibility::Private,
                         method.span,
                         format!(
@@ -288,8 +351,9 @@ impl Visit for SymbolVisitor {
             Visibility::Internal,
             declaration.function.span,
             format!(
-                "function {}({}){}",
+                "function {}{}({}){}",
                 name,
+                format_type_params(declaration.function.type_params.as_deref()),
                 format_params(&declaration.function.params),
                 format_return_type(&declaration.function)
             ),
@@ -358,19 +422,7 @@ impl Visit for SymbolVisitor {
 
     fn visit_ts_type_alias_decl(&mut self, declaration: &TsTypeAliasDecl) {
         let name = declaration.id.sym.to_string();
-        let type_params = declaration
-            .type_params
-            .as_ref()
-            .map(|params| {
-                let names = params
-                    .params
-                    .iter()
-                    .map(|param| param.name.sym.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("<{}>", names)
-            })
-            .unwrap_or_default();
+        let type_params = format_type_params(declaration.type_params.as_deref());
         let mut symbol = self.create_symbol(
             name.clone(),
             SymbolKind::TypeAlias,
@@ -443,7 +495,11 @@ impl Visit for SymbolVisitor {
             .iter()
             .filter_map(|extension| {
                 if let Expr::Ident(ident) = &*extension.expr {
-                    Some(ident.sym.to_string())
+                    Some(format!(
+                        "{}{}",
+                        ident.sym,
+                        format_type_args(extension.type_args.as_deref())
+                    ))
                 } else {
                     None
                 }
@@ -459,7 +515,12 @@ impl Visit for SymbolVisitor {
             SymbolKind::Interface,
             Visibility::Internal,
             declaration.span,
-            format!("interface {}{}", name, extends),
+            format!(
+                "interface {}{}{}",
+                name,
+                format_type_params(declaration.type_params.as_deref()),
+                extends
+            ),
         );
         symbol.children = self.create_type_members(&declaration.body.body);
         self.qualify_children(&name, &mut symbol.children);

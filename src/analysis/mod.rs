@@ -1,6 +1,7 @@
 use crate::domain::ScanReport;
 use std::path::Path;
 
+mod dependency_types;
 pub(crate) mod docs;
 pub(crate) mod ignore;
 mod imports;
@@ -34,4 +35,5 @@ pub(crate) fn annotate_unused_public(
     report.unused_public = unused_public::compute(report, importers, no_default_ignore);
 }
 
+pub(crate) use dependency_types::annotate_dependency_types;
 pub(crate) use docs::annotate_docs;

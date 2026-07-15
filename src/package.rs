@@ -3,12 +3,122 @@ mod source_layout;
 use crate::domain::{PackageExport, PackageInfo, ScanConfig, ScanReport, Symbol};
 use anyhow::{Context, Result};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use source_layout::SourceLayout;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResolvedDependency {
+    pub package_name: String,
+    pub public_path: String,
+    pub root: PathBuf,
+}
+
+pub(crate) fn resolve_dependency(root_dir: &Path, specifier: &str) -> Option<ResolvedDependency> {
+    let (package_name, public_path) = split_package_specifier(specifier)?;
+    for ancestor in root_dir.ancestors() {
+        for node_modules in [
+            ancestor.join("node_modules"),
+            ancestor.join("node_modules/.pnpm/node_modules"),
+        ] {
+            let package_root = node_modules.join(&package_name);
+            if package_root.join("package.json").is_file() {
+                return Some(ResolvedDependency {
+                    package_name,
+                    public_path: public_path.clone(),
+                    root: package_root.canonicalize().ok()?,
+                });
+            }
+        }
+    }
+    None
+}
+
+pub(crate) fn is_local_dependency(
+    importer_root: &Path,
+    dependency: &ResolvedDependency,
+) -> Result<bool> {
+    if !dependency
+        .root
+        .components()
+        .any(|component| component.as_os_str() == "node_modules")
+    {
+        return Ok(true);
+    }
+
+    let manifest_path = importer_root.join("package.json");
+    if !manifest_path.is_file() {
+        return Ok(false);
+    }
+    let source = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Could not read {}", manifest_path.display()))?;
+    let manifest: Value = serde_json::from_str(&source)
+        .with_context(|| format!("Invalid package manifest at {}", manifest_path.display()))?;
+    for section in [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    ] {
+        let Some(requirement) = manifest
+            .get(section)
+            .and_then(|dependencies| dependencies.get(&dependency.package_name))
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        if ["workspace:", "file:", "link:"]
+            .iter()
+            .any(|protocol| requirement.starts_with(protocol))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn split_package_specifier(specifier: &str) -> Option<(String, String)> {
+    if specifier.starts_with('.')
+        || specifier.starts_with('#')
+        || specifier.starts_with('/')
+        || specifier.contains(':')
+    {
+        return None;
+    }
+    let segments = specifier.split('/').collect::<Vec<_>>();
+    let package_segment_count = usize::from(specifier.starts_with('@')) + 1;
+    if segments.len() < package_segment_count
+        || segments[..package_segment_count]
+            .iter()
+            .any(|segment| segment.is_empty())
+    {
+        return None;
+    }
+    let package_name = segments[..package_segment_count].join("/");
+    let public_path = if segments.len() == package_segment_count {
+        ".".to_string()
+    } else {
+        format!("./{}", segments[package_segment_count..].join("/"))
+    };
+    Some((package_name, public_path))
+}
+
 pub(crate) fn discover(root_dir: &Path) -> Result<Option<PackageInfo>> {
+    discover_with_export_condition(root_dir, false)
+}
+
+pub(crate) fn discover_for_docs(
+    root_dir: &Path,
+    declaration_contract: bool,
+) -> Result<Option<PackageInfo>> {
+    discover_with_export_condition(root_dir, declaration_contract)
+}
+
+fn discover_with_export_condition(
+    root_dir: &Path,
+    declaration_contract: bool,
+) -> Result<Option<PackageInfo>> {
     let manifest_path = root_dir.join("package.json");
     if !manifest_path.is_file() {
         return Ok(None);
@@ -21,11 +131,25 @@ pub(crate) fn discover(root_dir: &Path) -> Result<Option<PackageInfo>> {
     let Some(name) = manifest.get("name").and_then(Value::as_str) else {
         return Ok(None);
     };
-    let source_layout = SourceLayout::discover(root_dir);
+    let source_layout = (!declaration_contract)
+        .then(|| SourceLayout::discover(root_dir))
+        .flatten();
+    let conditions: &[&str] = if declaration_contract {
+        &["types"]
+    } else {
+        &["source", "types", "svelte", "import", "default", "require"]
+    };
 
     let mut exports = Vec::new();
     if let Some(value) = manifest.get("exports") {
-        collect_exports(root_dir, source_layout.as_ref(), ".", value, &mut exports);
+        collect_exports(
+            root_dir,
+            source_layout.as_ref(),
+            conditions,
+            ".",
+            value,
+            &mut exports,
+        );
     } else {
         for key in ["types", "module", "main"] {
             if let Some(target) = manifest.get(key).and_then(Value::as_str) {
@@ -95,6 +219,53 @@ pub(crate) fn annotate(
     report.package = Some(package);
 }
 
+pub(crate) fn consolidate_declaration_symbols(report: &mut ScanReport) {
+    fn merge_symbols(mut symbols: Vec<Symbol>) -> Vec<Symbol> {
+        symbols.sort_by(|left, right| {
+            let left_is_root = left
+                .package
+                .as_ref()
+                .is_some_and(|package| left.export_paths.iter().any(|path| path == package));
+            let right_is_root = right
+                .package
+                .as_ref()
+                .is_some_and(|package| right.export_paths.iter().any(|path| path == package));
+            right_is_root
+                .cmp(&left_is_root)
+                .then_with(|| left.file_path.cmp(&right.file_path))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+
+        let mut merged = BTreeMap::<String, Symbol>::new();
+        for mut symbol in symbols {
+            symbol.children = merge_symbols(symbol.children);
+            let key = format!(
+                "{}::{:?}#{}::{}",
+                symbol.package.as_deref().unwrap_or("public-api"),
+                symbol.kind,
+                symbol.name,
+                symbol.signature
+            );
+            if let Some(existing) = merged.get_mut(&key) {
+                existing.export_paths.extend(symbol.export_paths);
+                existing.export_paths.sort();
+                existing.export_paths.dedup();
+                if existing.docs.is_none() {
+                    existing.docs = symbol.docs;
+                }
+                existing.children.extend(symbol.children);
+                existing.children = merge_symbols(std::mem::take(&mut existing.children));
+            } else {
+                merged.insert(key, symbol);
+            }
+        }
+        merged.into_values().collect()
+    }
+
+    report.symbols = merge_symbols(std::mem::take(&mut report.symbols));
+    report.stats.symbols_found = report.symbols.len();
+}
+
 fn is_typescript_path(path: &str) -> bool {
     matches!(
         Path::new(path)
@@ -107,6 +278,7 @@ fn is_typescript_path(path: &str) -> bool {
 fn collect_exports(
     root_dir: &Path,
     source_layout: Option<&SourceLayout>,
+    conditions: &[&str],
     public_path: &str,
     value: &Value,
     exports: &mut Vec<PackageExport>,
@@ -123,7 +295,14 @@ fn collect_exports(
         Value::Array(values) => {
             for value in values {
                 let previous_len = exports.len();
-                collect_exports(root_dir, source_layout, public_path, value, exports);
+                collect_exports(
+                    root_dir,
+                    source_layout,
+                    conditions,
+                    public_path,
+                    value,
+                    exports,
+                );
                 if exports.len() > previous_len {
                     break;
                 }
@@ -133,16 +312,23 @@ fn collect_exports(
             if map.keys().any(|key| key.starts_with('.')) {
                 for (path, target) in map {
                     if path.starts_with('.') {
-                        collect_exports(root_dir, source_layout, path, target, exports);
+                        collect_exports(root_dir, source_layout, conditions, path, target, exports);
                     }
                 }
                 return;
             }
 
-            for condition in ["source", "types", "svelte", "import", "default", "require"] {
-                if let Some(target) = map.get(condition) {
+            for condition in conditions {
+                if let Some(target) = map.get(*condition) {
                     let previous_len = exports.len();
-                    collect_exports(root_dir, source_layout, public_path, target, exports);
+                    collect_exports(
+                        root_dir,
+                        source_layout,
+                        conditions,
+                        public_path,
+                        target,
+                        exports,
+                    );
                     if exports.len() > previous_len {
                         return;
                     }
@@ -228,7 +414,8 @@ fn format_public_path(package: &str, public_path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::format_public_path;
+    use super::{consolidate_declaration_symbols, format_public_path, split_package_specifier};
+    use crate::domain::ScanReport;
 
     #[test]
     fn formats_package_export_paths() {
@@ -240,5 +427,63 @@ mod tests {
             format_public_path("@goobits/example", "./tools"),
             "@goobits/example/tools"
         );
+    }
+
+    #[test]
+    fn splits_scoped_and_unscoped_package_specifiers() {
+        assert_eq!(
+            split_package_specifier("@example/contracts/public"),
+            Some(("@example/contracts".to_string(), "./public".to_string()))
+        );
+        assert_eq!(
+            split_package_specifier("example/public"),
+            Some(("example".to_string(), "./public".to_string()))
+        );
+        assert_eq!(
+            split_package_specifier("@example/contracts"),
+            Some(("@example/contracts".to_string(), ".".to_string()))
+        );
+        assert_eq!(split_package_specifier("./local.ts"), None);
+        assert_eq!(split_package_specifier("node:path"), None);
+    }
+
+    #[test]
+    fn declaration_consolidation_prefers_the_root_export_deterministically() {
+        fn symbol(path: &str, export_path: &str) -> crate::domain::Symbol {
+            let mut symbol = crate::languages::typescript::parser::parse_source(
+                "export interface PublicApi { readonly ready: boolean }",
+                path,
+            )
+            .expect("TypeScript declaration")
+            .symbols
+            .remove(0);
+            symbol.package = Some("@example/sdk".to_string());
+            symbol.export_paths = vec![export_path.to_string()];
+            symbol
+        }
+
+        for symbols in [
+            vec![
+                symbol("dist/api.d.ts", "@example/sdk/api"),
+                symbol("dist/index.d.ts", "@example/sdk"),
+            ],
+            vec![
+                symbol("dist/index.d.ts", "@example/sdk"),
+                symbol("dist/api.d.ts", "@example/sdk/api"),
+            ],
+        ] {
+            let mut report = ScanReport {
+                symbols,
+                ..ScanReport::default()
+            };
+            consolidate_declaration_symbols(&mut report);
+
+            assert_eq!(report.symbols.len(), 1);
+            assert_eq!(report.symbols[0].file_path, "dist/index.d.ts");
+            assert_eq!(
+                report.symbols[0].export_paths,
+                ["@example/sdk", "@example/sdk/api"]
+            );
+        }
     }
 }

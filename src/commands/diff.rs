@@ -3,7 +3,7 @@ use crate::analysis;
 use crate::domain::{ScanReport, Symbol};
 use anyhow::{Context, Result};
 use colored::Colorize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 pub(crate) fn run(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> i32 {
@@ -27,23 +27,23 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
     analysis::annotate_unused_public(&mut current, &importers, project.config.no_default_ignore);
     annotate_report(&mut current, &project)?;
 
-    let baseline_symbols = symbols_by_id(&baseline);
-    let current_symbols = symbols_by_id(&current);
+    let baseline_symbols = symbols_by_stable_key(&baseline);
+    let current_symbols = symbols_by_stable_key(&current);
     let added = current_symbols
         .iter()
-        .filter(|(id, _)| !baseline_symbols.contains_key(*id))
+        .filter(|(key, _)| !baseline_symbols.contains_key(*key))
         .map(|(_, symbol)| *symbol)
         .collect::<Vec<_>>();
     let removed = baseline_symbols
         .iter()
-        .filter(|(id, _)| !current_symbols.contains_key(*id))
+        .filter(|(key, _)| !current_symbols.contains_key(*key))
         .map(|(_, symbol)| *symbol)
         .collect::<Vec<_>>();
     let changed = current_symbols
         .iter()
-        .filter_map(|(id, symbol)| {
-            let previous = baseline_symbols.get(id)?;
-            api_changed(previous, symbol).then_some((*previous, *symbol))
+        .filter_map(|(key, symbol)| {
+            let previous = baseline_symbols.get(key)?;
+            classify_change(previous, symbol).map(|severity| (*previous, *symbol, severity))
         })
         .collect::<Vec<_>>();
 
@@ -59,24 +59,24 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
 
     if !added.is_empty() {
         println!(
-            "{} {} NEW public symbol(s):\n",
+            "{} {} ADDITIVE public symbol(s):\n",
             "+".green().bold(),
             added.len()
         );
         for symbol in &added {
-            println!("  {} {}", "+".green(), symbol.id.yellow());
+            println!("  {} {}", "+".green(), display_key(symbol).yellow());
         }
         println!();
     }
 
     if !removed.is_empty() {
         println!(
-            "{} {} REMOVED public symbol(s):\n",
+            "{} {} BREAKING removed public symbol(s):\n",
             "-".red().bold(),
             removed.len()
         );
         for symbol in &removed {
-            println!("  {} {}", "-".red(), symbol.id.yellow());
+            println!("  {} {}", "-".red(), display_key(symbol).yellow());
         }
         println!();
     }
@@ -87,8 +87,17 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
             "~".yellow().bold(),
             changed.len()
         );
-        for (previous, current) in &changed {
-            println!("  {} {}", "~".yellow(), current.id.yellow());
+        for (previous, current, severity) in &changed {
+            let label = match severity {
+                ChangeSeverity::Additive => "ADDITIVE".green(),
+                ChangeSeverity::Breaking => "BREAKING".red(),
+            };
+            println!(
+                "  {} {} {}",
+                "~".yellow(),
+                label,
+                display_key(current).yellow()
+            );
             if previous.signature != current.signature {
                 println!("    - {}", previous.signature.red());
                 println!("    + {}", current.signature.green());
@@ -103,20 +112,36 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
         println!();
     }
 
+    let breaking_changes = removed.len()
+        + changed
+            .iter()
+            .filter(|(_, _, severity)| *severity == ChangeSeverity::Breaking)
+            .count();
+    let additive_changes = added.len()
+        + changed
+            .iter()
+            .filter(|(_, _, severity)| *severity == ChangeSeverity::Additive)
+            .count();
+
     println!("{}", "-".repeat(50).dimmed());
     println!("\n{}", "Summary:".white().bold());
     println!("  Baseline: {} symbols", baseline_symbols.len());
     println!("  Current:  {} symbols", current_symbols.len());
-    println!("  Added:    {}", format!("+{}", added.len()).green());
-    println!("  Removed:  {}", format!("-{}", removed.len()).red());
-    println!("  Changed:  {}", format!("~{}", changed.len()).yellow());
-    Ok(1)
+    println!("  Additive: {}", format!("+{}", additive_changes).green());
+    println!("  Breaking: {}", format!("!{}", breaking_changes).red());
+    Ok(i32::from(breaking_changes > 0))
 }
 
-fn symbols_by_id(report: &ScanReport) -> BTreeMap<&str, &Symbol> {
-    fn collect<'a>(symbols: &'a [Symbol], output: &mut BTreeMap<&'a str, &'a Symbol>) {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ChangeSeverity {
+    Additive,
+    Breaking,
+}
+
+fn symbols_by_stable_key(report: &ScanReport) -> BTreeMap<String, &Symbol> {
+    fn collect<'a>(symbols: &'a [Symbol], output: &mut BTreeMap<String, &'a Symbol>) {
         for symbol in symbols {
-            output.insert(&symbol.id, symbol);
+            output.insert(stable_key(symbol), symbol);
             collect(&symbol.children, output);
         }
     }
@@ -126,9 +151,111 @@ fn symbols_by_id(report: &ScanReport) -> BTreeMap<&str, &Symbol> {
     symbols
 }
 
-fn api_changed(previous: &Symbol, current: &Symbol) -> bool {
-    previous.signature != current.signature
+fn stable_key(symbol: &Symbol) -> String {
+    let qualified_name = symbol
+        .id
+        .split_once('#')
+        .map_or(symbol.name.as_str(), |(_, name)| name);
+    format!(
+        "{}::{:?}#{}",
+        symbol.package.as_deref().unwrap_or("public-api"),
+        symbol.kind,
+        qualified_name
+    )
+}
+
+fn display_key(symbol: &Symbol) -> String {
+    if symbol.export_paths.is_empty() {
+        stable_key(symbol)
+    } else {
+        format!(
+            "{} ({})",
+            stable_key(symbol),
+            symbol.export_paths.join(", ")
+        )
+    }
+}
+
+fn classify_change(previous: &Symbol, current: &Symbol) -> Option<ChangeSeverity> {
+    if previous.signature == current.signature
+        && previous.kind == current.kind
+        && previous.visibility == current.visibility
+        && previous.export_paths == current.export_paths
+    {
+        return None;
+    }
+
+    let previous_exports = previous.export_paths.iter().collect::<BTreeSet<_>>();
+    let current_exports = current.export_paths.iter().collect::<BTreeSet<_>>();
+    let removed_export = previous_exports
+        .difference(&current_exports)
+        .next()
+        .is_some();
+    let breaking = previous.signature != current.signature
         || previous.kind != current.kind
         || previous.visibility != current.visibility
-        || previous.export_paths != current.export_paths
+        || removed_export;
+
+    Some(if breaking {
+        ChangeSeverity::Breaking
+    } else {
+        ChangeSeverity::Additive
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{classify_change, stable_key, ChangeSeverity};
+    use crate::domain::{Language, Symbol, SymbolKind, Visibility};
+
+    fn symbol(file: &str, signature: &str, exports: &[&str]) -> Symbol {
+        Symbol {
+            id: format!("ts:{file}:interface#PublicAPI"),
+            name: "PublicAPI".to_string(),
+            kind: SymbolKind::Interface,
+            visibility: Visibility::Public,
+            language: Language::TypeScript,
+            file_path: file.to_string(),
+            span: None,
+            signature: signature.to_string(),
+            docs: None,
+            export_paths: exports.iter().map(|value| (*value).to_string()).collect(),
+            package: Some("@example/sdk".to_string()),
+            children: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn stable_identity_ignores_source_file_moves() {
+        assert_eq!(
+            stable_key(&symbol(
+                "src/old.ts",
+                "interface PublicAPI",
+                &["@example/sdk"]
+            )),
+            stable_key(&symbol(
+                "dist/index.d.ts",
+                "interface PublicAPI",
+                &["@example/sdk"]
+            ))
+        );
+    }
+
+    #[test]
+    fn export_additions_are_additive_and_removals_are_breaking() {
+        let root = symbol("src/index.ts", "interface PublicAPI", &["@example/sdk"]);
+        let expanded = symbol(
+            "src/index.ts",
+            "interface PublicAPI",
+            &["@example/sdk", "@example/sdk/api"],
+        );
+        assert_eq!(
+            classify_change(&root, &expanded),
+            Some(ChangeSeverity::Additive)
+        );
+        assert_eq!(
+            classify_change(&expanded, &root),
+            Some(ChangeSeverity::Breaking)
+        );
+    }
 }

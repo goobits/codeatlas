@@ -20,8 +20,14 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: 
 
     for group in reference.groups {
         output.push_str(&format!("## `{}`\n\n", group.name));
-        for symbol in group.symbols {
-            render_symbol(&mut output, symbol, 3, true, include_private);
+        for section in group.sections {
+            output.push_str(&format!(
+                "### {}\n\n",
+                reference::kind_plural_label(section.kind)
+            ));
+            for symbol in section.symbols {
+                render_symbol(&mut output, symbol, 4, true, include_private);
+            }
         }
     }
 

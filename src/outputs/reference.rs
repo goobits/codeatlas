@@ -8,7 +8,21 @@ pub(crate) struct ApiReference<'a> {
 
 pub(crate) struct ReferenceGroup<'a> {
     pub(crate) name: String,
+    pub(crate) sections: Vec<ReferenceSection<'a>>,
+}
+
+pub(crate) struct ReferenceSection<'a> {
+    pub(crate) kind: SymbolKind,
     pub(crate) symbols: Vec<&'a Symbol>,
+}
+
+impl<'a> ReferenceGroup<'a> {
+    pub(crate) fn symbol_count(&self) -> usize {
+        self.sections
+            .iter()
+            .map(|section| section.symbols.len())
+            .sum()
+    }
 }
 
 pub(crate) fn build<'a>(
@@ -53,12 +67,46 @@ pub(crate) fn build<'a>(
     let groups = grouped
         .into_iter()
         .map(|(name, mut symbols)| {
-            symbols.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.name.cmp(&b.name)));
-            ReferenceGroup { name, symbols }
+            symbols.sort_by(|a, b| {
+                kind_rank(a.kind)
+                    .cmp(&kind_rank(b.kind))
+                    .then_with(|| a.name.cmp(&b.name))
+            });
+            let mut sections: Vec<ReferenceSection<'_>> = Vec::new();
+            for symbol in symbols {
+                if let Some(section) = sections.last_mut() {
+                    if section.kind == symbol.kind {
+                        section.symbols.push(symbol);
+                        continue;
+                    }
+                }
+                sections.push(ReferenceSection {
+                    kind: symbol.kind,
+                    symbols: vec![symbol],
+                });
+            }
+            ReferenceGroup { name, sections }
         })
         .collect();
 
     ApiReference { groups, title }
+}
+
+pub(crate) fn kind_plural_label(kind: SymbolKind) -> &'static str {
+    match kind {
+        SymbolKind::Module => "Modules",
+        SymbolKind::Class => "Classes",
+        SymbolKind::Method => "Methods",
+        SymbolKind::Function => "Functions",
+        SymbolKind::Interface => "Interfaces",
+        SymbolKind::Struct => "Structs",
+        SymbolKind::Const => "Constants",
+        SymbolKind::Property => "Properties",
+        SymbolKind::Decorator => "Decorators",
+        SymbolKind::Enum => "Enums",
+        SymbolKind::Trait => "Traits",
+        SymbolKind::TypeAlias => "Type aliases",
+    }
 }
 
 pub(crate) fn kind_label(kind: SymbolKind) -> &'static str {
@@ -136,5 +184,22 @@ pub(crate) fn member_description(symbol: &Symbol) -> String {
         "-".to_string()
     } else {
         parts.join(" ")
+    }
+}
+
+fn kind_rank(kind: SymbolKind) -> u8 {
+    match kind {
+        SymbolKind::Class => 0,
+        SymbolKind::Interface => 1,
+        SymbolKind::TypeAlias => 2,
+        SymbolKind::Enum => 3,
+        SymbolKind::Function => 4,
+        SymbolKind::Const => 5,
+        SymbolKind::Module => 6,
+        SymbolKind::Trait => 7,
+        SymbolKind::Struct => 8,
+        SymbolKind::Property => 9,
+        SymbolKind::Method => 10,
+        SymbolKind::Decorator => 11,
     }
 }

@@ -1,10 +1,40 @@
 use super::reference;
 use crate::config::DocsConfig;
 use crate::domain::{ScanReport, Symbol};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use pulldown_cmark::{html, Event, Options, Parser};
+use sha2::{Digest, Sha256};
 use std::fmt::Write;
 
 const STYLE: &str = include_str!("html.css");
+const SCRIPT: &str = r#"const search = document.querySelector('.atlas-search')
+const navToggle = document.querySelector('.atlas-nav-toggle')
+const sidebar = document.querySelector('.atlas-sidebar')
+const symbols = [...document.querySelectorAll('.atlas-symbol[data-search]')]
+const kindSections = [...document.querySelectorAll('.atlas-kind-section')]
+const groups = [...document.querySelectorAll('.atlas-group')]
+const empty = document.querySelector('.atlas-empty')
+navToggle?.addEventListener('click', () => {
+	const open = sidebar.dataset.navOpen !== 'true'
+	sidebar.dataset.navOpen = String(open)
+	navToggle.setAttribute('aria-expanded', String(open))
+})
+search?.addEventListener('input', () => {
+	const query = search.value.trim().toLocaleLowerCase()
+	let visible = 0
+	for (const symbol of symbols) {
+		const matches = symbol.dataset.search.includes(query)
+		symbol.hidden = !matches
+		if (matches) visible += 1
+	}
+	for (const section of kindSections) {
+		section.hidden = !section.querySelector('.atlas-symbol[data-search]:not([hidden])')
+	}
+	for (const group of groups) {
+		group.hidden = !group.querySelector('.atlas-kind-section:not([hidden])')
+	}
+	empty.dataset.visible = String(visible === 0)
+})"#;
 
 #[cfg(test)]
 pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: bool) -> String {
@@ -46,6 +76,13 @@ pub(crate) fn render_with_options(
         })
         .unwrap_or_default();
     let theme = render_theme(&options.theme);
+    let style_body = format!("\n{}{}\n", STYLE, theme);
+    let script_body = format!("\n{}\n", SCRIPT);
+    let content_security_policy = format!(
+        "default-src 'none'; style-src 'sha256-{}'; script-src 'sha256-{}'; img-src data:; base-uri 'none'; form-action 'none'",
+        csp_hash(&style_body),
+        csp_hash(&script_body)
+    );
 
     write!(
         output,
@@ -53,16 +90,18 @@ pub(crate) fn render_with_options(
 \t<meta charset=\"utf-8\">\n\
 \t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
 \t<meta name=\"generator\" content=\"CodeAtlas {}\">\n\
+\t<meta name=\"referrer\" content=\"no-referrer\">\n\
+\t<meta http-equiv=\"Content-Security-Policy\" content=\"{}\">\n\
 {}{}\
 \t<title>{}</title>\n\
-\t<style>\n{}{}\n\t</style>\n\
+\t<style>{}</style>\n\
 </head>\n<body>\n<div class=\"atlas-layout\">\n",
         escape_attr(&report.tool_version),
+        escape_attr(&content_security_policy),
         description_meta,
         canonical_link,
         escaped_title,
-        STYLE,
-        theme
+        style_body
     )
     .expect("writing to String cannot fail");
 
@@ -98,43 +137,37 @@ pub(crate) fn render_with_options(
 \t\t\t</div>\n",
             escape_attr(&group_id),
             escape_html(&group.name),
-            group.symbols.len()
+            group.symbol_count()
         )
         .expect("writing to String cannot fail");
-        for symbol in &group.symbols {
-            render_symbol(&mut output, symbol, &group.name, 3, true, include_private);
+        for section in &group.sections {
+            let section_id = format!(
+                "{}-{}",
+                group_id,
+                slug(reference::kind_plural_label(section.kind))
+            );
+            write!(
+                output,
+                "\t\t\t<section class=\"atlas-kind-section\" id=\"{}\">\n\
+\t\t\t\t<h3 class=\"atlas-kind-section__title\">{}</h3>\n",
+                escape_attr(&section_id),
+                reference::kind_plural_label(section.kind)
+            )
+            .expect("writing to String cannot fail");
+            for symbol in &section.symbols {
+                render_symbol(&mut output, symbol, &group.name, 4, true, include_private);
+            }
+            output.push_str("\t\t\t</section>\n");
         }
         output.push_str("\t\t</section>\n");
     }
 
-    output.push_str(
-        "\t</main>\n</div>\n<script>\n\
-\tconst search = document.querySelector('.atlas-search')\n\
-\tconst navToggle = document.querySelector('.atlas-nav-toggle')\n\
-\tconst sidebar = document.querySelector('.atlas-sidebar')\n\
-\tconst symbols = [...document.querySelectorAll('.atlas-symbol[data-search]')]\n\
-\tconst groups = [...document.querySelectorAll('.atlas-group')]\n\
-\tconst empty = document.querySelector('.atlas-empty')\n\
-\tnavToggle?.addEventListener('click', () => {\n\
-\t\tconst open = sidebar.dataset.navOpen !== 'true'\n\
-\t\tsidebar.dataset.navOpen = String(open)\n\
-\t\tnavToggle.setAttribute('aria-expanded', String(open))\n\
-\t})\n\
-\tsearch?.addEventListener('input', () => {\n\
-\t\tconst query = search.value.trim().toLocaleLowerCase()\n\
-\t\tlet visible = 0\n\
-\t\tfor (const symbol of symbols) {\n\
-\t\t\tconst matches = symbol.dataset.search.includes(query)\n\
-\t\t\tsymbol.hidden = !matches\n\
-\t\t\tif (matches) visible += 1\n\
-\t\t}\n\
-\t\tfor (const group of groups) {\n\
-\t\t\tgroup.hidden = !group.querySelector('.atlas-symbol[data-search]:not([hidden])')\n\
-\t\t}\n\
-\t\tempty.dataset.visible = String(visible === 0)\n\
-\t})\n\
-</script>\n</body>\n</html>\n",
-    );
+    write!(
+        output,
+        "\t</main>\n</div>\n<script>{}</script>\n</body>\n</html>\n",
+        script_body
+    )
+    .expect("writing to String cannot fail");
     output
 }
 
@@ -212,14 +245,22 @@ fn render_sidebar(
             escape_html(&group.name)
         )
         .expect("writing to String cannot fail");
-        for symbol in &group.symbols {
+        for section in &group.sections {
             writeln!(
                 output,
-                "\t\t\t\t<a class=\"atlas-nav__link\" href=\"#{}\">{}</a>",
-                escape_attr(&symbol_anchor(&group.name, symbol)),
-                escape_html(&symbol.name)
+                "\t\t\t\t<p class=\"atlas-nav__kind\">{}</p>",
+                reference::kind_plural_label(section.kind)
             )
             .expect("writing to String cannot fail");
+            for symbol in &section.symbols {
+                writeln!(
+                    output,
+                    "\t\t\t\t<a class=\"atlas-nav__link\" href=\"#{}\">{}</a>",
+                    escape_attr(&symbol_anchor(&group.name, symbol)),
+                    escape_html(&symbol.name)
+                )
+                .expect("writing to String cannot fail");
+            }
         }
         output.push_str("\t\t\t</div>\n");
     }
@@ -242,6 +283,7 @@ fn render_symbol(
         "\t\t\t<article class=\"atlas-symbol\" id=\"{}\"{}>\n\
 \t\t\t\t<div class=\"atlas-symbol__heading\">\n\
 \t\t\t\t\t<h{}><code>{}</code></h{}>\n\
+\t\t\t\t\t<a class=\"atlas-permalink\" href=\"#{}\" aria-label=\"Permalink to {}\">#</a>\n\
 \t\t\t\t\t<span class=\"atlas-kind\">{}</span>\n",
         escape_attr(&anchor),
         search
@@ -251,6 +293,8 @@ fn render_symbol(
         heading_level,
         escape_html(&symbol.name),
         heading_level,
+        escape_attr(&anchor),
+        escape_attr(&symbol.name),
         reference::kind_label(symbol.kind)
     )
     .expect("writing to String cannot fail");
@@ -447,6 +491,10 @@ fn escape_html(value: &str) -> String {
 
 fn escape_attr(value: &str) -> String {
     escape_html(value)
+}
+
+fn csp_hash(value: &str) -> String {
+    STANDARD.encode(Sha256::digest(value.as_bytes()))
 }
 
 fn render_markdown(value: &str) -> String {

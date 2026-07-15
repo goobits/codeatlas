@@ -29,10 +29,20 @@ pub(crate) fn normalize_relative_path(path: &Path, root_dir: &Path) -> String {
 }
 
 pub(crate) fn normalize_path(path: &Path) -> String {
-    let mut parts = Vec::new();
+    let mut parts = Vec::<String>::new();
     for component in path.components() {
-        if let std::path::Component::Normal(part) = component {
-            parts.push(part.to_string_lossy());
+        match component {
+            std::path::Component::Normal(part) => {
+                parts.push(part.to_string_lossy().into_owned());
+            }
+            std::path::Component::ParentDir => {
+                if parts.last().is_some_and(|part| part != "..") {
+                    parts.pop();
+                } else {
+                    parts.push("..".to_string());
+                }
+            }
+            _ => {}
         }
     }
     parts.join("/")
@@ -60,9 +70,13 @@ mod tests {
     fn test_normalize_relative_path_sibling() {
         let root = Path::new("/root/a");
         let path = Path::new("/root/b/file.rs");
-        // Expected behavior based on current implementation:
-        // diff_paths -> "../b/file.rs"
-        // normalize_path -> "b/file.rs" (ignoring ..)
-        assert_eq!(normalize_relative_path(path, root), "b/file.rs");
+        assert_eq!(normalize_relative_path(path, root), "../b/file.rs");
+    }
+
+    #[test]
+    fn test_normalize_relative_path_resolves_parent_segments() {
+        let root = Path::new("/root");
+        let path = Path::new("/root/src/runtime/../addMedia/file.ts");
+        assert_eq!(normalize_relative_path(path, root), "src/addMedia/file.ts");
     }
 }
