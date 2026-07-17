@@ -143,11 +143,9 @@ pub(crate) fn render_with_options(
 \t\t<header class=\"atlas-header\">\n\
 \t\t\t<p class=\"atlas-header__eyebrow\">API reference</p>\n\
 \t\t\t<h1>{}</h1>\n\
-\t\t\t<p class=\"atlas-header__meta\">Generated from public source documentation by CodeAtlas {}.</p>\n\
 \t\t</header>\n\
 \t\t<p class=\"atlas-empty\" data-visible=\"false\">No matching public symbols.</p>\n",
-        escaped_title,
-        escape_html(&report.tool_version)
+        escaped_title
     )
     .expect("writing to String cannot fail");
 
@@ -189,7 +187,9 @@ pub(crate) fn render_with_options(
 
     write!(
         output,
-        "\t</main>\n</div>\n<script>{}</script>\n</body>\n</html>\n",
+        "\t\t<p class=\"atlas-header__meta\">Generated from public source documentation by CodeAtlas {}.</p>\n\
+\t</main>\n</div>\n<script>{}</script>\n</body>\n</html>\n",
+        escape_html(&report.tool_version),
         script_body
     )
     .expect("writing to String cannot fail");
