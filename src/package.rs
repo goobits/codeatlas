@@ -250,6 +250,7 @@ pub(crate) fn consolidate_declaration_symbols(report: &mut ScanReport) {
                 existing.export_paths.extend(symbol.export_paths);
                 existing.export_paths.sort();
                 existing.export_paths.dedup();
+                existing.referenced &= symbol.referenced;
                 if existing.docs.is_none() {
                     existing.docs = symbol.docs;
                 }

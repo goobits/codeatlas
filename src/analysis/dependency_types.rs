@@ -154,14 +154,14 @@ fn inspect_symbol(
         .iter()
         .find(|symbol| symbol.id == symbol_id)
         .with_context(|| format!("Could not find selected symbol {symbol_id}"))?;
-    let references = signature_identifiers(symbol);
+    let references = languages::typescript::referenced_identifiers(symbol);
     let mut local_ids = bundle
         .report
         .symbols
         .iter()
         .filter(|candidate| {
             candidate.file_path == symbol.file_path
-                && is_public_export(candidate)
+                && candidate.visibility == Visibility::Public
                 && references.contains(&candidate.name)
         })
         .map(|candidate| candidate.id.clone())
@@ -173,12 +173,11 @@ fn inspect_symbol(
     let source_path = bundle_root.join(&symbol.file_path);
     let module = languages::typescript::parser::parse_module_info(&source_path, bundle_root)
         .with_context(|| format!("Could not inspect imports in {}", source_path.display()))?;
-    let signatures = public_signatures(symbol);
     let mut requests = Vec::new();
     for import in module.imports {
         for binding in import.bindings {
             let imported_names = if binding.namespace {
-                namespace_members(&signatures, &binding.local)
+                languages::typescript::referenced_namespace_members(symbol, &binding.local)
             } else if references.contains(&binding.local) {
                 BTreeSet::from([binding.imported])
             } else {
@@ -361,122 +360,11 @@ fn is_public_export(symbol: &Symbol) -> bool {
     symbol.visibility == Visibility::Public && !symbol.export_paths.is_empty()
 }
 
-fn signature_identifiers(symbol: &Symbol) -> BTreeSet<String> {
-    public_signatures(symbol)
-        .iter()
-        .flat_map(|signature| identifiers(signature))
-        .collect()
-}
-
-fn public_signatures(symbol: &Symbol) -> Vec<String> {
-    let mut signatures = Vec::new();
-    collect_public_signatures(symbol, &mut signatures);
-    signatures
-}
-
-fn collect_public_signatures(symbol: &Symbol, signatures: &mut Vec<String>) {
-    if symbol.visibility != Visibility::Public {
-        return;
-    }
-    signatures.push(symbol.signature.clone());
-    for child in &symbol.children {
-        collect_public_signatures(child, signatures);
-    }
-}
-
-fn identifiers(source: &str) -> Vec<String> {
-    let mut result = Vec::new();
-    let mut current = String::new();
-    for character in source.chars() {
-        if current.is_empty() {
-            if character == '_' || character == '$' || character.is_ascii_alphabetic() {
-                current.push(character);
-            }
-        } else if character == '_' || character == '$' || character.is_ascii_alphanumeric() {
-            current.push(character);
-        } else {
-            result.push(std::mem::take(&mut current));
-        }
-    }
-    if !current.is_empty() {
-        result.push(current);
-    }
-    result
-}
-
-fn namespace_members(signatures: &[String], namespace: &str) -> BTreeSet<String> {
-    let mut members = BTreeSet::new();
-    for signature in signatures {
-        let bytes = signature.as_bytes();
-        let mut offset = 0;
-        while let Some(found) = signature[offset..].find(namespace) {
-            let start = offset + found;
-            let before_is_identifier = start > 0 && is_identifier_byte(bytes[start - 1]);
-            let mut cursor = start + namespace.len();
-            let after_is_identifier = bytes
-                .get(cursor)
-                .is_some_and(|byte| is_identifier_byte(*byte));
-            if before_is_identifier || after_is_identifier {
-                offset = cursor;
-                continue;
-            }
-            while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
-                cursor += 1;
-            }
-            if bytes.get(cursor) != Some(&b'.') {
-                offset = cursor;
-                continue;
-            }
-            cursor += 1;
-            while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
-                cursor += 1;
-            }
-            let member_start = cursor;
-            while bytes
-                .get(cursor)
-                .is_some_and(|byte| is_identifier_byte(*byte))
-            {
-                cursor += 1;
-            }
-            if cursor > member_start {
-                members.insert(signature[member_start..cursor].to_string());
-            }
-            offset = cursor;
-        }
-    }
-    members
-}
-
-fn is_identifier_byte(byte: u8) -> bool {
-    byte == b'_' || byte == b'$' || byte.is_ascii_alphanumeric()
-}
-
 fn qualify_dependency_symbol(symbol: &mut Symbol, package_name: &str) {
+    symbol.referenced = true;
     symbol.id = format!("{package_name}:{}", symbol.id);
     symbol.file_path = format!("{package_name}/{}", symbol.file_path);
     for child in &mut symbol.children {
         qualify_dependency_symbol(child, package_name);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{identifiers, namespace_members};
-
-    #[test]
-    fn reads_identifiers_and_namespace_members_from_signatures() {
-        assert_eq!(
-            identifiers("load(value: Domain.Input) -> Promise<Domain.Output>"),
-            ["load", "value", "Domain", "Input", "Promise", "Domain", "Output"]
-        );
-        assert_eq!(
-            namespace_members(
-                &["load(value: Domain.Input) -> Domain.Output".to_string()],
-                "Domain"
-            ),
-            ["Input".to_string(), "Output".to_string()]
-                .into_iter()
-                .collect()
-        );
     }
 }

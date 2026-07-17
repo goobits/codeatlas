@@ -119,6 +119,99 @@ fn declaration_contract_rejects_empty_public_export_scans() {
 }
 
 #[test]
+fn declaration_contract_includes_transitive_referenced_types() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "codeatlas-declaration-references-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(root.join("dist")).expect("declaration output directory");
+    fs::write(
+        root.join("package.json"),
+        r#"{
+            "name": "@example/declarations",
+            "exports": { ".": { "types": "./dist/index.d.ts" } }
+        }"#,
+    )
+    .expect("package manifest");
+    fs::write(
+        root.join("codeatlas.json"),
+        r#"{
+            "languages": ["ts"],
+            "package_exports": true,
+            "docs": { "declaration_contract": true }
+        }"#,
+    )
+    .expect("CodeAtlas config");
+    fs::write(
+        root.join("dist/index.d.ts"),
+        r#"
+/** Deep value required by a supporting declaration. */
+interface Detail {
+    /** Stable detail id. */
+    id: string
+}
+
+/** Input required by the public API. */
+interface Support {
+    /** Nested detail. */
+    detail: Detail
+}
+
+/** Declaration that is unrelated to the public contract. */
+interface Unused {
+    ignored: boolean
+}
+
+/** Directly importable public API. */
+interface PublicAPI {
+    /** Load one detail. */
+    load(input: Support): Detail
+}
+
+export { PublicAPI }
+"#,
+    )
+    .expect("declaration contract");
+
+    let project =
+        ProjectConfig::load(&root, Some(&root.join("codeatlas.json"))).expect("project config");
+    let config =
+        commands::build_scan_config(&project, false, false, true, None).expect("scan config");
+    let mut report = commands::scan_project(&project, &config).expect("declaration scan");
+    commands::annotate_report(&mut report, &project).expect("annotated declaration report");
+
+    let public = report
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "PublicAPI")
+        .expect("direct public symbol");
+    assert!(!public.referenced);
+    assert_eq!(public.export_paths, ["@example/declarations"]);
+    for expected in ["Support", "Detail"] {
+        let symbol = report
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == expected)
+            .unwrap_or_else(|| panic!("missing {expected}"));
+        assert!(symbol.referenced, "{expected} must be marked as referenced");
+        assert!(symbol.export_paths.is_empty());
+    }
+    assert!(!report.symbols.iter().any(|symbol| symbol.name == "Unused"));
+
+    let markdown = outputs::markdown::render(&report, None, false, Some("Example SDK"));
+    assert!(markdown.contains("## `Example SDK`"));
+    assert!(markdown.contains("## `Supporting types`"));
+    assert!(markdown.contains("#### `Support`"));
+    assert!(markdown.contains("#### `Detail`"));
+
+    fs::remove_dir_all(root).expect("remove declaration fixture");
+}
+
+#[test]
 fn package_docs_follow_public_exports_and_jsdoc() {
     let report = fixture_report(false);
 
@@ -190,7 +283,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
         .expect("add symbol");
     assert_eq!(add.export_paths, ["@example/docs/math"]);
 
-    let markdown = outputs::markdown::render(&report, None, false);
+    let markdown = outputs::markdown::render(&report, None, false, None);
     assert!(markdown.contains("# @example/docs API Reference"));
     assert!(markdown.contains("## `@example/docs/math`"));
     assert!(markdown.contains("### Classes"));
@@ -203,7 +296,10 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(!markdown.contains("secret"));
     assert!(!markdown.contains("#### `label`"));
     assert!(!markdown.contains("internalOnly"));
-    assert_eq!(markdown, outputs::markdown::render(&report, None, false));
+    assert_eq!(
+        markdown,
+        outputs::markdown::render(&report, None, false, None)
+    );
 
     let html = outputs::html::render(&report, None, false);
     assert!(html.starts_with("<!doctype html>"));
@@ -229,6 +325,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
         canonical_url: Some("https://example.com/api".to_string()),
         description: Some("Example API documentation".to_string()),
         home_url: Some("https://example.com".to_string()),
+        public_name: Some("Example Browser SDK".to_string()),
         theme: crate::config::DocsThemeConfig {
             dark: crate::config::DocsThemePalette {
                 accent: Some("#c4b5fd".to_string()),
@@ -245,7 +342,13 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     let configured_html = outputs::html::render_with_options(&report, None, false, &options);
     assert!(configured_html.contains("rel=\"canonical\" href=\"https://example.com/api\""));
     assert!(configured_html.contains("content=\"Example API documentation\""));
+    assert!(configured_html.contains("property=\"og:title\""));
+    assert!(configured_html.contains("property=\"og:url\" content=\"https://example.com/api\""));
+    assert!(configured_html.contains("name=\"twitter:card\" content=\"summary\""));
     assert!(configured_html.contains("class=\"atlas-brand\" href=\"https://example.com\""));
+    assert!(configured_html.contains("class=\"atlas-type-link\""));
+    assert!(configured_html.contains("Example Browser SDK"));
+    assert!(!configured_html.contains("@example/docs/math"));
     assert!(configured_html.contains("@media (prefers-color-scheme: light)"));
     assert!(configured_html.contains("--atlas-accent: #6c3aed"));
     assert!(configured_html.contains("--atlas-bg: #fafafa"));
@@ -262,6 +365,31 @@ fn package_docs_follow_public_exports_and_jsdoc() {
         json,
         outputs::json::render(&reordered).expect("canonical JSON report")
     );
+}
+
+#[test]
+fn configured_entrypoints_limit_reported_package_exports() {
+    let root = fixture_root();
+    let mut project =
+        ProjectConfig::load(&root, Some(&root.join("codeatlas.json"))).expect("project config");
+    project.config.entrypoints = vec!["src/index.ts".to_string()];
+    let config = ScanConfig {
+        include_types: true,
+        include_private: false,
+        entrypoints: Some(project.config.entrypoints.clone()),
+        suggest: false,
+        imports: false,
+        no_default_ignore: false,
+    };
+    let mut report = languages::scan_all(&root, &config, languages::get_scanners_auto(&root));
+    commands::annotate_report(&mut report, &project).expect("annotated entrypoint report");
+
+    let package = report.package.expect("package metadata");
+    assert_eq!(package.exports.len(), 1);
+    assert_eq!(package.exports[0].public_path, ".");
+    assert!(report.symbols.iter().all(|symbol| !symbol
+        .export_paths
+        .contains(&"@example/docs/math".to_string())));
 }
 
 #[test]
@@ -410,6 +538,7 @@ export interface UnrelatedAPI {
         .expect("ExternalAPI symbol");
     assert_eq!(external.package.as_deref(), Some("@example/contracts"));
     assert_eq!(external.export_paths, ["@example/contracts/public"]);
+    assert!(external.referenced);
     assert!(external.file_path.starts_with("@example/contracts/"));
     assert_eq!(
         external
@@ -420,10 +549,21 @@ export interface UnrelatedAPI {
             .map(|docs| docs.summary.as_str()),
         Some("Load one external result.")
     );
-    let markdown = outputs::markdown::render(&report, Some("Application API"), false);
-    assert!(markdown.contains("## `@example/contracts/public`"));
+    let markdown = outputs::markdown::render(&report, Some("Application API"), false, None);
+    assert!(markdown.contains("## `Supporting types`"));
+    assert!(!markdown.contains("## `@example/contracts/public`"));
     assert!(markdown.contains("Options accepted by `ExternalAPI.load`."));
     assert!(!markdown.contains("Unrelated dependency contract."));
+
+    let public_options = crate::config::DocsConfig {
+        public_name: Some("Application Browser SDK".to_string()),
+        ..crate::config::DocsConfig::default()
+    };
+    let public_html = outputs::html::render_with_options(&report, None, false, &public_options);
+    assert!(public_html.contains("Application Browser SDK"));
+    assert!(public_html.contains("ExternalAPI"));
+    assert!(!public_html.contains("@example/contracts"));
+    assert!(!public_html.contains("ts:src/"));
 
     fs::remove_dir_all(&root).expect("remove dependency docs fixture");
 }
@@ -443,11 +583,11 @@ fn internal_interface_members_follow_include_private() {
         .expect("ThingOptions.secret member");
 
     assert!(secret.docs.as_ref().is_some_and(|docs| docs.internal));
-    assert!(!outputs::markdown::render(&public_report, None, false).contains("secret"));
+    assert!(!outputs::markdown::render(&public_report, None, false, None).contains("secret"));
     assert!(!outputs::html::render(&public_report, None, false).contains("secret"));
 
     let private_report = fixture_report(true);
-    let private_markdown = outputs::markdown::render(&private_report, None, true);
+    let private_markdown = outputs::markdown::render(&private_report, None, true, None);
     assert!(private_markdown
         .contains("| `secret` | `secret: string` | Parser-only implementation marker. |"));
     assert!(private_markdown.contains("##### `#reset`"));

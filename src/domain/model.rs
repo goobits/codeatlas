@@ -106,6 +106,9 @@ pub struct Symbol {
     pub docs: Option<SymbolDocs>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub export_paths: Vec<String>,
+    /// True when the symbol is required to understand an exported signature but is not directly importable.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub referenced: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
     pub children: Vec<Symbol>,

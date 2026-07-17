@@ -4,6 +4,7 @@ use crate::domain::{ScanReport, Symbol};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use pulldown_cmark::{html, Event, Options, Parser};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::fmt::Write;
 
 const STYLE: &str = include_str!("html.css");
@@ -47,14 +48,31 @@ pub(crate) fn render_with_options(
     include_private: bool,
     options: &DocsConfig,
 ) -> String {
-    let reference = reference::build(report, title, include_private);
+    let reference = reference::build(
+        report,
+        title,
+        include_private,
+        options.public_name.as_deref(),
+    );
+    let conceal_provenance = options
+        .public_name
+        .as_deref()
+        .is_some_and(|name| !name.trim().is_empty());
+    let symbol_links = build_symbol_links(&reference, conceal_provenance);
+    let render_context = RenderContext {
+        conceal_provenance,
+        include_private,
+        symbol_links: &symbol_links,
+    };
     let mut output = String::new();
     let escaped_title = escape_html(&reference.title);
-    let package_name = report
-        .package
-        .as_ref()
-        .map(|package| package.name.as_str())
-        .unwrap_or("CodeAtlas");
+    let package_name = options.public_name.as_deref().unwrap_or_else(|| {
+        report
+            .package
+            .as_ref()
+            .map(|package| package.name.as_str())
+            .unwrap_or("CodeAtlas")
+    });
     let description_meta = options
         .description
         .as_ref()
@@ -75,6 +93,11 @@ pub(crate) fn render_with_options(
             )
         })
         .unwrap_or_default();
+    let social_meta = render_social_meta(
+        &reference.title,
+        options.description.as_deref(),
+        options.canonical_url.as_deref(),
+    );
     let theme = render_theme(&options.theme);
     let style_body = format!("\n{}{}\n", STYLE, theme);
     let script_body = format!("\n{}\n", SCRIPT);
@@ -92,7 +115,7 @@ pub(crate) fn render_with_options(
 \t<meta name=\"generator\" content=\"CodeAtlas {}\">\n\
 \t<meta name=\"referrer\" content=\"no-referrer\">\n\
 \t<meta http-equiv=\"Content-Security-Policy\" content=\"{}\">\n\
-{}{}\
+{}{}{}\
 \t<title>{}</title>\n\
 \t<style>{}</style>\n\
 </head>\n<body>\n<div class=\"atlas-layout\">\n",
@@ -100,6 +123,7 @@ pub(crate) fn render_with_options(
         escape_attr(&content_security_policy),
         description_meta,
         canonical_link,
+        social_meta,
         escaped_title,
         style_body
     )
@@ -111,6 +135,7 @@ pub(crate) fn render_with_options(
         &reference,
         package_name,
         options.home_url.as_deref(),
+        conceal_provenance,
     );
     write!(
         output,
@@ -155,7 +180,7 @@ pub(crate) fn render_with_options(
             )
             .expect("writing to String cannot fail");
             for symbol in &section.symbols {
-                render_symbol(&mut output, symbol, &group.name, 4, true, include_private);
+                render_symbol(&mut output, symbol, &group.name, 4, true, &render_context);
             }
             output.push_str("\t\t\t</section>\n");
         }
@@ -169,6 +194,57 @@ pub(crate) fn render_with_options(
     )
     .expect("writing to String cannot fail");
     output
+}
+
+fn render_social_meta(title: &str, description: Option<&str>, canonical: Option<&str>) -> String {
+    let mut output = format!(
+        "\t<meta property=\"og:type\" content=\"website\">\n\
+\t<meta property=\"og:title\" content=\"{}\">\n\
+\t<meta name=\"twitter:card\" content=\"summary\">\n\
+\t<meta name=\"twitter:title\" content=\"{}\">\n",
+        escape_attr(title),
+        escape_attr(title)
+    );
+    if let Some(description) = description {
+        writeln!(
+            output,
+            "\t<meta property=\"og:description\" content=\"{}\">\n\t<meta name=\"twitter:description\" content=\"{}\">",
+            escape_attr(description),
+            escape_attr(description)
+        )
+        .expect("writing to String cannot fail");
+    }
+    if let Some(canonical) = canonical {
+        writeln!(
+            output,
+            "\t<meta property=\"og:url\" content=\"{}\">",
+            escape_attr(canonical)
+        )
+        .expect("writing to String cannot fail");
+    }
+    output
+}
+
+fn build_symbol_links(
+    reference: &reference::ApiReference<'_>,
+    conceal_provenance: bool,
+) -> BTreeMap<String, String> {
+    let mut links = BTreeMap::<String, Option<String>>::new();
+    for group in &reference.groups {
+        for section in &group.sections {
+            for symbol in &section.symbols {
+                let anchor = symbol_anchor(&group.name, symbol, conceal_provenance);
+                links
+                    .entry(symbol.name.clone())
+                    .and_modify(|existing| *existing = None)
+                    .or_insert(Some(anchor));
+            }
+        }
+    }
+    links
+        .into_iter()
+        .filter_map(|(name, anchor)| anchor.map(|anchor| (name, anchor)))
+        .collect()
 }
 
 fn render_theme(theme: &crate::config::DocsThemeConfig) -> String {
@@ -220,6 +296,7 @@ fn render_sidebar(
     reference: &reference::ApiReference<'_>,
     package_name: &str,
     home_url: Option<&str>,
+    conceal_provenance: bool,
 ) {
     write!(
         output,
@@ -256,7 +333,7 @@ fn render_sidebar(
                 writeln!(
                     output,
                     "\t\t\t\t<a class=\"atlas-nav__link\" href=\"#{}\">{}</a>",
-                    escape_attr(&symbol_anchor(&group.name, symbol)),
+                    escape_attr(&symbol_anchor(&group.name, symbol, conceal_provenance)),
                     escape_html(&symbol.name)
                 )
                 .expect("writing to String cannot fail");
@@ -267,17 +344,24 @@ fn render_sidebar(
     output.push_str("\t\t</nav>\n\t</aside>\n");
 }
 
+struct RenderContext<'a> {
+    conceal_provenance: bool,
+    include_private: bool,
+    symbol_links: &'a BTreeMap<String, String>,
+}
+
 fn render_symbol(
     output: &mut String,
     symbol: &Symbol,
     group: &str,
     heading_level: usize,
     searchable: bool,
-    include_private: bool,
+    context: &RenderContext<'_>,
 ) {
     let heading_level = heading_level.min(6);
-    let anchor = symbol_anchor(group, symbol);
-    let search = searchable.then(|| symbol_search_text(symbol, include_private));
+    let anchor = symbol_anchor(group, symbol, context.conceal_provenance);
+    let search = searchable
+        .then(|| symbol_search_text(symbol, context.include_private, !context.conceal_provenance));
     write!(
         output,
         "\t\t\t<article class=\"atlas-symbol\" id=\"{}\"{}>\n\
@@ -354,30 +438,28 @@ fn render_symbol(
         output,
         "\t\t\t\t<pre class=\"atlas-code\"><code class=\"language-{}\">{}</code></pre>",
         reference::language_tag(symbol.language),
-        escape_html(&symbol.signature)
+        render_linked_signature(&symbol.signature, &symbol.name, context.symbol_links)
     )
     .expect("writing to String cannot fail");
 
     render_docs_details(output, symbol);
-    if reference::uses_member_table(symbol, include_private) {
+    if reference::uses_member_table(symbol, context.include_private) {
         render_member_table(
             output,
-            reference::included_children(symbol, include_private),
+            reference::included_children(symbol, context.include_private),
+            context.symbol_links,
         );
-    } else if reference::included_children(symbol, include_private)
+        render_member_examples(
+            output,
+            reference::included_children(symbol, context.include_private),
+        );
+    } else if reference::included_children(symbol, context.include_private)
         .next()
         .is_some()
     {
         output.push_str("\t\t\t\t<div class=\"atlas-children\">\n");
-        for child in reference::included_children(symbol, include_private) {
-            render_symbol(
-                output,
-                child,
-                group,
-                heading_level + 1,
-                false,
-                include_private,
-            );
+        for child in reference::included_children(symbol, context.include_private) {
+            render_symbol(output, child, group, heading_level + 1, false, context);
         }
         output.push_str("\t\t\t\t</div>\n");
     }
@@ -428,14 +510,34 @@ fn render_docs_details(output: &mut String, symbol: &Symbol) {
     }
 }
 
-fn render_member_table<'a>(output: &mut String, members: impl Iterator<Item = &'a Symbol>) {
+fn render_member_examples<'a>(output: &mut String, members: impl Iterator<Item = &'a Symbol>) {
+    for member in members {
+        let Some(docs) = &member.docs else { continue };
+        for example in &docs.examples {
+            write!(
+                output,
+                "\t\t\t\t<p class=\"atlas-note\"><strong>Example: <code>{}</code></strong></p>\n\
+\t\t\t\t<pre class=\"atlas-code\"><code>{}</code></pre>\n",
+                escape_html(&member.name),
+                escape_html(example)
+            )
+            .expect("writing to String cannot fail");
+        }
+    }
+}
+
+fn render_member_table<'a>(
+    output: &mut String,
+    members: impl Iterator<Item = &'a Symbol>,
+    symbol_links: &BTreeMap<String, String>,
+) {
     output.push_str("\t\t\t\t<div class=\"atlas-table-wrap\"><table class=\"atlas-table\"><thead><tr><th>Member</th><th>Signature</th><th>Description</th></tr></thead><tbody>\n");
     for member in members {
         writeln!(
             output,
             "\t\t\t\t\t<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}</td></tr>",
             escape_html(&member.name),
-            escape_html(&member.signature),
+            render_linked_signature(&member.signature, &member.name, symbol_links),
             render_markdown(&reference::member_description(member))
         )
         .expect("writing to String cannot fail");
@@ -443,24 +545,86 @@ fn render_member_table<'a>(output: &mut String, members: impl Iterator<Item = &'
     output.push_str("\t\t\t\t</tbody></table></div>\n");
 }
 
-fn symbol_search_text(symbol: &Symbol, include_private: bool) -> String {
-    let mut values = vec![
-        symbol.id.clone(),
-        symbol.name.clone(),
-        symbol.signature.clone(),
-    ];
+fn render_linked_signature(
+    signature: &str,
+    current_symbol: &str,
+    symbol_links: &BTreeMap<String, String>,
+) -> String {
+    let mut output = String::with_capacity(signature.len());
+    let mut plain_start = 0;
+    let mut characters = signature.char_indices().peekable();
+    while let Some((start, character)) = characters.next() {
+        if !(character.is_ascii_alphabetic() || character == '_' || character == '$') {
+            continue;
+        }
+        let mut end = start + character.len_utf8();
+        while let Some((index, next)) = characters.peek().copied() {
+            if !(next.is_ascii_alphanumeric() || next == '_' || next == '$') {
+                break;
+            }
+            characters.next();
+            end = index + next.len_utf8();
+        }
+        let identifier = &signature[start..end];
+        let Some(anchor) = symbol_links
+            .get(identifier)
+            .filter(|_| identifier != current_symbol)
+        else {
+            continue;
+        };
+        output.push_str(&escape_html(&signature[plain_start..start]));
+        write!(
+            output,
+            "<a class=\"atlas-type-link\" href=\"#{}\">{}</a>",
+            escape_attr(anchor),
+            escape_html(identifier)
+        )
+        .expect("writing to String cannot fail");
+        plain_start = end;
+    }
+    output.push_str(&escape_html(&signature[plain_start..]));
+    output
+}
+
+fn symbol_search_text(symbol: &Symbol, include_private: bool, include_provenance: bool) -> String {
+    let mut values = vec![symbol.name.clone(), symbol.signature.clone()];
+    if include_provenance {
+        values.push(symbol.id.clone());
+    }
     if let Some(docs) = &symbol.docs {
         values.push(docs.summary.clone());
         values.extend(docs.remarks.iter().cloned());
     }
     for child in reference::included_children(symbol, include_private) {
-        values.push(symbol_search_text(child, include_private));
+        values.push(symbol_search_text(
+            child,
+            include_private,
+            include_provenance,
+        ));
     }
     values.join(" ").to_lowercase()
 }
 
-fn symbol_anchor(group: &str, symbol: &Symbol) -> String {
-    format!("symbol-{}", slug(&format!("{}-{}", group, symbol.id)))
+fn symbol_anchor(group: &str, symbol: &Symbol, conceal_provenance: bool) -> String {
+    let identity = if conceal_provenance {
+        format!(
+            "{}-{}-{}-{}",
+            group,
+            reference::kind_label(symbol.kind),
+            symbol.name,
+            short_hash(&symbol.id)
+        )
+    } else {
+        format!("{}-{}", group, symbol.id)
+    };
+    format!("symbol-{}", slug(&identity))
+}
+
+fn short_hash(value: &str) -> String {
+    Sha256::digest(value.as_bytes())[..6]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn slug(value: &str) -> String {

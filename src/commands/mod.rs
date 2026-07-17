@@ -228,9 +228,20 @@ pub(super) fn scan_project(project: &ProjectConfig, config: &ScanConfig) -> Resu
 
 pub(super) fn annotate_report(report: &mut ScanReport, project: &ProjectConfig) -> Result<()> {
     if project.config.package_exports {
-        if let Some(package) =
+        if let Some(mut package) =
             package::discover_for_docs(&project.root, project.config.docs.declaration_contract)?
         {
+            if !project.config.entrypoints.is_empty() {
+                let entrypoints = project
+                    .config
+                    .entrypoints
+                    .iter()
+                    .map(|entrypoint| crate::paths::normalize_path(Path::new(entrypoint)))
+                    .collect::<std::collections::HashSet<_>>();
+                package
+                    .exports
+                    .retain(|export| entrypoints.contains(&export.source_path));
+            }
             package::annotate(
                 report,
                 &project.root,

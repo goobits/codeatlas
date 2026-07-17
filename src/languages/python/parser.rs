@@ -95,6 +95,7 @@ impl SymbolVisitor {
             signature,
             docs: None,
             export_paths: vec![],
+            referenced: false,
             package: None,
             children: vec![],
         }

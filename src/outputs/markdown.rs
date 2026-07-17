@@ -1,8 +1,13 @@
 use super::reference;
 use crate::domain::{ScanReport, Symbol};
 
-pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: bool) -> String {
-    let reference = reference::build(report, title, include_private);
+pub(crate) fn render(
+    report: &ScanReport,
+    title: Option<&str>,
+    include_private: bool,
+    public_name: Option<&str>,
+) -> String {
+    let reference = reference::build(report, title, include_private, public_name);
 
     let mut output = String::new();
     output.push_str(&format!("# {}\n\n", reference.title));
@@ -11,7 +16,10 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: 
         report.tool_version, report.schema_version
     ));
     if let Some(package) = &report.package {
-        output.push_str(&format!("Package: `{}`", package.name));
+        output.push_str(&format!(
+            "Package: `{}`",
+            public_name.unwrap_or(&package.name)
+        ));
         if let Some(version) = &package.version {
             output.push_str(&format!(" · Version: `{}`", version));
         }
@@ -26,7 +34,13 @@ pub(crate) fn render(report: &ScanReport, title: Option<&str>, include_private: 
                 reference::kind_plural_label(section.kind)
             ));
             for symbol in section.symbols {
-                render_symbol(&mut output, symbol, 4, true, include_private);
+                render_symbol(
+                    &mut output,
+                    symbol,
+                    4,
+                    public_name.is_none(),
+                    include_private,
+                );
             }
         }
     }
@@ -129,9 +143,27 @@ fn render_symbol(
             output,
             reference::included_children(symbol, include_private),
         );
+        render_member_examples(
+            output,
+            reference::included_children(symbol, include_private),
+        );
     } else {
         for child in reference::included_children(symbol, include_private) {
             render_symbol(output, child, heading_level + 1, false, include_private);
+        }
+    }
+}
+
+fn render_member_examples<'a>(output: &mut String, members: impl Iterator<Item = &'a Symbol>) {
+    for member in members {
+        let Some(docs) = &member.docs else { continue };
+        for example in &docs.examples {
+            output.push_str(&format!(
+                "**Example: {}**\n\n```{}\n{}\n```\n\n",
+                inline_code(&escape_table(&member.name)),
+                reference::language_tag(member.language),
+                example
+            ));
         }
     }
 }

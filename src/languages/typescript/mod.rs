@@ -4,7 +4,7 @@ use crate::languages::definition::{
     LanguageDefinition, ModuleInfo as ModuleInfoTrait, ModuleResolver,
 };
 use anyhow::Result;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 
 pub mod frameworks;
@@ -159,6 +159,7 @@ impl ModuleInfoTrait for TypeScriptModuleInfo {
 struct ModuleInfo {
     symbols: Vec<Symbol>,
     exports: parser::ExportInfo,
+    imports: Vec<parser::ImportInfo>,
 }
 
 type PublicAliases = HashSet<String>;
@@ -174,13 +175,19 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
     let (modules, skipped_files) = parse_modules(root_dir, config.no_default_ignore, &entrypoints);
     let allowed = resolve_allowed(root_dir, &entrypoints, &modules);
     let aliases = preferred_public_aliases(&allowed);
+    let mut referenced =
+        referenced_declaration_symbols(root_dir, &entrypoints, &modules, &allowed, &aliases);
     let mut report = ScanReport::default();
     report.stats.files_skipped = skipped_files.len();
     report.skipped_files = skipped_files;
 
     for (file, info) in modules {
-        if let Some(names) = allowed.get(&file) {
-            let mut symbols = public_symbol_variants(&info, names, &aliases);
+        let names = allowed.get(&file);
+        let mut symbols = names
+            .map(|names| public_symbol_variants(&info, names, &aliases))
+            .unwrap_or_default();
+        symbols.extend(referenced.remove(&file).unwrap_or_default());
+        if !symbols.is_empty() {
             let file_routes = frameworks::detect_routes(Path::new(&file), "", &mut symbols);
             report.stats.routes_found += file_routes.len();
             report.routes.extend(file_routes);
@@ -193,6 +200,136 @@ fn scan_audit_mode(root_dir: &Path, config: &ScanConfig) -> ScanReport {
     }
 
     report
+}
+
+fn referenced_declaration_symbols(
+    root_dir: &Path,
+    entrypoints: &HashSet<String>,
+    modules: &HashMap<String, ModuleInfo>,
+    allowed: &ResolvedSymbols,
+    aliases: &HashMap<String, String>,
+) -> HashMap<String, Vec<Symbol>> {
+    if entrypoints.is_empty()
+        || !entrypoints
+            .iter()
+            .all(|entrypoint| is_declaration_file(Path::new(entrypoint)))
+    {
+        return HashMap::new();
+    }
+
+    let direct = allowed
+        .iter()
+        .flat_map(|(file, names)| {
+            names
+                .keys()
+                .map(|name| (file.clone(), name.clone()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<HashSet<_>>();
+    let mut queue = direct.iter().cloned().collect::<VecDeque<_>>();
+    let mut processed = HashSet::new();
+    let mut selected = HashSet::new();
+
+    while let Some((file, name)) = queue.pop_front() {
+        if !processed.insert((file.clone(), name.clone())) {
+            continue;
+        }
+        let Some(module) = modules.get(&file) else {
+            continue;
+        };
+        let Some(symbol) = module.symbols.iter().find(|symbol| symbol.name == name) else {
+            continue;
+        };
+        let identifiers = referenced_identifiers(symbol);
+
+        for candidate in module
+            .symbols
+            .iter()
+            .filter(|candidate| identifiers.contains(&candidate.name))
+        {
+            select_referenced_symbol(
+                &direct,
+                &mut selected,
+                &mut queue,
+                file.clone(),
+                candidate.name.clone(),
+            );
+        }
+
+        for import in &module.imports {
+            let Some(target) = resolve_ts_module(root_dir, &file, &import.source, modules) else {
+                continue;
+            };
+            for binding in &import.bindings {
+                let imported = if binding.namespace {
+                    referenced_namespace_members(symbol, &binding.local)
+                } else if identifiers.contains(&binding.local) {
+                    BTreeSet::from([binding.imported.clone()])
+                } else {
+                    BTreeSet::new()
+                };
+                if imported.is_empty() {
+                    continue;
+                }
+                let resolved = resolve_allowed_from_queue(
+                    root_dir,
+                    VecDeque::from([(
+                        target.clone(),
+                        Some(
+                            imported
+                                .into_iter()
+                                .map(|name| (name.clone(), HashSet::from([name])))
+                                .collect(),
+                        ),
+                    )]),
+                    modules,
+                );
+                for (resolved_file, names) in resolved {
+                    for name in names.keys() {
+                        select_referenced_symbol(
+                            &direct,
+                            &mut selected,
+                            &mut queue,
+                            resolved_file.clone(),
+                            name.clone(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    let mut by_file = HashMap::<String, Vec<Symbol>>::new();
+    for (file, name) in selected {
+        let Some(mut symbol) = modules
+            .get(&file)
+            .and_then(|module| module.symbols.iter().find(|symbol| symbol.name == name))
+            .cloned()
+        else {
+            continue;
+        };
+        symbol.visibility = crate::domain::Visibility::Public;
+        symbol.referenced = true;
+        rewrite_symbol_signatures(&mut symbol, aliases);
+        by_file.entry(file).or_default().push(symbol);
+    }
+    for symbols in by_file.values_mut() {
+        symbols.sort_by(|left, right| left.name.cmp(&right.name));
+    }
+    by_file
+}
+
+fn select_referenced_symbol(
+    direct: &HashSet<(String, String)>,
+    selected: &mut HashSet<(String, String)>,
+    queue: &mut VecDeque<(String, String)>,
+    file: String,
+    name: String,
+) {
+    let key = (file, name);
+    if !direct.contains(&key) && selected.insert(key.clone()) {
+        queue.push_back(key);
+    }
 }
 
 pub(crate) fn reachable_symbol_ids_by_entrypoint(
@@ -270,6 +407,96 @@ fn collect_public_symbol_ids(symbol: &Symbol, ids: &mut HashSet<String>) {
     }
 }
 
+pub(crate) fn referenced_identifiers(symbol: &Symbol) -> BTreeSet<String> {
+    reference_signatures(symbol)
+        .iter()
+        .flat_map(|signature| identifiers(signature))
+        .collect()
+}
+
+pub(crate) fn referenced_namespace_members(symbol: &Symbol, namespace: &str) -> BTreeSet<String> {
+    let mut members = BTreeSet::new();
+    for signature in reference_signatures(symbol) {
+        let bytes = signature.as_bytes();
+        let mut offset = 0;
+        while let Some(found) = signature[offset..].find(namespace) {
+            let start = offset + found;
+            let before_is_identifier = start > 0 && is_identifier_byte(bytes[start - 1]);
+            let mut cursor = start + namespace.len();
+            let after_is_identifier = bytes
+                .get(cursor)
+                .is_some_and(|byte| is_identifier_byte(*byte));
+            if before_is_identifier || after_is_identifier {
+                offset = cursor;
+                continue;
+            }
+            while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+                cursor += 1;
+            }
+            if bytes.get(cursor) != Some(&b'.') {
+                offset = cursor;
+                continue;
+            }
+            cursor += 1;
+            while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+                cursor += 1;
+            }
+            let member_start = cursor;
+            while bytes
+                .get(cursor)
+                .is_some_and(|byte| is_identifier_byte(*byte))
+            {
+                cursor += 1;
+            }
+            if cursor > member_start {
+                members.insert(signature[member_start..cursor].to_string());
+            }
+            offset = cursor;
+        }
+    }
+    members
+}
+
+fn reference_signatures(symbol: &Symbol) -> Vec<String> {
+    let mut signatures = vec![symbol.signature.clone()];
+    collect_public_child_signatures(&symbol.children, &mut signatures);
+    signatures
+}
+
+fn collect_public_child_signatures(symbols: &[Symbol], signatures: &mut Vec<String>) {
+    for symbol in symbols {
+        if symbol.visibility != crate::domain::Visibility::Public {
+            continue;
+        }
+        signatures.push(symbol.signature.clone());
+        collect_public_child_signatures(&symbol.children, signatures);
+    }
+}
+
+fn identifiers(source: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut current = String::new();
+    for character in source.chars() {
+        if current.is_empty() {
+            if character == '_' || character == '$' || character.is_ascii_alphabetic() {
+                current.push(character);
+            }
+        } else if character == '_' || character == '$' || character.is_ascii_alphanumeric() {
+            current.push(character);
+        } else {
+            result.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        result.push(current);
+    }
+    result
+}
+
+fn is_identifier_byte(byte: u8) -> bool {
+    byte == b'_' || byte == b'$' || byte.is_ascii_alphanumeric()
+}
+
 fn parse_modules(
     root_dir: &Path,
     no_default_ignore: bool,
@@ -288,6 +515,7 @@ fn parse_modules(
                         ModuleInfo {
                             symbols: info.symbols,
                             exports: info.exports,
+                            imports: info.imports,
                         },
                     );
                 }
@@ -341,6 +569,7 @@ fn parse_modules(
                     ModuleInfo {
                         symbols: info.symbols,
                         exports: info.exports,
+                        imports: info.imports,
                     },
                 );
             }

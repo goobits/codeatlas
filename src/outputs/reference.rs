@@ -29,6 +29,7 @@ pub(crate) fn build<'a>(
     report: &'a ScanReport,
     title: Option<&str>,
     include_private: bool,
+    public_name: Option<&str>,
 ) -> ApiReference<'a> {
     let title = title
         .map(str::to_string)
@@ -44,6 +45,7 @@ pub(crate) fn build<'a>(
         .as_ref()
         .map(|package| package.name.clone())
         .unwrap_or_else(|| "Public API".to_string());
+    let public_name = public_name.map(str::trim).filter(|name| !name.is_empty());
     let package_has_exports = report
         .package
         .as_ref()
@@ -52,15 +54,21 @@ pub(crate) fn build<'a>(
 
     for symbol in &report.symbols {
         if !is_included(symbol, include_private)
-            || package_has_exports && symbol.export_paths.is_empty()
+            || package_has_exports && symbol.export_paths.is_empty() && !symbol.referenced
         {
             continue;
         }
-        let group = symbol
-            .export_paths
-            .first()
-            .cloned()
-            .unwrap_or_else(|| default_group.clone());
+        let group = if symbol.referenced {
+            "Supporting types".to_string()
+        } else {
+            public_name.map(str::to_string).unwrap_or_else(|| {
+                symbol
+                    .export_paths
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| default_group.clone())
+            })
+        };
         grouped.entry(group).or_default().push(symbol);
     }
 

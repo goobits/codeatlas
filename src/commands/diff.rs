@@ -220,6 +220,7 @@ mod tests {
             signature: signature.to_string(),
             docs: None,
             export_paths: exports.iter().map(|value| (*value).to_string()).collect(),
+            referenced: false,
             package: Some("@example/sdk".to_string()),
             children: Vec::new(),
         }

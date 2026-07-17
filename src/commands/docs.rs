@@ -64,7 +64,12 @@ fn generate(
 
     let title = title.or(project.config.docs.title.as_deref());
     let rendered = match format {
-        DocsFormat::Markdown => outputs::markdown::render(&report, title, config.include_private),
+        DocsFormat::Markdown => outputs::markdown::render(
+            &report,
+            title,
+            config.include_private,
+            project.config.docs.public_name.as_deref(),
+        ),
         DocsFormat::Html => outputs::html::render_with_options(
             &report,
             title,
@@ -126,7 +131,7 @@ fn missing_descriptions(report: &crate::domain::ScanReport, include_private: boo
         .is_some_and(|package| !package.exports.is_empty());
     let mut missing = Vec::new();
     for symbol in &report.symbols {
-        if package_has_exports && symbol.export_paths.is_empty() {
+        if package_has_exports && symbol.export_paths.is_empty() && !symbol.referenced {
             continue;
         }
         collect(symbol, include_private, &mut missing);

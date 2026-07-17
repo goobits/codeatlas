@@ -302,6 +302,12 @@ a { color: var(--atlas-accent-text); }
 	overflow-x: auto;
 }
 
+.atlas-type-link {
+	color: var(--atlas-accent-text);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
 .atlas-table-wrap {
 	margin-top: 14px;
 	border: 1px solid var(--atlas-border);

@@ -43,13 +43,13 @@ misspelled setting cannot silently weaken a check.
 {
 	"root": "packages/example",
 	"languages": ["ts"],
-	"entrypoints": ["src/index.ts"],
 	"docs": {
 		"canonical_url": "https://example.com/api/",
 		"declaration_contract": true,
 		"description": "Example package API reference.",
 		"home_url": "https://example.com/",
 		"include_dependency_types": true,
+		"public_name": "Example Browser SDK",
 		"require_descriptions": true,
 		"theme": {
 			"light": {
@@ -71,7 +71,8 @@ Paths in the config are relative to the config file. Supported fields are:
 
 - `root`: project or package root
 - `languages`: any of `ts`, `py`, `rs`, or `svelte`
-- `entrypoints`: public source entrypoints used by scans and audits
+- `entrypoints`: public source or declaration entrypoints used by scans and
+  audits; omit this to follow discovered package exports
 - `include_private`: include internal and private symbols
 - `include_types`: include classes, interfaces, structs, and methods
 - `no_default_ignore`: include normally ignored build and test directories
@@ -79,7 +80,10 @@ Paths in the config are relative to the config file. Supported fields are:
 - `docs.include_dependency_types`: include local/workspace dependency contracts
   reachable from exported TypeScript signatures
 - `docs.declaration_contract`: document the shipped `types` export instead of
-  mapping declarations back to source
+  mapping declarations back to source. Referenced declarations that are needed
+  to understand an exported signature appear separately as supporting types.
+- `docs.public_name`: present one public product/module name instead of private
+  implementation package paths in generated reference output
 - `docs.require_descriptions`: fail generation when a public symbol or member
   lacks source documentation
 - `docs.title`, `docs.description`, `docs.home_url`, and `docs.canonical_url`:
@@ -98,7 +102,12 @@ reference without copying contracts into the facade source.
 
 Use declaration-contract mode for release documentation and compatibility
 baselines. It makes the reference follow the same declaration entrypoint that
-package consumers resolve.
+package consumers resolve. When narrowing documentation to one package subpath,
+set `entrypoints` to that subpath's shipped declaration target, such as
+`dist/hosted.d.ts`, rather than its source entrypoint.
+
+Searchable HTML references link unambiguous type names to their definitions and
+emit canonical, Open Graph, and Twitter metadata from the existing docs config.
 
 All scan commands use discovered package exports by default. When an export
 points to generated declarations or JavaScript, CodeAtlas reads TypeScript

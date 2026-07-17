@@ -39,6 +39,7 @@ pub(crate) struct DocsConfig {
     pub home_url: Option<String>,
     pub include_dependency_types: bool,
     pub output: Option<PathBuf>,
+    pub public_name: Option<String>,
     pub require_descriptions: bool,
     pub theme: DocsThemeConfig,
     pub title: Option<String>,
@@ -159,6 +160,7 @@ mod tests {
                     "declaration_contract": true,
                     "description": "Example API",
                     "home_url": "https://example.com/",
+                    "public_name": "Example SDK",
                     "require_descriptions": true,
                     "theme": {
                         "light": {
@@ -177,6 +179,7 @@ mod tests {
             Some("https://example.com/api/")
         );
         assert_eq!(config.docs.theme.light.accent.as_deref(), Some("#6c3aed"));
+        assert_eq!(config.docs.public_name.as_deref(), Some("Example SDK"));
         assert_eq!(
             config.docs.theme.light.background.as_deref(),
             Some("#fafafa")
