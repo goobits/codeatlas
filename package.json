@@ -1,7 +1,7 @@
 {
 	"name": "@goobits/codeatlas",
 	"license": "SEE LICENSE IN LICENSE",
-	"version": "0.6.0",
+	"version": "0.6.1",
 	"description": "Map, document, and diff public API surfaces across source languages",
 	"type": "commonjs",
 	"packageManager": "pnpm@10.25.0",
