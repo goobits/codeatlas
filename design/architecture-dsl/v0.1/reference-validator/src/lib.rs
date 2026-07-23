@@ -2,7 +2,9 @@
 //!
 //! This crate is unpublished and is not a production Code Atlas API.
 
+pub mod artifacts;
 pub mod canonicalization;
+pub mod conformance;
 pub mod diagnostics;
 pub mod graph;
 pub mod policy;
@@ -10,9 +12,11 @@ pub mod restricted_yaml;
 pub mod schema_validation;
 pub mod semantic_validation;
 
+pub use artifacts::{check_generated_artifacts, write_generated_artifacts};
 pub use canonicalization::{
     canonical_json_bytes, digest_bytes, digest_value, DigestKind, TypedDigest,
 };
+pub use conformance::validate_conformance_with_observation;
 pub use diagnostics::{Diagnostic, Severity, SourcePosition, SourceSpan, ValidationError};
 pub use graph::{compile_modules, CompileMode, CompiledGraph};
 pub use policy::{evaluate_exception, ExceptionContext, ExceptionDisposition};

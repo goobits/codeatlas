@@ -1,0 +1,293 @@
+apiVersion: atlas.codeatlas.dev/v0.1
+kind: ArchitectureModule
+
+metadata:
+  id: goobits.product.tabby-shelly
+  name: Tabby and Shelly capability boundary
+  architectureVersion: 1
+  description: Accepted tab-host direction with root-Space mechanics still proposed.
+  maintainers:
+    - goobits.team.platform
+
+vocabulary:
+  id: codeatlas.architecture.core
+  version: 1
+  digest: sha256:6f8fed2af9f2ed3b53bace11e6c69d39a2d0ed8d4e5faf9baa5164f5d9c2a9de
+
+decision:
+  status: accepted
+  authority:
+    governing:
+      - kind: owner-decision
+        artifact:
+          id: goobits.decision.tabby-shelly-boundary
+          version: 1
+    supporting: []
+
+approval:
+  status: granted
+
+changeControl:
+  policy: owner_approval_required
+
+imports: []
+
+exports:
+  objects:
+    - goobits.app.shelly
+    - goobits.app.tabby
+    - goobits.capability.shell-create
+    - goobits.capability.tab-host
+    - goobits.runtime.tab-root-space
+  relations:
+    - goobits.relation.shelly-consumes-tab-host
+    - goobits.relation.shelly-defaults-shell
+    - goobits.relation.tabby-governs-tab-root
+    - goobits.relation.tabby-provides-tab-host
+  bindings:
+    - goobits.binding.shelly-package
+    - goobits.binding.tabby-package
+  constraints:
+    - goobits.constraint.one-tab-root-governor
+
+objects:
+  goobits.app.tabby:
+    kind: app
+    name: Tabby
+    summary: Generic tab and root-Space host.
+    attributes:
+      visibility: public
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.tabby-product
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  goobits.app.shelly:
+    kind: app
+    name: Shelly
+    summary: Shell-focused tabbed product.
+    attributes:
+      visibility: public
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.shelly-product
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  goobits.capability.tab-host:
+    kind: capability
+    name: Tab Host
+    summary: Generic tab lifecycle capability.
+    attributes:
+      visibility: public
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.tab-host
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  goobits.capability.shell-create:
+    kind: capability
+    name: Create Shell
+    summary: Create a Shell surface.
+    attributes:
+      visibility: public
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.shell-create
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  goobits.runtime.tab-root-space:
+    kind: runtime_primitive
+    name: Tab root Space
+    summary: Owner-directed candidate for one root Space per tab.
+    attributes:
+      owner: goobits.app.tabby
+    decision:
+      status: proposed
+      authority:
+        governing: []
+        supporting:
+          - kind: owner-direction
+            artifact:
+              id: goobits.owner-direction.tab-root-space
+              version: 1
+    approval:
+      status: required
+    changeControl:
+      policy: accepted_adr_required
+
+relations:
+  goobits.relation.tabby-provides-tab-host:
+    predicate: provides
+    subject: goobits.app.tabby
+    object: goobits.capability.tab-host
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.tab-host
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  goobits.relation.shelly-consumes-tab-host:
+    predicate: consumes
+    subject: goobits.app.shelly
+    object: goobits.capability.tab-host
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.shelly-tab-host
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  goobits.relation.shelly-defaults-shell:
+    predicate: defaults_to
+    subject: goobits.app.shelly
+    object: goobits.capability.shell-create
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.shelly-new-tab
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  goobits.relation.tabby-governs-tab-root:
+    predicate: governs
+    subject: goobits.app.tabby
+    object: goobits.runtime.tab-root-space
+    decision:
+      status: proposed
+      authority:
+        governing: []
+        supporting:
+          - kind: owner-direction
+            artifact:
+              id: goobits.owner-direction.tab-root-space
+              version: 1
+    approval:
+      status: required
+    changeControl:
+      policy: accepted_adr_required
+
+bindings:
+  goobits.binding.tabby-package:
+    target: goobits.app.tabby
+    adapter:
+      kind: npm.package
+      version: 1
+    selector:
+      name: "@goobits/tabby"
+    cardinality: exactly_one
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.tabby-package
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  goobits.binding.shelly-package:
+    target: goobits.app.shelly
+    adapter:
+      kind: npm.package
+      version: 1
+    selector:
+      name: "@goobits/shelly"
+    cardinality: exactly_one
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.shelly-package
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+constraints:
+  goobits.constraint.one-tab-root-governor:
+    rule: exactly_one_incoming
+    severity: error
+    arguments:
+      target: goobits.runtime.tab-root-space
+      predicate: governs
+    decision:
+      status: proposed
+      authority:
+        governing: []
+        supporting:
+          - kind: owner-direction
+            artifact:
+              id: goobits.owner-direction.tab-root-space
+              version: 1
+    approval:
+      status: required
+    changeControl:
+      policy: accepted_adr_required
+
+retired: {}

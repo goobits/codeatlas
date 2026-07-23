@@ -1,0 +1,31 @@
+cases:
+  - id: yaml.duplicate-key
+    input: fixtures/invalid/yaml/duplicate-key.atlas.yaml
+    expectedDiagnostic: yaml.duplicate-key
+  - id: yaml.anchor
+    input: fixtures/invalid/yaml/anchor.atlas.yaml
+    expectedDiagnostic: yaml.anchor-prohibited
+  - id: yaml.alias
+    input: fixtures/invalid/yaml/alias.atlas.yaml
+    expectedDiagnostic: yaml.alias-prohibited
+  - id: yaml.merge-key
+    input: fixtures/invalid/yaml/merge-key.atlas.yaml
+    expectedDiagnostic: yaml.merge-key-prohibited
+  - id: yaml.custom-tag
+    input: fixtures/invalid/yaml/custom-tag.atlas.yaml
+    expectedDiagnostic: yaml.tag-prohibited
+  - id: yaml.environment-interpolation
+    input: fixtures/invalid/yaml/environment-interpolation.atlas.yaml
+    expectedDiagnostic: yaml.interpolation-prohibited
+  - id: yaml.multiple-documents
+    input: fixtures/invalid/yaml/multiple-documents.atlas.yaml
+    expectedDiagnostic: yaml.multiple-documents
+  - id: yaml.floating-point
+    input: fixtures/invalid/yaml/floating-point.atlas.yaml
+    expectedDiagnostic: yaml.non-integer-number
+  - id: yaml.non-string-key
+    input: fixtures/invalid/yaml/non-string-key.atlas.yaml
+    expectedDiagnostic: yaml.non-string-key
+  - id: yaml.directive
+    input: fixtures/invalid/yaml/directive.atlas.yaml
+    expectedDiagnostic: yaml.directive-prohibited

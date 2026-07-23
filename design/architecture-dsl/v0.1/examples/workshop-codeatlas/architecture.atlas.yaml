@@ -1,0 +1,409 @@
+apiVersion: atlas.codeatlas.dev/v0.1
+kind: ArchitectureModule
+
+metadata:
+  id: goobits.product.workshop-codeatlas
+  name: Workshop and Code Atlas provider boundary
+  architectureVersion: 1
+  description: Workshop consumes Code Atlas without owning its internals.
+  maintainers:
+    - goobits.team.workshop
+
+vocabulary:
+  id: codeatlas.architecture.core
+  version: 1
+  digest: sha256:6f8fed2af9f2ed3b53bace11e6c69d39a2d0ed8d4e5faf9baa5164f5d9c2a9de
+
+decision:
+  status: accepted
+  authority:
+    governing:
+      - kind: owner-decision
+        artifact:
+          id: goobits.decision.workshop-provider-boundary
+          version: 1
+    supporting: []
+
+approval:
+  status: granted
+
+changeControl:
+  policy: owner_approval_required
+
+imports: []
+
+exports:
+  objects:
+    - codeatlas.capability.context-slice
+    - codeatlas.contract.context-slice-v1
+    - codeatlas.provider.codeatlas
+    - goobits.capability.git-commit
+    - goobits.concept.work-coordination
+    - goobits.effect.authorization
+    - goobits.package.access
+    - goobits.package.workshop-core
+    - goobits.provider.commit-owner
+  relations:
+    - codeatlas.relation.provider-implements-context-contract
+    - codeatlas.relation.provider-provides-context
+    - goobits.relation.access-governs-authorization
+    - goobits.relation.commit-owner-implements-commit
+    - goobits.relation.workshop-consumes-context
+    - goobits.relation.workshop-defines-coordination
+  bindings:
+    - codeatlas.binding.provider-crate
+  constraints:
+    - goobits.constraint.codeatlas-independent-of-workshop
+    - goobits.constraint.workshop-does-not-govern-access
+
+objects:
+  codeatlas.provider.codeatlas:
+    kind: provider
+    name: Code Atlas
+    attributes:
+      releaseVersion: "0.6.1"
+      implementationVersion: "0.6.1+rust"
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: released-api
+            artifact:
+              id: codeatlas.release.provider-contract
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  codeatlas.capability.context-slice:
+    kind: capability
+    name: Targeted Context Slice
+    attributes:
+      visibility: public
+      contract: codeatlas.contract.context-slice-v1
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: codeatlas.decision.context-slice-provider
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  codeatlas.contract.context-slice-v1:
+    kind: contract
+    name: Context Slice Contract
+    attributes:
+      version: "1"
+      compatibility: additive
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: released-api
+            artifact:
+              id: codeatlas.api.context-slice
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  goobits.package.workshop-core:
+    kind: package
+    name: Workshop Core
+    attributes:
+      visibility: internal
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.workshop-core
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  goobits.package.access:
+    kind: package
+    name: Access
+    attributes:
+      visibility: internal
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.access
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  goobits.provider.commit-owner:
+    kind: provider
+    name: Commit Owner
+    attributes: {}
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.commit-owner
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  goobits.capability.git-commit:
+    kind: capability
+    name: Git Commit
+    attributes:
+      visibility: internal
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.git-commit
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  goobits.effect.authorization:
+    kind: protected_effect
+    name: Runtime Authorization
+    attributes:
+      risk: critical
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.access
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  goobits.concept.work-coordination:
+    kind: domain_concept
+    name: Work Coordination
+    attributes:
+      owner: goobits.package.workshop-core
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.workshop-coordination
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+relations:
+  codeatlas.relation.provider-provides-context:
+    predicate: provides
+    subject: codeatlas.provider.codeatlas
+    object: codeatlas.capability.context-slice
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: released-api
+            artifact:
+              id: codeatlas.api.context-slice
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  codeatlas.relation.provider-implements-context-contract:
+    predicate: implements
+    subject: codeatlas.provider.codeatlas
+    object: codeatlas.contract.context-slice-v1
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: released-api
+            artifact:
+              id: codeatlas.api.context-slice
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  goobits.relation.workshop-consumes-context:
+    predicate: consumes
+    subject: goobits.package.workshop-core
+    object: codeatlas.capability.context-slice
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.workshop-codeatlas-consumer
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  goobits.relation.access-governs-authorization:
+    predicate: governs
+    subject: goobits.package.access
+    object: goobits.effect.authorization
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.access
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  goobits.relation.commit-owner-implements-commit:
+    predicate: implements
+    subject: goobits.provider.commit-owner
+    object: goobits.capability.git-commit
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.commit-owner
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  goobits.relation.workshop-defines-coordination:
+    predicate: defines
+    subject: goobits.package.workshop-core
+    object: goobits.concept.work-coordination
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.workshop-coordination
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+bindings:
+  codeatlas.binding.provider-crate:
+    target: codeatlas.provider.codeatlas
+    adapter:
+      kind: rust.crate
+      version: 1
+    selector:
+      name: codeatlas
+    cardinality: exactly_one
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: codeatlas.contract.rust-crate
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+constraints:
+  goobits.constraint.codeatlas-independent-of-workshop:
+    rule: no_path
+    severity: error
+    arguments:
+      from: codeatlas.provider.codeatlas
+      to: goobits.package.workshop-core
+      via:
+        - depends_on
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.codeatlas-independent
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  goobits.constraint.workshop-does-not-govern-access:
+    rule: forbids_relation
+    severity: error
+    arguments:
+      predicate: governs
+      subject: goobits.package.workshop-core
+      object: goobits.effect.authorization
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.workshop-access-boundary
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+retired: {}

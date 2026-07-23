@@ -1,0 +1,80 @@
+apiVersion: atlas.codeatlas.dev/v0.1
+conformanceInputs:
+  architectureClosureDigest: sha256:89dde5ecfc6f3b49aba66e8403667cb8eece74d1996536ae9dffa252bd13cfb5
+  asOf: 2026-07-23T00:00:00Z
+  governingGraphDigest: sha256:363ec873fa54fd6f870d858d8aea0d4db0ed59874fcca42d7f0023541bf6e66b
+  observationContentDigest: sha256:647219c87fccf66a1dd98218d5e0687395980a8ddaac22f3d8ac03ee64cb9331
+  policyClosureDigest: sha256:780e8077b950657068f72ce3dba6d5c9135695b8deaf8d0c7b605b3d650cc88e
+  validatorVersion: codeatlas.tool.reference-validator/0.1.0
+  vocabularyDigest: sha256:6f8fed2af9f2ed3b53bace11e6c69d39a2d0ed8d4e5faf9baa5164f5d9c2a9de
+conformanceResultDigest: sha256:afbc3a99855bc82c3e8fdc7ccbbaa1ef0748845fde0473d334b7bce255910195
+kind: ArchitectureConformance
+metadata:
+  architectureVersion: 1
+  generated: true
+  generatedAt: 2026-07-23T00:00:00Z
+  generationCommand: cargo run --locked --jobs 1 --manifest-path reference-validator/Cargo.toml --bin generate_artifacts -- --write
+  generator:
+    id: codeatlas.tool.reference-validator
+    version: 0.1.0
+  id: codeatlas.conformance.tabby-example
+  manualEditing: prohibited
+  name: Tabby example conformance
+  sourceInputs:
+  - examples/tabby-shelly/architecture.atlas.yaml
+  - examples/observation/architecture-observation.generated.yaml
+  - examples/policy-exception/architecture-policy.atlas.yaml
+results:
+  codeatlas.conformance.shell-create:
+    declarationId: goobits.capability.shell-create
+    evidence:
+      coverageIds: []
+      factIds: []
+    exceptions:
+      applied: []
+      expired: []
+      irrelevant: []
+      rejected: []
+      stale: []
+    explanation: No extractor coverage evaluates the Shell creation capability.
+    reasonCode: coverage.unsupported
+    severity: advisory
+    state: unobserved
+  codeatlas.conformance.tab-host-candidate:
+    declarationId: goobits.capability.tab-host
+    evidence:
+      coverageIds:
+      - codeatlas.coverage.tab-composition
+      factIds:
+      - codeatlas.fact.tab-host-candidate
+    exceptions:
+      applied: []
+      expired: []
+      irrelevant: []
+      rejected: []
+      stale: []
+    explanation: Inferred partial evidence cannot establish the accepted tab-host implementation.
+    reasonCode: evidence.inferred-review-only
+    severity: advisory
+    state: ambiguous
+  codeatlas.conformance.tabby-package:
+    declarationId: goobits.app.tabby
+    evidence:
+      coverageIds:
+      - codeatlas.coverage.npm-packages
+      factIds:
+      - codeatlas.fact.tabby-package
+    exceptions:
+      applied: []
+      expired: []
+      irrelevant: []
+      rejected: []
+      stale: []
+    explanation: The accepted Tabby package binding matched deterministic evidence.
+    reasonCode: binding.exact-match
+    severity: advisory
+    state: matched
+vocabulary:
+  digest: sha256:6f8fed2af9f2ed3b53bace11e6c69d39a2d0ed8d4e5faf9baa5164f5d9c2a9de
+  id: codeatlas.architecture.core
+  version: 1

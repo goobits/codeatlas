@@ -1,0 +1,88 @@
+apiVersion: atlas.codeatlas.dev/v0.1
+kind: ArchitecturePolicy
+
+metadata:
+  id: goobits.policy.temporary-workshop-shell-import
+  name: Temporary Workshop Shell import policy
+  architectureVersion: 1
+  description: Example of an exact, expiring, closure-scoped exception.
+  maintainers:
+    - goobits.team.architecture
+
+vocabulary:
+  id: codeatlas.architecture.core
+  version: 1
+  digest: sha256:6f8fed2af9f2ed3b53bace11e6c69d39a2d0ed8d4e5faf9baa5164f5d9c2a9de
+
+decision:
+  status: accepted
+  authority:
+    governing:
+      - kind: accepted-adr
+        artifact:
+          id: goobits.adr.temporary-shell-import
+          version: 1
+        locator:
+          path: docs/adr/ADR-0091-temporary-shell-import.md
+          section: decision
+    supporting: []
+
+approval:
+  status: granted
+
+changeControl:
+  policy: accepted_adr_required
+
+imports: []
+
+rules:
+  goobits.constraint.workshop-must-not-depend-on-shelly:
+    rule: no_path
+    severity: error
+    arguments:
+      from: goobits.package.workshop-core
+      to: goobits.app.shelly
+      via:
+        - depends_on
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.workshop-shell-boundary
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+exceptions:
+  goobits.exception.temporary-workshop-shell-import:
+    constraint:
+      id: goobits.constraint.workshop-must-not-depend-on-shelly
+      version: 1
+    scope:
+      module: goobits.package.workshop-core
+    affectedIds:
+      - goobits.app.shelly
+      - goobits.package.workshop-core
+    baseClosureDigest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    rationale: Temporary migration bridge while the shared Shell port is extracted.
+    expiresAt: "2026-09-01T00:00:00Z"
+    removalPlan:
+      - Move shared lifecycle behavior behind the Shell runtime port.
+      - Remove the direct Workshop to Shelly dependency.
+      - Re-run conformance against the updated closure.
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: accepted-adr
+            artifact:
+              id: goobits.adr.temporary-shell-import
+              version: 1
+        supporting: []
+    approval:
+      status: granted

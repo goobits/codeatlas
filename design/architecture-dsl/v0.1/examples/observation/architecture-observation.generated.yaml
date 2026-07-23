@@ -1,0 +1,87 @@
+apiVersion: atlas.codeatlas.dev/v0.1
+coverage:
+  codeatlas.coverage.npm-packages:
+    excludedRoots: []
+    feature: package_identity
+    includedRoots:
+    - packages
+    language: package-json
+    limitations: []
+    repositoryScope: packages
+    status: complete
+  codeatlas.coverage.tab-composition:
+    excludedRoots: []
+    feature: tab_root_space_composition
+    includedRoots:
+    - packages/tabby
+    language: typescript
+    limitations:
+    - Dynamic composition is not fully observed.
+    repositoryScope: packages/tabby
+    status: partial
+digests:
+  observationContentDigest: sha256:647219c87fccf66a1dd98218d5e0687395980a8ddaac22f3d8ac03ee64cb9331
+  observationEnvelopeDigest: sha256:38366a2efa55c7a48d8122637c80cd99b8ad2468f4cae979378ae5dcdcfb446e
+facts:
+  codeatlas.fact.tab-host-candidate:
+    attributes:
+      candidate: true
+    confidenceBasisPoints: 7200
+    coverageIds:
+    - codeatlas.coverage.tab-composition
+    extractor:
+      id: codeatlas.extractor.typescript-composition
+      version: '1'
+    mode: inferred
+    observedKind: capability
+    sourceLocations:
+    - path: packages/tabby/src/index.ts
+      span:
+        end:
+          column: 2
+          line: 42
+        start:
+          column: 1
+          line: 1
+    target: goobits.capability.tab-host
+  codeatlas.fact.tabby-package:
+    attributes:
+      packageName: '@goobits/tabby'
+    coverageIds:
+    - codeatlas.coverage.npm-packages
+    extractor:
+      id: codeatlas.extractor.npm-package
+      version: '1'
+    mode: deterministic
+    observedKind: app
+    sourceLocations:
+    - path: packages/tabby/package.json
+      span:
+        end:
+          column: 2
+          line: 20
+        start:
+          column: 1
+          line: 1
+    target: goobits.app.tabby
+kind: ArchitectureObservation
+metadata:
+  architectureVersion: 1
+  generated: true
+  generatedAt: 2026-07-23T00:00:00Z
+  generationCommand: cargo run --locked --jobs 1 --manifest-path reference-validator/Cargo.toml --bin generate_artifacts -- --write
+  generator:
+    id: codeatlas.tool.reference-validator
+    version: 0.1.0
+  id: codeatlas.observation.tabby-example
+  manualEditing: prohibited
+  name: Tabby example observation
+  sourceInputs:
+  - examples/observation/source-facts.yaml
+repository:
+  id: goobits.repository.platform
+sourceCommit: 0123456789abcdef0123456789abcdef01234567
+vocabulary:
+  digest: sha256:6f8fed2af9f2ed3b53bace11e6c69d39a2d0ed8d4e5faf9baa5164f5d9c2a9de
+  id: codeatlas.architecture.core
+  version: 1

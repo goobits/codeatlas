@@ -1,0 +1,69 @@
+apiVersion: atlas.codeatlas.dev/v0.1
+kind: ArchitectureChange
+
+metadata:
+  id: goobits.change.tabby-lifecycle-cutover
+  name: Tabby lifecycle cutover
+  architectureVersion: 1
+  description: Proposed replacement of duplicated Shelly tab lifecycle.
+  maintainers:
+    - goobits.team.platform
+
+vocabulary:
+  id: codeatlas.architecture.core
+  version: 1
+  digest: sha256:6f8fed2af9f2ed3b53bace11e6c69d39a2d0ed8d4e5faf9baa5164f5d9c2a9de
+
+baseGraphDigest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+change:
+  type: REPLACE
+
+decision:
+  status: proposed
+  authority:
+    governing: []
+    supporting:
+      - kind: owner-direction
+        artifact:
+          id: goobits.owner-direction.tab-root-space
+          version: 1
+
+approval:
+  status: required
+
+changeControl:
+  policy: accepted_adr_required
+
+affectedIds:
+  - goobits.lifecycle.shelly-tab
+  - goobits.runtime.tab-root-space
+
+currentOwner: goobits.app.shelly
+intendedOwner: goobits.app.tabby
+
+expectedEffects:
+  adds:
+    - goobits.runtime.tab-root-space
+  removes:
+    - goobits.lifecycle.shelly-tab
+  requires:
+    - constraint: goobits.constraint.one-tab-root-governor
+      result: pass
+
+migrationPlan:
+  - Establish the accepted Tabby lifecycle contract.
+  - Migrate Shelly to the shared tab-host capability.
+  - Verify state and identity preservation.
+
+removalPlan:
+  - Retire goobits.lifecycle.shelly-tab.
+  - Delete the old Shelly tab mutation path.
+  - Remove temporary compatibility code.
+
+verificationPlan:
+  - Compile the new governing graph.
+  - Prove the one-governor constraint.
+  - Prove no legacy authoritative path remains.
+
+targetGraphDigest: null

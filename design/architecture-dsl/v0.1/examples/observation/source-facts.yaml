@@ -1,0 +1,67 @@
+repository:
+  id: goobits.repository.platform
+sourceCommit: 0123456789abcdef0123456789abcdef01234567
+
+coverage:
+  codeatlas.coverage.npm-packages:
+    repositoryScope: packages
+    language: package-json
+    feature: package_identity
+    status: complete
+    includedRoots:
+      - packages
+    excludedRoots: []
+    limitations: []
+  codeatlas.coverage.tab-composition:
+    repositoryScope: packages/tabby
+    language: typescript
+    feature: tab_root_space_composition
+    status: partial
+    includedRoots:
+      - packages/tabby
+    excludedRoots: []
+    limitations:
+      - Dynamic composition is not fully observed.
+
+facts:
+  codeatlas.fact.tabby-package:
+    target: goobits.app.tabby
+    observedKind: app
+    attributes:
+      packageName: "@goobits/tabby"
+    extractor:
+      id: codeatlas.extractor.npm-package
+      version: "1"
+    mode: deterministic
+    sourceLocations:
+      - path: packages/tabby/package.json
+        span:
+          start:
+            line: 1
+            column: 1
+          end:
+            line: 20
+            column: 2
+    coverageIds:
+      - codeatlas.coverage.npm-packages
+  codeatlas.fact.tab-host-candidate:
+    target: goobits.capability.tab-host
+    observedKind: capability
+    attributes:
+      candidate: true
+    extractor:
+      id: codeatlas.extractor.typescript-composition
+      version: "1"
+    mode: inferred
+    confidenceBasisPoints: 7200
+    sourceLocations:
+      - path: packages/tabby/src/index.ts
+        span:
+          start:
+            line: 1
+            column: 1
+          end:
+            line: 42
+            column: 2
+    coverageIds:
+      - codeatlas.coverage.tab-composition
