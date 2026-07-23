@@ -6,7 +6,8 @@
 	"type": "commonjs",
 	"packageManager": "pnpm@10.25.0",
 	"scripts": {
-		"check": "cargo fmt --check && cargo test --locked --jobs 1 && cargo clippy --all-targets --jobs 1 -- -D warnings",
+		"check": "pnpm run test:node && cargo fmt --check && cargo test --locked --jobs 1 && cargo clippy --all-targets --jobs 1 -- -D warnings",
+		"test:node": "node --test tests/wrapper.test.js",
 		"pack:check": "node tasks/check-package.js",
 		"release": "node tasks/release.js patch",
 		"release:minor": "node tasks/release.js minor",

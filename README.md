@@ -20,6 +20,10 @@ wrapper:
 CODEATLAS_BINARY_PATH=/path/to/codeatlas npx @goobits/codeatlas --version
 ```
 
+When a matching release archive is unavailable, the wrapper builds from the
+locked Rust dependency graph with one Cargo job. Set `CODEATLAS_CARGO_JOBS` to
+a positive integer to allow more parallel build work.
+
 ## Commands
 
 | Command | Purpose |

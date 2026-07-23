@@ -25,6 +25,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:node
       - run: cargo fmt --check
       - run: cargo test --locked --jobs 1
       - run: cargo clippy --all-targets --jobs 1 -- -D warnings

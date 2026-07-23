@@ -138,6 +138,14 @@ const verifyChecksum = (archivePath, checksumPath, assetName) => {
 	}
 }
 
+const getCargoBuildArgs = (environment = process.env) => {
+	const jobs = environment.CODEATLAS_CARGO_JOBS || environment.CARGO_BUILD_JOBS || '1'
+	if (!/^[1-9]\d*$/.test(jobs)) {
+		throw new Error(`Invalid Cargo job count: ${jobs}`)
+	}
+	return ['build', '--release', '--locked', '--jobs', jobs]
+}
+
 const buildFromSource = (binaryPath) => {
 	log('building from source')
 	const cargoCheck = spawnSync('cargo', ['--version'], { stdio: 'ignore' })
@@ -145,7 +153,7 @@ const buildFromSource = (binaryPath) => {
 		throw new Error('Rust toolchain not found. Install Rust or provide CODEATLAS_BINARY_PATH.')
 	}
 
-	const build = spawnSync('cargo', ['build', '--release'], {
+	const build = spawnSync('cargo', getCargoBuildArgs(), {
 		cwd: rootDir,
 		stdio: 'inherit'
 	})
@@ -224,7 +232,7 @@ const run = (binaryPath) => {
 	process.exit(result.status ?? 0)
 }
 
-;(async () => {
+const main = async () => {
 	try {
 		const binaryPath = await ensureBinary()
 		run(binaryPath)
@@ -232,4 +240,10 @@ const run = (binaryPath) => {
 		console.error('codeatlas failed:', error.message)
 		process.exit(1)
 	}
-})()
+}
+
+if (require.main === module) {
+	void main()
+}
+
+module.exports = { getCargoBuildArgs }
