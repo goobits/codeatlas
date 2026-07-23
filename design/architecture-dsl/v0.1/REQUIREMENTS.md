@@ -54,6 +54,7 @@ proposal or authorize production integration.
 | `asOf` controls expiration deterministically | `spec/conformance-semantics.md` | `recorded_as_of_controls_expiration` |
 | Owner direction may support but cannot promote a proposal | `DECISIONS.md` | `owner_direction_does_not_promote_a_proposal` |
 | Architecture changes use an exact base and expected effects | `spec/versioning-and-migration.md` | change schema and example validation |
+| Architecture changes remain proposal and audit records and never enter or reconstruct an architecture graph | main and versioning specifications | `architecture_changes_never_compile_as_architecture_graphs` |
 | Replacements require retirement and removal plans | `spec/versioning-and-migration.md` | invalid change semantic cases |
 
 ## Parsing, canonicalization, and digests

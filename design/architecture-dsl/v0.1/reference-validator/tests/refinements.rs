@@ -73,6 +73,20 @@ fn change_decision_and_approval_axes_are_independent() {
 }
 
 #[test]
+fn architecture_changes_never_compile_as_architecture_graphs() {
+    let vocabulary = vocabulary();
+    let change = read_yaml("examples/tabby-cutover-change/architecture-change.atlas.yaml");
+
+    for mode in [CompileMode::Governing, CompileMode::Review] {
+        let diagnostics = compile_modules(std::slice::from_ref(&change), &vocabulary, mode)
+            .expect_err("ArchitectureChange must remain outside architecture graphs");
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "graph.non-module-input"));
+    }
+}
+
+#[test]
 fn codeatlas_json_is_configuration_not_architecture() {
     let configuration = json!({
         "include": ["src"],

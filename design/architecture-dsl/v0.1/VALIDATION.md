@@ -1,6 +1,6 @@
 # Validation Evidence
 
-Status: Phase 6 evidence for a proposed design package
+Status: Phase 7 clarification evidence for a proposed design package
 
 Validation proves that the draft is internally coherent, reproducible, and
 contained. It does not accept the DSL or authorize a production compiler,
@@ -35,13 +35,13 @@ Run the production repository checks separately from the Code Atlas root:
 pnpm check
 ```
 
-The reference suite contains 50 tests:
+The reference suite contains 51 tests:
 
 - 34 focused unit tests;
 - 4 positive example integration tests;
 - 1 restricted-YAML fixture matrix test;
 - 7 invalid semantic integration tests;
-- 4 refinement integration tests.
+- 5 refinement integration tests.
 
 The generated-artifact check recomputes the observation example, conformance
 example, and `MANIFEST.sha256` without modifying the checkout.
@@ -67,7 +67,7 @@ example, and `MANIFEST.sha256` without modifying the checkout.
 
 ## Recorded results
 
-- Private reference suite: 50 passed, 0 failed.
+- Private reference suite: 51 passed, 0 failed.
 - Private validator formatting: passed.
 - Private validator Clippy with warnings denied: passed.
 - Generated observation, conformance, and manifest freshness: passed.
@@ -115,6 +115,7 @@ Focused integration and unit tests cover:
 - inferred observations used as hard evidence;
 - unsupported coverage misreported as absence;
 - change type confused with decision or approval status;
+- an `ArchitectureChange` presented as an architecture-graph input;
 - `codeatlas.json` presented as architecture authority.
 
 ## Recent refinement gates
@@ -132,6 +133,8 @@ The suite specifically proves:
 - unrelated architecture outside that closure does not;
 - `owner-direction` supports but does not promote a proposal;
 - change type, decision status, and approval status remain independent;
+- `ArchitectureChange` remains proposal and audit history outside both
+  architecture graph modes;
 - existing `codeatlas.json` is valid tool configuration but is not editable
   declared architecture.
 

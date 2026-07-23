@@ -55,9 +55,16 @@ create a parallel source scanner or a second `codeatlas.json` meaning.
 
 ## Authority and state
 
-The proposed single editable authority is restricted YAML in accepted
-`ArchitectureModule`, `ArchitecturePolicy`, `ArchitectureVocabulary`, and
-`ArchitectureChange` documents.
+Restricted YAML is the sole editable format for this architecture system.
+Current architecture is declared only by active accepted `ArchitectureModule`
+documents interpreted under their exact accepted `ArchitectureVocabulary`.
+`ArchitecturePolicy` governs conformance outside the architecture graphs.
+
+An `ArchitectureChange` proposes an alteration and, after disposition, becomes
+an immutable audit record. It never enters a governing or review architecture
+graph and is never replayed to reconstruct current architecture. An approved
+change must be materialized in the authoritative modules, vocabulary, or
+policy before it can affect compilation or conformance.
 
 Generated normalized graphs, observations, conformance reports, lockfiles,
 indexes, manifests, and diagrams remain derived evidence.
