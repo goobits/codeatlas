@@ -1,6 +1,6 @@
 # Conformance Semantics
 
-Status: proposed normative draft
+Status: accepted normative specification
 
 Conformance explains how observed implementation evidence compares with active
 accepted architecture. It does not change either input.

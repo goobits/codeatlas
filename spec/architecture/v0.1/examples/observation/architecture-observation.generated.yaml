@@ -21,7 +21,7 @@ coverage:
     status: partial
 digests:
   observationContentDigest: sha256:647219c87fccf66a1dd98218d5e0687395980a8ddaac22f3d8ac03ee64cb9331
-  observationEnvelopeDigest: sha256:38366a2efa55c7a48d8122637c80cd99b8ad2468f4cae979378ae5dcdcfb446e
+  observationEnvelopeDigest: sha256:eac5a5aa2874de35946c4eef86ac6111b3c8bd6a23dbdf2970a1e8565c4033da
 facts:
   codeatlas.fact.tab-host-candidate:
     attributes:
@@ -69,7 +69,7 @@ metadata:
   architectureVersion: 1
   generated: true
   generatedAt: 2026-07-23T00:00:00Z
-  generationCommand: cargo run --locked --jobs 1 --manifest-path reference-validator/Cargo.toml --bin generate_artifacts -- --write
+  generationCommand: cargo run --locked --jobs 1 --manifest-path design/architecture-dsl/v0.1/reference-validator/Cargo.toml --bin generate_artifacts -- --write
   generator:
     id: codeatlas.tool.reference-validator
     version: 0.1.0
@@ -82,6 +82,6 @@ repository:
   id: goobits.repository.platform
 sourceCommit: 0123456789abcdef0123456789abcdef01234567
 vocabulary:
-  digest: sha256:6f8fed2af9f2ed3b53bace11e6c69d39a2d0ed8d4e5faf9baa5164f5d9c2a9de
+  digest: sha256:1abfb5935815861750c88925774ae7bbaef8f155d0f6855ca757d33ced2c4921
   id: codeatlas.architecture.core
   version: 1

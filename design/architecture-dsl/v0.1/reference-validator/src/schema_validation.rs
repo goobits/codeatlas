@@ -1,16 +1,34 @@
 use crate::{parse_restricted_yaml, Diagnostic, ParseLimits};
 use serde_json::{Map, Value};
 
-const COMMON_SCHEMA: &str = include_str!("../../schemas/common.v0.1.schema.yaml");
-const MODULE_SCHEMA: &str = include_str!("../../schemas/architecture-module.v0.1.schema.yaml");
-const POLICY_SCHEMA: &str = include_str!("../../schemas/architecture-policy.v0.1.schema.yaml");
-const VOCABULARY_SCHEMA: &str =
-    include_str!("../../schemas/architecture-vocabulary.v0.1.schema.yaml");
-const CHANGE_SCHEMA: &str = include_str!("../../schemas/architecture-change.v0.1.schema.yaml");
-const OBSERVATION_SCHEMA: &str =
-    include_str!("../../schemas/architecture-observation.v0.1.schema.yaml");
-const CONFORMANCE_SCHEMA: &str =
-    include_str!("../../schemas/architecture-conformance.v0.1.schema.yaml");
+const COMMON_SCHEMA: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../spec/architecture/v0.1/schemas/common.v0.1.schema.yaml"
+));
+const MODULE_SCHEMA: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../spec/architecture/v0.1/schemas/architecture-module.v0.1.schema.yaml"
+));
+const POLICY_SCHEMA: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../spec/architecture/v0.1/schemas/architecture-policy.v0.1.schema.yaml"
+));
+const VOCABULARY_SCHEMA: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../spec/architecture/v0.1/schemas/architecture-vocabulary.v0.1.schema.yaml"
+));
+const CHANGE_SCHEMA: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../spec/architecture/v0.1/schemas/architecture-change.v0.1.schema.yaml"
+));
+const OBSERVATION_SCHEMA: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../spec/architecture/v0.1/schemas/architecture-observation.v0.1.schema.yaml"
+));
+const CONFORMANCE_SCHEMA: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../spec/architecture/v0.1/schemas/architecture-conformance.v0.1.schema.yaml"
+));
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DocumentKind {

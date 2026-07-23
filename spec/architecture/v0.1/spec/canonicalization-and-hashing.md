@@ -1,6 +1,6 @@
 # Canonicalization and Hashing
 
-Status: proposed normative draft
+Status: accepted normative specification
 
 Canonicalization makes semantically identical inputs reproducible and gives
 different kinds of evidence distinct identities.

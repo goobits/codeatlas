@@ -1,9 +1,11 @@
 # Atlas Architecture DSL v0.1 Design Package
 
-Status: proposed, awaiting independent Phase 7 review
+Status: accepted Phase 7 review candidate
 
-This is a review release of the architecture blueprint format and its
-executable specification evidence. It is not a production Code Atlas release.
+This records the review release of the architecture blueprint format and its
+executable specification evidence. The owner later promoted its normative
+artifacts to `spec/architecture/v0.1/`. It was not a production Code Atlas
+release.
 
 ## Included
 
@@ -46,13 +48,9 @@ requires a separate migration and release proposal.
 
 ## Review decision
 
-The independent reviewer should record one outcome:
+The reviewer returned `accept` with one required clarification:
+`ArchitectureChange` must never enter either architecture graph or be replayed
+to reconstruct current architecture. Commit `8f5a2df` contains that
+clarification and the final reproducible review evidence.
 
-- `accept`: approve the proposed v0.1 semantics for a separately planned
-  production implementation;
-- `revise`: return exact semantic or evidence gaps to this design package;
-- `reject`: retain the package as historical design evidence without adopting
-  it.
-
-No outcome authorizes production implementation unless that work receives its
-own scope, Architecture Impact Check, compatibility plan, and owner approval.
+Production implementation received a later, separate owner authorization.

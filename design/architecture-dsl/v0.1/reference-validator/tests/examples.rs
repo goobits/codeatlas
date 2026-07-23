@@ -1,30 +1,9 @@
+mod support;
+
 use codeatlas_architecture_dsl_reference_validator::{
-    check_generated_artifacts, compile_modules, parse_restricted_yaml, CompileMode, ParseLimits,
-    Vocabulary,
+    check_generated_artifacts, compile_modules, CompileMode,
 };
-use serde_json::Value;
-use std::fs;
-use std::path::{Path, PathBuf};
-
-fn design_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("design root")
-        .to_path_buf()
-}
-
-fn read_yaml(relative_path: &str) -> Value {
-    let path = design_root().join(relative_path);
-    let bytes = fs::read(&path).expect("read example");
-    parse_restricted_yaml(&bytes, ParseLimits::default())
-        .expect("parse example")
-        .value
-}
-
-fn vocabulary() -> Vocabulary {
-    Vocabulary::from_document(&read_yaml("vocabularies/core.v0.1.atlas.yaml"))
-        .expect("core vocabulary")
-}
+use support::{read_design_yaml, read_specification_yaml, specification_root, vocabulary};
 
 #[test]
 fn every_hand_authored_example_is_valid() {
@@ -34,17 +13,20 @@ fn every_hand_authored_example_is_valid() {
         "examples/workshop-codeatlas/architecture.atlas.yaml",
         "examples/policy-exception/architecture-policy.atlas.yaml",
         "examples/tabby-cutover-change/architecture-change.atlas.yaml",
-        "fixtures/valid/minimal-module.atlas.yaml",
     ] {
-        let diagnostics = vocabulary.validate_document(&read_yaml(path));
+        let diagnostics = vocabulary.validate_document(&read_specification_yaml(path));
         assert!(diagnostics.is_empty(), "{path}: {diagnostics:#?}");
     }
+
+    let fixture = "fixtures/valid/minimal-module.atlas.yaml";
+    let diagnostics = vocabulary.validate_document(&read_design_yaml(fixture));
+    assert!(diagnostics.is_empty(), "{fixture}: {diagnostics:#?}");
 }
 
 #[test]
 fn tabby_example_separates_governing_and_review_graphs() {
     let vocabulary = vocabulary();
-    let module = read_yaml("examples/tabby-shelly/architecture.atlas.yaml");
+    let module = read_specification_yaml("examples/tabby-shelly/architecture.atlas.yaml");
     let governing = compile_modules(
         std::slice::from_ref(&module),
         &vocabulary,
@@ -69,7 +51,7 @@ fn tabby_example_separates_governing_and_review_graphs() {
 #[test]
 fn workshop_example_has_no_codeatlas_to_workshop_dependency() {
     let vocabulary = vocabulary();
-    let module = read_yaml("examples/workshop-codeatlas/architecture.atlas.yaml");
+    let module = read_specification_yaml("examples/workshop-codeatlas/architecture.atlas.yaml");
     let graph =
         compile_modules(&[module], &vocabulary, CompileMode::Governing).expect("Workshop graph");
 
@@ -85,5 +67,5 @@ fn workshop_example_has_no_codeatlas_to_workshop_dependency() {
 
 #[test]
 fn committed_generated_examples_are_current() {
-    check_generated_artifacts(&design_root()).expect("generated examples are current");
+    check_generated_artifacts(&specification_root()).expect("generated examples are current");
 }

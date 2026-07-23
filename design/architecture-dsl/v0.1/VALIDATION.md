@@ -1,18 +1,18 @@
 # Validation Evidence
 
-Status: Phase 7 clarification evidence for a proposed design package
+Status: accepted Phase 7 validation evidence
 
-Validation proves that the draft is internally coherent, reproducible, and
-contained. It does not accept the DSL or authorize a production compiler,
-public API, runtime integration, or architecture mutation.
+Validation proved that the reviewed specification was internally coherent,
+reproducible, and contained. Owner acceptance and later production
+authorization are recorded separately.
 
 ## Baseline
 
 The repository audit began from Code Atlas commit `253b18a`, after the
-source-first wrapper and CI baseline was independently verified. DSL work is
-kept under `design/architecture-dsl/v0.1/`. Production Code Atlas packages,
-Goobits integration, and the parent provider pin are unchanged by Phases 1
-through 6.
+source-first wrapper and CI baseline was independently verified. Review
+fixtures and the private validator remain under
+`design/architecture-dsl/v0.1/`. Accepted normative artifacts were later
+promoted to `spec/architecture/v0.1/`.
 
 ## Reproduction
 
@@ -43,8 +43,9 @@ The reference suite contains 51 tests:
 - 7 invalid semantic integration tests;
 - 5 refinement integration tests.
 
-The generated-artifact check recomputes the observation example, conformance
-example, and `MANIFEST.sha256` without modifying the checkout.
+The generated-artifact check recomputes the canonical observation example,
+conformance example, and `spec/architecture/v0.1/MANIFEST.sha256` without
+modifying the checkout.
 
 ## Coverage summary
 

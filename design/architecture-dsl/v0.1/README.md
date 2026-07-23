@@ -1,87 +1,43 @@
-# Atlas Architecture DSL v0.1
+# Atlas Architecture DSL v0.1 Review Evidence
 
-Status: proposed design package
+Status: accepted Phase 7 evidence
 
-Acceptance authority: Code Atlas owner
+Canonical specification: `../../../spec/architecture/v0.1/`
 
-Production compiler: not included
+This directory preserves the review package that proved Atlas Architecture DSL
+v0.1 before product implementation began. It is evidence, not a second
+editable architecture authority.
 
-Runtime integration: not included
+The Code Atlas owner accepted the normative semantics on 2026-07-23. The
+accepted specification, schemas, vocabulary, examples, decision register, and
+current deterministic manifest now live under `spec/architecture/v0.1/`.
 
-This directory contains the proposed normative design and executable
-specification evidence for Atlas Architecture DSL v0.1.
-
-The design separates four concerns:
-
-1. Restricted YAML declarations describe approved architectural intent.
-2. A deterministic normalized graph represents those declarations.
-3. Generated observations describe what source code contains.
-4. Generated conformance results compare intent with observed evidence.
-
-Only accepted declarations enter the governing graph. Proposed and unresolved
-declarations may enter a non-governing review graph. Policies and temporary
-exceptions remain outside both architecture graphs.
-
-## Scope
-
-Phases 1 through 6 may create:
-
-- proposed specifications;
-- draft JSON Schema 2020-12 schemas expressed as YAML;
-- a closed draft vocabulary;
-- examples and fixtures;
-- a mechanically isolated private Rust reference validator;
-- deterministic generated examples;
-- validation and review evidence.
-
-They may not create:
-
-- a production Code Atlas compiler;
-- a public Code Atlas API or CLI command;
-- Goobits or Workshop integration;
-- runtime permission or coordination behavior;
-- network import resolution;
-- automatic architecture mutation;
-- another editable architecture format.
-
-## Authority
-
-Restricted YAML is the sole editable authority for declared architecture.
-Existing `codeatlas.json` files remain Code Atlas tool configuration. Generated
-JSON, lockfiles, observations, reports, indexes, diagrams, and prose are
-projections or evidence, not another editable architecture authority.
-
-The design package remains proposed until an independent Phase 7 review records
-one of these outcomes:
-
-- accept;
-- revise;
-- reject.
-
-Files in this directory must not be treated as accepted product contracts before
-that review.
-
-## Package map
+## Evidence map
 
 | Path | Purpose |
 | --- | --- |
-| `ARCHITECTURE_IMPACT_CHECK.md` | Existing ownership and scoped change classification |
-| `DECISIONS.md` | Proposed, accepted-direction, open, and rejected choices |
-| `spec/` | Proposed normative semantics |
-| `schemas/` | Static document-shape schemas |
-| `vocabularies/` | Closed typed architecture vocabulary |
-| `examples/` | Human-readable positive examples |
-| `fixtures/` | Mechanically checked valid and invalid cases |
+| `ARCHITECTURE_IMPACT_CHECK.md` | Original ownership and scope classification |
+| `REQUIREMENTS.md` | Phase 7 requirements traceability |
+| `fixtures/` | Valid and invalid review fixtures |
 | `reference-validator/` | Private executable specification evidence |
-| `VALIDATION.md` | Reproducible checks and known design-only obligations |
-| `RELEASE_NOTES.md` | Draft notes for the proposed design package |
-| `MANIFEST.sha256` | Generated stable file manifest, excluding itself |
+| `VALIDATION.md` | Reproducible Phase 7 checks |
+| `RELEASE_NOTES.md` | Historical review-candidate notes |
+| `PHASE7_MANIFEST.sha256` | Immutable manifest of the reviewed package at commit `8f5a2df` |
 
-## Review rule
+The historical manifest intentionally records the original design-package
+paths. Do not regenerate or edit it. The canonical package has its own
+generated `MANIFEST.sha256`.
 
-Generated examples and manifests must identify their generator, inputs, and
-generation command. Do not edit those outputs by hand.
+## Boundary
 
-The private validator may prove parsing, canonicalization, import resolution,
-graph construction, policy evaluation, and fixture behavior. Its existence does
-not establish a public compiler contract.
+The private validator:
+
+- is unpublished and outside the production Code Atlas workspace;
+- has no supported public API or CLI contract;
+- performs no network import resolution;
+- performs no architecture mutation;
+- owns no Goobits, Workshop, Access, Shell, Git, or coordination behavior.
+
+It now validates the canonical specification while retaining the original
+fixtures locally. Production code may reuse proven semantics only through the
+separately reviewed product implementation.

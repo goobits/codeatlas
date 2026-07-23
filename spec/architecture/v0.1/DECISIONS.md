@@ -40,9 +40,6 @@ approval gate, not a change type.
 
 ## Accepted product direction
 
-These items constrain the proposal but do not make its internal DSL design an
-accepted Code Atlas contract.
-
 | ID | Direction | Decision | Implementation | Authority source |
 | --- | --- | --- | --- | --- |
 | DIR-001 | Code Atlas remains independently versioned and consumed through pinned provider contracts | accepted | implemented | owner direction and released package boundary |
@@ -51,29 +48,30 @@ accepted Code Atlas contract.
 | DIR-004 | Generated prose and diagrams do not override governing contracts | accepted | partial | owner direction and current generated-output notices |
 | DIR-005 | Restricted YAML is the sole editable authority for declared architecture | accepted | absent | owner direction |
 | DIR-006 | `codeatlas.json` remains tool configuration, not declared architecture | accepted | implemented | released configuration contract |
-| DIR-007 | Production compiler and runtime integration require a later approval | accepted | not_applicable | scoped owner approval |
+| DIR-007 | Production implementation requires separate owner approval | accepted | granted | owner acceptance and implementation authorization |
 
-## Proposed v0.1 design decisions
+## Accepted v0.1 semantic decisions
 
-Every item below remains proposed until the Phase 7 review accepts it.
+The Phase 7 review accepted these semantics. Implementation status remains
+separate and does not change their authority.
 
-| ID | Proposal | Decision | Implementation | Approval |
+| ID | Decision | Decision status | Implementation | Approval |
 | --- | --- | --- | --- | --- |
-| DSL-001 | Use six document kinds: module, policy, vocabulary, change, observation, conformance | proposed | absent | granted for design proof |
-| DSL-002 | Use one recursive module grammar at system, product, package, and subsystem levels | proposed | absent | granted for design proof |
-| DSL-003 | Give every declaration one fully qualified stable semantic ID and one declaring module | proposed | absent | granted for design proof |
-| DSL-004 | Keep capabilities, providers, packages, and consumers distinct | proposed | absent | granted for design proof |
-| DSL-005 | Use a closed, versioned, typed vocabulary | proposed | absent | granted for design proof |
-| DSL-006 | Permit local, exact, digest-pinned imports only | proposed | absent | granted for design proof |
-| DSL-007 | Keep declarations private unless explicitly exported | proposed | absent | granted for design proof |
-| DSL-008 | Use a closed constraint language without general expressions | proposed | absent | granted for design proof |
-| DSL-009 | Keep policy exceptions outside architecture graphs | proposed | absent | granted for design proof |
-| DSL-010 | Compile accepted declarations into a governing graph and optional proposed or unresolved declarations into a review graph | proposed | absent | granted for design proof |
-| DSL-011 | Reserve retired IDs permanently and record supersession explicitly | proposed | absent | granted for design proof |
-| DSL-012 | Separate change type, decision status, and approval status | proposed | absent | granted for design proof |
-| DSL-013 | Separate stable authority artifact identity from repository locator | proposed | absent | granted for design proof |
-| DSL-014 | Use JSON Schema Draft 2020-12 for static document shape | proposed | absent | granted for design proof |
-| DSL-015 | Use a private Rust reference validator as executable specification evidence | proposed | absent | granted for design proof |
+| DSL-001 | Use six document kinds: module, policy, vocabulary, change, observation, conformance | accepted | partial | granted |
+| DSL-002 | Use one recursive module grammar at system, product, package, and subsystem levels | accepted | partial | granted |
+| DSL-003 | Give every declaration one fully qualified stable semantic ID and one declaring module | accepted | partial | granted |
+| DSL-004 | Keep capabilities, providers, packages, and consumers distinct | accepted | partial | granted |
+| DSL-005 | Use a closed, versioned, typed vocabulary | accepted | partial | granted |
+| DSL-006 | Permit local, exact, digest-pinned imports only | accepted | partial | granted |
+| DSL-007 | Keep declarations private unless explicitly exported | accepted | partial | granted |
+| DSL-008 | Use a closed constraint language without general expressions | accepted | partial | granted |
+| DSL-009 | Keep policy exceptions outside architecture graphs | accepted | partial | granted |
+| DSL-010 | Compile accepted declarations into a governing graph and optional proposed or unresolved declarations into a review graph | accepted | partial | granted |
+| DSL-011 | Reserve retired IDs permanently and record supersession explicitly | accepted | partial | granted |
+| DSL-012 | Separate change type, decision status, and approval status | accepted | partial | granted |
+| DSL-013 | Separate stable authority artifact identity from repository locator | accepted | partial | granted |
+| DSL-014 | Use JSON Schema Draft 2020-12 for static document shape | accepted | partial | granted |
+| DSL-015 | Use a private Rust reference validator as executable specification evidence | accepted | implemented | granted |
 
 ## Typed digest registry
 
@@ -151,18 +149,15 @@ The reference validator:
 - uses an independent lockfile only as an isolated crate;
 - is invoked deterministically from this design directory.
 
-## Open owner decisions
+## Deferred product decisions
 
-The Phase 7 review must explicitly settle or defer:
+The accepted DSL does not decide:
 
-1. Whether to accept the six document kinds.
-2. Whether to accept the core object and relation vocabulary.
-3. Whether to accept the canonicalization and digest rules.
-4. Whether to accept the import, export, and retirement model.
-5. Whether to accept the policy exception model.
-6. Whether the reference validator should inform a later production compiler.
-7. Which future Code Atlas capability surface, if any, should expose the DSL.
-8. Whether the proposed Tabby root-Space direction receives a governing ADR.
+1. Whether the proposed Tabby root-Space direction receives a governing ADR.
+2. Which Goobits repositories adopt declarations and conformance gates.
+3. Which inferred observations may later be promoted into hard-gate evidence.
+4. Whether a service API is ever justified in addition to the accepted CLI and
+   versioned JSON product boundary.
 
 ## Rejected for v0.1
 

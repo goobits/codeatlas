@@ -1,10 +1,10 @@
 # Atlas Architecture DSL v0.1
 
-Status: proposed normative draft
+Status: accepted normative specification
 
 This specification defines a small, typed architecture graph authored in a
-restricted YAML 1.2 profile. It is executable specification evidence for
-independent review. It is not yet an accepted Code Atlas public contract.
+restricted YAML 1.2 profile. Its stable CLI and JSON exposure remains a
+separate product contract.
 
 ## 1. Purpose
 
@@ -18,9 +18,8 @@ Its conceptual model is:
 - constraints are deterministic rules;
 - typed authority references explain why declarations govern.
 
-Code Atlas may later compile accepted declarations, observe source code
-separately, compare the two, and generate conformance reports and projections.
-This package proves the proposed semantics before any production adoption.
+Code Atlas compiles accepted declarations, observes source code separately,
+compares the two, and generates conformance reports and projections.
 
 ## 2. Source-of-truth hierarchy
 
@@ -54,7 +53,7 @@ workflows, or mutate accepted architecture.
 
 ## 4. Document kinds
 
-V0.1 proposes exactly six document kinds.
+V0.1 defines exactly six document kinds.
 
 Hand-authored:
 
@@ -111,7 +110,7 @@ metadata:
   sourceInputs:
     - fixtures/valid/governing-status/root.atlas.yaml
   generationCommand: >-
-    cargo run --manifest-path reference-validator/Cargo.toml
+    cargo run --manifest-path design/architecture-dsl/v0.1/reference-validator/Cargo.toml
     --bin generate_artifacts
 ```
 
@@ -604,8 +603,8 @@ V0.1 does not include:
 
 ## 18. Acceptance
 
-This draft may change when schemas, fixtures, the private validator, security
-tests, or independent review expose a contradiction.
+The Code Atlas owner accepted this specification on 2026-07-23. The acceptance
+scope and reviewed evidence are recorded in `../ACCEPTANCE.md`.
 
-It becomes an accepted Code Atlas design only after Phase 7 records an explicit
-accept decision and names the governing artifacts and promotion process.
+Future semantic changes require the versioning and migration process. Passing
+tests alone does not alter accepted architecture.

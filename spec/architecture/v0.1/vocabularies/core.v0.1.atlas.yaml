@@ -5,14 +5,18 @@ metadata:
   id: codeatlas.architecture.core
   name: Atlas Architecture DSL core vocabulary
   architectureVersion: 1
-  description: Closed proposed vocabulary required by the v0.1 examples.
+  description: Closed accepted vocabulary required by the v0.1 specification.
   maintainers:
     - codeatlas.team.owners
 
 decision:
-  status: proposed
+  status: accepted
   authority:
-    governing: []
+    governing:
+      - kind: owner-decision
+        artifact:
+          id: codeatlas.decision.architecture-dsl-v0-1
+          version: 1
     supporting:
       - kind: owner-direction
         artifact:
@@ -22,7 +26,11 @@ decision:
 approval:
   status: granted
   authority:
-    governing: []
+    governing:
+      - kind: owner-decision
+        artifact:
+          id: codeatlas.decision.architecture-dsl-v0-1
+          version: 1
     supporting:
       - kind: owner-direction
         artifact:

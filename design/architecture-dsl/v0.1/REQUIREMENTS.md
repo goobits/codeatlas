@@ -1,16 +1,16 @@
 # Requirements Traceability
 
-Status: proposed design-package evidence
+Status: accepted Phase 7 traceability evidence
 
-This matrix traces the approved Phase 0 through Phase 6 handoff into one
-specification owner and one or more executable checks. It does not accept the
-proposal or authorize production integration.
+This matrix traces the Phase 0 through Phase 6 handoff into the specification
+accepted under `../../../spec/architecture/v0.1/` and its executable checks.
+The acceptance and later production authorization are recorded separately.
 
 ## Scope and authority
 
 | Requirement | Specification owner | Mechanical evidence |
 | --- | --- | --- |
-| Design package only, no production compiler | `README.md`, `ARCHITECTURE_IMPACT_CHECK.md` | Private crate isolation and parent package checks |
+| Design package only, no production compiler in Phase 7 | `README.md`, `ARCHITECTURE_IMPACT_CHECK.md` | Private crate isolation and parent package checks |
 | Code Atlas remains independently managed | `ARCHITECTURE_IMPACT_CHECK.md` | No production dependency or public command added |
 | Restricted YAML is the sole editable declared-architecture authority | `README.md`, `spec/atlas-architecture-dsl-v0.1.md` | `refinements::codeatlas_json_is_configuration_not_architecture` |
 | Generated observations, reports, and manifests are non-editable evidence | `spec/compiler-semantics.md` | `examples::committed_generated_examples_are_current` |
@@ -88,9 +88,9 @@ proposal or authorize production integration.
 | Workshop consumes Code Atlas without a reverse dependency | Workshop example | `workshop_example_has_no_codeatlas_to_workshop_dependency` |
 | Workshop does not absorb Access or commit execution | Workshop example constraints | example graph compilation |
 
-## Review boundary
+## Review outcome
 
-The Phase 7 reviewer must decide whether to accept, revise, or reject the
-proposal. Passing this matrix proves internal consistency only. It does not
-promote any proposed document kind, vocabulary term, compiler behavior, or
-provider contract into the released Code Atlas product.
+Phase 7 accepted the semantic package after clarifying that
+`ArchitectureChange` is always non-governing audit history. Passing this matrix
+proves internal consistency and reproducibility. Product implementation and
+provider contracts still require their own tests and release review.

@@ -12,7 +12,7 @@ metadata:
 vocabulary:
   id: codeatlas.architecture.core
   version: 1
-  digest: sha256:6f8fed2af9f2ed3b53bace11e6c69d39a2d0ed8d4e5faf9baa5164f5d9c2a9de
+  digest: sha256:1abfb5935815861750c88925774ae7bbaef8f155d0f6855ca757d33ced2c4921
 
 decision:
   status: accepted

@@ -1,6 +1,6 @@
 # Security and Resource Limits
 
-Status: proposed normative draft
+Status: accepted normative specification
 
 Architecture declarations, imports, generated observations, and repository
 paths are untrusted input. Validation fails closed before semantic use.

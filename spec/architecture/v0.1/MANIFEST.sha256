@@ -1,0 +1,29 @@
+# generated: true
+# generator: codeatlas.tool.reference-validator/0.1.0
+# command: cargo run --locked --jobs 1 --manifest-path design/architecture-dsl/v0.1/reference-validator/Cargo.toml --bin generate_artifacts -- --write
+# manual-editing: prohibited
+# excludes: MANIFEST.sha256
+407fcf476912cac40e62f414445b78c2bb69d390635b6dc6ba1abd418ccd9748  ACCEPTANCE.md
+33db07f9563ed0dfb0cb689c7605df93e0af37d0e21d9344e415da2dc6012485  DECISIONS.md
+c5c53268f40b6013820cfee525009d08ad550b177d0fe5b1fd804ab63c7e1216  README.md
+3ece70f918b34c8851bbe1afa7493675d217ad79d42a668865229c52ce7b571e  examples/conformance/architecture-conformance.generated.yaml
+b8fcb869759dafa1426b027fe2f061eb5d23a24b6645beb2f8e054a1ef902af1  examples/observation/architecture-observation.generated.yaml
+057ce9f8fa2ee0533134fba6f44b26dcaaa40a92bbcc66672ac5118dac3481bd  examples/observation/source-facts.yaml
+65322f2e44994420038297412251c4652c1e871328847262a7a3ebbdc07819c9  examples/policy-exception/architecture-policy.atlas.yaml
+f694d288cb4f9b849669791c388ef76cf8eb911c3cc1a70d3df50436ed162ecf  examples/tabby-cutover-change/architecture-change.atlas.yaml
+754cdf51fdf5eb3fc424ae22a8bd76ec3d30262935d2c26c37c4911e47f3d986  examples/tabby-shelly/architecture.atlas.yaml
+532f351528cc52a639be591b1bdfbe205cc742d11a865e0e4b3ab8461f481327  examples/workshop-codeatlas/architecture.atlas.yaml
+60ee259a17eed11056dea97c658df3b2ae66ebbb83bbd94f1ca47c452b5be426  schemas/architecture-change.v0.1.schema.yaml
+a199e37377bfa6c0c0b32bf4bd8b7276176ca466440d0a5e571f9cac7a06ba00  schemas/architecture-conformance.v0.1.schema.yaml
+c9ebca4308254a8b7dd950956e39db94bd3ae46f52970fbaadc969e6eae70f5c  schemas/architecture-module.v0.1.schema.yaml
+22f9b8bfd6061dd0b4eab7bddc88e57a0592e509a808f0b38f703ce9f0d2345a  schemas/architecture-observation.v0.1.schema.yaml
+7224fad459a1d2907503ce8669c677d76fe35114cbb59c2bc644b660f579228a  schemas/architecture-policy.v0.1.schema.yaml
+72f4f307232e8d3538c6b2fc664e198e7452c546e137bd89c097ea478ac6764b  schemas/architecture-vocabulary.v0.1.schema.yaml
+bbc26226e9c6ebce99870eb1ba4980c3191c37a0f703112bc1d1a9e9457a2fe5  schemas/common.v0.1.schema.yaml
+b9de22f9cc5228655e7cf7875a632fa9f867e0d7482b3eb18356d8d145854ff7  spec/atlas-architecture-dsl-v0.1.md
+df3979c15faf28de47f8e4f0e8f4ed23d99c7f8bda213dcb3e2c482aabc11a6f  spec/canonicalization-and-hashing.md
+92786257b70c10b0fbb22b81815aa91d90bd2da5a970fadd5e975021e9dba121  spec/compiler-semantics.md
+da19f9ac21b3d781799419caae91aecfb84212517a6ae0518c365dec378b10f4  spec/conformance-semantics.md
+6f934dc0b8918cd09c2900d071e3bda81e4c0d4a07a5c32224da81a90aa4ee10  spec/security-and-resource-limits.md
+5dc91645d8a29d75edee517b6e27c028f968a976ed701a06b986e3b608d15e57  spec/versioning-and-migration.md
+c267bbd915286e6029e3d18bbfacfc7418293e33f7d73aa41ef90aed55658bfa  vocabularies/core.v0.1.atlas.yaml

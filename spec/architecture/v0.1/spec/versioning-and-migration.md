@@ -1,6 +1,6 @@
 # Versioning and Migration
 
-Status: proposed normative draft
+Status: accepted normative specification
 
 V0.1 separates format, architecture, product, vocabulary, adapter, rule, and
 provider versions. One number cannot stand in for every compatibility boundary.
@@ -192,31 +192,17 @@ result always identifies the exact observation content and validator version.
 
 ## 9. Design-package promotion
 
-All unaccepted v0.1 work stays under:
+The owner accepted the Phase 7 design package and promoted its normative
+artifacts to:
 
 ```text
-design/architecture-dsl/v0.1/
+spec/architecture/v0.1/
 ```
 
-Phase 7 may:
-
-- accept the package;
-- request revisions;
-- reject it.
-
-Acceptance must identify:
-
-- exact source commit;
-- exact manifest;
-- accepted specification files;
-- accepted vocabulary and schema versions;
-- reference-validator evidence;
-- unresolved items explicitly deferred;
-- the permanent publication path;
-- whether any production implementation proposal may begin.
-
-Promotion is a separate change. Copying or moving files without that record
-does not grant authority.
+`../ACCEPTANCE.md` records the source commit, evidence, accepted scope, and
+deferred implementation work. Historical fixtures and the private reference
+validator remain under `design/architecture-dsl/v0.1/` as non-authoritative
+evidence.
 
 ## 10. Earlier v0alpha1 proof
 

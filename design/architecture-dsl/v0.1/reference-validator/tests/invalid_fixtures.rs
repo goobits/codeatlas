@@ -1,7 +1,9 @@
+mod support;
+
 use codeatlas_architecture_dsl_reference_validator::{parse_restricted_yaml, ParseLimits};
 use serde::Deserialize;
 use std::fs;
-use std::path::{Path, PathBuf};
+use support::design_root;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,13 +17,6 @@ struct InvalidFixture {
     id: String,
     input: String,
     expected_diagnostic: String,
-}
-
-fn design_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("design root")
-        .to_path_buf()
 }
 
 #[test]

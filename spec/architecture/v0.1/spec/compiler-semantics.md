@@ -1,6 +1,6 @@
 # Compiler Semantics
 
-Status: proposed normative draft
+Status: accepted normative specification
 
 This document specifies deterministic behavior for the private reference
 validator and a possible future compiler. It does not define a public API.

@@ -1,6 +1,6 @@
 # Private Reference Validator
 
-This unpublished crate is executable specification evidence for the proposed
+This unpublished crate is executable specification evidence for the accepted
 Atlas Architecture DSL v0.1.
 
 It is intentionally isolated:
@@ -15,7 +15,7 @@ It is intentionally isolated:
 - no Goobits or Workshop integration;
 - its own lockfile and target directory.
 
-Run its checks from the design-package root:
+Run its checks from the design-evidence root:
 
 ```sh
 cargo fmt --manifest-path reference-validator/Cargo.toml -- --check
@@ -28,11 +28,11 @@ cargo run --locked --jobs 1 \
   --bin generate_artifacts -- --check
 ```
 
-Passing tests prove only that the proposed specification package is internally
-consistent. They do not accept the proposal or authorize production use.
+Passing tests prove that the accepted specification remains internally
+consistent. They do not create or change product authority.
 
-To refresh the committed generated observation, conformance report, and stable
-manifest after changing an input:
+To refresh the canonical generated observation, conformance report, and stable
+manifest after changing an accepted input:
 
 ```sh
 cargo run --locked --jobs 1 \

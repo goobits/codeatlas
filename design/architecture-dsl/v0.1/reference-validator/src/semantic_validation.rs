@@ -382,7 +382,11 @@ impl Vocabulary {
         if reference["digest"].as_str() != Some(self.digest.as_str()) {
             diagnostics.push(Diagnostic::error(
                 "vocabulary.digest-mismatch",
-                "document vocabulary digest does not match loaded vocabulary",
+                format!(
+                    "document references {}, loaded vocabulary is {}",
+                    reference["digest"].as_str().unwrap_or("<missing>"),
+                    self.digest
+                ),
             ));
         }
         diagnostics
@@ -639,7 +643,10 @@ mod tests {
 
     fn core_vocabulary() -> Vocabulary {
         let document = parse_restricted_yaml(
-            include_bytes!("../../vocabularies/core.v0.1.atlas.yaml"),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../../spec/architecture/v0.1/vocabularies/core.v0.1.atlas.yaml"
+            )),
             ParseLimits::default(),
         )
         .expect("parse core vocabulary");

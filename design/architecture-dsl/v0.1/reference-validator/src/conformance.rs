@@ -96,13 +96,19 @@ mod tests {
 
     fn generated_examples() -> (serde_json::Value, serde_json::Value) {
         let observation = parse_restricted_yaml(
-            include_bytes!("../../examples/observation/architecture-observation.generated.yaml"),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../../spec/architecture/v0.1/examples/observation/architecture-observation.generated.yaml"
+            )),
             ParseLimits::default(),
         )
         .expect("observation")
         .value;
         let conformance = parse_restricted_yaml(
-            include_bytes!("../../examples/conformance/architecture-conformance.generated.yaml"),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../../spec/architecture/v0.1/examples/conformance/architecture-conformance.generated.yaml"
+            )),
             ParseLimits::default(),
         )
         .expect("conformance")

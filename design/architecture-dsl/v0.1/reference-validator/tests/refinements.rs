@@ -1,27 +1,13 @@
+mod support;
+
 use codeatlas_architecture_dsl_reference_validator::{
-    compile_modules, parse_restricted_yaml, validate_document_schema, CompileMode, ParseLimits,
-    Vocabulary,
+    compile_modules, validate_document_schema, CompileMode,
 };
 use serde_json::json;
-use std::fs;
-use std::path::{Path, PathBuf};
-
-fn design_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("design root")
-        .to_path_buf()
-}
+use support::{read_specification_yaml, vocabulary};
 
 fn read_yaml(relative_path: &str) -> serde_json::Value {
-    let bytes = fs::read(design_root().join(relative_path)).expect("read YAML");
-    parse_restricted_yaml(&bytes, ParseLimits::default())
-        .expect("parse YAML")
-        .value
-}
-
-fn vocabulary() -> Vocabulary {
-    Vocabulary::from_document(&read_yaml("vocabularies/core.v0.1.atlas.yaml")).expect("vocabulary")
+    read_specification_yaml(relative_path)
 }
 
 #[test]

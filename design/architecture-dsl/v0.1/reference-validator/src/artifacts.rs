@@ -11,20 +11,21 @@ const GENERATOR_ID: &str = "codeatlas.tool.reference-validator";
 const GENERATOR_VERSION: &str = "0.1.0";
 const GENERATED_AT: &str = "2026-07-23T00:00:00Z";
 const GENERATION_COMMAND: &str = "cargo run --locked --jobs 1 --manifest-path \
-reference-validator/Cargo.toml --bin generate_artifacts -- --write";
+design/architecture-dsl/v0.1/reference-validator/Cargo.toml \
+--bin generate_artifacts -- --write";
 
-pub fn write_generated_artifacts(design_root: &Path) -> Result<(), ValidationError> {
-    for (relative_path, bytes) in generated_artifacts(design_root)? {
-        write_atomic(&design_root.join(relative_path), &bytes)?;
+pub fn write_generated_artifacts(specification_root: &Path) -> Result<(), ValidationError> {
+    for (relative_path, bytes) in generated_artifacts(specification_root)? {
+        write_atomic(&specification_root.join(relative_path), &bytes)?;
     }
-    let manifest = manifest_bytes(design_root)?;
-    write_atomic(&design_root.join("MANIFEST.sha256"), &manifest)?;
+    let manifest = manifest_bytes(specification_root)?;
+    write_atomic(&specification_root.join("MANIFEST.sha256"), &manifest)?;
     Ok(())
 }
 
-pub fn check_generated_artifacts(design_root: &Path) -> Result<(), ValidationError> {
-    for (relative_path, expected) in generated_artifacts(design_root)? {
-        let path = design_root.join(&relative_path);
+pub fn check_generated_artifacts(specification_root: &Path) -> Result<(), ValidationError> {
+    for (relative_path, expected) in generated_artifacts(specification_root)? {
+        let path = specification_root.join(&relative_path);
         let actual =
             fs::read(&path).map_err(|error| io_error("generated.read-failed", &path, error))?;
         if actual != expected {
@@ -37,8 +38,8 @@ pub fn check_generated_artifacts(design_root: &Path) -> Result<(), ValidationErr
             ));
         }
     }
-    let expected = manifest_bytes(design_root)?;
-    let path = design_root.join("MANIFEST.sha256");
+    let expected = manifest_bytes(specification_root)?;
+    let path = specification_root.join("MANIFEST.sha256");
     let actual =
         fs::read(&path).map_err(|error| io_error("generated.read-failed", &path, error))?;
     if actual != expected {
@@ -50,15 +51,20 @@ pub fn check_generated_artifacts(design_root: &Path) -> Result<(), ValidationErr
     Ok(())
 }
 
-fn generated_artifacts(design_root: &Path) -> Result<Vec<(PathBuf, Vec<u8>)>, ValidationError> {
-    let vocabulary_document = read_yaml(&design_root.join("vocabularies/core.v0.1.atlas.yaml"))?;
+fn generated_artifacts(
+    specification_root: &Path,
+) -> Result<Vec<(PathBuf, Vec<u8>)>, ValidationError> {
+    let vocabulary_document =
+        read_yaml(&specification_root.join("vocabularies/core.v0.1.atlas.yaml"))?;
     let vocabulary = Vocabulary::from_document(&vocabulary_document)
         .map_err(|diagnostics| diagnostics_error("vocabulary.invalid", diagnostics))?;
     let tabby_document =
-        read_yaml(&design_root.join("examples/tabby-shelly/architecture.atlas.yaml"))?;
-    let policy_document =
-        read_yaml(&design_root.join("examples/policy-exception/architecture-policy.atlas.yaml"))?;
-    let source_facts = read_yaml(&design_root.join("examples/observation/source-facts.yaml"))?;
+        read_yaml(&specification_root.join("examples/tabby-shelly/architecture.atlas.yaml"))?;
+    let policy_document = read_yaml(
+        &specification_root.join("examples/policy-exception/architecture-policy.atlas.yaml"),
+    )?;
+    let source_facts =
+        read_yaml(&specification_root.join("examples/observation/source-facts.yaml"))?;
 
     let governing = compile_modules(
         std::slice::from_ref(&tabby_document),
@@ -260,20 +266,20 @@ fn yaml_bytes(value: &Value) -> Result<Vec<u8>, ValidationError> {
     Ok(output.into_bytes())
 }
 
-fn manifest_bytes(design_root: &Path) -> Result<Vec<u8>, ValidationError> {
+fn manifest_bytes(specification_root: &Path) -> Result<Vec<u8>, ValidationError> {
     let mut files = Vec::new();
-    collect_manifest_files(design_root, design_root, &mut files)?;
+    collect_manifest_files(specification_root, specification_root, &mut files)?;
     files.sort();
 
     let mut output = String::from(
         "# generated: true\n\
 # generator: codeatlas.tool.reference-validator/0.1.0\n\
-# command: cargo run --locked --jobs 1 --manifest-path reference-validator/Cargo.toml --bin generate_artifacts -- --write\n\
+# command: cargo run --locked --jobs 1 --manifest-path design/architecture-dsl/v0.1/reference-validator/Cargo.toml --bin generate_artifacts -- --write\n\
 # manual-editing: prohibited\n\
-# excludes: MANIFEST.sha256 and reference-validator/target/\n",
+# excludes: MANIFEST.sha256\n",
     );
     for relative_path in files {
-        let bytes = fs::read(design_root.join(&relative_path)).map_err(|error| {
+        let bytes = fs::read(specification_root.join(&relative_path)).map_err(|error| {
             io_error(
                 "generated.manifest-input-read-failed",
                 &relative_path,
@@ -290,7 +296,7 @@ fn manifest_bytes(design_root: &Path) -> Result<Vec<u8>, ValidationError> {
 }
 
 fn collect_manifest_files(
-    design_root: &Path,
+    specification_root: &Path,
     directory: &Path,
     files: &mut Vec<PathBuf>,
 ) -> Result<(), ValidationError> {
@@ -300,15 +306,13 @@ fn collect_manifest_files(
         let entry =
             entry.map_err(|error| io_error("generated.manifest-read-entry", directory, error))?;
         let path = entry.path();
-        let relative = path.strip_prefix(design_root).map_err(|error| {
+        let relative = path.strip_prefix(specification_root).map_err(|error| {
             ValidationError::new(
                 "generated.manifest-path-error",
                 format!("{}: {error}", path.display()),
             )
         })?;
-        if relative == Path::new("MANIFEST.sha256")
-            || relative.starts_with("reference-validator/target")
-        {
+        if relative == Path::new("MANIFEST.sha256") {
             continue;
         }
         let file_type = entry
@@ -321,7 +325,7 @@ fn collect_manifest_files(
             ));
         }
         if file_type.is_dir() {
-            collect_manifest_files(design_root, &path, files)?;
+            collect_manifest_files(specification_root, &path, files)?;
         } else if file_type.is_file() {
             files.push(relative.to_path_buf());
         }
@@ -365,9 +369,11 @@ mod tests {
     #[test]
     fn generated_examples_are_schema_valid_and_identify_their_generator() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("design root");
-        let artifacts = generated_artifacts(root).expect("generate");
+            .ancestors()
+            .nth(4)
+            .expect("Code Atlas repository root")
+            .join("spec/architecture/v0.1");
+        let artifacts = generated_artifacts(&root).expect("generate");
         assert_eq!(artifacts.len(), 2);
 
         for (_, bytes) in artifacts {

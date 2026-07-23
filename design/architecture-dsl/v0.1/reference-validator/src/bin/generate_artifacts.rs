@@ -4,12 +4,14 @@ use codeatlas_architecture_dsl_reference_validator::{
 use std::path::Path;
 
 fn main() {
-    let design_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("design root");
+    let specification_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(4)
+        .expect("Code Atlas repository root")
+        .join("spec/architecture/v0.1");
     let result = match std::env::args().nth(1).as_deref() {
-        Some("--write") => write_generated_artifacts(design_root),
-        Some("--check") => check_generated_artifacts(design_root),
+        Some("--write") => write_generated_artifacts(&specification_root),
+        Some("--check") => check_generated_artifacts(&specification_root),
         _ => {
             eprintln!("usage: generate_artifacts --write | --check");
             std::process::exit(2);
