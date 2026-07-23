@@ -1,0 +1,93 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://atlas.codeatlas.dev/schemas/architecture-observation.v0.1.schema.yaml"
+title: ArchitectureObservation v0.1
+type: object
+additionalProperties: false
+required:
+  - apiVersion
+  - kind
+  - metadata
+  - vocabulary
+  - repository
+  - sourceCommit
+  - coverage
+  - facts
+  - digests
+properties:
+  apiVersion:
+    const: atlas.codeatlas.dev/v0.1
+  kind:
+    const: ArchitectureObservation
+  metadata:
+    $ref: "common.v0.1.schema.yaml#/$defs/metadata"
+  vocabulary:
+    $ref: "common.v0.1.schema.yaml#/$defs/vocabularyReference"
+  repository:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+    properties:
+      id:
+        $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+  sourceCommit:
+    type: string
+    pattern: "^[0-9a-f]{7,64}$"
+  coverage:
+    type: object
+    propertyNames:
+      $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+    additionalProperties:
+      $ref: "common.v0.1.schema.yaml#/$defs/coverage"
+  facts:
+    type: object
+    propertyNames:
+      $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      required:
+        - target
+        - observedKind
+        - attributes
+        - extractor
+        - mode
+        - sourceLocations
+        - coverageIds
+      properties:
+        target:
+          $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+        observedKind:
+          type: string
+          minLength: 1
+        attributes:
+          type: object
+        extractor:
+          $ref: "common.v0.1.schema.yaml#/$defs/generator"
+        mode:
+          enum:
+            - deterministic
+            - inferred
+        confidenceBasisPoints:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        sourceLocations:
+          type: array
+          minItems: 1
+          maxItems: 1024
+          items:
+            $ref: "common.v0.1.schema.yaml#/$defs/sourceLocation"
+        coverageIds:
+          $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+  digests:
+    type: object
+    additionalProperties: false
+    required:
+      - observationContentDigest
+      - observationEnvelopeDigest
+    properties:
+      observationContentDigest:
+        $ref: "common.v0.1.schema.yaml#/$defs/digest"
+      observationEnvelopeDigest:
+        $ref: "common.v0.1.schema.yaml#/$defs/digest"

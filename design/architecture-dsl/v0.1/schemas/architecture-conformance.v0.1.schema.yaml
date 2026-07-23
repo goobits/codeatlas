@@ -1,0 +1,120 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://atlas.codeatlas.dev/schemas/architecture-conformance.v0.1.schema.yaml"
+title: ArchitectureConformance v0.1
+type: object
+additionalProperties: false
+required:
+  - apiVersion
+  - kind
+  - metadata
+  - vocabulary
+  - conformanceInputs
+  - results
+  - conformanceResultDigest
+properties:
+  apiVersion:
+    const: atlas.codeatlas.dev/v0.1
+  kind:
+    const: ArchitectureConformance
+  metadata:
+    $ref: "common.v0.1.schema.yaml#/$defs/metadata"
+  vocabulary:
+    $ref: "common.v0.1.schema.yaml#/$defs/vocabularyReference"
+  conformanceInputs:
+    type: object
+    additionalProperties: false
+    required:
+      - governingGraphDigest
+      - architectureClosureDigest
+      - policyClosureDigest
+      - observationContentDigest
+      - vocabularyDigest
+      - validatorVersion
+      - asOf
+    properties:
+      governingGraphDigest:
+        $ref: "common.v0.1.schema.yaml#/$defs/digest"
+      architectureClosureDigest:
+        $ref: "common.v0.1.schema.yaml#/$defs/digest"
+      policyClosureDigest:
+        $ref: "common.v0.1.schema.yaml#/$defs/digest"
+      observationContentDigest:
+        $ref: "common.v0.1.schema.yaml#/$defs/digest"
+      vocabularyDigest:
+        $ref: "common.v0.1.schema.yaml#/$defs/digest"
+      validatorVersion:
+        type: string
+        minLength: 1
+      asOf:
+        $ref: "common.v0.1.schema.yaml#/$defs/timestamp"
+  results:
+    type: object
+    propertyNames:
+      $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      required:
+        - declarationId
+        - state
+        - severity
+        - reasonCode
+        - evidence
+        - exceptions
+        - explanation
+      properties:
+        declarationId:
+          $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+        state:
+          enum:
+            - matched
+            - partial
+            - absent
+            - conflicting
+            - unexpected
+            - unobserved
+            - ambiguous
+        severity:
+          enum:
+            - error
+            - warning
+            - advisory
+        reasonCode:
+          type: string
+          minLength: 1
+        evidence:
+          type: object
+          additionalProperties: false
+          required:
+            - factIds
+            - coverageIds
+          properties:
+            factIds:
+              $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+            coverageIds:
+              $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+        exceptions:
+          type: object
+          additionalProperties: false
+          required:
+            - applied
+            - stale
+            - expired
+            - irrelevant
+            - rejected
+          properties:
+            applied:
+              $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+            stale:
+              $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+            expired:
+              $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+            irrelevant:
+              $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+            rejected:
+              $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+        explanation:
+          type: string
+          minLength: 1
+  conformanceResultDigest:
+    $ref: "common.v0.1.schema.yaml#/$defs/digest"

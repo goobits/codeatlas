@@ -147,7 +147,8 @@ Hand-authored semantic IDs must not be random UUIDs.
 
 ## 7. Vocabulary reference
 
-Every architecture document names one exact vocabulary:
+Every architecture document except the bootstrapped core vocabulary names one
+exact vocabulary:
 
 ```yaml
 vocabulary:
@@ -156,7 +157,7 @@ vocabulary:
   digest: sha256:0123456789abcdef...
 ```
 
-The core vocabulary is bootstrapped by:
+The core vocabulary does not reference or digest itself. It is bootstrapped by:
 
 - the static `ArchitectureVocabulary` schema;
 - the fixed v0.1 meta-kinds for object kinds, predicates, rules, adapters,
@@ -257,6 +258,9 @@ apiVersion: atlas.codeatlas.dev/v0.1
 kind: ArchitectureModule
 metadata: {}
 vocabulary: {}
+decision: {}
+approval: {}
+changeControl: {}
 imports: []
 exports:
   objects: []
@@ -315,7 +319,11 @@ objects:
     decision:
       status: accepted
       authority:
-        governing: []
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.shell-create
+              version: 1
         supporting: []
     approval:
       status: granted
@@ -340,7 +348,11 @@ relations:
     decision:
       status: accepted
       authority:
-        governing: []
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: goobits.decision.tab-host
+              version: 1
         supporting: []
     approval:
       status: granted
@@ -369,9 +381,19 @@ bindings:
     selector:
       name: "@goobits/tabby"
     cardinality: exactly_one
-    decision: {}
-    approval: {}
-    changeControl: {}
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: goobits.contract.tabby-package
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
 ```
 
 Each adapter defines a closed selector schema, deterministic matching,
@@ -392,9 +414,19 @@ constraints:
     arguments:
       target: goobits.lifecycle.tab-root-space
       predicate: governs
-    decision: {}
-    approval: {}
-    changeControl: {}
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: accepted-adr
+            artifact:
+              id: goobits.adr.tab-lifecycle-owner
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: accepted_adr_required
 ```
 
 Arguments are validated against the selected rule's closed schema. General
@@ -426,6 +458,9 @@ apiVersion: atlas.codeatlas.dev/v0.1
 kind: ArchitecturePolicy
 metadata: {}
 vocabulary: {}
+decision: {}
+approval: {}
+changeControl: {}
 imports: []
 rules: {}
 exceptions: {}

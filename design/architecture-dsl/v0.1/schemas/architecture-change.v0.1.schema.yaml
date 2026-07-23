@@ -1,0 +1,98 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://atlas.codeatlas.dev/schemas/architecture-change.v0.1.schema.yaml"
+title: ArchitectureChange v0.1
+type: object
+additionalProperties: false
+required:
+  - apiVersion
+  - kind
+  - metadata
+  - vocabulary
+  - baseGraphDigest
+  - change
+  - decision
+  - approval
+  - changeControl
+  - affectedIds
+  - currentOwner
+  - intendedOwner
+  - expectedEffects
+  - migrationPlan
+  - removalPlan
+  - verificationPlan
+  - targetGraphDigest
+properties:
+  apiVersion:
+    const: atlas.codeatlas.dev/v0.1
+  kind:
+    const: ArchitectureChange
+  metadata:
+    $ref: "common.v0.1.schema.yaml#/$defs/metadata"
+  vocabulary:
+    $ref: "common.v0.1.schema.yaml#/$defs/vocabularyReference"
+  baseGraphDigest:
+    $ref: "common.v0.1.schema.yaml#/$defs/digest"
+  change:
+    type: object
+    additionalProperties: false
+    required:
+      - type
+    properties:
+      type:
+        enum:
+          - EXTEND
+          - COMPOSE
+          - REPLACE
+          - INTRODUCE
+  decision:
+    $ref: "common.v0.1.schema.yaml#/$defs/decision"
+  approval:
+    $ref: "common.v0.1.schema.yaml#/$defs/approval"
+  changeControl:
+    $ref: "common.v0.1.schema.yaml#/$defs/changeControl"
+  affectedIds:
+    $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+  currentOwner:
+    anyOf:
+      - $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+      - type: "null"
+  intendedOwner:
+    $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+  expectedEffects:
+    type: object
+    additionalProperties: false
+    required:
+      - adds
+      - removes
+      - requires
+    properties:
+      adds:
+        $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+      removes:
+        $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+      requires:
+        type: array
+        uniqueItems: true
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - constraint
+            - result
+          properties:
+            constraint:
+              $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+            result:
+              enum:
+                - pass
+                - fail
+  migrationPlan:
+    $ref: "common.v0.1.schema.yaml#/$defs/stringSteps"
+  removalPlan:
+    $ref: "common.v0.1.schema.yaml#/$defs/stringSteps"
+  verificationPlan:
+    $ref: "common.v0.1.schema.yaml#/$defs/stringSteps"
+  targetGraphDigest:
+    anyOf:
+      - $ref: "common.v0.1.schema.yaml#/$defs/digest"
+      - type: "null"

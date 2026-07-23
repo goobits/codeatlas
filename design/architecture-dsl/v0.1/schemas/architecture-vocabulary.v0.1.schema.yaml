@@ -1,0 +1,150 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://atlas.codeatlas.dev/schemas/architecture-vocabulary.v0.1.schema.yaml"
+title: ArchitectureVocabulary v0.1
+type: object
+additionalProperties: false
+required:
+  - apiVersion
+  - kind
+  - metadata
+  - decision
+  - approval
+  - changeControl
+  - imports
+  - namespace
+  - authorityKinds
+  - objectKinds
+  - predicates
+  - constraintRules
+  - bindingAdapters
+properties:
+  apiVersion:
+    const: atlas.codeatlas.dev/v0.1
+  kind:
+    const: ArchitectureVocabulary
+  metadata:
+    $ref: "common.v0.1.schema.yaml#/$defs/metadata"
+  decision:
+    $ref: "common.v0.1.schema.yaml#/$defs/decision"
+  approval:
+    $ref: "common.v0.1.schema.yaml#/$defs/approval"
+  changeControl:
+    $ref: "common.v0.1.schema.yaml#/$defs/changeControl"
+  imports:
+    $ref: "common.v0.1.schema.yaml#/$defs/imports"
+  namespace:
+    type: string
+    minLength: 1
+    maxLength: 100
+    pattern: "^[a-z0-9][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$"
+  authorityKinds:
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+      minLength: 1
+      maxLength: 100
+  objectKinds:
+    type: object
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      required:
+        - requiredAttributes
+        - optionalAttributes
+      properties:
+        requiredAttributes:
+          type: object
+          additionalProperties:
+            $ref: "#/$defs/valueType"
+        optionalAttributes:
+          type: object
+          additionalProperties:
+            $ref: "#/$defs/valueType"
+  predicates:
+    type: object
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      required:
+        - subjectKinds
+        - objectKinds
+        - cycles
+      properties:
+        subjectKinds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+        objectKinds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+        cycles:
+          enum:
+            - allowed
+            - forbidden
+        inverse:
+          type: string
+  constraintRules:
+    type: object
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - requiredArguments
+        - optionalArguments
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        requiredArguments:
+          type: object
+          additionalProperties:
+            $ref: "#/$defs/valueType"
+        optionalArguments:
+          type: object
+          additionalProperties:
+            $ref: "#/$defs/valueType"
+  bindingAdapters:
+    type: object
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      required:
+        - versions
+      properties:
+        versions:
+          type: object
+          patternProperties:
+            "^[1-9][0-9]*$":
+              type: object
+              additionalProperties: false
+              required:
+                - requiredSelector
+                - optionalSelector
+              properties:
+                requiredSelector:
+                  type: object
+                  additionalProperties:
+                    $ref: "#/$defs/valueType"
+                optionalSelector:
+                  type: object
+                  additionalProperties:
+                    $ref: "#/$defs/valueType"
+          additionalProperties: false
+
+$defs:
+  valueType:
+    enum:
+      - string
+      - integer
+      - boolean
+      - identifier
+      - digest
+      - string_list
+      - identifier_list

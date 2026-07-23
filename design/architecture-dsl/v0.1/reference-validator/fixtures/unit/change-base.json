@@ -1,0 +1,45 @@
+{
+  "apiVersion": "atlas.codeatlas.dev/v0.1",
+  "kind": "ArchitectureChange",
+  "metadata": {
+    "id": "codeatlas.change.example",
+    "name": "Example change",
+    "architectureVersion": 1
+  },
+  "vocabulary": {
+    "id": "codeatlas.architecture.core",
+    "version": 1,
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "baseGraphDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "change": {
+    "type": "INTRODUCE"
+  },
+  "decision": {
+    "status": "proposed",
+    "authority": {
+      "governing": [],
+      "supporting": []
+    }
+  },
+  "approval": {
+    "status": "required"
+  },
+  "changeControl": {
+    "policy": "owner_approval_required"
+  },
+  "affectedIds": [
+    "codeatlas.capability.example"
+  ],
+  "currentOwner": null,
+  "intendedOwner": "codeatlas.package.example",
+  "expectedEffects": {
+    "adds": [],
+    "removes": [],
+    "requires": []
+  },
+  "migrationPlan": [],
+  "removalPlan": [],
+  "verificationPlan": [],
+  "targetGraphDigest": null
+}

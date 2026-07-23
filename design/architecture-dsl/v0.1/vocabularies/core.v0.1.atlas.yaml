@@ -1,0 +1,244 @@
+apiVersion: atlas.codeatlas.dev/v0.1
+kind: ArchitectureVocabulary
+
+metadata:
+  id: codeatlas.architecture.core
+  name: Atlas Architecture DSL core vocabulary
+  architectureVersion: 1
+  description: Closed proposed vocabulary required by the v0.1 examples.
+  maintainers:
+    - codeatlas.team.owners
+
+decision:
+  status: proposed
+  authority:
+    governing: []
+    supporting:
+      - kind: owner-direction
+        artifact:
+          id: codeatlas.owner-direction.architecture-dsl
+          version: 1
+
+approval:
+  status: granted
+  authority:
+    governing: []
+    supporting:
+      - kind: owner-direction
+        artifact:
+          id: codeatlas.owner-direction.architecture-dsl
+          version: 1
+
+changeControl:
+  policy: owner_approval_required
+
+imports: []
+namespace: codeatlas.architecture.core
+
+authorityKinds:
+  - accepted-adr
+  - architecture-module
+  - glossary
+  - normative-spec
+  - owner-decision
+  - owner-direction
+  - package-contract
+  - policy
+  - released-api
+  - schema
+
+objectKinds:
+  app:
+    requiredAttributes: {}
+    optionalAttributes:
+      visibility: string
+      releaseVersion: string
+  capability:
+    requiredAttributes: {}
+    optionalAttributes:
+      visibility: string
+      contract: identifier
+  contract:
+    requiredAttributes:
+      version: string
+    optionalAttributes:
+      compatibility: string
+  domain_concept:
+    requiredAttributes: {}
+    optionalAttributes:
+      owner: identifier
+  package:
+    requiredAttributes: {}
+    optionalAttributes:
+      visibility: string
+      releaseVersion: string
+  protected_effect:
+    requiredAttributes: {}
+    optionalAttributes:
+      risk: string
+  provider:
+    requiredAttributes: {}
+    optionalAttributes:
+      releaseVersion: string
+      implementationVersion: string
+  runtime_primitive:
+    requiredAttributes: {}
+    optionalAttributes:
+      owner: identifier
+
+predicates:
+  consumes:
+    subjectKinds:
+      - app
+      - package
+      - provider
+    objectKinds:
+      - capability
+      - contract
+    cycles: forbidden
+  defaults_to:
+    subjectKinds:
+      - app
+      - package
+    objectKinds:
+      - capability
+      - provider
+    cycles: forbidden
+  defines:
+    subjectKinds:
+      - app
+      - package
+      - provider
+    objectKinds:
+      - capability
+      - contract
+      - domain_concept
+      - protected_effect
+      - runtime_primitive
+    cycles: forbidden
+  depends_on:
+    subjectKinds:
+      - app
+      - package
+      - provider
+    objectKinds:
+      - app
+      - package
+      - provider
+    cycles: forbidden
+  exposes:
+    subjectKinds:
+      - app
+      - package
+      - provider
+    objectKinds:
+      - capability
+      - contract
+    cycles: forbidden
+  governs:
+    subjectKinds:
+      - app
+      - package
+      - provider
+    objectKinds:
+      - domain_concept
+      - protected_effect
+      - runtime_primitive
+    cycles: forbidden
+  implements:
+    subjectKinds:
+      - app
+      - package
+      - provider
+    objectKinds:
+      - capability
+      - contract
+    cycles: forbidden
+  provides:
+    subjectKinds:
+      - app
+      - package
+      - provider
+    objectKinds:
+      - capability
+    cycles: forbidden
+  requires:
+    subjectKinds:
+      - app
+      - package
+      - provider
+      - capability
+    objectKinds:
+      - capability
+      - contract
+      - protected_effect
+    cycles: forbidden
+  supersedes:
+    subjectKinds:
+      - app
+      - package
+      - provider
+      - capability
+      - contract
+      - domain_concept
+      - protected_effect
+      - runtime_primitive
+    objectKinds:
+      - app
+      - package
+      - provider
+      - capability
+      - contract
+      - domain_concept
+      - protected_effect
+      - runtime_primitive
+    cycles: forbidden
+
+constraintRules:
+  exactly_one_incoming:
+    version: 1
+    requiredArguments:
+      target: identifier
+      predicate: string
+    optionalArguments: {}
+  forbids_relation:
+    version: 1
+    requiredArguments:
+      predicate: string
+      subject: identifier
+      object: identifier
+    optionalArguments: {}
+  must_reference_contract:
+    version: 1
+    requiredArguments:
+      objectKind: string
+    optionalArguments:
+      visibility: string
+  no_path:
+    version: 1
+    requiredArguments:
+      from: identifier
+      to: identifier
+      via: string_list
+    optionalArguments: {}
+  requires_object:
+    version: 1
+    requiredArguments:
+      target: identifier
+    optionalArguments: {}
+
+bindingAdapters:
+  npm.package:
+    versions:
+      "1":
+        requiredSelector:
+          name: string
+        optionalSelector:
+          export: string
+  rust.crate:
+    versions:
+      "1":
+        requiredSelector:
+          name: string
+        optionalSelector:
+          package: string

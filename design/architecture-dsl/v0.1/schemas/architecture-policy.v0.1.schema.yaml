@@ -1,0 +1,94 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://atlas.codeatlas.dev/schemas/architecture-policy.v0.1.schema.yaml"
+title: ArchitecturePolicy v0.1
+type: object
+additionalProperties: false
+required:
+  - apiVersion
+  - kind
+  - metadata
+  - vocabulary
+  - decision
+  - approval
+  - changeControl
+  - imports
+  - rules
+  - exceptions
+properties:
+  apiVersion:
+    const: atlas.codeatlas.dev/v0.1
+  kind:
+    const: ArchitecturePolicy
+  metadata:
+    $ref: "common.v0.1.schema.yaml#/$defs/metadata"
+  vocabulary:
+    $ref: "common.v0.1.schema.yaml#/$defs/vocabularyReference"
+  decision:
+    $ref: "common.v0.1.schema.yaml#/$defs/decision"
+  approval:
+    $ref: "common.v0.1.schema.yaml#/$defs/approval"
+  changeControl:
+    $ref: "common.v0.1.schema.yaml#/$defs/changeControl"
+  imports:
+    $ref: "common.v0.1.schema.yaml#/$defs/imports"
+  rules:
+    type: object
+    propertyNames:
+      $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+    additionalProperties:
+      $ref: "common.v0.1.schema.yaml#/$defs/constraintDeclaration"
+  exceptions:
+    type: object
+    maxProperties: 10000
+    propertyNames:
+      $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      required:
+        - constraint
+        - scope
+        - affectedIds
+        - baseClosureDigest
+        - rationale
+        - expiresAt
+        - removalPlan
+        - decision
+        - approval
+      properties:
+        constraint:
+          type: object
+          additionalProperties: false
+          required:
+            - id
+            - version
+          properties:
+            id:
+              $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+            version:
+              type: integer
+              minimum: 1
+        scope:
+          type: object
+          additionalProperties: false
+          required:
+            - module
+          properties:
+            module:
+              $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+        affectedIds:
+          $ref: "common.v0.1.schema.yaml#/$defs/identifierSet"
+        baseClosureDigest:
+          $ref: "common.v0.1.schema.yaml#/$defs/digest"
+        rationale:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        expiresAt:
+          $ref: "common.v0.1.schema.yaml#/$defs/timestamp"
+        removalPlan:
+          $ref: "common.v0.1.schema.yaml#/$defs/stringSteps"
+        decision:
+          $ref: "common.v0.1.schema.yaml#/$defs/decision"
+        approval:
+          $ref: "common.v0.1.schema.yaml#/$defs/approval"

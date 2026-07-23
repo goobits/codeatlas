@@ -1,0 +1,74 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://atlas.codeatlas.dev/schemas/architecture-module.v0.1.schema.yaml"
+title: ArchitectureModule v0.1
+type: object
+additionalProperties: false
+required:
+  - apiVersion
+  - kind
+  - metadata
+  - vocabulary
+  - decision
+  - approval
+  - changeControl
+  - imports
+  - exports
+  - objects
+  - relations
+  - bindings
+  - constraints
+  - retired
+properties:
+  apiVersion:
+    const: atlas.codeatlas.dev/v0.1
+  kind:
+    const: ArchitectureModule
+  metadata:
+    $ref: "common.v0.1.schema.yaml#/$defs/metadata"
+  vocabulary:
+    $ref: "common.v0.1.schema.yaml#/$defs/vocabularyReference"
+  decision:
+    $ref: "common.v0.1.schema.yaml#/$defs/decision"
+  approval:
+    $ref: "common.v0.1.schema.yaml#/$defs/approval"
+  changeControl:
+    $ref: "common.v0.1.schema.yaml#/$defs/changeControl"
+  imports:
+    $ref: "common.v0.1.schema.yaml#/$defs/imports"
+  exports:
+    $ref: "common.v0.1.schema.yaml#/$defs/exports"
+  objects:
+    type: object
+    maxProperties: 250000
+    propertyNames:
+      $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+    additionalProperties:
+      $ref: "common.v0.1.schema.yaml#/$defs/objectDeclaration"
+  relations:
+    type: object
+    maxProperties: 500000
+    propertyNames:
+      $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+    additionalProperties:
+      $ref: "common.v0.1.schema.yaml#/$defs/relationDeclaration"
+  bindings:
+    type: object
+    maxProperties: 250000
+    propertyNames:
+      $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+    additionalProperties:
+      $ref: "common.v0.1.schema.yaml#/$defs/bindingDeclaration"
+  constraints:
+    type: object
+    maxProperties: 50000
+    propertyNames:
+      $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+    additionalProperties:
+      $ref: "common.v0.1.schema.yaml#/$defs/constraintDeclaration"
+  retired:
+    type: object
+    maxProperties: 250000
+    propertyNames:
+      $ref: "common.v0.1.schema.yaml#/$defs/identifier"
+    additionalProperties:
+      $ref: "common.v0.1.schema.yaml#/$defs/retiredDeclaration"

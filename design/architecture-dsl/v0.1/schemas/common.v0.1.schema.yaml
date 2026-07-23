@@ -1,0 +1,502 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://atlas.codeatlas.dev/schemas/common.v0.1.schema.yaml"
+title: Atlas Architecture DSL v0.1 common definitions
+
+$defs:
+  identifier:
+    type: string
+    minLength: 5
+    maxLength: 200
+    pattern: "^[a-z0-9][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*){2,}$"
+
+  digest:
+    type: string
+    pattern: "^sha256:[0-9a-f]{64}$"
+
+  timestamp:
+    type: string
+    pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+
+  generator:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - version
+    properties:
+      id:
+        $ref: "#/$defs/identifier"
+      version:
+        type: string
+        minLength: 1
+        maxLength: 100
+
+  metadata:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - name
+      - architectureVersion
+    properties:
+      id:
+        $ref: "#/$defs/identifier"
+      name:
+        type: string
+        minLength: 1
+        maxLength: 200
+      architectureVersion:
+        type: integer
+        minimum: 1
+      productRelease:
+        type: string
+        minLength: 1
+        maxLength: 100
+      description:
+        type: string
+        maxLength: 4096
+      maintainers:
+        type: array
+        uniqueItems: true
+        maxItems: 100
+        items:
+          $ref: "#/$defs/identifier"
+      generated:
+        type: boolean
+      generator:
+        $ref: "#/$defs/generator"
+      generatedAt:
+        $ref: "#/$defs/timestamp"
+      sourceInputs:
+        type: array
+        uniqueItems: true
+        maxItems: 1000
+        items:
+          type: string
+          minLength: 1
+          maxLength: 4096
+      generationCommand:
+        type: string
+        minLength: 1
+        maxLength: 4096
+      manualEditing:
+        const: prohibited
+
+  vocabularyReference:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - version
+      - digest
+    properties:
+      id:
+        $ref: "#/$defs/identifier"
+      version:
+        type: integer
+        minimum: 1
+      digest:
+        $ref: "#/$defs/digest"
+
+  import:
+    type: object
+    additionalProperties: false
+    required:
+      - module
+      - architectureVersion
+      - digest
+      - source
+    properties:
+      module:
+        $ref: "#/$defs/identifier"
+      architectureVersion:
+        type: integer
+        minimum: 1
+      digest:
+        $ref: "#/$defs/digest"
+      source:
+        type: string
+        minLength: 1
+        maxLength: 4096
+
+  imports:
+    type: array
+    uniqueItems: true
+    maxItems: 4096
+    items:
+      $ref: "#/$defs/import"
+
+  exports:
+    type: object
+    additionalProperties: false
+    required:
+      - objects
+      - relations
+      - bindings
+      - constraints
+    properties:
+      objects:
+        $ref: "#/$defs/identifierSet"
+      relations:
+        $ref: "#/$defs/identifierSet"
+      bindings:
+        $ref: "#/$defs/identifierSet"
+      constraints:
+        $ref: "#/$defs/identifierSet"
+
+  identifierSet:
+    type: array
+    uniqueItems: true
+    maxItems: 250000
+    items:
+      $ref: "#/$defs/identifier"
+
+  artifactIdentity:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - version
+    properties:
+      id:
+        $ref: "#/$defs/identifier"
+      version:
+        type: integer
+        minimum: 1
+
+  artifactLocator:
+    type: object
+    additionalProperties: false
+    required:
+      - path
+    properties:
+      path:
+        type: string
+        minLength: 1
+        maxLength: 4096
+      section:
+        type: string
+        minLength: 1
+        maxLength: 500
+
+  authorityReference:
+    type: object
+    additionalProperties: false
+    required:
+      - kind
+      - artifact
+    properties:
+      kind:
+        type: string
+        minLength: 1
+        maxLength: 100
+      artifact:
+        $ref: "#/$defs/artifactIdentity"
+      locator:
+        $ref: "#/$defs/artifactLocator"
+      digest:
+        $ref: "#/$defs/digest"
+
+  authoritySet:
+    type: object
+    additionalProperties: false
+    required:
+      - governing
+      - supporting
+    properties:
+      governing:
+        type: array
+        uniqueItems: true
+        maxItems: 100
+        items:
+          $ref: "#/$defs/authorityReference"
+      supporting:
+        type: array
+        uniqueItems: true
+        maxItems: 100
+        items:
+          $ref: "#/$defs/authorityReference"
+
+  decision:
+    type: object
+    additionalProperties: false
+    required:
+      - status
+      - authority
+    properties:
+      status:
+        enum:
+          - unresolved
+          - proposed
+          - accepted
+          - rejected
+          - superseded
+      authority:
+        $ref: "#/$defs/authoritySet"
+
+  approval:
+    type: object
+    additionalProperties: false
+    required:
+      - status
+    properties:
+      status:
+        enum:
+          - not_required
+          - required
+          - granted
+          - denied
+      authority:
+        $ref: "#/$defs/authoritySet"
+
+  changeControl:
+    type: object
+    additionalProperties: false
+    required:
+      - policy
+    properties:
+      policy:
+        enum:
+          - open_review
+          - owner_approval_required
+          - accepted_adr_required
+          - versioned_successor_only
+          - release_owner_only
+
+  objectDeclaration:
+    type: object
+    additionalProperties: false
+    required:
+      - kind
+      - name
+      - attributes
+      - decision
+      - approval
+      - changeControl
+    properties:
+      kind:
+        type: string
+        minLength: 1
+        maxLength: 100
+      name:
+        type: string
+        minLength: 1
+        maxLength: 200
+      summary:
+        type: string
+        maxLength: 4096
+      attributes:
+        type: object
+      decision:
+        $ref: "#/$defs/decision"
+      approval:
+        $ref: "#/$defs/approval"
+      changeControl:
+        $ref: "#/$defs/changeControl"
+
+  relationDeclaration:
+    type: object
+    additionalProperties: false
+    required:
+      - predicate
+      - subject
+      - object
+      - decision
+      - approval
+      - changeControl
+    properties:
+      predicate:
+        type: string
+        minLength: 1
+        maxLength: 100
+      subject:
+        $ref: "#/$defs/identifier"
+      object:
+        $ref: "#/$defs/identifier"
+      decision:
+        $ref: "#/$defs/decision"
+      approval:
+        $ref: "#/$defs/approval"
+      changeControl:
+        $ref: "#/$defs/changeControl"
+
+  adapterReference:
+    type: object
+    additionalProperties: false
+    required:
+      - kind
+      - version
+    properties:
+      kind:
+        type: string
+        minLength: 1
+        maxLength: 100
+      version:
+        type: integer
+        minimum: 1
+
+  bindingDeclaration:
+    type: object
+    additionalProperties: false
+    required:
+      - target
+      - adapter
+      - selector
+      - cardinality
+      - decision
+      - approval
+      - changeControl
+    properties:
+      target:
+        $ref: "#/$defs/identifier"
+      adapter:
+        $ref: "#/$defs/adapterReference"
+      selector:
+        type: object
+      cardinality:
+        enum:
+          - exactly_one
+          - at_most_one
+          - one_or_more
+          - any
+      decision:
+        $ref: "#/$defs/decision"
+      approval:
+        $ref: "#/$defs/approval"
+      changeControl:
+        $ref: "#/$defs/changeControl"
+
+  constraintDeclaration:
+    type: object
+    additionalProperties: false
+    required:
+      - rule
+      - severity
+      - arguments
+      - decision
+      - approval
+      - changeControl
+    properties:
+      rule:
+        type: string
+        minLength: 1
+        maxLength: 100
+      severity:
+        enum:
+          - error
+          - warning
+          - advisory
+      arguments:
+        type: object
+      decision:
+        $ref: "#/$defs/decision"
+      approval:
+        $ref: "#/$defs/approval"
+      changeControl:
+        $ref: "#/$defs/changeControl"
+
+  retiredDeclaration:
+    type: object
+    additionalProperties: false
+    required:
+      - retiredInArchitectureVersion
+      - supersededBy
+      - authority
+    properties:
+      retiredInArchitectureVersion:
+        type: integer
+        minimum: 1
+      supersededBy:
+        $ref: "#/$defs/identifierSet"
+      authority:
+        $ref: "#/$defs/authoritySet"
+
+  sourcePosition:
+    type: object
+    additionalProperties: false
+    required:
+      - line
+      - column
+    properties:
+      line:
+        type: integer
+        minimum: 1
+      column:
+        type: integer
+        minimum: 1
+
+  sourceSpan:
+    type: object
+    additionalProperties: false
+    required:
+      - start
+      - end
+    properties:
+      start:
+        $ref: "#/$defs/sourcePosition"
+      end:
+        $ref: "#/$defs/sourcePosition"
+
+  sourceLocation:
+    type: object
+    additionalProperties: false
+    required:
+      - path
+      - span
+    properties:
+      path:
+        type: string
+        minLength: 1
+        maxLength: 4096
+      span:
+        $ref: "#/$defs/sourceSpan"
+
+  coverage:
+    type: object
+    additionalProperties: false
+    required:
+      - repositoryScope
+      - feature
+      - status
+    properties:
+      repositoryScope:
+        type: string
+        minLength: 1
+        maxLength: 4096
+      language:
+        type: string
+        minLength: 1
+        maxLength: 100
+      feature:
+        type: string
+        minLength: 1
+        maxLength: 200
+      status:
+        enum:
+          - complete
+          - partial
+          - unsupported
+          - unknown
+      includedRoots:
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+      excludedRoots:
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+      limitations:
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+
+  stringSteps:
+    type: array
+    maxItems: 1000
+    items:
+      type: string
+      minLength: 1
+      maxLength: 4096
