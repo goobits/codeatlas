@@ -3,6 +3,7 @@ use crate::{
     ValidationError, Vocabulary,
 };
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -14,17 +15,10 @@ reference-validator/Cargo.toml --bin generate_artifacts -- --write";
 
 pub fn write_generated_artifacts(design_root: &Path) -> Result<(), ValidationError> {
     for (relative_path, bytes) in generated_artifacts(design_root)? {
-        let destination = design_root.join(&relative_path);
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| io_error("generated.create-directory", parent, error))?;
-        }
-        let temporary = destination.with_extension("yaml.tmp");
-        fs::write(&temporary, bytes)
-            .map_err(|error| io_error("generated.write-failed", &temporary, error))?;
-        fs::rename(&temporary, &destination)
-            .map_err(|error| io_error("generated.replace-failed", &destination, error))?;
+        write_atomic(&design_root.join(relative_path), &bytes)?;
     }
+    let manifest = manifest_bytes(design_root)?;
+    write_atomic(&design_root.join("MANIFEST.sha256"), &manifest)?;
     Ok(())
 }
 
@@ -42,6 +36,16 @@ pub fn check_generated_artifacts(design_root: &Path) -> Result<(), ValidationErr
                 ),
             ));
         }
+    }
+    let expected = manifest_bytes(design_root)?;
+    let path = design_root.join("MANIFEST.sha256");
+    let actual =
+        fs::read(&path).map_err(|error| io_error("generated.read-failed", &path, error))?;
+    if actual != expected {
+        return Err(ValidationError::new(
+            "generated.manifest-stale",
+            "MANIFEST.sha256 is stale, regenerate with the documented command",
+        ));
     }
     Ok(())
 }
@@ -254,6 +258,87 @@ fn yaml_bytes(value: &Value) -> Result<Vec<u8>, ValidationError> {
         output.push('\n');
     }
     Ok(output.into_bytes())
+}
+
+fn manifest_bytes(design_root: &Path) -> Result<Vec<u8>, ValidationError> {
+    let mut files = Vec::new();
+    collect_manifest_files(design_root, design_root, &mut files)?;
+    files.sort();
+
+    let mut output = String::from(
+        "# generated: true\n\
+# generator: codeatlas.tool.reference-validator/0.1.0\n\
+# command: cargo run --locked --jobs 1 --manifest-path reference-validator/Cargo.toml --bin generate_artifacts -- --write\n\
+# manual-editing: prohibited\n\
+# excludes: MANIFEST.sha256 and reference-validator/target/\n",
+    );
+    for relative_path in files {
+        let bytes = fs::read(design_root.join(&relative_path)).map_err(|error| {
+            io_error(
+                "generated.manifest-input-read-failed",
+                &relative_path,
+                error,
+            )
+        })?;
+        let digest = Sha256::digest(bytes);
+        output.push_str(&format!(
+            "{digest:x}  {}\n",
+            relative_path.to_string_lossy().replace('\\', "/")
+        ));
+    }
+    Ok(output.into_bytes())
+}
+
+fn collect_manifest_files(
+    design_root: &Path,
+    directory: &Path,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), ValidationError> {
+    let entries = fs::read_dir(directory)
+        .map_err(|error| io_error("generated.manifest-read-directory", directory, error))?;
+    for entry in entries {
+        let entry =
+            entry.map_err(|error| io_error("generated.manifest-read-entry", directory, error))?;
+        let path = entry.path();
+        let relative = path.strip_prefix(design_root).map_err(|error| {
+            ValidationError::new(
+                "generated.manifest-path-error",
+                format!("{}: {error}", path.display()),
+            )
+        })?;
+        if relative == Path::new("MANIFEST.sha256")
+            || relative.starts_with("reference-validator/target")
+        {
+            continue;
+        }
+        let file_type = entry
+            .file_type()
+            .map_err(|error| io_error("generated.manifest-file-type", &path, error))?;
+        if file_type.is_symlink() {
+            return Err(ValidationError::new(
+                "generated.manifest-symlink-prohibited",
+                format!("manifest input cannot be a symlink: {}", path.display()),
+            ));
+        }
+        if file_type.is_dir() {
+            collect_manifest_files(design_root, &path, files)?;
+        } else if file_type.is_file() {
+            files.push(relative.to_path_buf());
+        }
+    }
+    Ok(())
+}
+
+fn write_atomic(destination: &Path, bytes: &[u8]) -> Result<(), ValidationError> {
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| io_error("generated.create-directory", parent, error))?;
+    }
+    let temporary = destination.with_extension("generated.tmp");
+    fs::write(&temporary, bytes)
+        .map_err(|error| io_error("generated.write-failed", &temporary, error))?;
+    fs::rename(&temporary, destination)
+        .map_err(|error| io_error("generated.replace-failed", destination, error))
 }
 
 fn diagnostics_error(code: &str, diagnostics: Vec<crate::Diagnostic>) -> ValidationError {

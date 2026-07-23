@@ -1,0 +1,63 @@
+apiVersion: atlas.codeatlas.dev/v0.1
+kind: ArchitectureModule
+
+metadata:
+  id: codeatlas.fixture.minimal-module
+  name: Minimal valid module
+  architectureVersion: 1
+  description: Smallest committed positive fixture for module validation.
+
+vocabulary:
+  id: codeatlas.architecture.core
+  version: 1
+  digest: sha256:6f8fed2af9f2ed3b53bace11e6c69d39a2d0ed8d4e5faf9baa5164f5d9c2a9de
+
+decision:
+  status: accepted
+  authority:
+    governing:
+      - kind: architecture-module
+        artifact:
+          id: codeatlas.fixture.minimal-authority
+          version: 1
+    supporting: []
+
+approval:
+  status: granted
+
+changeControl:
+  policy: open_review
+
+imports: []
+
+exports:
+  objects:
+    - codeatlas.fixture.minimal-concept
+  relations: []
+  bindings: []
+  constraints: []
+
+objects:
+  codeatlas.fixture.minimal-concept:
+    kind: domain_concept
+    name: Minimal concept
+    summary: Positive fixture declaration.
+    attributes: {}
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: architecture-module
+            artifact:
+              id: codeatlas.fixture.minimal-authority
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: open_review
+
+relations: {}
+bindings: {}
+constraints: {}
+retired: {}

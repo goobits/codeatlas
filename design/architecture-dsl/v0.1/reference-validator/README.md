@@ -18,8 +18,27 @@ It is intentionally isolated:
 Run its checks from the design-package root:
 
 ```sh
-cargo test --locked --manifest-path reference-validator/Cargo.toml
+cargo fmt --manifest-path reference-validator/Cargo.toml -- --check
+cargo test --locked --jobs 1 --manifest-path reference-validator/Cargo.toml
+cargo clippy --locked --jobs 1 \
+  --manifest-path reference-validator/Cargo.toml \
+  --all-targets -- -D warnings
+cargo run --locked --jobs 1 \
+  --manifest-path reference-validator/Cargo.toml \
+  --bin generate_artifacts -- --check
 ```
 
 Passing tests prove only that the proposed specification package is internally
 consistent. They do not accept the proposal or authorize production use.
+
+To refresh the committed generated observation, conformance report, and stable
+manifest after changing an input:
+
+```sh
+cargo run --locked --jobs 1 \
+  --manifest-path reference-validator/Cargo.toml \
+  --bin generate_artifacts -- --write
+```
+
+Generated files identify the generator, source inputs, and generation command.
+Do not edit them by hand.

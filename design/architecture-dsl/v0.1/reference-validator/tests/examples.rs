@@ -34,6 +34,7 @@ fn every_hand_authored_example_is_valid() {
         "examples/workshop-codeatlas/architecture.atlas.yaml",
         "examples/policy-exception/architecture-policy.atlas.yaml",
         "examples/tabby-cutover-change/architecture-change.atlas.yaml",
+        "fixtures/valid/minimal-module.atlas.yaml",
     ] {
         let diagnostics = vocabulary.validate_document(&read_yaml(path));
         assert!(diagnostics.is_empty(), "{path}: {diagnostics:#?}");

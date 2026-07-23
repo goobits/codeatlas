@@ -105,7 +105,7 @@ Generated documents also include:
 metadata:
   generated: true
   generator:
-    id: codeatlas.reference-validator
+    id: codeatlas.tool.reference-validator
     version: "0.1.0"
   generatedAt: "2026-07-23T00:00:00Z"
   sourceInputs:

@@ -7,6 +7,7 @@ pub mod canonicalization;
 pub mod conformance;
 pub mod diagnostics;
 pub mod graph;
+pub mod import_paths;
 pub mod policy;
 pub mod restricted_yaml;
 pub mod schema_validation;
@@ -19,6 +20,7 @@ pub use canonicalization::{
 pub use conformance::validate_conformance_with_observation;
 pub use diagnostics::{Diagnostic, Severity, SourcePosition, SourceSpan, ValidationError};
 pub use graph::{compile_modules, CompileMode, CompiledGraph};
+pub use import_paths::resolve_local_import;
 pub use policy::{evaluate_exception, ExceptionContext, ExceptionDisposition};
 pub use restricted_yaml::{parse_restricted_yaml, ParseLimits, ParsedDocument};
 pub use schema_validation::{validate_document_schema, DocumentKind};
