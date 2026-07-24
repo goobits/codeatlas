@@ -1,6 +1,8 @@
 use crate::config::ProjectConfig;
 use crate::dead_code::{DeadCodeFinding, DeadCodeFindingKind};
-use crate::domain::source_graph::{ContextRole, FindingConfidence};
+use crate::domain::source_graph::{
+    ContextRole, FindingConfidence, SourceEdgeKind, SourceLanguage, SourceNode,
+};
 use crate::{dead_code, languages, outputs};
 use std::path::PathBuf;
 
@@ -13,12 +15,16 @@ fn fixture_root(path: &str) -> PathBuf {
 }
 
 fn analyze_fixture(path: &str) -> crate::dead_code::DeadCodeReport {
+    let graph = source_graph_fixture(path);
+    dead_code::analyze(&graph).expect("dead-code report")
+}
+
+fn source_graph_fixture(path: &str) -> crate::domain::source_graph::SourceGraph {
     let root = fixture_root(path);
     let config_path = root.join("codeatlas.json");
     let project = ProjectConfig::load(&root, Some(&config_path)).expect("fixture configuration");
     let projects = project.analysis_projects().expect("analysis projects");
-    let graph = languages::reachability::build_source_graph(&projects).expect("source graph");
-    dead_code::analyze(&graph).expect("dead-code report")
+    languages::reachability::build_source_graph(&projects).expect("source graph")
 }
 
 fn finding<'a>(
@@ -93,6 +99,82 @@ fn ecmascript_reachability_preserves_contexts_and_private_symbol_gates() {
 }
 
 #[test]
+fn svelte_reachability_connects_script_facts_without_private_symbol_gates() {
+    let graph = source_graph_fixture("svelte");
+    let report = dead_code::analyze(&graph).expect("dead-code report");
+
+    let unreachable = finding(
+        &report.findings,
+        DeadCodeFindingKind::UnreachableFile,
+        "src/unreachable.svelte",
+        None,
+    );
+    assert_eq!(unreachable.confidence, FindingConfidence::High);
+    assert!(unreachable.gates);
+
+    let test_only = finding(
+        &report.findings,
+        DeadCodeFindingKind::TestOnly,
+        "tests/TestSupport.svelte",
+        None,
+    );
+    assert_eq!(test_only.roles, [ContextRole::Test].into_iter().collect());
+
+    let tooling_only = finding(
+        &report.findings,
+        DeadCodeFindingKind::ToolingOnly,
+        "scripts/ToolingPanel.svelte",
+        None,
+    );
+    assert_eq!(
+        tooling_only.roles,
+        [ContextRole::Tooling].into_iter().collect()
+    );
+
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnusedPrivateSymbol
+            && finding.language == Some(SourceLanguage::Svelte)
+    }));
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::DynamicBoundary && finding.message.contains(".svelte")
+    }));
+    for path in [
+        "src/App.svelte",
+        "src/helper.ts",
+        "src/moduleThing.ts",
+        "src/components/index.ts",
+        "src/components/Child.svelte",
+        "src/components/Nested.svelte",
+        "src/lazy/Lazy.svelte",
+    ] {
+        assert!(!report.findings.iter().any(|finding| {
+            finding.kind == DeadCodeFindingKind::UnreachableFile && finding.path == path
+        }));
+    }
+
+    let load = graph.nodes.values().find_map(|node| match node {
+        SourceNode::Symbol(symbol) if symbol.name == "load" => Some(symbol),
+        _ => None,
+    });
+    assert_eq!(
+        load.and_then(|symbol| symbol.span.as_ref())
+            .map(|span| span.start_line),
+        Some(3)
+    );
+    let dynamic = graph
+        .edges
+        .iter()
+        .find(|edge| {
+            edge.kind == SourceEdgeKind::DynamicImport && edge.evidence.path == "src/App.svelte"
+        })
+        .expect("literal Svelte dynamic import");
+    assert_eq!(
+        dynamic.evidence.span.as_ref().map(|span| span.start_line),
+        Some(16)
+    );
+}
+
+#[test]
 fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
     let report = analyze_fixture("dynamic");
     let boundaries = report
@@ -106,10 +188,10 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
         .all(|finding| finding.confidence != FindingConfidence::High && !finding.gates));
     assert!(boundaries
         .iter()
-        .any(|finding| finding.message.contains("./component.svelte")));
-    assert!(boundaries
-        .iter()
         .any(|finding| finding.message.contains("\".\"")));
+    assert!(!boundaries
+        .iter()
+        .any(|finding| finding.message.contains("./component.svelte")));
     assert!(!report.findings.iter().any(|finding| {
         finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
             && finding.message.contains("\".\"")
@@ -123,6 +205,10 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
     );
     assert_ne!(candidate.confidence, FindingConfidence::High);
     assert!(!candidate.gates);
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnreachableFile
+            && finding.path == "src/component.svelte"
+    }));
 }
 
 #[test]

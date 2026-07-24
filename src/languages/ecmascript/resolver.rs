@@ -205,7 +205,10 @@ fn unsupported_relative_specifier(specifier: &str) -> bool {
     else {
         return false;
     };
-    !matches!(extension, "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs")
+    !matches!(
+        extension,
+        "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "svelte"
+    )
 }
 
 fn load_alias_config(root: &Path) -> Result<AliasConfig> {
@@ -289,7 +292,7 @@ fn module_candidates(raw: &Path) -> Vec<PathBuf> {
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.ends_with(".d.ts"));
     let mut candidates = vec![raw.to_path_buf()];
-    for extension in ["ts", "tsx", "js", "jsx", "mjs", "cjs"] {
+    for extension in ["ts", "tsx", "js", "jsx", "mjs", "cjs", "svelte"] {
         candidates.push(raw.with_extension(extension));
     }
     if !declaration {
@@ -302,6 +305,7 @@ fn module_candidates(raw: &Path) -> Vec<PathBuf> {
         "index.jsx",
         "index.mjs",
         "index.cjs",
+        "index.svelte",
         "index.d.ts",
     ] {
         candidates.push(raw.join(filename));

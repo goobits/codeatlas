@@ -79,7 +79,14 @@ fn collect_project_modules(
             )
             .map_err(anyhow::Error::from)?;
 
-        let info = match parser::parse_module_info(&source_path, &project.root) {
+        let info = match language {
+            SourceLanguage::Svelte => crate::languages::svelte::reachability::parse_module_info(
+                &source_path,
+                &project.root,
+            ),
+            _ => parser::parse_module_info(&source_path, &project.root),
+        };
+        let info = match info {
             Ok(info) => info,
             Err(error) => {
                 mark_partial(
@@ -94,7 +101,7 @@ fn collect_project_modules(
                 continue;
             }
         };
-        let symbols = add_symbols(graph, project, &path, &file, &info.symbols)?;
+        let symbols = add_symbols(graph, project, &path, &file, language, &info.symbols)?;
         modules.insert(
             (project.id.clone(), path.clone()),
             Module {
@@ -114,6 +121,7 @@ fn add_symbols(
     project: &ResolvedAnalysisProject,
     path: &str,
     file: &NodeId,
+    language: SourceLanguage,
     symbols: &[Symbol],
 ) -> Result<BTreeMap<String, BTreeSet<NodeId>>> {
     let mut by_name = BTreeMap::<String, BTreeSet<NodeId>>::new();
@@ -127,7 +135,11 @@ fn add_symbols(
                     file: file.clone(),
                     name: symbol.name.clone(),
                     symbol_kind: source_symbol_kind(symbol.kind),
-                    visibility: source_visibility(symbol.visibility),
+                    visibility: if language == SourceLanguage::Svelte {
+                        SourceVisibility::Unknown
+                    } else {
+                        source_visibility(symbol.visibility)
+                    },
                     span: symbol.span.clone(),
                 }),
             )
@@ -549,6 +561,7 @@ fn source_language(path: &Path) -> Option<SourceLanguage> {
     match path.extension().and_then(|extension| extension.to_str()) {
         Some("js" | "jsx" | "mjs" | "cjs") => Some(SourceLanguage::JavaScript),
         Some("ts" | "tsx") => Some(SourceLanguage::TypeScript),
+        Some("svelte") => Some(SourceLanguage::Svelte),
         _ => None,
     }
 }

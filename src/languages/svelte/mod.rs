@@ -1,4 +1,5 @@
 mod parser;
+pub(crate) mod reachability;
 
 use crate::domain::{Language, Route, Symbol};
 use crate::languages::definition::LanguageDefinition;

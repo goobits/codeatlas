@@ -22,10 +22,11 @@ pub(crate) fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Res
 
 fn parse_svelte_file(relative_path: &str, source: &str) -> Result<Vec<Symbol>> {
     let mut symbols = Vec::new();
-    for (script, start_line) in extract_script_blocks(source) {
+    for script in script_blocks(source) {
         let mut script_symbols =
-            crate::languages::typescript::parser::parse_source(&script, relative_path)?.symbols;
-        let offset = start_line.saturating_sub(1);
+            crate::languages::typescript::parser::parse_source(&script.source, relative_path)?
+                .symbols;
+        let offset = script.start_line.saturating_sub(1);
         for symbol in &mut script_symbols {
             offset_symbol_lines(symbol, offset);
         }
@@ -34,7 +35,12 @@ fn parse_svelte_file(relative_path: &str, source: &str) -> Result<Vec<Symbol>> {
     Ok(symbols)
 }
 
-fn extract_script_blocks(source: &str) -> Vec<(String, u32)> {
+pub(super) struct ScriptBlock {
+    pub source: String,
+    pub start_line: u32,
+}
+
+pub(super) fn script_blocks(source: &str) -> Vec<ScriptBlock> {
     static SCRIPT_RE: OnceLock<Regex> = OnceLock::new();
     let regex = SCRIPT_RE.get_or_init(|| Regex::new(r"(?s)<script[^>]*>(.*?)</script>").unwrap());
     regex
@@ -43,7 +49,10 @@ fn extract_script_blocks(source: &str) -> Vec<(String, u32)> {
             let full_match = capture.get(0)?;
             let content = capture.get(1)?.as_str().to_string();
             let start_line = source[..full_match.start()].matches('\n').count() as u32 + 1;
-            Some((content, start_line))
+            Some(ScriptBlock {
+                source: content,
+                start_line,
+            })
         })
         .collect()
 }

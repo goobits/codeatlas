@@ -3,7 +3,7 @@
     {
       "id": "dynamic",
       "root": ".",
-      "languages": ["ts"],
+      "languages": ["ts", "svelte"],
       "contexts": {
         "application": {
           "role": "production",

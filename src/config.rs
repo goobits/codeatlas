@@ -292,9 +292,9 @@ fn derive_project_id(root: &Path, index: usize) -> String {
 
 fn validate_analysis_languages(languages: &[String], project: &str) -> Result<()> {
     for language in languages {
-        if !matches!(language.as_str(), "js" | "ts" | "py" | "rs") {
+        if !matches!(language.as_str(), "js" | "ts" | "svelte" | "py" | "rs") {
             anyhow::bail!(
-                "Unsupported reachability language {language:?} in {project}. Supported: js, ts, py, rs"
+                "Unsupported reachability language {language:?} in {project}. Supported: js, ts, svelte, py, rs"
             );
         }
     }

@@ -1,0 +1,23 @@
+{
+  "projects": [
+    {
+      "id": "svelte",
+      "root": ".",
+      "languages": ["ts", "svelte"],
+      "contexts": {
+        "application": {
+          "role": "production",
+          "entrypoints": ["src/App.svelte"]
+        },
+        "unit-tests": {
+          "role": "test",
+          "entrypoints": ["tests/**/*.test.ts"]
+        },
+        "build-tools": {
+          "role": "tooling",
+          "entrypoints": ["scripts/build.ts"]
+        }
+      }
+    }
+  ]
+}

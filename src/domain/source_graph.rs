@@ -273,6 +273,8 @@ pub(crate) enum SourceLanguage {
     JavaScript,
     #[serde(rename = "typescript")]
     TypeScript,
+    #[serde(rename = "svelte")]
+    Svelte,
     #[serde(rename = "python")]
     Python,
     #[serde(rename = "rust")]

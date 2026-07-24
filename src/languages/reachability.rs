@@ -48,7 +48,9 @@ pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result
                 .filter(|language| {
                     matches!(
                         language,
-                        SourceLanguage::JavaScript | SourceLanguage::TypeScript
+                        SourceLanguage::JavaScript
+                            | SourceLanguage::TypeScript
+                            | SourceLanguage::Svelte
                     )
                 })
                 .collect::<BTreeSet<_>>();
@@ -95,6 +97,7 @@ fn configured_or_detected_languages(
             .map(|language| match language.as_str() {
                 "js" => Ok(SourceLanguage::JavaScript),
                 "ts" => Ok(SourceLanguage::TypeScript),
+                "svelte" => Ok(SourceLanguage::Svelte),
                 "py" => Ok(SourceLanguage::Python),
                 "rs" => Ok(SourceLanguage::Rust),
                 _ => anyhow::bail!("Unsupported reachability language {language:?}"),
@@ -130,6 +133,9 @@ fn configured_or_detected_languages(
             }
             Some("ts" | "tsx") => {
                 languages.insert(SourceLanguage::TypeScript);
+            }
+            Some("svelte") => {
+                languages.insert(SourceLanguage::Svelte);
             }
             Some("py") => {
                 languages.insert(SourceLanguage::Python);
