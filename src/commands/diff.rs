@@ -1,5 +1,4 @@
 use super::{annotate_report, build_scan_config, exit_code, load_project, scan_project};
-use crate::analysis;
 use crate::domain::{ScanReport, Symbol};
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -17,14 +16,8 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
         .with_context(|| format!("Invalid baseline JSON at {}", baseline_path.display()))?;
 
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, false, true, true, None)?;
+    let config = build_scan_config(&project, false, false, false, None)?;
     let mut current = scan_project(&project, &config)?;
-    let importers = analysis::annotate_imports(
-        &mut current,
-        &project.root,
-        project.config.no_default_ignore,
-    );
-    analysis::annotate_unused_public(&mut current, &importers, project.config.no_default_ignore);
     annotate_report(&mut current, &project)?;
 
     let baseline_symbols = symbols_by_stable_key(&baseline);

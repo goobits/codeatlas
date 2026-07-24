@@ -6,7 +6,6 @@ pub mod svelte;
 pub mod typescript;
 
 // Pluggable language system
-pub mod audit;
 pub mod definition;
 pub mod registry;
 

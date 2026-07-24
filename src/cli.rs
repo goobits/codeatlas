@@ -5,7 +5,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "codeatlas")]
 #[command(
-    about = "Map your codebase's public API surface. Find unused exports, visualize dependencies."
+    about = "Map public APIs, analyze source reachability, and compare architecture evidence."
 )]
 #[command(version)]
 pub(crate) struct Cli {
@@ -59,7 +59,7 @@ enum Command {
         out: Option<PathBuf>,
     },
 
-    /// Audit for issues: unused exports, overly-broad visibility
+    /// Report public exports with no detected repository consumers
     Audit {
         /// Path to scan
         #[arg(default_value = ".")]

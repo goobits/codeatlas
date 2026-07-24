@@ -13,10 +13,6 @@ use std::path::Path;
 pub(crate) struct SvelteLanguage;
 
 impl LanguageDefinition for SvelteLanguage {
-    fn name(&self) -> &'static str {
-        "Svelte"
-    }
-
     fn id(&self) -> &'static str {
         "svelte"
     }

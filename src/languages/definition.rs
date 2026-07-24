@@ -9,7 +9,6 @@
 //! pub struct GoLanguage;
 //!
 //! impl LanguageDefinition for GoLanguage {
-//!     fn name(&self) -> &'static str { "Go" }
 //!     fn id(&self) -> &'static str { "go" }
 //!     fn language(&self) -> Language { Language::Unknown } // or add Go to Language enum
 //!     fn extensions(&self) -> &'static [&'static str] { &["go"] }
@@ -23,7 +22,6 @@
 
 use crate::domain::{Language, Route, ScanConfig, ScanReport, Symbol};
 use anyhow::Result;
-use std::collections::HashSet;
 use std::path::Path;
 
 /// Core trait that all language plugins must implement.
@@ -34,9 +32,6 @@ pub trait LanguageDefinition: Send + Sync {
     // =========================================================================
     // METADATA - Required for language identification and auto-detection
     // =========================================================================
-
-    /// Human-readable name (e.g., "TypeScript", "Python", "Rust")
-    fn name(&self) -> &'static str;
 
     /// Short identifier used in CLI (e.g., "ts", "py", "rs")
     fn id(&self) -> &'static str;
@@ -82,25 +77,15 @@ pub trait LanguageDefinition: Send + Sync {
     }
 
     // =========================================================================
-    // AUDIT MODE - Optional, for dependency-aware unused export detection
+    // PUBLIC API PROJECTION - Optional, for entrypoint-aware API scans
     // =========================================================================
 
-    /// Whether this language supports audit mode (entrypoint-based scanning).
-    /// Override and return true if you implement `audit_scan()`.
-    fn supports_audit_mode(&self) -> bool {
-        false
-    }
-
-    /// Perform audit mode scanning (entrypoint-based unused export detection).
-    /// Default implementation returns None, falling back to normal scan.
-    /// Override this to provide language-specific audit mode.
-    fn audit_scan(&self, _root_dir: &Path, _config: &ScanConfig) -> Option<ScanReport> {
-        None
-    }
-
-    /// Create a module resolver for audit mode (for future generic audit implementation).
-    /// Only called if `supports_audit_mode()` returns true.
-    fn create_module_resolver(&self) -> Option<Box<dyn ModuleResolver>> {
+    /// Project the public API reachable from configured entrypoints.
+    ///
+    /// This is intentionally distinct from dead-code analysis. A public API can
+    /// have consumers outside the repository and is not dead merely because no
+    /// local importer exists.
+    fn scan_public_api(&self, _root_dir: &Path, _config: &ScanConfig) -> Option<ScanReport> {
         None
     }
 
@@ -120,57 +105,6 @@ pub trait LanguageDefinition: Send + Sync {
     fn should_ignore_dir(&self, name: &str) -> bool {
         name.starts_with('.') || self.ignored_dirs().contains(&name)
     }
-}
-
-/// Module information extracted during audit mode.
-/// Each language's parser returns this when scanning for dependency analysis.
-#[allow(dead_code)]
-pub trait ModuleInfo: Send + Sync {
-    /// All symbols defined in this module
-    fn symbols(&self) -> Vec<Symbol>;
-
-    /// Names explicitly exported from this module
-    fn exported_names(&self) -> HashSet<String>;
-
-    /// Imports: (source_path, imported_names)
-    /// For `import { foo, bar } from './utils'` -> ("./utils", ["foo", "bar"])
-    fn imports(&self) -> Vec<(String, Vec<String>)>;
-
-    /// Re-exports: (source_path, exported_names)
-    /// For `export { foo } from './utils'` -> ("./utils", ["foo"])
-    fn reexports(&self) -> Vec<(String, Vec<String>)> {
-        vec![]
-    }
-
-    /// Export-all sources: files whose exports are re-exported
-    /// For `export * from './utils'` -> ["./utils"]
-    fn export_all(&self) -> Vec<String> {
-        vec![]
-    }
-}
-
-/// Resolves module imports to file paths for audit mode.
-/// Each language implements this differently based on its module system.
-#[allow(dead_code)]
-pub trait ModuleResolver: Send + Sync {
-    /// Parse a file and return its module information for audit mode.
-    fn parse_module_info(
-        &self,
-        path: &Path,
-        root: &Path,
-        source: &str,
-    ) -> Result<Box<dyn ModuleInfo>>;
-
-    /// Resolve an import path to a file path.
-    ///
-    /// # Arguments
-    /// * `current_file` - The file containing the import (relative to root)
-    /// * `import_path` - The import specifier (e.g., "./utils", "lodash", "../types")
-    /// * `root` - Root directory of the scan
-    ///
-    /// # Returns
-    /// Resolved file path relative to root, or None if unresolvable (external dep)
-    fn resolve_import(&self, current_file: &str, import_path: &str, root: &Path) -> Option<String>;
 }
 
 /// Helper to create a symbol ID in the standard format: "lang:path:kind#name"

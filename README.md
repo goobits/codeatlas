@@ -1,14 +1,16 @@
 # CodeAtlas
 
-CodeAtlas maps the public API surface of TypeScript, JavaScript, Svelte, Python,
-and Rust projects. It produces deterministic JSON, Markdown, dependency trees,
-Mermaid diagrams, and unused-export audits from source code and package exports.
+CodeAtlas maps public APIs and analyzes source reachability in JavaScript,
+TypeScript, Python, and Rust projects. Svelte remains supported for public API
+scans. Reports preserve unresolved and dynamic boundaries instead of calling
+code dead when the source graph is incomplete.
 
 ## Quick Start
 
 ```bash
 npx @goobits/codeatlas scan .
 npx @goobits/codeatlas audit .
+npx @goobits/codeatlas dead-code . --format json
 npx @goobits/codeatlas docs . --out docs/API-Reference.md
 npx @goobits/codeatlas docs . --format html --out docs/API-Reference.html
 ```
@@ -29,7 +31,8 @@ a positive integer to allow more parallel build work.
 | Command | Purpose |
 | --- | --- |
 | `scan` | Show the public surface as a tree, Mermaid, or versioned JSON report |
-| `audit` | Report public exports with no detected consumers |
+| `audit` | Report public exports with no detected repository consumers |
+| `dead-code` | Classify source reachability, context-only code, and uncertain boundaries |
 | `ci` | Write a JSON baseline and fail on configured audit findings |
 | `diff` | Compare the current public symbols with a JSON baseline |
 | `map` | Generate a Mermaid dependency diagram |
@@ -81,6 +84,8 @@ Paths in the config are relative to the config file. Supported fields are:
 - `include_types`: include classes, interfaces, structs, and methods
 - `no_default_ignore`: include normally ignored build and test directories
 - `package_exports`: discover public entrypoints from `package.json` exports
+- `projects`: source-reachability project roots with language-specific analysis
+  and arbitrary named contexts
 - `docs.include_dependency_types`: include local/workspace dependency contracts
   reachable from exported TypeScript signatures
 - `docs.declaration_contract`: document the shipped `types` export instead of
@@ -117,6 +122,50 @@ All scan commands use discovered package exports by default. When an export
 points to generated declarations or JavaScript, CodeAtlas reads TypeScript
 `rootDir` and `outDir` from `tsconfig.build.json`, `tsconfig.lib.json`, or
 `tsconfig.json` and maps that target back to its maintained source file.
+
+## Source Reachability
+
+Dead-code analysis uses named contexts whose roles determine whether reachable
+code is used by production, tests, or tooling. Project names and context names
+are arbitrary.
+
+```json
+{
+	"projects": [
+		{
+			"id": "web",
+			"root": ".",
+			"languages": ["js", "ts"],
+			"contexts": {
+				"application": {
+					"role": "production",
+					"entrypoints": ["src/index.ts"]
+				},
+				"unit-tests": {
+					"role": "test",
+					"entrypoints": ["src/**/*.test.ts"]
+				},
+				"build-tools": {
+					"role": "tooling",
+					"entrypoints": ["scripts/**/*.ts"]
+				}
+			},
+			"assume_reachable": ["src/runtime/plugins/**/*.ts"]
+		}
+	]
+}
+```
+
+Each project may select `js`, `ts`, `py`, and `rs`. Rust projects can also
+configure `rust.all_features` or an explicit `rust.features` list. Svelte is
+not yet a reachability language.
+
+The versioned dead-code report distinguishes unreachable private code,
+test-only code, tooling-only code, unreferenced public APIs, unresolved
+internal edges, and dynamic boundaries. Only high-confidence unreachable
+files, unused private symbols, and unresolved internal imports can fail
+`dead-code --check`. Public APIs without repository consumers remain advisory
+because external consumers may exist.
 
 ## Documentation Checks
 

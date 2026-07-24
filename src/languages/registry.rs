@@ -180,24 +180,12 @@ impl GenericScanner {
 
 impl LanguageScanner for GenericScanner {
     fn scan(&self, root_dir: &Path, config: &ScanConfig) -> ScanReport {
-        // Check if audit mode is requested and supported
-        if config.entrypoints.is_some() && self.language.supports_audit_mode() {
-            // Try language-specific audit scan first
-            if let Some(report) = self.language.audit_scan(root_dir, config) {
+        if config.entrypoints.is_some() {
+            if let Some(report) = self.language.scan_public_api(root_dir, config) {
                 return report;
-            }
-            // Fall back to generic audit mode if resolver is available
-            if let Some(resolver) = self.language.create_module_resolver() {
-                return super::audit::scan_audit_mode(
-                    root_dir,
-                    config,
-                    self.language.as_ref(),
-                    resolver,
-                );
             }
         }
 
-        // Normal scanning mode
         super::scan_language_with_definition(root_dir, config, self.language.as_ref())
     }
 }

@@ -10,7 +10,7 @@ fn fixture_root(path: &str) -> PathBuf {
 }
 
 #[test]
-fn audit_mode_typescript_exports() {
+fn public_api_typescript_exports() {
     let root = fixture_root("ts");
     let config = ScanConfig {
         include_types: true,
@@ -28,7 +28,7 @@ fn audit_mode_typescript_exports() {
 }
 
 #[test]
-fn audit_mode_python_exports() {
+fn public_api_python_exports() {
     let root = fixture_root("py");
     let config = ScanConfig {
         include_types: true,
@@ -46,7 +46,7 @@ fn audit_mode_python_exports() {
 }
 
 #[test]
-fn audit_mode_rust_exports() {
+fn public_api_rust_exports() {
     let root = fixture_root("rs");
     let config = ScanConfig {
         include_types: true,
