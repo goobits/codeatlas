@@ -1,0 +1,310 @@
+use super::{Module, ModuleKey, ProjectSelection};
+use crate::domain::source_graph::ProjectId;
+use anyhow::{Context, Result};
+use serde_json::Value;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone)]
+pub(super) enum Resolution {
+    Resolved(ModuleKey),
+    External(String),
+    UnresolvedInternal(String),
+    DynamicUnknown(String),
+    Unsupported(String),
+}
+
+impl Resolution {
+    pub(super) fn resolved(&self) -> Option<&ModuleKey> {
+        match self {
+            Self::Resolved(key) => Some(key),
+            _ => None,
+        }
+    }
+}
+
+pub(super) struct ModuleResolver {
+    modules: BTreeSet<ModuleKey>,
+    projects: BTreeMap<ProjectId, ProjectResolution>,
+    packages: BTreeMap<String, PackageResolution>,
+}
+
+struct ProjectResolution {
+    aliases: AliasConfig,
+}
+
+struct PackageResolution {
+    project: ProjectId,
+    exports: BTreeMap<String, String>,
+}
+
+#[derive(Default)]
+struct AliasConfig {
+    base_url: PathBuf,
+    paths: BTreeMap<String, Vec<String>>,
+    imports: BTreeMap<String, String>,
+}
+
+impl ModuleResolver {
+    pub(super) fn new(
+        projects: &[ProjectSelection<'_>],
+        modules: &BTreeMap<ModuleKey, Module>,
+    ) -> Result<Self> {
+        let mut project_resolutions = BTreeMap::new();
+        let mut packages = BTreeMap::new();
+        for (project, _) in projects {
+            let package = crate::package::discover_for_docs(&project.root, false)?;
+            if let Some(package) = &package {
+                packages.insert(
+                    package.name.clone(),
+                    PackageResolution {
+                        project: project.id.clone(),
+                        exports: package
+                            .exports
+                            .iter()
+                            .map(|export| (export.public_path.clone(), export.source_path.clone()))
+                            .collect(),
+                    },
+                );
+            }
+            project_resolutions.insert(
+                project.id.clone(),
+                ProjectResolution {
+                    aliases: load_alias_config(&project.root)?,
+                },
+            );
+        }
+        Ok(Self {
+            modules: modules.keys().cloned().collect(),
+            projects: project_resolutions,
+            packages,
+        })
+    }
+
+    pub(super) fn resolve(&self, module: &Module, specifier: &str) -> Resolution {
+        if matches!(specifier, "." | "..") {
+            return Resolution::Unsupported(specifier.to_string());
+        }
+        if specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/')
+        {
+            if unsupported_relative_specifier(specifier) {
+                return Resolution::Unsupported(specifier.to_string());
+            }
+            return self
+                .resolve_relative(module, specifier)
+                .map(Resolution::Resolved)
+                .unwrap_or_else(|| Resolution::UnresolvedInternal(specifier.to_string()));
+        }
+        if specifier.starts_with('#') {
+            return match self.resolve_package_import(module, specifier) {
+                PackageImportResolution::Resolved(key) => Resolution::Resolved(key),
+                PackageImportResolution::DeclaredButMissing => {
+                    Resolution::UnresolvedInternal(specifier.to_string())
+                }
+                PackageImportResolution::NotDeclared => {
+                    Resolution::Unsupported(specifier.to_string())
+                }
+            };
+        }
+        if specifier.contains(':') {
+            return Resolution::External(specifier.to_string());
+        }
+        if let Some(resolved) = self.resolve_alias(module, specifier) {
+            return Resolution::Resolved(resolved);
+        }
+        if let Some(resolved) = self.resolve_workspace_package(specifier) {
+            return resolved
+                .map(Resolution::Resolved)
+                .unwrap_or_else(|| Resolution::UnresolvedInternal(specifier.to_string()));
+        }
+        Resolution::External(specifier.to_string())
+    }
+
+    fn resolve_relative(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
+        let parent = Path::new(&module.path)
+            .parent()
+            .unwrap_or_else(|| Path::new(""));
+        self.resolve_project_path(&module.project, &parent.join(specifier))
+    }
+
+    fn resolve_alias(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
+        let project = self.projects.get(&module.project)?;
+        for (pattern, targets) in &project.aliases.paths {
+            let Some(capture) = match_alias(pattern, specifier) else {
+                continue;
+            };
+            for target in targets {
+                let target = apply_alias_capture(target, capture.as_deref());
+                let raw = project.aliases.base_url.join(target);
+                if let Some(key) = self.resolve_project_path(&module.project, &raw) {
+                    return Some(key);
+                }
+            }
+        }
+        if project.aliases.base_url.as_os_str().is_empty() {
+            None
+        } else {
+            self.resolve_project_path(&module.project, &project.aliases.base_url.join(specifier))
+        }
+    }
+
+    fn resolve_package_import(&self, module: &Module, specifier: &str) -> PackageImportResolution {
+        let Some(project) = self.projects.get(&module.project) else {
+            return PackageImportResolution::NotDeclared;
+        };
+        for (pattern, target) in &project.aliases.imports {
+            let Some(capture) = match_alias(pattern, specifier) else {
+                continue;
+            };
+            let target = apply_alias_capture(target, capture.as_deref());
+            return self
+                .resolve_project_path(&module.project, Path::new(target.trim_start_matches("./")))
+                .map(PackageImportResolution::Resolved)
+                .unwrap_or(PackageImportResolution::DeclaredButMissing);
+        }
+        PackageImportResolution::NotDeclared
+    }
+
+    fn resolve_workspace_package(&self, specifier: &str) -> Option<Option<ModuleKey>> {
+        let (package_name, public_path) = crate::package::split_package_specifier(specifier)?;
+        let package = self.packages.get(&package_name)?;
+        let source = package.exports.get(&public_path)?;
+        Some(self.resolve_project_path(&package.project, Path::new(source)))
+    }
+
+    fn resolve_project_path(&self, project: &ProjectId, raw: &Path) -> Option<ModuleKey> {
+        for candidate in module_candidates(raw) {
+            let normalized = crate::paths::normalize_path(&candidate);
+            let key = (project.clone(), normalized);
+            if self.modules.contains(&key) {
+                return Some(key);
+            }
+        }
+        None
+    }
+}
+
+enum PackageImportResolution {
+    Resolved(ModuleKey),
+    DeclaredButMissing,
+    NotDeclared,
+}
+
+fn unsupported_relative_specifier(specifier: &str) -> bool {
+    let normalized = specifier.split(['?', '#']).next().unwrap_or(specifier);
+    if Path::new(normalized)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == "$types")
+    {
+        return true;
+    }
+    let Some(extension) = Path::new(normalized)
+        .extension()
+        .and_then(|extension| extension.to_str())
+    else {
+        return false;
+    };
+    !matches!(extension, "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs")
+}
+
+fn load_alias_config(root: &Path) -> Result<AliasConfig> {
+    let mut config = AliasConfig::default();
+    for name in ["tsconfig.json", "jsconfig.json"] {
+        let path = root.join(name);
+        if !path.is_file() {
+            continue;
+        }
+        let source = std::fs::read_to_string(&path)
+            .with_context(|| format!("Could not read {}", path.display()))?;
+        let value: Value = json5::from_str(&source)
+            .with_context(|| format!("Invalid TypeScript configuration at {}", path.display()))?;
+        let compiler = &value["compilerOptions"];
+        config.base_url = compiler["baseUrl"]
+            .as_str()
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        if let Some(paths) = compiler["paths"].as_object() {
+            for (pattern, targets) in paths {
+                let targets = targets
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                if !targets.is_empty() {
+                    config.paths.insert(pattern.clone(), targets);
+                }
+            }
+        }
+        break;
+    }
+
+    let manifest_path = root.join("package.json");
+    if manifest_path.is_file() {
+        let source = std::fs::read_to_string(&manifest_path)
+            .with_context(|| format!("Could not read {}", manifest_path.display()))?;
+        let manifest: Value = serde_json::from_str(&source)
+            .with_context(|| format!("Invalid package manifest at {}", manifest_path.display()))?;
+        if let Some(imports) = manifest["imports"].as_object() {
+            for (pattern, target) in imports {
+                if let Some(target) = first_string_target(target) {
+                    config.imports.insert(pattern.clone(), target.to_string());
+                }
+            }
+        }
+    }
+    Ok(config)
+}
+
+fn first_string_target(value: &Value) -> Option<&str> {
+    match value {
+        Value::String(value) => Some(value),
+        Value::Array(values) => values.iter().find_map(first_string_target),
+        Value::Object(values) => values.values().find_map(first_string_target),
+        _ => None,
+    }
+}
+
+fn match_alias(pattern: &str, specifier: &str) -> Option<Option<String>> {
+    let Some((prefix, suffix)) = pattern.split_once('*') else {
+        return (pattern == specifier).then_some(None);
+    };
+    specifier
+        .strip_prefix(prefix)
+        .and_then(|value| value.strip_suffix(suffix))
+        .map(|capture| Some(capture.to_string()))
+}
+
+fn apply_alias_capture(target: &str, capture: Option<&str>) -> String {
+    capture
+        .map(|capture| target.replacen('*', capture, 1))
+        .unwrap_or_else(|| target.to_string())
+}
+
+fn module_candidates(raw: &Path) -> Vec<PathBuf> {
+    let declaration = raw
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".d.ts"));
+    let mut candidates = vec![raw.to_path_buf()];
+    for extension in ["ts", "tsx", "js", "jsx", "mjs", "cjs"] {
+        candidates.push(raw.with_extension(extension));
+    }
+    if !declaration {
+        candidates.push(raw.with_extension("d.ts"));
+    }
+    for filename in [
+        "index.ts",
+        "index.tsx",
+        "index.js",
+        "index.jsx",
+        "index.mjs",
+        "index.cjs",
+        "index.d.ts",
+    ] {
+        candidates.push(raw.join(filename));
+    }
+    candidates
+}

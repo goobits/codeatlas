@@ -6,7 +6,6 @@ use std::path::Path;
 pub mod frameworks;
 pub mod parser;
 mod public_api;
-pub(crate) mod reachability;
 
 pub(crate) use public_api::{
     reachable_symbol_ids_by_entrypoint, reachable_symbol_ids_for_exports, referenced_identifiers,

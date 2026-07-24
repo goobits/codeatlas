@@ -1,4 +1,5 @@
 // Language modules
+pub(crate) mod ecmascript;
 pub mod python;
 pub(crate) mod reachability;
 pub mod rust;

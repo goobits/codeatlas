@@ -55,7 +55,7 @@ pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result
             (!selected.is_empty()).then_some((project, selected))
         })
         .collect::<Vec<_>>();
-    crate::languages::typescript::reachability::collect_projects(&mut graph, &ecmascript_projects)?;
+    crate::languages::ecmascript::collect_projects(&mut graph, &ecmascript_projects)?;
 
     let python_projects = projects
         .iter()
