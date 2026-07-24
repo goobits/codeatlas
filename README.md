@@ -1,9 +1,9 @@
 # CodeAtlas
 
 CodeAtlas maps public APIs and analyzes source reachability in JavaScript,
-TypeScript, Python, and Rust projects. Svelte remains supported for public API
-scans. Reports preserve unresolved and dynamic boundaries instead of calling
-code dead when the source graph is incomplete.
+TypeScript, Svelte, Python, and Rust projects. Reports preserve unresolved and
+dynamic boundaries instead of calling code dead when the source graph is
+incomplete.
 
 ## Quick Start
 
@@ -30,17 +30,17 @@ a positive integer to allow more parallel build work.
 
 ## Commands
 
-| Command | Purpose |
-| --- | --- |
-| `scan` | Show the public surface as a tree, Mermaid, or versioned JSON report |
-| `audit` | Report public exports with no detected repository consumers |
-| `dead-code` | Classify source reachability, context-only code, and uncertain boundaries |
-| `context` | Return a bounded source graph slice for exact files or symbols |
-| `architecture` | Compile declarations, observe bindings, and evaluate conformance |
-| `ci` | Write a JSON baseline and fail on configured audit findings |
-| `diff` | Compare the current public symbols with a JSON baseline |
-| `map` | Generate a Mermaid dependency diagram |
-| `docs` | Generate deterministic Markdown or searchable HTML from public exports and source docs |
+| Command        | Purpose                                                                                |
+| -------------- | -------------------------------------------------------------------------------------- |
+| `scan`         | Show the public surface as a tree, Mermaid, or versioned JSON report                   |
+| `audit`        | Report public exports with no detected repository consumers                            |
+| `dead-code`    | Classify source reachability, context-only code, and uncertain boundaries              |
+| `context`      | Return a bounded source graph slice for exact files or symbols                         |
+| `architecture` | Compile declarations, observe bindings, and evaluate conformance                       |
+| `ci`           | Write a JSON baseline and fail on configured audit findings                            |
+| `diff`         | Compare the current public symbols with a JSON baseline                                |
+| `map`          | Generate a Mermaid dependency diagram                                                  |
+| `docs`         | Generate deterministic Markdown or searchable HTML from public exports and source docs |
 
 Run `codeatlas <command> --help` for command-specific options.
 
@@ -138,7 +138,7 @@ misspelled setting cannot silently weaken a check.
 Paths in the config are relative to the config file. Supported fields are:
 
 - `root`: project or package root
-- `languages`: any of `ts`, `py`, `rs`, or `svelte`
+- `languages`: any of `js`, `ts`, `svelte`, `py`, or `rs`
 - `entrypoints`: public source or declaration entrypoints used by scans and
   audits; omit this to follow discovered package exports
 - `include_private`: include internal and private symbols
@@ -196,11 +196,11 @@ are arbitrary.
 		{
 			"id": "web",
 			"root": ".",
-			"languages": ["js", "ts"],
+			"languages": ["js", "ts", "svelte"],
 			"contexts": {
 				"application": {
 					"role": "production",
-					"entrypoints": ["src/index.ts"]
+					"entrypoints": ["src/index.ts", "src/App.svelte"]
 				},
 				"unit-tests": {
 					"role": "test",
@@ -217,9 +217,15 @@ are arbitrary.
 }
 ```
 
-Each project may select `js`, `ts`, `py`, and `rs`. Rust projects can also
-configure `rust.all_features` or an explicit `rust.features` list. Svelte is
-not yet a reachability language.
+Each project may select `js`, `ts`, `svelte`, `py`, and `rs`. Rust projects can
+also configure `rust.all_features` or an explicit `rust.features` list.
+
+Svelte reachability reads both module and instance scripts, preserves their
+source spans, and connects JavaScript, TypeScript, and Svelte modules through
+static imports, literal dynamic imports, bounded template imports, and Vite
+globs. Svelte component symbols remain conservative because markup-level
+references are not yet a complete symbol graph. They are never emitted as
+high-confidence unused-private findings.
 
 The versioned dead-code report distinguishes unreachable private code,
 test-only code, tooling-only code, unreferenced public APIs, unresolved
@@ -227,6 +233,12 @@ internal edges, and dynamic boundaries. Only high-confidence unreachable
 files, unused private symbols, and unresolved internal imports can fail
 `dead-code --check`. Public APIs without repository consumers remain advisory
 because external consumers may exist.
+
+The dead-code JSON contract is schema version 3. Project summaries include
+per-language file counts, and each finding includes the exact named context
+roots that support its classification. Scan, architecture, context, and
+dead-code reports remain separate versioned contracts rather than one
+all-purpose report.
 
 Use `context` to retrieve only the nearby source facts needed for a task:
 
