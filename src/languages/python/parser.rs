@@ -1,11 +1,14 @@
 use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
+use rustpython_ast::{Ranged, Visitor};
 use rustpython_parser::source_code::LineIndex;
 use rustpython_parser::text_size::TextRange;
 use rustpython_parser::{ast, Parse};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 
+#[derive(Debug, Clone)]
 pub(crate) struct PythonImport {
     pub module: String,
     pub names: Vec<String>,
@@ -14,10 +17,41 @@ pub(crate) struct PythonImport {
     pub aliases: Vec<Option<String>>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PythonReachabilityFacts {
+    pub top_level_references: BTreeSet<String>,
+    pub symbol_references: BTreeMap<String, BTreeSet<String>>,
+    pub dynamic_dependencies: Vec<PythonDynamicDependency>,
+    pub uncertainties: Vec<PythonUncertainty>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PythonDynamicDependency {
+    pub owner: Option<String>,
+    pub module: Option<String>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PythonUncertaintyKind {
+    DynamicImport,
+    Reflection,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PythonUncertainty {
+    pub owner: Option<String>,
+    pub kind: PythonUncertaintyKind,
+    pub span: Span,
+    pub message: String,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct PythonModuleInfo {
     pub symbols: Vec<Symbol>,
     pub exports: Option<Vec<String>>,
     pub imports: Vec<PythonImport>,
+    pub reachability: PythonReachabilityFacts,
 }
 
 pub(crate) fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec<Symbol>> {
@@ -38,6 +72,7 @@ pub(crate) fn parse_module_info(
 
     let source = Arc::<str>::from(source);
     let line_index = LineIndex::from_source_text(&source);
+    let reachability = collect_reachability(&ast, &source, &line_index);
 
     let mut visitor = SymbolVisitor {
         symbols: Vec::new(),
@@ -55,6 +90,7 @@ pub(crate) fn parse_module_info(
         symbols: visitor.symbols,
         exports,
         imports,
+        reachability,
     })
 }
 
@@ -123,6 +159,20 @@ impl SymbolVisitor {
                     self.visit_suite(&f.body);
                 }
             }
+            ast::Stmt::AsyncFunctionDef(f) => {
+                let name = f.name.as_str().to_string();
+                let vis = determine_visibility(&name);
+                let args_str = format_py_args(&f.args);
+                let ret_str = format_py_returns(&f.returns);
+                let dec_str = format_decorators(&f.decorator_list);
+                let sig = format!("{}async def {}({}){}", dec_str, name, args_str, ret_str);
+                let symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, sig);
+                self.symbols.push(symbol);
+
+                if self.recurse_into_functions {
+                    self.visit_suite(&f.body);
+                }
+            }
             ast::Stmt::ClassDef(c) => {
                 let name = c.name.as_str().to_string();
                 let vis = determine_visibility(&name);
@@ -164,6 +214,285 @@ impl SymbolVisitor {
             }
             _ => {}
         }
+    }
+}
+
+fn collect_reachability(
+    suite: &[ast::Stmt],
+    source: &str,
+    line_index: &LineIndex,
+) -> PythonReachabilityFacts {
+    let mut facts = PythonReachabilityFacts::default();
+    for statement in suite {
+        match statement {
+            ast::Stmt::FunctionDef(function) => {
+                collect_callable_reachability(
+                    &function.name,
+                    &function.body,
+                    &function.decorator_list,
+                    source,
+                    line_index,
+                    &mut facts,
+                );
+            }
+            ast::Stmt::AsyncFunctionDef(function) => {
+                collect_callable_reachability(
+                    &function.name,
+                    &function.body,
+                    &function.decorator_list,
+                    source,
+                    line_index,
+                    &mut facts,
+                );
+            }
+            ast::Stmt::ClassDef(class) => {
+                let owner = class.name.as_str().to_string();
+                let mut body = ReferenceCollector::new(Some(owner.clone()), source, line_index);
+                for statement in &class.body {
+                    body.visit_stmt(statement.clone());
+                }
+                merge_symbol_collector(&mut facts, owner, body);
+
+                let mut definition = ReferenceCollector::new(None, source, line_index);
+                for base in &class.bases {
+                    definition.visit_expr(base.clone());
+                }
+                for keyword in &class.keywords {
+                    definition.visit_keyword(keyword.clone());
+                }
+                for decorator in &class.decorator_list {
+                    definition.visit_expr(decorator.clone());
+                }
+                record_unknown_decorators(
+                    &class.decorator_list,
+                    source,
+                    line_index,
+                    &mut definition,
+                );
+                merge_top_level_collector(&mut facts, definition);
+            }
+            _ => {
+                let mut collector = ReferenceCollector::new(None, source, line_index);
+                collector.visit_stmt(statement.clone());
+                merge_top_level_collector(&mut facts, collector);
+            }
+        }
+    }
+    facts
+}
+
+fn collect_callable_reachability(
+    name: &ast::Identifier,
+    body: &[ast::Stmt],
+    decorators: &[ast::Expr],
+    source: &str,
+    line_index: &LineIndex,
+    facts: &mut PythonReachabilityFacts,
+) {
+    let owner = name.as_str().to_string();
+    let mut callable = ReferenceCollector::new(Some(owner.clone()), source, line_index);
+    for statement in body {
+        callable.visit_stmt(statement.clone());
+    }
+    merge_symbol_collector(facts, owner, callable);
+
+    let mut definition = ReferenceCollector::new(None, source, line_index);
+    for decorator in decorators {
+        definition.visit_expr(decorator.clone());
+    }
+    record_unknown_decorators(decorators, source, line_index, &mut definition);
+    merge_top_level_collector(facts, definition);
+}
+
+fn merge_symbol_collector(
+    facts: &mut PythonReachabilityFacts,
+    owner: String,
+    collector: ReferenceCollector<'_>,
+) {
+    facts
+        .symbol_references
+        .entry(owner)
+        .or_default()
+        .extend(collector.names);
+    facts
+        .dynamic_dependencies
+        .extend(collector.dynamic_dependencies);
+    facts.uncertainties.extend(collector.uncertainties);
+}
+
+fn merge_top_level_collector(
+    facts: &mut PythonReachabilityFacts,
+    collector: ReferenceCollector<'_>,
+) {
+    facts.top_level_references.extend(collector.names);
+    facts
+        .dynamic_dependencies
+        .extend(collector.dynamic_dependencies);
+    facts.uncertainties.extend(collector.uncertainties);
+}
+
+struct ReferenceCollector<'a> {
+    owner: Option<String>,
+    names: BTreeSet<String>,
+    dynamic_dependencies: Vec<PythonDynamicDependency>,
+    uncertainties: Vec<PythonUncertainty>,
+    source: &'a str,
+    line_index: &'a LineIndex,
+}
+
+impl<'a> ReferenceCollector<'a> {
+    fn new(owner: Option<String>, source: &'a str, line_index: &'a LineIndex) -> Self {
+        Self {
+            owner,
+            names: BTreeSet::new(),
+            dynamic_dependencies: Vec::new(),
+            uncertainties: Vec::new(),
+            source,
+            line_index,
+        }
+    }
+
+    fn span(&self, range: TextRange) -> Span {
+        span_from_range(range, self.source, self.line_index)
+    }
+
+    fn add_reflection(&mut self, range: TextRange, message: impl Into<String>) {
+        self.uncertainties.push(PythonUncertainty {
+            owner: self.owner.clone(),
+            kind: PythonUncertaintyKind::Reflection,
+            span: self.span(range),
+            message: message.into(),
+        });
+    }
+}
+
+impl Visitor for ReferenceCollector<'_> {
+    fn visit_expr_name(&mut self, node: ast::ExprName) {
+        if matches!(node.ctx, ast::ExprContext::Load) {
+            self.names.insert(node.id.as_str().to_string());
+        }
+    }
+
+    fn visit_expr_call(&mut self, node: ast::ExprCall) {
+        let callable = qualified_expr_name(&node.func);
+        if matches!(
+            callable.as_deref(),
+            Some("importlib.import_module" | "__import__")
+        ) {
+            let module = node.args.first().and_then(string_constant);
+            let span = self.span(node.range);
+            self.dynamic_dependencies.push(PythonDynamicDependency {
+                owner: self.owner.clone(),
+                module,
+                span: span.clone(),
+            });
+            if self
+                .dynamic_dependencies
+                .last()
+                .is_some_and(|dependency| dependency.module.is_none())
+            {
+                self.uncertainties.push(PythonUncertainty {
+                    owner: self.owner.clone(),
+                    kind: PythonUncertaintyKind::DynamicImport,
+                    span,
+                    message: "Non-literal Python import prevents complete resolution.".to_string(),
+                });
+            }
+        } else if matches!(
+            callable.as_deref(),
+            Some("eval" | "exec" | "getattr" | "setattr" | "globals" | "locals")
+        ) {
+            self.add_reflection(
+                node.range,
+                format!("Reflective Python call {callable:?} may hide references."),
+            );
+        }
+        self.generic_visit_expr_call(node);
+    }
+
+    fn visit_stmt_assign(&mut self, node: ast::StmtAssign) {
+        if self.owner.is_none()
+            && node
+                .targets
+                .iter()
+                .any(|target| matches!(target, ast::Expr::Attribute(_)))
+        {
+            self.add_reflection(
+                node.range,
+                "Top-level attribute assignment may monkey patch another object.",
+            );
+        }
+        self.generic_visit_stmt_assign(node);
+    }
+}
+
+fn record_unknown_decorators(
+    decorators: &[ast::Expr],
+    source: &str,
+    line_index: &LineIndex,
+    collector: &mut ReferenceCollector<'_>,
+) {
+    for decorator in decorators {
+        if known_decorator(decorator) {
+            continue;
+        }
+        collector.uncertainties.push(PythonUncertainty {
+            owner: None,
+            kind: PythonUncertaintyKind::Reflection,
+            span: span_from_range(decorator.range(), source, line_index),
+            message: format!(
+                "Decorator {:?} may register or replace the declared symbol.",
+                qualified_expr_name(decorator).unwrap_or_else(|| "<dynamic>".to_string())
+            ),
+        });
+    }
+}
+
+fn known_decorator(expression: &ast::Expr) -> bool {
+    matches!(
+        qualified_expr_name(expression).as_deref(),
+        Some(
+            "staticmethod"
+                | "classmethod"
+                | "property"
+                | "typing.overload"
+                | "dataclasses.dataclass"
+                | "functools.cached_property"
+        )
+    )
+}
+
+fn qualified_expr_name(expression: &ast::Expr) -> Option<String> {
+    match expression {
+        ast::Expr::Name(name) => Some(name.id.as_str().to_string()),
+        ast::Expr::Attribute(attribute) => Some(format!(
+            "{}.{}",
+            qualified_expr_name(&attribute.value)?,
+            attribute.attr.as_str()
+        )),
+        ast::Expr::Call(call) => qualified_expr_name(&call.func),
+        _ => None,
+    }
+}
+
+fn string_constant(expression: &ast::Expr) -> Option<String> {
+    match expression {
+        ast::Expr::Constant(constant) => match &constant.value {
+            ast::Constant::Str(value) => Some(value.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn span_from_range(range: TextRange, source: &str, line_index: &LineIndex) -> Span {
+    let start = line_index.source_location(range.start(), source);
+    let end = line_index.source_location(range.end(), source);
+    Span {
+        start_line: start.row.get(),
+        start_col: start.column.get(),
+        end_line: end.row.get(),
+        end_col: end.column.get(),
     }
 }
 

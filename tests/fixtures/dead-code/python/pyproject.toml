@@ -1,0 +1,9 @@
+[project]
+name = "codeatlas-python-fixture"
+version = "0.1.0"
+
+[project.scripts]
+fixture-cli = "fixture.cli:main"
+
+[tool.setuptools.package-dir]
+"" = "src"

@@ -6,7 +6,7 @@
 
 use crate::domain::source_graph::{
     AnalysisCompleteness, ContextId, ContextRole, FindingConfidence, GraphDiagnostic, NodeId,
-    ProjectId, SourceGraph,
+    ProjectId, SourceGraph, SourceNode,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -27,6 +27,14 @@ impl Reachability {
                     .entry(edge.from.clone())
                     .or_default()
                     .insert(target.clone());
+            }
+        }
+        for (node_id, node) in &graph.nodes {
+            if let SourceNode::Symbol(symbol) = node {
+                adjacency
+                    .entry(node_id.clone())
+                    .or_default()
+                    .insert(symbol.file.clone());
             }
         }
 

@@ -57,15 +57,14 @@ pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result
         .collect::<Vec<_>>();
     crate::languages::typescript::reachability::collect_projects(&mut graph, &ecmascript_projects)?;
 
+    let python_projects = projects
+        .iter()
+        .filter(|project| languages_by_project[&project.id].contains(&SourceLanguage::Python))
+        .collect::<Vec<_>>();
+    crate::languages::python::reachability::collect_projects(&mut graph, &python_projects)?;
+
     for project in projects {
         let languages = &languages_by_project[&project.id];
-        if languages.contains(&SourceLanguage::Python) {
-            mark_unsupported(
-                &mut graph,
-                project,
-                "Python reachability adapter is not available",
-            );
-        }
         if languages.contains(&SourceLanguage::Rust) {
             mark_unsupported(
                 &mut graph,
@@ -150,7 +149,11 @@ fn configured_or_detected_languages(
 }
 
 fn add_contexts(graph: &mut SourceGraph, project: &ResolvedAnalysisProject) -> Result<()> {
-    if project.contexts.is_empty() {
+    let has_discovered_context = graph
+        .contexts
+        .values()
+        .any(|context| context.project == project.id);
+    if project.contexts.is_empty() && !has_discovered_context {
         anyhow::bail!(
             "Analysis project {} needs at least one named context with entrypoints",
             project.id

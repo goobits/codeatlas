@@ -1,0 +1,15 @@
+{
+  "projects": [
+    {
+      "id": "python-dynamic",
+      "root": ".",
+      "languages": ["py"],
+      "contexts": {
+        "application": {
+          "role": "production",
+          "entrypoints": ["src/app.py"]
+        }
+      }
+    }
+  ]
+}

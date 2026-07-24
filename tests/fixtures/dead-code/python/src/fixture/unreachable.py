@@ -1,0 +1,2 @@
+def unreachable():
+    return "unreachable"

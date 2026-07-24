@@ -1,0 +1,1 @@
+LAZY_VALUE = "lazy"
