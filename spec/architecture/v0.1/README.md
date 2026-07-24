@@ -36,9 +36,10 @@ pnpm run spec:check
 cargo test --locked --jobs 1 architecture
 ```
 
-The generated observation and conformance examples record the accepted Phase 7
-proof and keep their historical generator metadata. They are normative
-document-shape examples, not claims about the current repository.
+The generated observation preserves the accepted Phase 7 inferred-evidence
+fixture and its historical generator metadata. The conformance example is
+regenerated from that observation by the current production command. They are
+normative document-shape examples, not claims about the current repository.
 
 `ArchitectureChange` documents never enter an architecture graph and are never
 replayed to recover current state. Accepted changes are materialized in current
@@ -47,3 +48,8 @@ modules, vocabularies, or policies. Change documents remain audit history.
 Production compiler and provider behavior is implemented through separately
 reviewed Code Atlas product contracts. Acceptance of this specification does
 not move runtime authority into Code Atlas.
+
+The provider-approval example demonstrates separate provider implementation
+and owner-controlled classification objects. It is architecture intent only:
+eligibility, runtime selection, and Access authorization remain outside the
+DSL.

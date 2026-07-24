@@ -72,6 +72,7 @@ separate and does not change their authority.
 | DSL-013 | Separate stable authority artifact identity from repository locator | accepted | implemented | granted |
 | DSL-014 | Use JSON Schema Draft 2020-12 for static document shape | accepted | implemented | granted |
 | DSL-015 | Use a private Rust reference validator as executable specification evidence | accepted | implemented | granted |
+| DSL-016 | Keep provider implementations and owner-controlled provider classifications as separate objects linked through typed relations | accepted | implemented | granted |
 
 ## Typed digest registry
 

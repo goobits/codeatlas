@@ -1,0 +1,227 @@
+apiVersion: atlas.codeatlas.dev/v0.1
+kind: ArchitectureModule
+
+metadata:
+  id: example.module.provider-approval
+  name: Provider approval example
+  architectureVersion: 1
+  maintainers:
+    - example.team.architecture
+
+vocabulary:
+  id: codeatlas.architecture.core
+  version: 2
+  digest: sha256:3bac4c67293af8927b882f3f591c812206c7248e713602592450e9c076ffdc30
+
+decision:
+  status: accepted
+  authority:
+    governing:
+      - kind: owner-decision
+        artifact:
+          id: example.decision.provider-approval
+          version: 1
+    supporting: []
+
+approval:
+  status: granted
+
+changeControl:
+  policy: owner_approval_required
+
+imports: []
+
+exports:
+  objects:
+    - example.capability.context
+    - example.contract.context-v1
+    - example.organization.goobits
+    - example.provider.context
+    - example.provider-approval.context
+  relations:
+    - example.relation.approval-approves-provider
+    - example.relation.approval-covers-context
+    - example.relation.provider-implements-context
+    - example.relation.provider-provides-context
+  bindings: []
+  constraints: []
+
+objects:
+  example.organization.goobits:
+    kind: organization
+    name: Example organization
+    attributes: {}
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: example.decision.provider-approval
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  example.capability.context:
+    kind: capability
+    name: Context
+    attributes:
+      visibility: public
+      contract: example.contract.context-v1
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: example.contract.context
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  example.contract.context-v1:
+    kind: contract
+    name: Context contract
+    attributes:
+      version: '1'
+      compatibility: versioned-json
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: example.contract.context
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  example.provider.context:
+    kind: provider
+    name: Example provider
+    attributes:
+      releaseVersion: '1.0.0'
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: example.contract.provider
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  example.provider-approval.context:
+    kind: provider_approval
+    name: Example provider approval
+    attributes:
+      lifecycle: approved
+      approvalScope: organization
+      origin: package
+      owner: example.organization.goobits
+      compatibilityRange: ^1.0.0
+      risk: read
+      source: packages/example
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: example.decision.provider-approval
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+relations:
+  example.relation.provider-provides-context:
+    predicate: provides
+    subject: example.provider.context
+    object: example.capability.context
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: example.contract.provider
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  example.relation.provider-implements-context:
+    predicate: implements
+    subject: example.provider.context
+    object: example.contract.context-v1
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: package-contract
+            artifact:
+              id: example.contract.provider
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: versioned_successor_only
+
+  example.relation.approval-approves-provider:
+    predicate: approves
+    subject: example.provider-approval.context
+    object: example.provider.context
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: example.decision.provider-approval
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+  example.relation.approval-covers-context:
+    predicate: covers
+    subject: example.provider-approval.context
+    object: example.capability.context
+    decision:
+      status: accepted
+      authority:
+        governing:
+          - kind: owner-decision
+            artifact:
+              id: example.decision.provider-approval
+              version: 1
+        supporting: []
+    approval:
+      status: granted
+    changeControl:
+      policy: owner_approval_required
+
+bindings: {}
+constraints: {}
+retired: {}

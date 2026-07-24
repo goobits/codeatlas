@@ -48,8 +48,10 @@ must not store live instances of:
 - Git tickets;
 - user data or secrets.
 
-The DSL does not approve providers, grant authority, coordinate work, execute
-workflows, or mutate accepted architecture.
+The DSL may record an owner-approved provider classification as architectural
+intent. It does not perform the approval action, grant authority, select a
+runtime provider, coordinate work, execute workflows, or mutate accepted
+architecture.
 
 ## 4. Document kinds
 
@@ -150,7 +152,7 @@ exact vocabulary:
 ```yaml
 vocabulary:
   id: codeatlas.architecture.core
-  version: 1
+  version: 2
   digest: sha256:0123456789abcdef...
 ```
 
@@ -331,6 +333,31 @@ objects:
 The vocabulary defines each object kind's required and optional attributes.
 Unknown attributes fail semantic validation. There are no unrestricted
 top-level property bags.
+
+#### Provider classifications
+
+A `provider` object describes an implementation. A `provider_approval` object
+records an owner-controlled classification in one scope. The two objects remain
+separate because implementation ownership, organization approval, runtime
+eligibility, and Access authorization are different facts.
+
+A provider classification:
+
+- links to exactly one provider through `approves`;
+- links to one or more capabilities through `covers`;
+- records lifecycle, scope, origin, owner, compatibility range, risk, and
+  source;
+- never replaces the provider's `provides` and `implements` relations;
+- never grants authority to invoke the provider.
+
+The declaration-level `approval.status` field controls whether a declaration
+may enter an architecture graph. It is not provider approval and must not be
+used as a provider-selection signal.
+
+Code Atlas may expose a deterministic projection of approved classifications
+from the governing graph. That projection reports eligibility and
+authorization as unevaluated unless separate owning systems provide those
+facts.
 
 ### 10.4 Relations
 

@@ -13,6 +13,7 @@ npx @goobits/codeatlas audit .
 npx @goobits/codeatlas dead-code . --format json
 npx @goobits/codeatlas context . --target src/main.rs
 npx @goobits/codeatlas architecture compile architecture/root.atlas.yaml --source-root .
+npx @goobits/codeatlas architecture providers architecture/root.atlas.yaml --source-root . --capability example.capability.context
 npx @goobits/codeatlas docs . --out docs/API-Reference.md
 npx @goobits/codeatlas docs . --format html --out docs/API-Reference.html
 ```
@@ -36,7 +37,7 @@ a positive integer to allow more parallel build work.
 | `audit`        | Report public exports with no detected repository consumers                            |
 | `dead-code`    | Classify source reachability, context-only code, and uncertain boundaries              |
 | `context`      | Return a bounded source graph slice for exact files or symbols                         |
-| `architecture` | Compile declarations, observe bindings, and evaluate conformance                       |
+| `architecture` | Compile declarations, query provider approvals, observe bindings, and evaluate conformance |
 | `ci`           | Write a JSON baseline and fail on configured audit findings                            |
 | `diff`         | Compare the current public symbols with a JSON baseline                                |
 | `map`          | Generate a Mermaid dependency diagram                                                  |
@@ -68,6 +69,21 @@ proposed and unresolved declarations, but remains non-governing. Restricted
 YAML declarations are the editable authority. Generated graphs, lockfiles,
 observations, and conformance reports are evidence and must not be edited by
 hand.
+
+Query owner-approved provider classifications for one capability:
+
+```bash
+codeatlas architecture providers \
+  architecture/root.atlas.yaml \
+  --source-root . \
+  --capability example.capability.context \
+  --approval-scope organization
+```
+
+This read-only query compiles the governing graph and returns only explicit
+approved classifications in the requested scope. It validates the provider's
+declared capability and contract relationships. It does not evaluate runtime
+eligibility, select a provider, or authorize invocation.
 
 Generate implementation evidence for accepted package and crate bindings:
 

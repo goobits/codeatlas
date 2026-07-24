@@ -156,6 +156,25 @@ enum ArchitectureCommand {
         lock_out: Option<PathBuf>,
     },
 
+    /// Query accepted provider approvals for one capability
+    Providers {
+        /// Root ArchitectureModule documents
+        #[arg(required = true)]
+        modules: Vec<PathBuf>,
+        /// Filesystem boundary for modules and local imports
+        #[arg(long, default_value = ".")]
+        source_root: PathBuf,
+        /// Stable capability ID to match
+        #[arg(long)]
+        capability: String,
+        /// Provider approval scope to match
+        #[arg(long, value_enum, default_value_t = ArchitectureProviderApprovalScope::Organization)]
+        approval_scope: ArchitectureProviderApprovalScope,
+        /// Write the query report instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
+
     /// Observe implementation evidence for accepted architecture bindings
     Observe {
         /// Root ArchitectureModule documents
@@ -247,6 +266,23 @@ pub(crate) enum ArchitectureCompileMode {
     Review,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ArchitectureProviderApprovalScope {
+    Personal,
+    Project,
+    Organization,
+}
+
+impl ArchitectureProviderApprovalScope {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Personal => "personal",
+            Self::Project => "project",
+            Self::Organization => "organization",
+        }
+    }
+}
+
 pub(crate) fn run() -> i32 {
     let cli = Cli::parse();
     let config_path = cli.config.clone();
@@ -292,6 +328,19 @@ pub(crate) fn run() -> i32 {
                 mode,
                 out.as_deref(),
                 lock_out.as_deref(),
+            ),
+            ArchitectureCommand::Providers {
+                modules,
+                source_root,
+                capability,
+                approval_scope,
+                out,
+            } => commands::architecture::providers::run(
+                &modules,
+                &source_root,
+                &capability,
+                approval_scope,
+                out.as_deref(),
             ),
             ArchitectureCommand::Observe {
                 modules,
@@ -373,5 +422,31 @@ mod tests {
     fn rejects_the_removed_flag_based_interface() {
         assert!(Cli::try_parse_from(["codeatlas", ".", "--format", "json"]).is_err());
         assert!(Cli::try_parse_from(["codeatlas", ".", "--suggest"]).is_err());
+    }
+
+    #[test]
+    fn parses_an_approved_provider_query() {
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "architecture",
+            "providers",
+            "architecture/root.atlas.yaml",
+            "--capability",
+            "example.capability.context",
+            "--approval-scope",
+            "organization",
+        ])
+        .is_ok());
+    }
+
+    #[test]
+    fn requires_a_capability_for_provider_queries() {
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "architecture",
+            "providers",
+            "architecture/root.atlas.yaml",
+        ])
+        .is_err());
     }
 }

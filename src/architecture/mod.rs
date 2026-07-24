@@ -7,6 +7,7 @@ mod graph;
 mod model;
 mod observation;
 mod policy;
+mod provider_query;
 mod schema;
 mod vocabulary;
 mod yaml;
@@ -18,6 +19,7 @@ pub(crate) use conformance::{
 pub(crate) use diagnostic::Diagnostic;
 pub(crate) use graph::CompileMode;
 pub(crate) use observation::{observe, source_input_paths, ObserveRequest};
+pub(crate) use provider_query::{query_approved_providers, ProviderQueryReport};
 
 pub(crate) const ARCHITECTURE_API_VERSION: &str = "atlas.codeatlas.dev/v0.1";
 pub(crate) const ARCHITECTURE_SCHEMA_VERSION: u32 = 1;

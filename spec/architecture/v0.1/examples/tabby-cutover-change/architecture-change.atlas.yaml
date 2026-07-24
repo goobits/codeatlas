@@ -4,15 +4,15 @@ kind: ArchitectureChange
 metadata:
   id: goobits.change.tabby-lifecycle-cutover
   name: Tabby lifecycle cutover
-  architectureVersion: 1
+  architectureVersion: 2
   description: Proposed replacement of duplicated Shelly tab lifecycle.
   maintainers:
     - goobits.team.platform
 
 vocabulary:
   id: codeatlas.architecture.core
-  version: 1
-  digest: sha256:1abfb5935815861750c88925774ae7bbaef8f155d0f6855ca757d33ced2c4921
+  version: 2
+  digest: sha256:3bac4c67293af8927b882f3f591c812206c7248e713602592450e9c076ffdc30
 
 baseGraphDigest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 

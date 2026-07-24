@@ -230,7 +230,7 @@ mod tests {
         root["metadata"]["id"] = json!("goobits.product.root-architecture");
         root["imports"] = json!([{
             "module": "goobits.product.tabby-shelly",
-            "architectureVersion": 1,
+            "architectureVersion": base["metadata"]["architectureVersion"],
             "digest": base_digest,
             "source": "base.atlas.yaml"
         }]);

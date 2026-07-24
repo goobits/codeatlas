@@ -4,7 +4,7 @@ kind: ArchitectureVocabulary
 metadata:
   id: codeatlas.architecture.core
   name: Atlas Architecture DSL core vocabulary
-  architectureVersion: 1
+  architectureVersion: 2
   description: Closed accepted vocabulary required by the v0.1 specification.
   maintainers:
     - codeatlas.team.owners
@@ -71,6 +71,9 @@ objectKinds:
       version: string
     optionalAttributes:
       compatibility: string
+  organization:
+    requiredAttributes: {}
+    optionalAttributes: {}
   domain_concept:
     requiredAttributes: {}
     optionalAttributes:
@@ -89,12 +92,28 @@ objectKinds:
     optionalAttributes:
       releaseVersion: string
       implementationVersion: string
+  provider_approval:
+    requiredAttributes:
+      lifecycle: string
+      approvalScope: string
+      origin: string
+      owner: identifier
+      compatibilityRange: string
+      risk: string
+      source: string
+    optionalAttributes: {}
   runtime_primitive:
     requiredAttributes: {}
     optionalAttributes:
       owner: identifier
 
 predicates:
+  approves:
+    subjectKinds:
+      - provider_approval
+    objectKinds:
+      - provider
+    cycles: forbidden
   consumes:
     subjectKinds:
       - app
@@ -103,6 +122,12 @@ predicates:
     objectKinds:
       - capability
       - contract
+    cycles: forbidden
+  covers:
+    subjectKinds:
+      - provider_approval
+    objectKinds:
+      - capability
     cycles: forbidden
   defaults_to:
     subjectKinds:

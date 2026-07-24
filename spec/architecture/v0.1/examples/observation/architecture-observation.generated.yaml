@@ -66,7 +66,7 @@ facts:
     target: goobits.app.tabby
 kind: ArchitectureObservation
 metadata:
-  architectureVersion: 1
+  architectureVersion: 2
   generated: true
   generatedAt: 2026-07-23T00:00:00Z
   generationCommand: cargo run --locked --jobs 1 --manifest-path design/architecture-dsl/v0.1/reference-validator/Cargo.toml --bin generate_artifacts -- --write
@@ -82,6 +82,6 @@ repository:
   id: goobits.repository.platform
 sourceCommit: 0123456789abcdef0123456789abcdef01234567
 vocabulary:
-  digest: sha256:1abfb5935815861750c88925774ae7bbaef8f155d0f6855ca757d33ced2c4921
+  digest: sha256:3bac4c67293af8927b882f3f591c812206c7248e713602592450e9c076ffdc30
   id: codeatlas.architecture.core
-  version: 1
+  version: 2

@@ -1,0 +1,117 @@
+{
+  "apiVersion": "atlas.codeatlas.dev/v0.1",
+  "kind": "ArchitectureConformance",
+  "metadata": {
+    "id": "codeatlas.conformance.tabby-example",
+    "name": "goobits.repository.platform architecture conformance",
+    "architectureVersion": 1,
+    "generated": true,
+    "generator": {
+      "id": "codeatlas.tool.architecture-conformance",
+      "version": "0.1"
+    },
+    "generatedAt": "2026-07-23T00:00:00Z",
+    "sourceInputs": [
+      "spec/architecture/v0.1/examples/observation/architecture-observation.generated.yaml",
+      "spec/architecture/v0.1/examples/policy-exception/architecture-policy.atlas.yaml",
+      "spec/architecture/v0.1/examples/tabby-shelly/architecture.atlas.yaml"
+    ],
+    "generationCommand": "codeatlas architecture conform",
+    "manualEditing": "prohibited"
+  },
+  "vocabulary": {
+    "id": "codeatlas.architecture.core",
+    "version": 2,
+    "digest": "sha256:3bac4c67293af8927b882f3f591c812206c7248e713602592450e9c076ffdc30"
+  },
+  "conformanceInputs": {
+    "governingGraphDigest": "sha256:363ec873fa54fd6f870d858d8aea0d4db0ed59874fcca42d7f0023541bf6e66b",
+    "architectureClosureDigest": "sha256:1c02c5c5b166abf20dd91b10a445e3c2a9be87321b7d3d11d550894640eb2405",
+    "policyClosureDigest": "sha256:efc1f1f5370967c8e7b97a09f7ba1e25f4950249160895bc6a6ee1e420c1eb7b",
+    "observationContentDigest": "sha256:647219c87fccf66a1dd98218d5e0687395980a8ddaac22f3d8ac03ee64cb9331",
+    "vocabularyDigest": "sha256:3bac4c67293af8927b882f3f591c812206c7248e713602592450e9c076ffdc30",
+    "validatorVersion": "codeatlas.tool.architecture-conformance/0.1",
+    "asOf": "2026-07-23T00:00:00Z"
+  },
+  "results": {
+    "goobits.binding.shelly-package.conformance": {
+      "declarationId": "goobits.app.shelly",
+      "state": "unobserved",
+      "severity": "advisory",
+      "reasonCode": "coverage.unsupported",
+      "evidence": {
+        "factIds": [],
+        "coverageIds": []
+      },
+      "exceptions": {
+        "applied": [],
+        "stale": [],
+        "expired": [],
+        "irrelevant": [],
+        "rejected": []
+      },
+      "explanation": "No supported complete extractor coverage evaluates this binding."
+    },
+    "goobits.binding.tabby-package.conformance": {
+      "declarationId": "goobits.app.tabby",
+      "state": "unobserved",
+      "severity": "advisory",
+      "reasonCode": "coverage.unsupported",
+      "evidence": {
+        "factIds": [
+          "codeatlas.fact.tabby-package"
+        ],
+        "coverageIds": []
+      },
+      "exceptions": {
+        "applied": [],
+        "stale": [],
+        "expired": [],
+        "irrelevant": [],
+        "rejected": []
+      },
+      "explanation": "No supported complete extractor coverage evaluates this binding."
+    },
+    "goobits.capability.shell-create.conformance": {
+      "declarationId": "goobits.capability.shell-create",
+      "state": "unobserved",
+      "severity": "advisory",
+      "reasonCode": "binding.missing",
+      "evidence": {
+        "factIds": [],
+        "coverageIds": []
+      },
+      "exceptions": {
+        "applied": [],
+        "stale": [],
+        "expired": [],
+        "irrelevant": [],
+        "rejected": []
+      },
+      "explanation": "No accepted binding maps this declaration to observable implementation."
+    },
+    "goobits.capability.tab-host.conformance": {
+      "declarationId": "goobits.capability.tab-host",
+      "state": "ambiguous",
+      "severity": "advisory",
+      "reasonCode": "binding.missing-for-evidence",
+      "evidence": {
+        "factIds": [
+          "codeatlas.fact.tab-host-candidate"
+        ],
+        "coverageIds": [
+          "codeatlas.coverage.tab-composition"
+        ]
+      },
+      "exceptions": {
+        "applied": [],
+        "stale": [],
+        "expired": [],
+        "irrelevant": [],
+        "rejected": []
+      },
+      "explanation": "Implementation evidence exists, but no accepted binding establishes its mapping."
+    }
+  },
+  "conformanceResultDigest": "sha256:6806810fd0c9c86b7438430bb475a0b9e8a2c7645bb097eb2d6d3e93dc82bc41"
+}
