@@ -63,16 +63,11 @@ pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result
         .collect::<Vec<_>>();
     crate::languages::python::reachability::collect_projects(&mut graph, &python_projects)?;
 
-    for project in projects {
-        let languages = &languages_by_project[&project.id];
-        if languages.contains(&SourceLanguage::Rust) {
-            mark_unsupported(
-                &mut graph,
-                project,
-                "Rust reachability adapter is not available",
-            );
-        }
-    }
+    let rust_projects = projects
+        .iter()
+        .filter(|project| languages_by_project[&project.id].contains(&SourceLanguage::Rust))
+        .collect::<Vec<_>>();
+    crate::languages::rust::reachability::collect_projects(&mut graph, &rust_projects)?;
 
     for project in projects {
         add_contexts(&mut graph, project)?;
@@ -241,24 +236,4 @@ fn matching_files(
             _ => None,
         })
         .collect()
-}
-
-fn mark_unsupported(graph: &mut SourceGraph, project: &ResolvedAnalysisProject, message: &str) {
-    if let Some(source_project) = graph.projects.get_mut(&project.id) {
-        source_project.completeness = AnalysisCompleteness::Unsupported;
-    }
-    graph
-        .boundaries
-        .insert(crate::domain::source_graph::AnalysisBoundary {
-            project: project.id.clone(),
-            node: None,
-            kind: crate::domain::source_graph::BoundaryKind::UnsupportedSyntax,
-            effect: AnalysisCompleteness::Unsupported,
-            message: message.to_string(),
-            evidence: crate::domain::source_graph::SourceEvidence {
-                path: project.report_root.clone(),
-                span: None,
-                extractor: "codeatlas.source-graph".to_string(),
-            },
-        });
 }

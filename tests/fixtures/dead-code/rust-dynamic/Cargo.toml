@@ -1,0 +1,4 @@
+[package]
+name = "codeatlas-rust-dynamic-fixture"
+version = "0.1.0"
+edition = "2021"

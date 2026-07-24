@@ -267,6 +267,7 @@ version = "0.6.1"
 dependencies = [
  "anyhow",
  "base64",
+ "cargo_metadata",
  "clap",
  "colored",
  "globset",

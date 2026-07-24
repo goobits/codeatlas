@@ -14,12 +14,24 @@ pub(crate) struct SourceDiscovery {
 }
 
 pub(crate) fn discover(project: &ResolvedAnalysisProject) -> SourceDiscovery {
+    discover_with_patterns(project, &[])
+}
+
+pub(crate) fn discover_with_patterns(
+    project: &ResolvedAnalysisProject,
+    additional_patterns: &[String],
+) -> SourceDiscovery {
     let patterns = project
         .contexts
         .values()
         .flat_map(|context| context.entrypoints.iter())
         .chain(project.assume_reachable.iter())
         .map(|pattern| normalize_pattern(pattern))
+        .chain(
+            additional_patterns
+                .iter()
+                .map(|pattern| normalize_pattern(pattern)),
+        )
         .collect::<Vec<_>>();
     let mut discovery = SourceDiscovery::default();
     let walker = walkdir::WalkDir::new(&project.root).into_iter();

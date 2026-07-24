@@ -190,3 +190,72 @@ fn python_reflection_and_dynamic_imports_lower_certainty() {
         .filter(|finding| finding.kind == DeadCodeFindingKind::UnreachableFile)
         .all(|finding| { finding.confidence != FindingConfidence::High && !finding.gates }));
 }
+
+#[test]
+fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
+    let report = analyze_fixture("rust");
+
+    let unused_file = finding(
+        &report.findings,
+        DeadCodeFindingKind::UnreachableFile,
+        "src/unreachable.rs",
+        None,
+    );
+    assert_eq!(unused_file.confidence, FindingConfidence::High);
+    assert!(unused_file.gates);
+
+    let unused_private = finding(
+        &report.findings,
+        DeadCodeFindingKind::UnusedPrivateSymbol,
+        "src/api.rs",
+        Some("unused_private"),
+    );
+    assert_eq!(unused_private.confidence, FindingConfidence::High);
+    assert!(unused_private.gates);
+
+    let test_only = finding(
+        &report.findings,
+        DeadCodeFindingKind::TestOnly,
+        "tests/integration.rs",
+        None,
+    );
+    assert_eq!(test_only.roles, [ContextRole::Test].into_iter().collect());
+    for path in ["build.rs", "examples/demo.rs", "benches/bench.rs"] {
+        let tooling_only = finding(
+            &report.findings,
+            DeadCodeFindingKind::ToolingOnly,
+            path,
+            None,
+        );
+        assert_eq!(
+            tooling_only.roles,
+            [ContextRole::Tooling].into_iter().collect()
+        );
+    }
+
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnreachableFile
+            && matches!(
+                finding.path.as_str(),
+                "src/api.rs"
+                    | "src/custom/mod.rs"
+                    | "src/renamed.rs"
+                    | "src/feature.rs"
+                    | "src/bin/cli.rs"
+            )
+    }));
+}
+
+#[test]
+fn rust_cfg_and_macro_boundaries_prevent_false_hard_gates() {
+    let report = analyze_fixture("rust-dynamic");
+    assert!(report
+        .findings
+        .iter()
+        .any(|finding| finding.kind == DeadCodeFindingKind::DynamicBoundary));
+    assert!(report
+        .findings
+        .iter()
+        .filter(|finding| finding.kind == DeadCodeFindingKind::UnreachableFile)
+        .all(|finding| { finding.confidence != FindingConfidence::High && !finding.gates }));
+}

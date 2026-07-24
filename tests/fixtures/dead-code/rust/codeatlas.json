@@ -1,0 +1,13 @@
+{
+  "projects": [
+    {
+      "id": "rust",
+      "root": ".",
+      "languages": ["rs"],
+      "contexts": {},
+      "rust": {
+        "all_features": true
+      }
+    }
+  ]
+}

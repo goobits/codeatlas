@@ -1,11 +1,14 @@
 use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
+use quote::ToTokens;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use syn::{
-    visit::Visit, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemType,
-    Visibility as SynVis,
+    spanned::Spanned, visit::Visit, Attribute, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct,
+    ItemTrait, ItemType, Visibility as SynVis,
 };
 
+#[derive(Debug, Clone)]
 pub(crate) struct UseExport {
     pub module_path: Vec<String>,
     pub name: String,
@@ -13,11 +16,44 @@ pub(crate) struct UseExport {
     pub is_glob: bool,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct ModuleDeclaration {
+    pub name: String,
+    pub path_override: Option<String>,
+    pub inline: bool,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct RustReachabilityFacts {
+    pub top_level_paths: BTreeSet<Vec<String>>,
+    pub symbol_paths: BTreeMap<String, BTreeSet<Vec<String>>>,
+    pub uncertainties: Vec<RustUncertainty>,
+    pub test_symbols: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RustUncertaintyKind {
+    ConditionalCompilation,
+    MacroExpansion,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RustUncertainty {
+    pub owner: Option<String>,
+    pub kind: RustUncertaintyKind,
+    pub expression: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct RustModuleInfo {
     pub symbols: Vec<Symbol>,
     pub public_mods: Vec<String>,
     pub public_uses: Vec<UseExport>,
     pub uses: Vec<UseExport>,
+    pub modules: Vec<ModuleDeclaration>,
+    pub reachability: RustReachabilityFacts,
 }
 
 pub(crate) fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec<Symbol>> {
@@ -49,26 +85,317 @@ pub(crate) fn parse_module_info(
     let mut public_mods = Vec::new();
     let mut public_uses = Vec::new();
     let mut uses = Vec::new();
+    let mut modules = Vec::new();
     for item in &syntax.items {
         if let syn::Item::Mod(item_mod) = item {
             if matches!(item_mod.vis, SynVis::Public(_)) {
                 public_mods.push(item_mod.ident.to_string());
             }
+            modules.push(ModuleDeclaration {
+                name: item_mod.ident.to_string(),
+                path_override: path_override(&item_mod.attrs),
+                inline: item_mod.content.is_some(),
+                span: span(item_mod.ident.span()),
+            });
         }
         if let syn::Item::Use(item_use) = item {
-            collect_use_imports(&item_use.tree, Vec::new(), &mut uses);
             if matches!(item_use.vis, SynVis::Public(_)) {
                 collect_use_exports(&item_use.tree, Vec::new(), &mut public_uses);
+            } else {
+                collect_use_imports(&item_use.tree, Vec::new(), &mut uses);
             }
         }
     }
+    let reachability = collect_reachability(&syntax);
 
     Ok(RustModuleInfo {
         symbols: visitor.symbols,
         public_mods,
         public_uses,
         uses,
+        modules,
+        reachability,
     })
+}
+
+fn collect_reachability(file: &syn::File) -> RustReachabilityFacts {
+    let mut facts = RustReachabilityFacts::default();
+    for item in &file.items {
+        let (owner, attrs) = item_owner_and_attrs(item);
+        if let Some(owner) = owner {
+            let owner_for_attributes = owner.clone();
+            let mut collector = ReferenceCollector::new(Some(owner.clone()));
+            collector.visit_item(item);
+            facts
+                .symbol_paths
+                .entry(owner)
+                .or_default()
+                .extend(collector.paths);
+            facts.uncertainties.extend(collector.uncertainties);
+            collect_attribute_uncertainties(
+                attrs,
+                Some(owner_for_attributes),
+                &mut facts.uncertainties,
+            );
+        } else {
+            let mut collector = ReferenceCollector::new(None);
+            collector.visit_item(item);
+            facts.top_level_paths.extend(collector.paths);
+            facts.uncertainties.extend(collector.uncertainties);
+            collect_attribute_uncertainties(attrs, None, &mut facts.uncertainties);
+        }
+    }
+    let mut tests = TestSymbolVisitor::default();
+    tests.visit_file(file);
+    facts.test_symbols = tests.symbols;
+    facts
+}
+
+#[derive(Default)]
+struct TestSymbolVisitor {
+    symbols: BTreeSet<String>,
+}
+
+impl<'ast> Visit<'ast> for TestSymbolVisitor {
+    fn visit_item_fn(&mut self, item: &'ast ItemFn) {
+        if item
+            .attrs
+            .iter()
+            .any(|attribute| attribute.path().is_ident("test"))
+        {
+            self.symbols.insert(item.sig.ident.to_string());
+        }
+        syn::visit::visit_item_fn(self, item);
+    }
+}
+
+fn item_owner_and_attrs(item: &syn::Item) -> (Option<String>, &[Attribute]) {
+    match item {
+        syn::Item::Const(item) => (Some(item.ident.to_string()), &item.attrs),
+        syn::Item::Enum(item) => (Some(item.ident.to_string()), &item.attrs),
+        syn::Item::Fn(item) => (Some(item.sig.ident.to_string()), &item.attrs),
+        syn::Item::Impl(item) => (impl_owner(item), &item.attrs),
+        syn::Item::Static(item) => (Some(item.ident.to_string()), &item.attrs),
+        syn::Item::Struct(item) => (Some(item.ident.to_string()), &item.attrs),
+        syn::Item::Trait(item) => (Some(item.ident.to_string()), &item.attrs),
+        syn::Item::Type(item) => (Some(item.ident.to_string()), &item.attrs),
+        syn::Item::Union(item) => (Some(item.ident.to_string()), &item.attrs),
+        syn::Item::ExternCrate(item) => (None, &item.attrs),
+        syn::Item::ForeignMod(item) => (None, &item.attrs),
+        syn::Item::Macro(item) => (None, &item.attrs),
+        syn::Item::Mod(item) => (None, &item.attrs),
+        syn::Item::TraitAlias(item) => (Some(item.ident.to_string()), &item.attrs),
+        syn::Item::Use(item) => (None, &item.attrs),
+        syn::Item::Verbatim(_) => (None, &[]),
+        _ => (None, &[]),
+    }
+}
+
+fn impl_owner(item: &ItemImpl) -> Option<String> {
+    match &*item.self_ty {
+        syn::Type::Path(path) => path
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident.to_string()),
+        _ => None,
+    }
+}
+
+struct ReferenceCollector {
+    owner: Option<String>,
+    paths: BTreeSet<Vec<String>>,
+    uncertainties: Vec<RustUncertainty>,
+}
+
+impl ReferenceCollector {
+    fn new(owner: Option<String>) -> Self {
+        Self {
+            owner,
+            paths: BTreeSet::new(),
+            uncertainties: Vec::new(),
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for ReferenceCollector {
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        let segments = path
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect::<Vec<_>>();
+        if !segments.is_empty() {
+            self.paths.insert(segments);
+        }
+        syn::visit::visit_path(self, path);
+    }
+
+    fn visit_macro(&mut self, item: &'ast syn::Macro) {
+        let name = item
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident.to_string())
+            .unwrap_or_default();
+        if !known_macro(&name) {
+            self.uncertainties.push(RustUncertainty {
+                owner: self.owner.clone(),
+                kind: RustUncertaintyKind::MacroExpansion,
+                expression: item.path.to_token_stream().to_string(),
+                span: span(item.span()),
+            });
+        }
+        syn::visit::visit_macro(self, item);
+    }
+}
+
+fn collect_attribute_uncertainties(
+    attributes: &[Attribute],
+    owner: Option<String>,
+    uncertainties: &mut Vec<RustUncertainty>,
+) {
+    for attribute in attributes {
+        let name = attribute
+            .path()
+            .segments
+            .last()
+            .map(|segment| segment.ident.to_string())
+            .unwrap_or_default();
+        if name == "cfg" || name == "cfg_attr" {
+            uncertainties.push(RustUncertainty {
+                owner: owner.clone(),
+                kind: RustUncertaintyKind::ConditionalCompilation,
+                expression: attribute.meta.to_token_stream().to_string(),
+                span: span(attribute.span()),
+            });
+        } else if !known_attribute(&name, attribute) {
+            uncertainties.push(RustUncertainty {
+                owner: owner.clone(),
+                kind: RustUncertaintyKind::MacroExpansion,
+                expression: attribute.meta.to_token_stream().to_string(),
+                span: span(attribute.span()),
+            });
+        }
+    }
+}
+
+fn known_macro(name: &str) -> bool {
+    matches!(
+        name,
+        "assert"
+            | "assert_eq"
+            | "assert_ne"
+            | "cfg"
+            | "column"
+            | "concat"
+            | "dbg"
+            | "eprint"
+            | "eprintln"
+            | "env"
+            | "file"
+            | "format"
+            | "format_args"
+            | "include_bytes"
+            | "include_str"
+            | "line"
+            | "matches"
+            | "module_path"
+            | "option_env"
+            | "panic"
+            | "print"
+            | "println"
+            | "stringify"
+            | "todo"
+            | "unreachable"
+            | "vec"
+            | "write"
+            | "writeln"
+    )
+}
+
+fn known_attribute(name: &str, attribute: &Attribute) -> bool {
+    if matches!(
+        name,
+        "allow"
+            | "cold"
+            | "deny"
+            | "deprecated"
+            | "doc"
+            | "ignore"
+            | "inline"
+            | "must_use"
+            | "non_exhaustive"
+            | "path"
+            | "repr"
+            | "should_panic"
+            | "test"
+            | "warn"
+    ) {
+        return true;
+    }
+    if name != "derive" {
+        return false;
+    }
+    let mut known = true;
+    if attribute
+        .parse_nested_meta(|meta| {
+            let derive = meta
+                .path
+                .segments
+                .last()
+                .map(|segment| segment.ident.to_string())
+                .unwrap_or_default();
+            known &= matches!(
+                derive.as_str(),
+                "Clone"
+                    | "Copy"
+                    | "Debug"
+                    | "Default"
+                    | "Deserialize"
+                    | "Eq"
+                    | "Hash"
+                    | "Ord"
+                    | "PartialEq"
+                    | "PartialOrd"
+                    | "Serialize"
+            );
+            Ok(())
+        })
+        .is_err()
+    {
+        return false;
+    }
+    known
+}
+
+fn path_override(attributes: &[Attribute]) -> Option<String> {
+    attributes.iter().find_map(|attribute| {
+        if !attribute.path().is_ident("path") {
+            return None;
+        }
+        let syn::Meta::NameValue(value) = &attribute.meta else {
+            return None;
+        };
+        let syn::Expr::Lit(value) = &value.value else {
+            return None;
+        };
+        let syn::Lit::Str(value) = &value.lit else {
+            return None;
+        };
+        Some(value.value())
+    })
+}
+
+fn span(value: proc_macro2::Span) -> Span {
+    let start = value.start();
+    let end = value.end();
+    Span {
+        start_line: start.line as u32,
+        start_col: start.column as u32,
+        end_line: end.line as u32,
+        end_col: end.column as u32,
+    }
 }
 
 struct SymbolVisitor {
@@ -605,8 +932,8 @@ fn collect_use_imports(tree: &syn::UseTree, prefix: Vec<String>, imports: &mut V
             let name = name.ident.to_string();
             imports.push(UseExport {
                 module_path: prefix,
-                name,
-                alias: String::new(),
+                name: name.clone(),
+                alias: name,
                 is_glob: false,
             });
         }

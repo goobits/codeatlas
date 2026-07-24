@@ -41,6 +41,7 @@ pub(crate) struct AnalysisProjectConfig {
     pub languages: Vec<String>,
     pub contexts: BTreeMap<String, AnalysisContextConfig>,
     pub assume_reachable: Vec<String>,
+    pub rust: RustAnalysisConfig,
 }
 
 impl Default for AnalysisProjectConfig {
@@ -51,8 +52,16 @@ impl Default for AnalysisProjectConfig {
             languages: Vec::new(),
             contexts: BTreeMap::new(),
             assume_reachable: Vec::new(),
+            rust: RustAnalysisConfig::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct RustAnalysisConfig {
+    pub all_features: bool,
+    pub features: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +89,7 @@ pub(crate) struct ResolvedAnalysisProject {
     pub contexts: BTreeMap<String, AnalysisContextConfig>,
     pub assume_reachable: Vec<String>,
     pub no_default_ignore: bool,
+    pub rust: RustAnalysisConfig,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -203,6 +213,7 @@ impl ProjectConfig {
                     )])
                 },
                 assume_reachable: Vec::new(),
+                rust: RustAnalysisConfig::default(),
             }]
         } else {
             self.config.projects.clone()
@@ -264,6 +275,7 @@ impl ProjectConfig {
                 contexts: project.contexts,
                 assume_reachable: project.assume_reachable,
                 no_default_ignore: self.config.no_default_ignore,
+                rust: project.rust,
             });
         }
         Ok(resolved)

@@ -1,0 +1,31 @@
+[package]
+name = "codeatlas-rust-fixture"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[workspace]
+members = ["crates/helper"]
+
+[dependencies]
+helper-crate = { path = "crates/helper" }
+
+[features]
+default = []
+extra = []
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "fixture-cli"
+path = "src/bin/cli.rs"
+
+[[example]]
+name = "demo"
+path = "examples/demo.rs"
+
+[[bench]]
+name = "bench"
+path = "benches/bench.rs"
+harness = false

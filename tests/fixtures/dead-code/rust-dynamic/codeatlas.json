@@ -1,0 +1,10 @@
+{
+  "projects": [
+    {
+      "id": "rust-dynamic",
+      "root": ".",
+      "languages": ["rs"],
+      "contexts": {}
+    }
+  ]
+}
