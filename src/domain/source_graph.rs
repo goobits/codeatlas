@@ -368,6 +368,7 @@ pub(crate) enum EdgeTarget {
     External(String),
     UnresolvedInternal(String),
     DynamicUnknown(String),
+    Unsupported(String),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -422,6 +423,7 @@ pub(crate) enum BoundaryKind {
     MacroExpansion,
     ConditionalCompilation,
     UnresolvedInternal,
+    UnsupportedDependency,
     UnsupportedSyntax,
 }
 

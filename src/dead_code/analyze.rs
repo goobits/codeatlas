@@ -172,6 +172,13 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     .map(|project| project_confidence(graph, project))
                     .unwrap_or(FindingConfidence::Low),
             ),
+            EdgeTarget::Unsupported(value) => (
+                DeadCodeFindingKind::DynamicBoundary,
+                value,
+                project_for_node(graph, &edge.from)
+                    .map(|project| project_confidence(graph, project))
+                    .unwrap_or(FindingConfidence::Low),
+            ),
             _ => continue,
         };
         let Some(project) = project_for_node(graph, &edge.from) else {
@@ -193,7 +200,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     DeadCodeFindingKind::UnresolvedInternalEdge => {
                         format!("Could not resolve internal source edge {value:?}.")
                     }
-                    _ => format!("Dynamic source boundary {value:?} prevents certainty."),
+                    _ => format!("Unresolved source boundary {value:?} prevents certainty."),
                 },
             },
         ));

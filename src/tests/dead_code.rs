@@ -95,13 +95,25 @@ fn ecmascript_reachability_preserves_contexts_and_private_symbol_gates() {
 #[test]
 fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
     let report = analyze_fixture("dynamic");
-    let boundary = report
+    let boundaries = report
         .findings
         .iter()
-        .find(|finding| finding.kind == DeadCodeFindingKind::DynamicBoundary)
-        .expect("dynamic boundary");
-    assert_ne!(boundary.confidence, FindingConfidence::High);
-    assert!(!boundary.gates);
+        .filter(|finding| finding.kind == DeadCodeFindingKind::DynamicBoundary)
+        .collect::<Vec<_>>();
+    assert!(boundaries.len() >= 2);
+    assert!(boundaries
+        .iter()
+        .all(|finding| finding.confidence != FindingConfidence::High && !finding.gates));
+    assert!(boundaries
+        .iter()
+        .any(|finding| finding.message.contains("./component.svelte")));
+    assert!(boundaries
+        .iter()
+        .any(|finding| finding.message.contains("\".\"")));
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
+            && finding.message.contains("\".\"")
+    }));
 
     let candidate = finding(
         &report.findings,

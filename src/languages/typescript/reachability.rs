@@ -395,6 +395,7 @@ fn connect_module_resolution(
         Resolution::External(value) => EdgeTarget::External(value.clone()),
         Resolution::UnresolvedInternal(value) => EdgeTarget::UnresolvedInternal(value.clone()),
         Resolution::DynamicUnknown(value) => EdgeTarget::DynamicUnknown(value.clone()),
+        Resolution::Unsupported(value) => EdgeTarget::Unsupported(value.clone()),
     };
     graph.edges.insert(SourceEdge {
         from: module.file.clone(),
@@ -415,6 +416,13 @@ fn connect_module_resolution(
         Resolution::DynamicUnknown(_) => (
             Some(BoundaryKind::DynamicImport),
             format!("Dynamic module boundary in {}", module.path),
+        ),
+        Resolution::Unsupported(value) => (
+            Some(BoundaryKind::UnsupportedDependency),
+            format!(
+                "Dependency {value:?} from {} uses an unsupported source boundary",
+                module.path
+            ),
         ),
         _ => (None, String::new()),
     };
@@ -541,6 +549,7 @@ enum Resolution {
     External(String),
     UnresolvedInternal(String),
     DynamicUnknown(String),
+    Unsupported(String),
 }
 
 impl Resolution {
@@ -611,17 +620,29 @@ impl ModuleResolver {
     }
 
     fn resolve(&self, module: &Module, specifier: &str) -> Resolution {
-        if specifier.starts_with('.') || specifier.starts_with('/') {
+        if matches!(specifier, "." | "..") {
+            return Resolution::Unsupported(specifier.to_string());
+        }
+        if specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/')
+        {
+            if unsupported_relative_specifier(specifier) {
+                return Resolution::Unsupported(specifier.to_string());
+            }
             return self
                 .resolve_relative(module, specifier)
                 .map(Resolution::Resolved)
                 .unwrap_or_else(|| Resolution::UnresolvedInternal(specifier.to_string()));
         }
         if specifier.starts_with('#') {
-            return self
-                .resolve_package_import(module, specifier)
-                .map(Resolution::Resolved)
-                .unwrap_or_else(|| Resolution::UnresolvedInternal(specifier.to_string()));
+            return match self.resolve_package_import(module, specifier) {
+                PackageImportResolution::Resolved(key) => Resolution::Resolved(key),
+                PackageImportResolution::DeclaredButMissing => {
+                    Resolution::UnresolvedInternal(specifier.to_string())
+                }
+                PackageImportResolution::NotDeclared => {
+                    Resolution::Unsupported(specifier.to_string())
+                }
+            };
         }
         if specifier.contains(':') {
             return Resolution::External(specifier.to_string());
@@ -665,17 +686,21 @@ impl ModuleResolver {
         }
     }
 
-    fn resolve_package_import(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
-        let project = self.projects.get(&module.project)?;
+    fn resolve_package_import(&self, module: &Module, specifier: &str) -> PackageImportResolution {
+        let Some(project) = self.projects.get(&module.project) else {
+            return PackageImportResolution::NotDeclared;
+        };
         for (pattern, target) in &project.aliases.imports {
             let Some(capture) = match_alias(pattern, specifier) else {
                 continue;
             };
             let target = apply_alias_capture(target, capture.as_deref());
             return self
-                .resolve_project_path(&module.project, Path::new(target.trim_start_matches("./")));
+                .resolve_project_path(&module.project, Path::new(target.trim_start_matches("./")))
+                .map(PackageImportResolution::Resolved)
+                .unwrap_or(PackageImportResolution::DeclaredButMissing);
         }
-        None
+        PackageImportResolution::NotDeclared
     }
 
     fn resolve_workspace_package(&self, specifier: &str) -> Option<Option<ModuleKey>> {
@@ -695,6 +720,30 @@ impl ModuleResolver {
         }
         None
     }
+}
+
+enum PackageImportResolution {
+    Resolved(ModuleKey),
+    DeclaredButMissing,
+    NotDeclared,
+}
+
+fn unsupported_relative_specifier(specifier: &str) -> bool {
+    let normalized = specifier.split(['?', '#']).next().unwrap_or(specifier);
+    if Path::new(normalized)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == "$types")
+    {
+        return true;
+    }
+    let Some(extension) = Path::new(normalized)
+        .extension()
+        .and_then(|extension| extension.to_str())
+    else {
+        return false;
+    };
+    !matches!(extension, "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs")
 }
 
 fn load_alias_config(root: &Path) -> Result<AliasConfig> {
