@@ -1,5 +1,6 @@
 // Language modules
 pub mod python;
+pub(crate) mod reachability;
 pub mod rust;
 pub mod svelte;
 pub mod typescript;

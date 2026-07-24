@@ -66,6 +66,22 @@ enum Command {
         path: PathBuf,
     },
 
+    /// Analyze source reachability and report dead-code candidates
+    DeadCode {
+        /// Path to the repository or configured project set
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = DeadCodeFormat::Text)]
+        format: DeadCodeFormat,
+        /// Write the report to a file instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Exit non-zero for high-confidence gating findings
+        #[arg(long)]
+        check: bool,
+    },
+
     /// CI mode: exit non-zero if issues found
     Ci {
         /// Path to scan
@@ -136,6 +152,14 @@ pub(crate) enum DocsFormat {
     Html,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub(crate) enum DeadCodeFormat {
+    /// Human-readable findings and project completeness
+    Text,
+    /// Stable schema-versioned JSON
+    Json,
+}
+
 pub(crate) fn run() -> i32 {
     let cli = Cli::parse();
     let config_path = cli.config.clone();
@@ -148,6 +172,14 @@ pub(crate) fn run() -> i32 {
             out,
         }) => commands::run_scan(&path, format, all, out, config_path.as_deref()),
         Some(Command::Audit { path }) => commands::run_audit(&path, config_path.as_deref()),
+        Some(Command::DeadCode {
+            path,
+            format,
+            out,
+            check,
+        }) => {
+            commands::dead_code::run(&path, format, out.as_deref(), check, config_path.as_deref())
+        }
         Some(Command::Ci {
             path,
             fail_unused,

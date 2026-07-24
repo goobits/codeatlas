@@ -2,6 +2,7 @@ mod analysis;
 mod cli;
 mod commands;
 mod config;
+mod dead_code;
 mod domain;
 mod languages;
 mod outputs;

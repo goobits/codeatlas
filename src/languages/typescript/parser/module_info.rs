@@ -1,5 +1,8 @@
 use crate::domain::Symbol;
+use std::collections::{BTreeMap, BTreeSet};
+use swc_core::common::{sync::Lrc, SourceMap};
 use swc_core::ecma::ast::*;
+use swc_core::ecma::visit::{Visit, VisitWith};
 
 #[derive(Clone)]
 pub(crate) struct ExportName {
@@ -25,6 +28,7 @@ pub(crate) struct ImportInfo {
     pub named: Vec<String>,
     pub default: Option<String>,
     pub namespace: bool,
+    pub type_only: bool,
     pub bindings: Vec<ImportBinding>,
 }
 
@@ -33,12 +37,34 @@ pub(crate) struct ImportBinding {
     pub imported: String,
     pub local: String,
     pub namespace: bool,
+    pub type_only: bool,
 }
 
 pub(crate) struct TypeScriptModuleInfo {
     pub symbols: Vec<Symbol>,
     pub exports: ExportInfo,
     pub imports: Vec<ImportInfo>,
+    pub reachability: ReachabilityFacts,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ReachabilityFacts {
+    pub top_level_references: BTreeSet<String>,
+    pub symbol_references: BTreeMap<String, BTreeSet<String>>,
+    pub dynamic_dependencies: Vec<DynamicDependency>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DynamicDependency {
+    pub specifier: Option<String>,
+    pub kind: DynamicDependencyKind,
+    pub span: crate::domain::Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DynamicDependencyKind {
+    Import,
+    Require,
 }
 
 pub(super) fn collect_exports(module: &Module) -> ExportInfo {
@@ -211,6 +237,7 @@ pub(super) fn collect_imports(module: &Module) -> Vec<ImportInfo> {
                             imported,
                             local,
                             namespace: false,
+                            type_only: import.type_only || specifier.is_type_only,
                         });
                     }
                     ImportSpecifier::Default(specifier) => {
@@ -220,6 +247,7 @@ pub(super) fn collect_imports(module: &Module) -> Vec<ImportInfo> {
                             imported: "default".to_string(),
                             local,
                             namespace: false,
+                            type_only: import.type_only,
                         });
                     }
                     ImportSpecifier::Namespace(specifier) => {
@@ -228,6 +256,7 @@ pub(super) fn collect_imports(module: &Module) -> Vec<ImportInfo> {
                             imported: "*".to_string(),
                             local: specifier.local.sym.to_string(),
                             namespace: true,
+                            type_only: import.type_only,
                         });
                     }
                 }
@@ -237,10 +266,135 @@ pub(super) fn collect_imports(module: &Module) -> Vec<ImportInfo> {
                 named,
                 default,
                 namespace,
+                type_only: import.type_only,
                 bindings,
             })
         })
         .collect()
+}
+
+pub(super) fn collect_reachability_facts(
+    module: &Module,
+    source_map: Lrc<SourceMap>,
+) -> ReachabilityFacts {
+    let mut facts = ReachabilityFacts::default();
+
+    for item in &module.body {
+        let owners = declared_names(item);
+        let mut collector = IdentifierCollector::default();
+        item.visit_with(&mut collector);
+        if owners.is_empty() {
+            facts.top_level_references.extend(collector.identifiers);
+        } else {
+            for owner in owners {
+                facts
+                    .symbol_references
+                    .entry(owner)
+                    .or_default()
+                    .extend(collector.identifiers.iter().cloned());
+            }
+        }
+    }
+
+    let mut dynamic = DynamicDependencyCollector {
+        source_map,
+        dependencies: Vec::new(),
+    };
+    module.visit_with(&mut dynamic);
+    facts.dynamic_dependencies = dynamic.dependencies;
+    facts
+}
+
+fn declared_names(item: &ModuleItem) -> Vec<String> {
+    match item {
+        ModuleItem::Stmt(Stmt::Decl(declaration))
+        | ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(ExportDecl {
+            decl: declaration, ..
+        })) => declaration_names(declaration),
+        ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultDecl(default)) => match &default.decl {
+            DefaultDecl::Class(class) => class
+                .ident
+                .as_ref()
+                .map(|ident| vec![ident.sym.to_string()])
+                .unwrap_or_default(),
+            DefaultDecl::Fn(function) => function
+                .ident
+                .as_ref()
+                .map(|ident| vec![ident.sym.to_string()])
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
+fn declaration_names(declaration: &Decl) -> Vec<String> {
+    match declaration {
+        Decl::Class(class) => vec![class.ident.sym.to_string()],
+        Decl::Fn(function) => vec![function.ident.sym.to_string()],
+        Decl::Var(variables) => variables
+            .decls
+            .iter()
+            .filter_map(|variable| match &variable.name {
+                Pat::Ident(ident) => Some(ident.id.sym.to_string()),
+                _ => None,
+            })
+            .collect(),
+        Decl::TsInterface(interface) => vec![interface.id.sym.to_string()],
+        Decl::TsTypeAlias(alias) => vec![alias.id.sym.to_string()],
+        Decl::TsEnum(enumeration) => vec![enumeration.id.sym.to_string()],
+        _ => Vec::new(),
+    }
+}
+
+#[derive(Default)]
+struct IdentifierCollector {
+    identifiers: BTreeSet<String>,
+}
+
+impl Visit for IdentifierCollector {
+    fn visit_ident(&mut self, identifier: &Ident) {
+        self.identifiers.insert(identifier.sym.to_string());
+    }
+}
+
+struct DynamicDependencyCollector {
+    source_map: Lrc<SourceMap>,
+    dependencies: Vec<DynamicDependency>,
+}
+
+impl Visit for DynamicDependencyCollector {
+    fn visit_call_expr(&mut self, call: &CallExpr) {
+        let kind = match &call.callee {
+            Callee::Import(_) => Some(DynamicDependencyKind::Import),
+            Callee::Expr(expression) if matches!(&**expression, Expr::Ident(identifier) if identifier.sym == *"require") => {
+                Some(DynamicDependencyKind::Require)
+            }
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            let specifier = call
+                .args
+                .first()
+                .and_then(|argument| match &*argument.expr {
+                    Expr::Lit(Lit::Str(value)) => Some(value.value.to_string()),
+                    _ => None,
+                });
+            let start = self.source_map.lookup_char_pos(call.span.lo);
+            let end = self.source_map.lookup_char_pos(call.span.hi);
+            self.dependencies.push(DynamicDependency {
+                specifier,
+                kind,
+                span: crate::domain::Span {
+                    start_line: start.line as u32,
+                    start_col: start.col.0 as u32,
+                    end_line: end.line as u32,
+                    end_col: end.col.0 as u32,
+                },
+            });
+        }
+        call.visit_children_with(self);
+    }
 }
 
 fn export_name_to_string(name: &ModuleExportName) -> String {

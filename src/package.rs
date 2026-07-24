@@ -78,7 +78,7 @@ pub(crate) fn is_local_dependency(
     Ok(false)
 }
 
-fn split_package_specifier(specifier: &str) -> Option<(String, String)> {
+pub(crate) fn split_package_specifier(specifier: &str) -> Option<(String, String)> {
     if specifier.starts_with('.')
         || specifier.starts_with('#')
         || specifier.starts_with('/')

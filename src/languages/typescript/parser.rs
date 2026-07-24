@@ -2,10 +2,10 @@ mod format;
 mod module_info;
 mod visitor;
 
-pub(crate) use module_info::{ExportInfo, ImportInfo, TypeScriptModuleInfo};
+pub(crate) use module_info::{DynamicDependencyKind, ExportInfo, ImportInfo, TypeScriptModuleInfo};
 
 use anyhow::Result;
-use module_info::{collect_exports, collect_imports};
+use module_info::{collect_exports, collect_imports, collect_reachability_facts};
 use std::collections::HashMap;
 use std::path::Path;
 use swc_core::common::{
@@ -14,7 +14,7 @@ use swc_core::common::{
     FileName, SourceFile, SourceMap,
 };
 use swc_core::ecma::ast::Module;
-use swc_core::ecma::parser::{lexer::Lexer, Parser, StringInput, Syntax, TsConfig};
+use swc_core::ecma::parser::{lexer::Lexer, EsConfig, Parser, StringInput, Syntax, TsConfig};
 use swc_core::ecma::visit::VisitWith;
 use visitor::SymbolVisitor;
 
@@ -37,7 +37,11 @@ pub(crate) fn parse_source(source: &str, relative_path: &str) -> Result<TypeScri
         FileName::Custom(relative_path.to_string()),
         source.to_string(),
     );
-    let module = parse_source_file(file, source_map.clone(), false)?;
+    let module = parse_source_file(
+        file,
+        source_map.clone(),
+        syntax_for_path(Path::new(relative_path)),
+    )?;
     Ok(build_module_info(
         module,
         source_map,
@@ -53,7 +57,7 @@ fn build_module_info(
     let mut visitor = SymbolVisitor {
         symbols: Vec::new(),
         relative_path,
-        source_map,
+        source_map: source_map.clone(),
     };
 
     module.visit_with(&mut visitor);
@@ -65,10 +69,12 @@ fn build_module_info(
     }
     consolidate_overloads(&mut visitor.symbols);
 
+    let reachability = collect_reachability_facts(&module, source_map.clone());
     TypeScriptModuleInfo {
         symbols: visitor.symbols,
         exports,
         imports: collect_imports(&module),
+        reachability,
     }
 }
 
@@ -100,30 +106,18 @@ fn consolidate_overloads(symbols: &mut Vec<crate::domain::Symbol>) {
 fn parse_module(file_path: &Path) -> Result<(Module, Lrc<SourceMap>)> {
     let source_map: Lrc<SourceMap> = Default::default();
     let file = source_map.load_file(file_path)?;
-    let tsx = file_path
-        .extension()
-        .is_some_and(|extension| extension == "tsx");
-    let module = parse_source_file(file, source_map.clone(), tsx)?;
+    let module = parse_source_file(file, source_map.clone(), syntax_for_path(file_path))?;
     Ok((module, source_map))
 }
 
 fn parse_source_file(
     file: Lrc<SourceFile>,
     source_map: Lrc<SourceMap>,
-    tsx: bool,
+    syntax: Syntax,
 ) -> Result<Module> {
     let handler =
         Handler::with_tty_emitter(ColorConfig::Auto, true, false, Some(source_map.clone()));
-    let lexer = Lexer::new(
-        Syntax::Typescript(TsConfig {
-            tsx,
-            decorators: true,
-            ..Default::default()
-        }),
-        Default::default(),
-        StringInput::from(&*file),
-        None,
-    );
+    let lexer = Lexer::new(syntax, Default::default(), StringInput::from(&*file), None);
     let mut parser = Parser::new_from(lexer);
     for error in parser.take_errors() {
         error.into_diagnostic(&handler).emit();
@@ -132,4 +126,27 @@ fn parse_source_file(
         .parse_module()
         .map_err(|error| anyhow::anyhow!("Parse failed: {:?}", error))?;
     Ok(module)
+}
+
+fn syntax_for_path(path: &Path) -> Syntax {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("js" | "mjs" | "cjs") => Syntax::Es(EsConfig {
+            decorators: true,
+            ..Default::default()
+        }),
+        Some("jsx") => Syntax::Es(EsConfig {
+            jsx: true,
+            decorators: true,
+            ..Default::default()
+        }),
+        Some("tsx") => Syntax::Typescript(TsConfig {
+            tsx: true,
+            decorators: true,
+            ..Default::default()
+        }),
+        _ => Syntax::Typescript(TsConfig {
+            decorators: true,
+            ..Default::default()
+        }),
+    }
 }

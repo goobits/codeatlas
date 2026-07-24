@@ -9,6 +9,7 @@ use std::path::Path;
 
 pub mod frameworks;
 pub mod parser;
+pub(crate) mod reachability;
 
 // ============================================================================
 // New Pluggable System Implementation (for future use)

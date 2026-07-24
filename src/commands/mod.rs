@@ -1,3 +1,4 @@
+pub(crate) mod dead_code;
 pub(crate) mod diff;
 pub(crate) mod docs;
 

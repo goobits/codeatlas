@@ -5,6 +5,8 @@ mod dependency_types;
 pub(crate) mod docs;
 pub(crate) mod ignore;
 mod imports;
+pub(crate) mod reachability;
+pub(crate) mod source_files;
 mod unused_public;
 
 pub(crate) fn build_importers(
