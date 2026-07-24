@@ -119,7 +119,11 @@ impl ManifestIndex {
             )
             .at_path(path)
         })?;
-        let Some(name) = manifest["package"]["name"].as_str() else {
+        let package = manifest.get("package").and_then(toml::Value::as_table);
+        let Some(name) = package
+            .and_then(|package| package.get("name"))
+            .and_then(toml::Value::as_str)
+        else {
             return Ok(());
         };
         self.rust
@@ -127,7 +131,10 @@ impl ManifestIndex {
             .or_default()
             .push(ManifestMatch {
                 name: name.to_owned(),
-                version: manifest["package"]["version"].as_str().map(str::to_owned),
+                version: package
+                    .and_then(|package| package.get("version"))
+                    .and_then(toml::Value::as_str)
+                    .map(str::to_owned),
                 location: source_location(path, root, &source),
             });
         Ok(())
@@ -169,7 +176,14 @@ fn source_location(path: &Path, root: &Path, source: &str) -> SourceLocation {
 #[cfg(test)]
 mod tests {
     use super::ManifestIndex;
-    use std::path::PathBuf;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn remove_existing(path: &Path) {
+        if path.exists() {
+            fs::remove_dir_all(path).expect("remove stale fixture directory");
+        }
+    }
 
     #[test]
     fn discovers_npm_and_rust_manifests_in_the_repository() {
@@ -177,5 +191,30 @@ mod tests {
         let index = ManifestIndex::scan(&root).expect("manifest index");
         assert_eq!(index.npm("@goobits/codeatlas").len(), 1);
         assert_eq!(index.rust("codeatlas").len(), 1);
+    }
+
+    #[test]
+    fn skips_workspace_only_cargo_manifests() {
+        let root = std::env::temp_dir().join(format!(
+            "codeatlas-workspace-manifest-{}",
+            std::process::id()
+        ));
+        remove_existing(&root);
+        fs::create_dir_all(root.join("member")).expect("fixture member directory");
+        fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"member\"]\n",
+        )
+        .expect("workspace manifest");
+        fs::write(
+            root.join("member/Cargo.toml"),
+            "[package]\nname = \"fixture-member\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("member manifest");
+
+        let index = ManifestIndex::scan(&root).expect("manifest index");
+
+        assert_eq!(index.rust("fixture-member").len(), 1);
+        remove_existing(&root);
     }
 }
