@@ -167,6 +167,9 @@ impl Vocabulary {
             Some("ArchitectureObservation") => {
                 diagnostics.extend(self.validate_observation(document));
             }
+            Some("ArchitectureConformance") => {
+                diagnostics.extend(self.validate_conformance(document));
+            }
             _ => {}
         }
         diagnostics.sort_by(|left, right| {
@@ -474,6 +477,17 @@ impl Vocabulary {
             }
         }
         diagnostics
+    }
+
+    fn validate_conformance(&self, document: &Value) -> Vec<Diagnostic> {
+        if document["metadata"]["generated"].as_bool() == Some(true) {
+            Vec::new()
+        } else {
+            vec![Diagnostic::error(
+                "generated.metadata-required",
+                "ArchitectureConformance metadata.generated must be true",
+            )]
+        }
     }
 
     fn validate_reference(&self, document: &Value) -> Vec<Diagnostic> {

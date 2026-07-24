@@ -188,6 +188,34 @@ enum ArchitectureCommand {
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
+
+    /// Compare a governing graph with an architecture observation
+    Conform {
+        /// Root ArchitectureModule documents
+        #[arg(required = true)]
+        modules: Vec<PathBuf>,
+        /// Filesystem boundary for modules, policies, and local imports
+        #[arg(long, default_value = ".")]
+        source_root: PathBuf,
+        /// ArchitecturePolicy roots to evaluate
+        #[arg(long = "policy")]
+        policies: Vec<PathBuf>,
+        /// Generated ArchitectureObservation document
+        #[arg(long)]
+        observation: PathBuf,
+        /// Stable qualified conformance identity
+        #[arg(long)]
+        conformance_id: String,
+        /// Explicit RFC 3339 UTC evaluation time
+        #[arg(long)]
+        as_of: String,
+        /// Write the generated conformance report instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Exit non-zero when conformance contains error findings
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -276,6 +304,25 @@ pub(crate) fn run() -> i32 {
                 source_commit: &source_commit,
                 observed_at: &observed_at,
                 out: out.as_deref(),
+            }),
+            ArchitectureCommand::Conform {
+                modules,
+                source_root,
+                policies,
+                observation,
+                conformance_id,
+                as_of,
+                out,
+                check,
+            } => commands::architecture::conform::run(&commands::architecture::conform::Options {
+                modules: &modules,
+                source_root: &source_root,
+                policies: &policies,
+                observation: &observation,
+                conformance_id: &conformance_id,
+                as_of: &as_of,
+                out: out.as_deref(),
+                check,
             }),
         },
         Some(Command::Ci {

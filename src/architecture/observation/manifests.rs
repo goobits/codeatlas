@@ -94,6 +94,7 @@ impl ManifestIndex {
                 "observation.npm-manifest-invalid",
                 format!("{}: {error}", path.display()),
             )
+            .at_path(path)
         })?;
         let Some(name) = manifest["name"].as_str() else {
             return Ok(());
@@ -116,6 +117,7 @@ impl ManifestIndex {
                 "observation.rust-manifest-invalid",
                 format!("{}: {error}", path.display()),
             )
+            .at_path(path)
         })?;
         let Some(name) = manifest["package"]["name"].as_str() else {
             return Ok(());
@@ -138,6 +140,7 @@ fn read_manifest(path: &Path) -> Result<String, ArchitectureError> {
             "observation.manifest-read-failed",
             format!("{}: {error}", path.display()),
         )
+        .at_path(path)
     })
 }
 

@@ -52,6 +52,11 @@ impl ArchitectureError {
             diagnostic: Box::new(Diagnostic::error(code, message)),
         }
     }
+
+    pub(crate) fn at_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.diagnostic.source_path = Some(path.into());
+        self
+    }
 }
 
 impl fmt::Display for ArchitectureError {

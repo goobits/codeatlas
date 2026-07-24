@@ -1,20 +1,16 @@
-use super::diagnostic::{sort_diagnostics, ArchitectureError, Diagnostic};
+use super::diagnostic::Diagnostic;
 use super::digest::{digest_value, DigestKind, TypedDigest};
+use super::documents::DocumentSet;
 use super::graph::{self, CompileMode, CompiledGraph};
 use super::model::{GeneratorIdentity, VocabularyIdentity};
 use super::vocabulary::Vocabulary;
-use super::yaml::{parse, ParseLimits};
 use super::{ARCHITECTURE_API_VERSION, ARCHITECTURE_SCHEMA_VERSION};
 use serde::Serialize;
-use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::fs;
-use std::path::{Component, Path, PathBuf};
+use serde_json::json;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 const COMPILER_VERSION: &str = "codeatlas-architecture-compiler/0.1";
-const MAX_TOTAL_BYTES: usize = 64 * 1024 * 1024;
-const MAX_IMPORT_DEPTH: usize = 32;
-const MAX_DOCUMENTS: usize = 4096;
 
 #[derive(Clone, Debug)]
 pub(crate) struct CompileRequest {
@@ -69,175 +65,21 @@ pub(crate) struct LockDocument {
     pub import_closure_digest: TypedDigest,
 }
 
-struct LoadedDocument {
-    portable_path: String,
-    value: Value,
-    source_digest: TypedDigest,
-    canonical_digest: TypedDigest,
-}
-
 pub(crate) fn compile(request: &CompileRequest) -> Result<CompileResult, Vec<Diagnostic>> {
-    if request.roots.is_empty() {
-        return Err(vec![Diagnostic::error(
-            "compile.roots-empty",
-            "at least one root ArchitectureModule is required",
-        )]);
-    }
     let vocabulary = Vocabulary::bundled()?;
-    let allowed_root = fs::canonicalize(&request.allowed_root).map_err(|error| {
-        vec![Diagnostic::error(
-            "import.root-unavailable",
-            format!("{}: {error}", request.allowed_root.display()),
-        )]
-    })?;
-    let mut diagnostics = Vec::new();
-    let mut loaded = BTreeMap::<PathBuf, LoadedDocument>::new();
-    let mut pending = VecDeque::new();
-    for root in &request.roots {
-        match confined_path(&allowed_root, root, &allowed_root) {
-            Ok(path) => pending.push_back((path, 0usize)),
-            Err(error) => diagnostics.push(*error.diagnostic),
-        }
-    }
-
-    let mut total_bytes = 0usize;
-    while let Some((path, depth)) = pending.pop_front() {
-        if loaded.contains_key(&path) {
-            continue;
-        }
-        if depth > MAX_IMPORT_DEPTH {
-            diagnostics.push(
-                Diagnostic::error(
-                    "resource.import-depth",
-                    format!("import depth exceeds {MAX_IMPORT_DEPTH}"),
-                )
-                .at_path(&path),
-            );
-            continue;
-        }
-        if loaded.len() >= MAX_DOCUMENTS {
-            diagnostics.push(Diagnostic::error(
-                "resource.document-count",
-                format!("document count exceeds {MAX_DOCUMENTS}"),
-            ));
-            break;
-        }
-        let bytes = match fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                diagnostics.push(
-                    Diagnostic::error(
-                        "document.read-failed",
-                        format!("{}: {error}", path.display()),
-                    )
-                    .at_path(&path),
-                );
-                continue;
-            }
-        };
-        total_bytes = match total_bytes.checked_add(bytes.len()) {
-            Some(total) if total <= MAX_TOTAL_BYTES => total,
-            _ => {
-                diagnostics.push(Diagnostic::error(
-                    "resource.total-source-bytes",
-                    format!("total source bytes exceed {MAX_TOTAL_BYTES}"),
-                ));
-                break;
-            }
-        };
-        let parsed = match parse(&bytes, ParseLimits::default()) {
-            Ok(parsed) => parsed,
-            Err(error) => {
-                diagnostics.push(error.diagnostic.at_path(&path));
-                continue;
-            }
-        };
-        let document_id = parsed.value["metadata"]["id"].as_str().map(str::to_owned);
-        let mut document_diagnostics = vocabulary.validate_document(&parsed.value);
-        for diagnostic in &mut document_diagnostics {
-            diagnostic.source_path = Some(path.clone());
-            diagnostic.document_id.clone_from(&document_id);
-        }
-        if parsed.value["kind"].as_str() != Some("ArchitectureModule") {
-            document_diagnostics.push(
-                Diagnostic::error(
-                    "compile.root-kind",
-                    "architecture compilation accepts ArchitectureModule documents only",
-                )
-                .at_path(&path),
-            );
-        }
-        diagnostics.extend(document_diagnostics);
-        let canonical_digest = match digest_value(DigestKind::CanonicalModule, &parsed.value) {
-            Ok(digest) => digest,
-            Err(error) => {
-                diagnostics.push(error.diagnostic.at_path(&path));
-                continue;
-            }
-        };
-        if let Some(imports) = parsed.value["imports"].as_array() {
-            let parent = path.parent().unwrap_or(&allowed_root);
-            for import in imports {
-                let Some(source) = import["source"].as_str() else {
-                    continue;
-                };
-                match confined_path(&allowed_root, Path::new(source), parent) {
-                    Ok(import_path) => pending.push_back((import_path, depth + 1)),
-                    Err(error) => diagnostics.push((*error.diagnostic).at_path(&path)),
-                }
-            }
-        }
-        loaded.insert(
-            path.clone(),
-            LoadedDocument {
-                portable_path: portable_path(&path, &allowed_root),
-                value: parsed.value,
-                source_digest: parsed.source_document_digest,
-                canonical_digest,
-            },
-        );
-    }
-    if !diagnostics.is_empty() {
-        sort_diagnostics(&mut diagnostics);
-        return Err(diagnostics);
-    }
-
-    let documents = loaded
-        .values()
-        .map(|document| document.value.clone())
-        .collect::<Vec<_>>();
+    let loaded = DocumentSet::load(
+        &request.roots,
+        &request.allowed_root,
+        "ArchitectureModule",
+        &vocabulary,
+    )?;
+    let documents = loaded.values();
     let graph = graph::compile(&documents, &vocabulary, request.mode)?;
-    let by_id = loaded
-        .values()
-        .map(|document| {
-            (
-                document.value["metadata"]["id"]
-                    .as_str()
-                    .expect("validated module ID")
-                    .to_owned(),
-                document,
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    let root_ids = request
-        .roots
-        .iter()
-        .map(|root| confined_path(&allowed_root, root, &allowed_root))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| vec![*error.diagnostic])?
-        .into_iter()
-        .map(|root| {
-            loaded[&root].value["metadata"]["id"]
-                .as_str()
-                .expect("validated root ID")
-                .to_owned()
-        })
-        .collect::<BTreeSet<_>>();
 
-    let mut lock_documents = Vec::with_capacity(by_id.len());
+    let mut lock_documents = Vec::with_capacity(loaded.documents.len());
     let mut closure_digests = BTreeMap::new();
-    for (module_id, document) in &by_id {
-        let digest = import_closure_digest(module_id, &by_id)?;
+    for (module_id, document) in &loaded.documents {
+        let digest = loaded.import_closure_digest(module_id)?;
         closure_digests.insert(module_id.clone(), digest.clone());
         lock_documents.push(LockDocument {
             module_id: module_id.clone(),
@@ -253,7 +95,7 @@ pub(crate) fn compile(request: &CompileRequest) -> Result<CompileResult, Vec<Dia
     lock_documents.sort_by(|left, right| left.module_id.cmp(&right.module_id));
 
     let vocabulary_identity = vocabulary.identity();
-    let roots = root_ids.into_iter().collect::<Vec<_>>();
+    let roots = loaded.roots;
     let architecture_closure_digest = digest_value(
         DigestKind::ArchitectureClosure,
         &json!({
@@ -303,107 +145,11 @@ pub(crate) fn compile(request: &CompileRequest) -> Result<CompileResult, Vec<Dia
     })
 }
 
-fn confined_path(
-    allowed_root: &Path,
-    source: &Path,
-    parent: &Path,
-) -> Result<PathBuf, ArchitectureError> {
-    let source_text = source.to_string_lossy();
-    if source_text.contains("://") {
-        return Err(ArchitectureError::new(
-            "import.network-source-prohibited",
-            "network import sources are prohibited",
-        ));
-    }
-    if source_text.contains('\0') {
-        return Err(ArchitectureError::new(
-            "import.nul-prohibited",
-            "import source contains a NUL byte",
-        ));
-    }
-    if source
-        .components()
-        .any(|component| matches!(component, Component::Prefix(_)))
-    {
-        return Err(ArchitectureError::new(
-            "import.platform-prefix-prohibited",
-            "platform-prefixed import sources are prohibited",
-        ));
-    }
-    let candidate = if source.is_absolute() {
-        source.to_path_buf()
-    } else {
-        parent.join(source)
-    };
-    let canonical = fs::canonicalize(&candidate).map_err(|error| {
-        ArchitectureError::new(
-            "import.source-unavailable",
-            format!("{}: {error}", candidate.display()),
-        )
-    })?;
-    if !canonical.starts_with(allowed_root) {
-        return Err(ArchitectureError::new(
-            "import.path-escape",
-            format!(
-                "{} resolves outside {}",
-                candidate.display(),
-                allowed_root.display()
-            ),
-        ));
-    }
-    Ok(canonical)
-}
-
-fn portable_path(path: &Path, root: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
-fn import_closure_digest(
-    root: &str,
-    documents: &BTreeMap<String, &LoadedDocument>,
-) -> Result<TypedDigest, Vec<Diagnostic>> {
-    let mut pending = vec![root.to_owned()];
-    let mut visited = BTreeSet::new();
-    let mut members = Vec::new();
-    while let Some(id) = pending.pop() {
-        if !visited.insert(id.clone()) {
-            continue;
-        }
-        let Some(document) = documents.get(&id) else {
-            return Err(vec![Diagnostic::error(
-                "import.module-unresolved",
-                format!("import closure references missing module {id}"),
-            )]);
-        };
-        members.push(json!({
-            "moduleId": id,
-            "architectureVersion": document.value["metadata"]["architectureVersion"],
-            "canonicalModuleDigest": document.canonical_digest,
-        }));
-        for import in document.value["imports"]
-            .as_array()
-            .expect("validated imports")
-        {
-            pending.push(
-                import["module"]
-                    .as_str()
-                    .expect("validated import ID")
-                    .to_owned(),
-            );
-        }
-    }
-    members.sort_by(|left, right| left["moduleId"].as_str().cmp(&right["moduleId"].as_str()));
-    digest_value(DigestKind::ImportClosure, &Value::Array(members))
-        .map_err(|error| vec![*error.diagnostic])
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{compile, confined_path, CompileRequest};
+    use super::{compile, CompileRequest};
     use crate::architecture::digest::{digest_value, DigestKind};
+    use crate::architecture::documents::confined_path;
     use crate::architecture::graph::CompileMode;
     use crate::architecture::yaml::{parse, ParseLimits};
     use serde_json::json;
@@ -461,7 +207,7 @@ mod tests {
         let diagnostics = compile(&request).expect_err("change is non-governing");
         assert!(diagnostics
             .iter()
-            .any(|diagnostic| diagnostic.code == "compile.root-kind"));
+            .any(|diagnostic| diagnostic.code == "document.root-kind"));
     }
 
     #[test]

@@ -7,11 +7,13 @@ use super::model::{
     SourceLocation, VocabularyIdentity,
 };
 use super::vocabulary::{is_qualified_identifier, Vocabulary};
+use super::yaml::{parse, ParseLimits};
 use super::{Diagnostic, ARCHITECTURE_API_VERSION};
 use manifests::{ManifestIndex, ManifestMatch};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 const OBSERVER_ID: &str = "codeatlas.tool.architecture-observer";
@@ -27,7 +29,7 @@ pub(crate) struct ObserveRequest {
     pub source_inputs: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CoverageStatus {
     Complete,
@@ -52,7 +54,7 @@ pub(crate) struct Coverage {
     pub limitations: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ObservationMode {
     Deterministic,
@@ -228,56 +230,129 @@ pub(crate) fn observe(
     Ok(observation)
 }
 
+pub(super) fn load(path: &Path) -> Result<ArchitectureObservation, Vec<Diagnostic>> {
+    let bytes = fs::read(path).map_err(|error| {
+        vec![Diagnostic::error(
+            "observation.read-failed",
+            format!("{}: {error}", path.display()),
+        )
+        .at_path(path)]
+    })?;
+    let document = parse(&bytes, ParseLimits::default())
+        .map_err(|error| vec![error.diagnostic.at_path(path)])?
+        .value;
+    let vocabulary = Vocabulary::bundled()?;
+    let diagnostics = validate_document(&document, &vocabulary);
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+    let observation: ArchitectureObservation =
+        serde_json::from_value(document).map_err(|error| {
+            vec![Diagnostic::error("observation.decode-failed", error.to_string()).at_path(path)]
+        })?;
+    validate_semantics(&observation)?;
+    Ok(observation)
+}
+
 fn validate(
     observation: &ArchitectureObservation,
     vocabulary: &Vocabulary,
 ) -> Result<(), Vec<Diagnostic>> {
-    let mut diagnostics = Vec::new();
-    let content_digest = digest_value(
-        DigestKind::ObservationContent,
-        &json!({
-            "coverage": &observation.coverage,
-            "facts": &observation.facts,
-        }),
-    )
-    .map_err(|error| vec![*error.diagnostic])?;
-    if content_digest != observation.digests.observation_content_digest {
-        diagnostics.push(Diagnostic::error(
-            "observation.content-digest-mismatch",
-            "observationContentDigest does not match the semantic facts and coverage",
-        ));
-    }
-    let envelope_digest = digest_value(
-        DigestKind::ObservationEnvelope,
-        &json!({
-            "repository": &observation.repository,
-            "sourceCommit": &observation.source_commit,
-            "observationContentDigest": &observation.digests.observation_content_digest,
-            "generator": &observation.metadata.generator,
-            "generatedAt": &observation.metadata.generated_at,
-            "sourceInputs": &observation.metadata.source_inputs,
-            "generationCommand": &observation.metadata.generation_command,
-        }),
-    )
-    .map_err(|error| vec![*error.diagnostic])?;
-    if envelope_digest != observation.digests.observation_envelope_digest {
-        diagnostics.push(Diagnostic::error(
-            "observation.envelope-digest-mismatch",
-            "observationEnvelopeDigest does not match its provenance envelope",
-        ));
-    }
     let document = serde_json::to_value(observation).map_err(|error| {
         vec![Diagnostic::error(
             "observation.serialization-failed",
             error.to_string(),
         )]
     })?;
-    diagnostics.extend(vocabulary.validate_document(&document));
+    let mut diagnostics = validate_document(&document, vocabulary);
+    if let Err(mut semantic_diagnostics) = validate_semantics(observation) {
+        diagnostics.append(&mut semantic_diagnostics);
+    }
     if diagnostics.is_empty() {
         Ok(())
     } else {
         Err(diagnostics)
     }
+}
+
+fn validate_semantics(observation: &ArchitectureObservation) -> Result<(), Vec<Diagnostic>> {
+    let mut diagnostics = Vec::new();
+    if !is_qualified_identifier(&observation.metadata.id)
+        || !is_qualified_identifier(&observation.repository.id)
+    {
+        diagnostics.push(Diagnostic::error(
+            "observation.identifier-invalid",
+            "observation and repository IDs must be qualified architecture identifiers",
+        ));
+    }
+    if !valid_source_commit(&observation.source_commit) {
+        diagnostics.push(Diagnostic::error(
+            "observation.source-commit-invalid",
+            "sourceCommit must contain 7 to 64 lowercase hexadecimal characters",
+        ));
+    }
+    if !valid_timestamp(&observation.metadata.generated_at) {
+        diagnostics.push(Diagnostic::error(
+            "observation.timestamp-invalid",
+            "generatedAt must use RFC 3339 UTC seconds",
+        ));
+    }
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(diagnostics)
+    }
+}
+
+fn validate_document(document: &Value, vocabulary: &Vocabulary) -> Vec<Diagnostic> {
+    let mut diagnostics = vocabulary.validate_document(document);
+    if !diagnostics.is_empty() {
+        return diagnostics;
+    }
+    match digest_value(
+        DigestKind::ObservationContent,
+        &json!({
+            "coverage": &document["coverage"],
+            "facts": &document["facts"],
+        }),
+    ) {
+        Ok(content_digest)
+            if document["digests"]["observationContentDigest"].as_str()
+                != Some(content_digest.as_str()) =>
+        {
+            diagnostics.push(Diagnostic::error(
+                "observation.content-digest-mismatch",
+                "observationContentDigest does not match the semantic facts and coverage",
+            ));
+        }
+        Err(error) => diagnostics.push(*error.diagnostic),
+        _ => {}
+    }
+    match digest_value(
+        DigestKind::ObservationEnvelope,
+        &json!({
+            "repository": &document["repository"],
+            "sourceCommit": &document["sourceCommit"],
+            "observationContentDigest": &document["digests"]["observationContentDigest"],
+            "generator": &document["metadata"]["generator"],
+            "generatedAt": &document["metadata"]["generatedAt"],
+            "sourceInputs": &document["metadata"]["sourceInputs"],
+            "generationCommand": &document["metadata"]["generationCommand"],
+        }),
+    ) {
+        Ok(envelope_digest)
+            if document["digests"]["observationEnvelopeDigest"].as_str()
+                != Some(envelope_digest.as_str()) =>
+        {
+            diagnostics.push(Diagnostic::error(
+                "observation.envelope-digest-mismatch",
+                "observationEnvelopeDigest does not match its provenance envelope",
+            ));
+        }
+        Err(error) => diagnostics.push(*error.diagnostic),
+        _ => {}
+    }
+    diagnostics
 }
 
 fn validate_request(request: &ObserveRequest) -> Vec<Diagnostic> {
