@@ -9,15 +9,6 @@ pub(crate) mod reachability;
 pub(crate) mod source_files;
 mod unused_public;
 
-pub(crate) fn build_importers(
-    report: &ScanReport,
-    root_dir: &Path,
-    no_default_ignore: bool,
-) -> imports::Importers {
-    let (importers, _file_edges) = imports::build_importers(report, root_dir, no_default_ignore);
-    importers
-}
-
 pub(crate) fn annotate_imports(
     report: &mut ScanReport,
     root_dir: &Path,

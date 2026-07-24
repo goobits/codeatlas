@@ -16,8 +16,6 @@ fn collect_unused_ids(root: &Path, language: &str) -> HashSet<String> {
         include_types: true,
         include_private: false,
         entrypoints: None,
-        suggest: true,
-        imports: false,
         no_default_ignore: false,
     };
     let scanners = languages::get_scanners(Some(vec![language.to_string()]));

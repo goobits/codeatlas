@@ -226,8 +226,6 @@ fn scan_dependency(root: &Path, no_default_ignore: bool) -> Result<PackageBundle
                 .map(|export| export.source_path.clone())
                 .collect(),
         ),
-        suggest: false,
-        imports: false,
         no_default_ignore,
     };
     let mut report = languages::scan_all(root, &config, languages::get_scanners_auto(root));

@@ -44,6 +44,9 @@ a positive integer to allow more parallel build work.
 
 Run `codeatlas <command> --help` for command-specific options.
 
+An explicit command is required. Repository-wide scan settings belong in
+`codeatlas.json`; the former top-level flag interface has been removed.
+
 ## Declared Architecture
 
 `architecture compile` accepts one or more root `ArchitectureModule` files,

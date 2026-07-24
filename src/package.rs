@@ -365,8 +365,6 @@ fn reachable_ids(root_dir: &Path, entrypoint: &str, no_default_ignore: bool) -> 
         include_types: true,
         include_private: false,
         entrypoints: Some(vec![entrypoint.to_string()]),
-        suggest: false,
-        imports: false,
         no_default_ignore,
     };
     let scanners = crate::languages::get_scanners_auto(root_dir);

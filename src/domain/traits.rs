@@ -6,8 +6,6 @@ pub struct ScanConfig {
     pub include_types: bool,
     pub include_private: bool,
     pub entrypoints: Option<Vec<String>>, // If Some, project the public API.
-    pub suggest: bool,
-    pub imports: bool,
     pub no_default_ignore: bool,
 }
 

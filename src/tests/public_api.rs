@@ -16,8 +16,6 @@ fn public_api_typescript_exports() {
         include_types: true,
         include_private: false,
         entrypoints: Some(vec!["src/index.ts".to_string()]),
-        suggest: false,
-        imports: false,
         no_default_ignore: false,
     };
     let scanners = languages::get_scanners(Some(vec!["ts".to_string()]));
@@ -34,8 +32,6 @@ fn public_api_python_exports() {
         include_types: true,
         include_private: false,
         entrypoints: Some(vec!["pkg/__init__.py".to_string()]),
-        suggest: false,
-        imports: false,
         no_default_ignore: false,
     };
     let scanners = languages::get_scanners(Some(vec!["py".to_string()]));
@@ -52,8 +48,6 @@ fn public_api_rust_exports() {
         include_types: true,
         include_private: false,
         entrypoints: Some(vec!["src/lib.rs".to_string()]),
-        suggest: false,
-        imports: false,
         no_default_ignore: false,
     };
     let scanners = languages::get_scanners(Some(vec!["rs".to_string()]));

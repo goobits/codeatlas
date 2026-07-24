@@ -18,8 +18,6 @@ fn fixture_report(include_private: bool) -> crate::domain::ScanReport {
         include_types: true,
         include_private,
         entrypoints: None,
-        suggest: false,
-        imports: false,
         no_default_ignore: false,
     };
     let mut report = languages::scan_all(&root, &config, languages::get_scanners_auto(&root));
@@ -70,8 +68,6 @@ fn declaration_contract_scans_reachable_files_inside_ignored_dist() {
         include_types: true,
         include_private: false,
         entrypoints: Some(vec!["dist/types/index.d.ts".to_string()]),
-        suggest: false,
-        imports: false,
         no_default_ignore: false,
     };
     let report = languages::scan_all(
@@ -179,8 +175,7 @@ export { PublicAPI }
 
     let project =
         ProjectConfig::load(&root, Some(&root.join("codeatlas.json"))).expect("project config");
-    let config =
-        commands::build_scan_config(&project, false, false, true, None).expect("scan config");
+    let config = commands::build_scan_config(&project, false, None).expect("scan config");
     let mut report = commands::scan_project(&project, &config).expect("declaration scan");
     commands::annotate_report(&mut report, &project).expect("annotated declaration report");
 
@@ -377,8 +372,6 @@ fn configured_entrypoints_limit_reported_package_exports() {
         include_types: true,
         include_private: false,
         entrypoints: Some(project.config.entrypoints.clone()),
-        suggest: false,
-        imports: false,
         no_default_ignore: false,
     };
     let mut report = languages::scan_all(&root, &config, languages::get_scanners_auto(&root));
@@ -508,8 +501,6 @@ export interface UnrelatedAPI {
         include_types: true,
         include_private: false,
         entrypoints: Some(vec!["src/index.ts".to_string()]),
-        suggest: false,
-        imports: false,
         no_default_ignore: false,
     };
     let mut report = languages::scan_all(&root, &config, languages::get_scanners_auto(&root));
@@ -785,8 +776,6 @@ fn extracts_python_and_rust_source_docs() {
             include_types: true,
             include_private: false,
             entrypoints: None,
-            suggest: false,
-            imports: false,
             no_default_ignore: false,
         };
         let mut report = languages::scan_all(&root, &config, languages::get_scanners_auto(&root));

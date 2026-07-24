@@ -4,7 +4,7 @@ pub(crate) mod dead_code;
 pub(crate) mod diff;
 pub(crate) mod docs;
 
-use crate::cli::{Cli, OutputFormat};
+use crate::cli::OutputFormat;
 use crate::config::ProjectConfig;
 use crate::domain::{ScanConfig, ScanReport};
 use crate::{analysis, languages, outputs, package};
@@ -29,7 +29,7 @@ fn scan(
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, include_private, false, true, None)?;
+    let config = build_scan_config(&project, include_private, None)?;
     let mut report = scan_project(&project, &config)?;
 
     analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
@@ -44,7 +44,7 @@ pub(crate) fn run_audit(path: &Path, config_path: Option<&Path>) -> i32 {
 
 fn audit(path: &Path, config_path: Option<&Path>) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, false, true, true, None)?;
+    let config = build_scan_config(&project, false, None)?;
     let mut report = scan_project(&project, &config)?;
     let importers =
         analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
@@ -75,7 +75,7 @@ fn ci(
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, false, fail_unused, fail_unused, None)?;
+    let config = build_scan_config(&project, false, None)?;
     let mut report = scan_project(&project, &config)?;
 
     if fail_unused {
@@ -116,7 +116,7 @@ pub(crate) fn run_map(path: &Path, out: Option<PathBuf>, config_path: Option<&Pa
 
 fn map(path: &Path, out: Option<PathBuf>, config_path: Option<&Path>) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, false, false, true, None)?;
+    let config = build_scan_config(&project, false, None)?;
     let mut report = scan_project(&project, &config)?;
     analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
     annotate_report(&mut report, &project)?;
@@ -133,58 +133,9 @@ fn map(path: &Path, out: Option<PathBuf>, config_path: Option<&Path>) -> Result<
     Ok(0)
 }
 
-pub(crate) fn run_legacy(cli: &Cli) -> i32 {
-    exit_code(legacy(cli))
-}
-
-fn legacy(cli: &Cli) -> Result<i32> {
-    let project = load_project(&cli.path, cli.config.as_deref())?;
-    let mut config = build_scan_config(
-        &project,
-        cli.include_private,
-        cli.suggest,
-        cli.imports,
-        cli.entrypoints.clone(),
-    )?;
-    config.include_types =
-        cli.include_types || cli.format.is_none() || project.config.include_types;
-    config.no_default_ignore = cli.no_default_ignore || project.config.no_default_ignore;
-
-    let scanners = if cli.languages.is_some() {
-        languages::get_scanners(cli.languages.clone())
-    } else if !project.config.languages.is_empty() {
-        languages::get_scanners(Some(project.config.languages.clone()))
-    } else {
-        languages::get_scanners_auto(&project.root)
-    };
-
-    let mut report = languages::scan_all(&project.root, &config, scanners);
-    let mut importers = None;
-    if config.imports {
-        importers = Some(analysis::annotate_imports(
-            &mut report,
-            &project.root,
-            config.no_default_ignore,
-        ));
-    }
-    if config.suggest {
-        let importers = importers.unwrap_or_else(|| {
-            analysis::build_importers(&report, &project.root, config.no_default_ignore)
-        });
-        analysis::annotate_unused_public(&mut report, &importers, config.no_default_ignore);
-    }
-    annotate_report(&mut report, &project)?;
-
-    let format = cli.format.unwrap_or(OutputFormat::Tree);
-    write_report(render_format(&report, format)?, cli.out.clone(), format)?;
-    Ok(0)
-}
-
 pub(super) fn build_scan_config(
     project: &ProjectConfig,
     include_private: bool,
-    suggest: bool,
-    imports: bool,
     entrypoints: Option<Vec<String>>,
 ) -> Result<ScanConfig> {
     let configured_entrypoints =
@@ -208,8 +159,6 @@ pub(super) fn build_scan_config(
         include_types: project.config.include_types,
         include_private: include_private || project.config.include_private,
         entrypoints,
-        suggest,
-        imports,
         no_default_ignore: project.config.no_default_ignore,
     })
 }

@@ -10,35 +10,11 @@ use std::path::PathBuf;
 #[command(version)]
 pub(crate) struct Cli {
     #[command(subcommand)]
-    command: Option<Command>,
-
-    /// Path to the repo root (for legacy flag-based usage)
-    #[arg(default_value = ".")]
-    pub(crate) path: PathBuf,
+    command: Command,
 
     /// Path to codeatlas.json
     #[arg(long, global = true)]
     pub(crate) config: Option<PathBuf>,
-
-    // Hidden flags preserve the original flag-based CLI while callers migrate to subcommands.
-    #[arg(short, long, value_delimiter = ',', hide = true)]
-    pub(crate) languages: Option<Vec<String>>,
-    #[arg(short, long, value_enum, hide = true)]
-    pub(crate) format: Option<OutputFormat>,
-    #[arg(short, long, hide = true)]
-    pub(crate) out: Option<PathBuf>,
-    #[arg(long, hide = true)]
-    pub(crate) include_types: bool,
-    #[arg(long, hide = true)]
-    pub(crate) include_private: bool,
-    #[arg(long, value_delimiter = ',', hide = true)]
-    pub(crate) entrypoints: Option<Vec<String>>,
-    #[arg(long, hide = true)]
-    pub(crate) suggest: bool,
-    #[arg(long, hide = true)]
-    pub(crate) imports: bool,
-    #[arg(long, hide = true)]
-    pub(crate) no_default_ignore: bool,
 }
 
 #[derive(Subcommand)]
@@ -276,28 +252,26 @@ pub(crate) fn run() -> i32 {
     let config_path = cli.config.clone();
 
     match cli.command {
-        Some(Command::Scan {
+        Command::Scan {
             path,
             format,
             all,
             out,
-        }) => commands::run_scan(&path, format, all, out, config_path.as_deref()),
-        Some(Command::Audit { path }) => commands::run_audit(&path, config_path.as_deref()),
-        Some(Command::DeadCode {
+        } => commands::run_scan(&path, format, all, out, config_path.as_deref()),
+        Command::Audit { path } => commands::run_audit(&path, config_path.as_deref()),
+        Command::DeadCode {
             path,
             format,
             out,
             check,
-        }) => {
-            commands::dead_code::run(&path, format, out.as_deref(), check, config_path.as_deref())
-        }
-        Some(Command::Context {
+        } => commands::dead_code::run(&path, format, out.as_deref(), check, config_path.as_deref()),
+        Command::Context {
             path,
             target,
             depth,
             max_nodes,
             out,
-        }) => commands::context_slice::run(
+        } => commands::context_slice::run(
             &path,
             target,
             depth,
@@ -305,7 +279,7 @@ pub(crate) fn run() -> i32 {
             out.as_deref(),
             config_path.as_deref(),
         ),
-        Some(Command::Architecture { command }) => match command {
+        Command::Architecture { command } => match command {
             ArchitectureCommand::Compile {
                 modules,
                 source_root,
@@ -358,19 +332,19 @@ pub(crate) fn run() -> i32 {
                 check,
             }),
         },
-        Some(Command::Ci {
+        Command::Ci {
             path,
             fail_unused,
             baseline,
-        }) => commands::run_ci(&path, fail_unused, baseline, config_path.as_deref()),
-        Some(Command::Map { path, out }) => commands::run_map(&path, out, config_path.as_deref()),
-        Some(Command::Docs {
+        } => commands::run_ci(&path, fail_unused, baseline, config_path.as_deref()),
+        Command::Map { path, out } => commands::run_map(&path, out, config_path.as_deref()),
+        Command::Docs {
             path,
             out,
             format,
             check,
             title,
-        }) => commands::docs::run(
+        } => commands::docs::run(
             &path,
             out.as_deref(),
             format,
@@ -378,20 +352,26 @@ pub(crate) fn run() -> i32 {
             title.as_deref(),
             config_path.as_deref(),
         ),
-        Some(Command::Diff { baseline, path }) => {
+        Command::Diff { baseline, path } => {
             commands::diff::run(&baseline, &path, config_path.as_deref())
         }
-        None if uses_legacy_flags(&cli) => commands::run_legacy(&cli),
-        None => commands::run_scan(
-            &cli.path,
-            OutputFormat::Tree,
-            false,
-            None,
-            config_path.as_deref(),
-        ),
     }
 }
 
-fn uses_legacy_flags(cli: &Cli) -> bool {
-    cli.format.is_some() || cli.suggest || cli.imports || cli.languages.is_some()
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::Parser;
+
+    #[test]
+    fn requires_an_explicit_command() {
+        assert!(Cli::try_parse_from(["codeatlas"]).is_err());
+        assert!(Cli::try_parse_from(["codeatlas", "scan", "."]).is_ok());
+    }
+
+    #[test]
+    fn rejects_the_removed_flag_based_interface() {
+        assert!(Cli::try_parse_from(["codeatlas", ".", "--format", "json"]).is_err());
+        assert!(Cli::try_parse_from(["codeatlas", ".", "--suggest"]).is_err());
+    }
 }

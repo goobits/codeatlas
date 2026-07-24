@@ -16,7 +16,7 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
         .with_context(|| format!("Invalid baseline JSON at {}", baseline_path.display()))?;
 
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, false, false, false, None)?;
+    let config = build_scan_config(&project, false, None)?;
     let mut current = scan_project(&project, &config)?;
     annotate_report(&mut current, &project)?;
 

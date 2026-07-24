@@ -46,7 +46,7 @@ fn generate(
                 .unwrap_or_default()
         })
         .filter(|entries| !entries.is_empty());
-    let config = build_scan_config(&project, false, false, true, discovered_entrypoints)?;
+    let config = build_scan_config(&project, false, discovered_entrypoints)?;
     let mut report = scan_project(&project, &config)?;
     analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
     annotate_report(&mut report, &project)?;
