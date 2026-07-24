@@ -1,5 +1,6 @@
 use super::diagnostic::Diagnostic;
 use super::digest::{digest_value, DigestKind, TypedDigest};
+use super::model::VocabularyIdentity;
 use super::schema;
 use super::yaml::{parse, ParseLimits};
 use serde::Deserialize;
@@ -174,6 +175,14 @@ impl Vocabulary {
                 .then_with(|| left.message.cmp(&right.message))
         });
         diagnostics
+    }
+
+    pub(crate) fn identity(&self) -> VocabularyIdentity {
+        VocabularyIdentity {
+            id: self.id.clone(),
+            version: self.version,
+            digest: self.digest.clone(),
+        }
     }
 
     pub(crate) fn validate_relation(

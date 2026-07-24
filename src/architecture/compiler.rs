@@ -1,6 +1,7 @@
 use super::diagnostic::{sort_diagnostics, ArchitectureError, Diagnostic};
 use super::digest::{digest_value, DigestKind, TypedDigest};
 use super::graph::{self, CompileMode, CompiledGraph};
+use super::model::{GeneratorIdentity, VocabularyIdentity};
 use super::vocabulary::Vocabulary;
 use super::yaml::{parse, ParseLimits};
 use super::{ARCHITECTURE_API_VERSION, ARCHITECTURE_SCHEMA_VERSION};
@@ -55,19 +56,6 @@ pub(crate) struct ArchitectureLockfile {
     pub roots: Vec<String>,
     pub vocabulary: VocabularyIdentity,
     pub documents: Vec<LockDocument>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub(crate) struct GeneratorIdentity {
-    pub id: &'static str,
-    pub version: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub(crate) struct VocabularyIdentity {
-    pub id: String,
-    pub version: u64,
-    pub digest: TypedDigest,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -264,11 +252,7 @@ pub(crate) fn compile(request: &CompileRequest) -> Result<CompileResult, Vec<Dia
     }
     lock_documents.sort_by(|left, right| left.module_id.cmp(&right.module_id));
 
-    let vocabulary_identity = VocabularyIdentity {
-        id: vocabulary.id.clone(),
-        version: vocabulary.version,
-        digest: vocabulary.digest.clone(),
-    };
+    let vocabulary_identity = vocabulary.identity();
     let roots = root_ids.into_iter().collect::<Vec<_>>();
     let architecture_closure_digest = digest_value(
         DigestKind::ArchitectureClosure,
@@ -309,7 +293,7 @@ pub(crate) fn compile(request: &CompileRequest) -> Result<CompileResult, Vec<Dia
             generated: true,
             manual_editing: "prohibited",
             generator: GeneratorIdentity {
-                id: "codeatlas.tool.architecture-compiler",
+                id: "codeatlas.tool.architecture-compiler".to_owned(),
                 version: env!("CARGO_PKG_VERSION").to_owned(),
             },
             roots,

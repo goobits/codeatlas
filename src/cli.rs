@@ -160,6 +160,34 @@ enum ArchitectureCommand {
         #[arg(long)]
         lock_out: Option<PathBuf>,
     },
+
+    /// Observe implementation evidence for accepted architecture bindings
+    Observe {
+        /// Root ArchitectureModule documents
+        #[arg(required = true)]
+        modules: Vec<PathBuf>,
+        /// Filesystem boundary for modules and local imports
+        #[arg(long, default_value = ".")]
+        source_root: PathBuf,
+        /// Repository to inspect
+        #[arg(long, default_value = ".")]
+        repository: PathBuf,
+        /// Stable qualified repository identity
+        #[arg(long)]
+        repository_id: String,
+        /// Stable qualified observation identity
+        #[arg(long)]
+        observation_id: String,
+        /// Lowercase hexadecimal source commit
+        #[arg(long)]
+        source_commit: String,
+        /// Explicit RFC 3339 UTC observation time
+        #[arg(long)]
+        observed_at: String,
+        /// Write the generated observation instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -230,6 +258,25 @@ pub(crate) fn run() -> i32 {
                 out.as_deref(),
                 lock_out.as_deref(),
             ),
+            ArchitectureCommand::Observe {
+                modules,
+                source_root,
+                repository,
+                repository_id,
+                observation_id,
+                source_commit,
+                observed_at,
+                out,
+            } => commands::architecture::observe::run(&commands::architecture::observe::Options {
+                modules: &modules,
+                source_root: &source_root,
+                repository_root: &repository,
+                repository_id: &repository_id,
+                observation_id: &observation_id,
+                source_commit: &source_commit,
+                observed_at: &observed_at,
+                out: out.as_deref(),
+            }),
         },
         Some(Command::Ci {
             path,
