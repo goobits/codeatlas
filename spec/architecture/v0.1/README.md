@@ -18,15 +18,27 @@ evidence or projections.
 | `spec/` | Normative language, compiler, conformance, security, and migration semantics |
 | `schemas/` | Draft 2020-12 document-shape schemas expressed as restricted YAML |
 | `vocabularies/` | Closed typed v0.1 architecture vocabulary |
-| `examples/` | Normative examples and generated evidence |
+| `examples/` | Normative examples and accepted Phase 7 generated evidence |
 | `MANIFEST.sha256` | Generated deterministic manifest of this package |
 
 ## Evidence
 
-The private reference validator, fixtures, Phase 7 review evidence, and
-historical manifest remain under
-`design/architecture-dsl/v0.1/`. They test this specification but are not a
-second architecture authority or a supported product API.
+The Phase 7 fixtures, validation record, and historical manifest remain under
+`design/architecture-dsl/v0.1/`. The private proof validator was retired after
+its semantics moved into the separately reviewed product implementation. Its
+reviewed source remains recoverable from commit `8f5a2df`.
+
+Current production checks compile the bundled schemas and vocabulary, exercise
+the valid and invalid semantics, and verify this package manifest:
+
+```bash
+pnpm run spec:check
+cargo test --locked --jobs 1 architecture
+```
+
+The generated observation and conformance examples record the accepted Phase 7
+proof and keep their historical generator metadata. They are normative
+document-shape examples, not claims about the current repository.
 
 `ArchitectureChange` documents never enter an architecture graph and are never
 replayed to recover current state. Accepted changes are materialized in current

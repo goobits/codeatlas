@@ -43,10 +43,10 @@ approval gate, not a change type.
 | ID | Direction | Decision | Implementation | Authority source |
 | --- | --- | --- | --- | --- |
 | DIR-001 | Code Atlas remains independently versioned and consumed through pinned provider contracts | accepted | implemented | owner direction and released package boundary |
-| DIR-002 | Declared architecture and observed implementation remain distinct | accepted | absent | owner direction |
+| DIR-002 | Declared architecture and observed implementation remain distinct | accepted | implemented | owner direction |
 | DIR-003 | Code Atlas observes and reports but does not grant runtime authority | accepted | implemented | owner direction and existing product boundary |
 | DIR-004 | Generated prose and diagrams do not override governing contracts | accepted | partial | owner direction and current generated-output notices |
-| DIR-005 | Restricted YAML is the sole editable authority for declared architecture | accepted | absent | owner direction |
+| DIR-005 | Restricted YAML is the sole editable authority for declared architecture | accepted | implemented | owner direction |
 | DIR-006 | `codeatlas.json` remains tool configuration, not declared architecture | accepted | implemented | released configuration contract |
 | DIR-007 | Production implementation requires separate owner approval | accepted | granted | owner acceptance and implementation authorization |
 
@@ -57,20 +57,20 @@ separate and does not change their authority.
 
 | ID | Decision | Decision status | Implementation | Approval |
 | --- | --- | --- | --- | --- |
-| DSL-001 | Use six document kinds: module, policy, vocabulary, change, observation, conformance | accepted | partial | granted |
-| DSL-002 | Use one recursive module grammar at system, product, package, and subsystem levels | accepted | partial | granted |
-| DSL-003 | Give every declaration one fully qualified stable semantic ID and one declaring module | accepted | partial | granted |
-| DSL-004 | Keep capabilities, providers, packages, and consumers distinct | accepted | partial | granted |
-| DSL-005 | Use a closed, versioned, typed vocabulary | accepted | partial | granted |
-| DSL-006 | Permit local, exact, digest-pinned imports only | accepted | partial | granted |
-| DSL-007 | Keep declarations private unless explicitly exported | accepted | partial | granted |
-| DSL-008 | Use a closed constraint language without general expressions | accepted | partial | granted |
-| DSL-009 | Keep policy exceptions outside architecture graphs | accepted | partial | granted |
-| DSL-010 | Compile accepted declarations into a governing graph and optional proposed or unresolved declarations into a review graph | accepted | partial | granted |
-| DSL-011 | Reserve retired IDs permanently and record supersession explicitly | accepted | partial | granted |
-| DSL-012 | Separate change type, decision status, and approval status | accepted | partial | granted |
-| DSL-013 | Separate stable authority artifact identity from repository locator | accepted | partial | granted |
-| DSL-014 | Use JSON Schema Draft 2020-12 for static document shape | accepted | partial | granted |
+| DSL-001 | Use six document kinds: module, policy, vocabulary, change, observation, conformance | accepted | implemented | granted |
+| DSL-002 | Use one recursive module grammar at system, product, package, and subsystem levels | accepted | implemented | granted |
+| DSL-003 | Give every declaration one fully qualified stable semantic ID and one declaring module | accepted | implemented | granted |
+| DSL-004 | Keep capabilities, providers, packages, and consumers distinct | accepted | implemented | granted |
+| DSL-005 | Use a closed, versioned, typed vocabulary | accepted | implemented | granted |
+| DSL-006 | Permit local, exact, digest-pinned imports only | accepted | implemented | granted |
+| DSL-007 | Keep declarations private unless explicitly exported | accepted | implemented | granted |
+| DSL-008 | Use a closed constraint language without general expressions | accepted | implemented | granted |
+| DSL-009 | Keep policy exceptions outside architecture graphs | accepted | implemented | granted |
+| DSL-010 | Compile accepted declarations into a governing graph and optional proposed or unresolved declarations into a review graph | accepted | implemented | granted |
+| DSL-011 | Reserve retired IDs permanently and record supersession explicitly | accepted | implemented | granted |
+| DSL-012 | Separate change type, decision status, and approval status | accepted | implemented | granted |
+| DSL-013 | Separate stable authority artifact identity from repository locator | accepted | implemented | granted |
+| DSL-014 | Use JSON Schema Draft 2020-12 for static document shape | accepted | implemented | granted |
 | DSL-015 | Use a private Rust reference validator as executable specification evidence | accepted | implemented | granted |
 
 ## Typed digest registry
@@ -135,19 +135,16 @@ The governing example therefore uses a generic tab-host capability. A separate
 proposed example may preserve the owner-directed one-root-Space-per-tab idea as
 supporting authority, with an ADR and migration still required.
 
-## Validator isolation
+## Validator retirement
 
-The reference validator:
+The reference validator fulfilled its Phase 7 proof role and was removed after
+the separately reviewed production compiler, observer, policy evaluator, and
+conformance engine covered its accepted semantics. Its exact reviewed source
+remains in commit `8f5a2df`.
 
-- sets `publish = false`;
-- is not a member of the production Code Atlas crate or release package;
-- has no public Code Atlas command or stable API;
-- has no network resolution;
-- performs no architecture mutation;
-- performs no Goobits or Workshop integration;
-- changes no production dependency or lockfile;
-- uses an independent lockfile only as an isolated crate;
-- is invoked deterministically from this design directory.
+The retired proof never became a public Code Atlas command, stable API,
+production dependency, runtime integration, or architecture mutation path.
+Current semantics have one production owner under `src/architecture/`.
 
 ## Deferred product decisions
 

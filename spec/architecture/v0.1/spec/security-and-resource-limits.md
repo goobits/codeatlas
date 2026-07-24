@@ -37,9 +37,10 @@ It rejects:
 Quoted strings such as `"${TOKEN}"` are ordinary literal text only when the
 schema permits that string. No interpolation occurs.
 
-## 2. Default reference limits
+## 2. Default limits
 
-The private reference validator enforces these v0.1 defaults:
+The production architecture parser, schemas, and document loader enforce these
+v0.1 defaults:
 
 | Resource | Limit |
 | --- | ---: |
@@ -77,7 +78,7 @@ The parser must:
 All materialized imports and source evidence paths are resolved within explicit
 allowed roots.
 
-The validator:
+The architecture document loader:
 
 1. rejects a network scheme;
 2. rejects NUL bytes;
@@ -102,8 +103,8 @@ Imports require:
 - an acyclic dependency;
 - an allowed-root path.
 
-The validator rejects digest substitution, identity substitution, source
-swapping, floating versions, implicit latest, and network fallback.
+The architecture compiler rejects digest substitution, identity substitution,
+source swapping, floating versions, implicit latest, and network fallback.
 
 Lockfiles record exact resolution but never authorize a changed import.
 
@@ -130,7 +131,7 @@ cannot independently produce a hard conformance gate.
 The DSL records typed authority references but does not authenticate principals
 or issue runtime grants.
 
-The validator checks:
+The architecture validator checks:
 
 - authority kind exists;
 - artifact ID and version are structured;
@@ -180,7 +181,7 @@ failure is a validation error, not a successful rule result.
 
 ## 10. Denial-of-service behavior
 
-On a limit violation, the validator:
+On a limit violation, the architecture operation:
 
 - stops the affected operation;
 - emits one stable reason code with the measured and allowed values;
@@ -192,32 +193,29 @@ It must not retry with relaxed limits automatically.
 
 ## 11. Generated files
 
-Generated output writes:
+Generated output writers:
 
-- only to explicitly approved design-package paths;
+- write only to an explicit caller-selected output path;
 - through a temporary sibling file;
 - after complete validation;
 - with atomic replacement where supported;
 - with stable LF line endings;
 - without following an output symlink.
 
-The manifest excludes itself and must not include `.git`, Cargo target output,
-lock files outside the isolated crate, or editor state.
+The specification manifest excludes itself and includes only files under the
+accepted specification root.
 
-## 12. Dependency isolation
+## 12. Implementation boundary
 
-The private Rust validator:
+Architecture implementation lives under the production
+`src/architecture/` domain and is exposed only through the versioned CLI and
+JSON contracts. It performs no network import resolution, accepted
+architecture mutation, Goobits runtime integration, or runtime authority
+operation.
 
-- uses `publish = false`;
-- remains outside production workspace membership;
-- changes no production `Cargo.toml` or `Cargo.lock`;
-- has no build, dev, or runtime dependency from production Code Atlas;
-- exposes no root CLI command;
-- accesses no network at runtime;
-- performs no source mutation.
-
-Dependency additions inside its own lockfile remain subject to supply-chain
-review before any later production reuse.
+The private Phase 7 validator was retired after its semantics received
+production coverage. Its exact reviewed source remains recoverable from commit
+`8f5a2df`; it is not a second dependency or execution path.
 
 ## 13. Failure posture
 

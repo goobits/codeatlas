@@ -104,14 +104,12 @@ Generated documents also include:
 metadata:
   generated: true
   generator:
-    id: codeatlas.tool.reference-validator
-    version: "0.1.0"
+    id: codeatlas.tool.architecture-observer
+    version: "0.1"
   generatedAt: "2026-07-23T00:00:00Z"
   sourceInputs:
-    - fixtures/valid/governing-status/root.atlas.yaml
-  generationCommand: >-
-    cargo run --manifest-path design/architecture-dsl/v0.1/reference-validator/Cargo.toml
-    --bin generate_artifacts
+    - architecture/root.atlas.yaml
+  generationCommand: codeatlas architecture observe
 ```
 
 ## 6. Identifiers
@@ -583,8 +581,9 @@ must include:
 - generation command;
 - prohibition on manual editing.
 
-`MANIFEST.sha256` uses stable path order, hashes normalized checked-in bytes,
-excludes itself, and is regenerated rather than hand-edited.
+`MANIFEST.sha256` uses stable path order, hashes exact checked-in bytes,
+excludes itself, and is regenerated with `pnpm run spec:write` rather than
+hand-edited.
 
 ## 17. Non-goals
 
@@ -599,7 +598,7 @@ V0.1 does not include:
 - runtime health or coordination state;
 - general graph queries;
 - diagram layout;
-- production compiler integration.
+- runtime integration outside Code Atlas.
 
 ## 18. Acceptance
 

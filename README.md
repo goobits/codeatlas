@@ -11,6 +11,7 @@ code dead when the source graph is incomplete.
 npx @goobits/codeatlas scan .
 npx @goobits/codeatlas audit .
 npx @goobits/codeatlas dead-code . --format json
+npx @goobits/codeatlas context . --target src/main.rs
 npx @goobits/codeatlas architecture compile architecture/root.atlas.yaml --source-root .
 npx @goobits/codeatlas docs . --out docs/API-Reference.md
 npx @goobits/codeatlas docs . --format html --out docs/API-Reference.html
@@ -34,7 +35,8 @@ a positive integer to allow more parallel build work.
 | `scan` | Show the public surface as a tree, Mermaid, or versioned JSON report |
 | `audit` | Report public exports with no detected repository consumers |
 | `dead-code` | Classify source reachability, context-only code, and uncertain boundaries |
-| `architecture` | Compile and compare accepted Atlas Architecture DSL declarations |
+| `context` | Return a bounded source graph slice for exact files or symbols |
+| `architecture` | Compile declarations, observe bindings, and evaluate conformance |
 | `ci` | Write a JSON baseline and fail on configured audit findings |
 | `diff` | Compare the current public symbols with a JSON baseline |
 | `map` | Generate a Mermaid dependency diagram |
@@ -63,6 +65,38 @@ proposed and unresolved declarations, but remains non-governing. Restricted
 YAML declarations are the editable authority. Generated graphs, lockfiles,
 observations, and conformance reports are evidence and must not be edited by
 hand.
+
+Generate implementation evidence for accepted package and crate bindings:
+
+```bash
+codeatlas architecture observe \
+  architecture/root.atlas.yaml \
+  --source-root . \
+  --repository . \
+  --repository-id example.repository.source \
+  --observation-id example.observation.current \
+  --source-commit 0123456789abcdef0123456789abcdef01234567 \
+  --observed-at 2026-07-23T00:00:00Z \
+  --out .codeatlas/architecture-observation.json
+```
+
+Compare the governing graph with that exact observation:
+
+```bash
+codeatlas architecture conform \
+  architecture/root.atlas.yaml \
+  --source-root . \
+  --observation .codeatlas/architecture-observation.json \
+  --conformance-id example.conformance.current \
+  --as-of 2026-07-23T00:00:00Z \
+  --check \
+  --out .codeatlas/architecture-conformance.json
+```
+
+Policies are optional repeatable `--policy` inputs. They can authorize a
+temporary deviation, but they never modify the governing graph. Callers supply
+source commits and timestamps explicitly so generated evidence is
+reproducible.
 
 ## Configuration
 
@@ -190,6 +224,23 @@ internal edges, and dynamic boundaries. Only high-confidence unreachable
 files, unused private symbols, and unresolved internal imports can fail
 `dead-code --check`. Public APIs without repository consumers remain advisory
 because external consumers may exist.
+
+Use `context` to retrieve only the nearby source facts needed for a task:
+
+```bash
+codeatlas context . \
+  --target src/architecture/compiler.rs \
+  --target src/architecture/compiler.rs#compile \
+  --depth 2 \
+  --max-nodes 128 \
+  --out .codeatlas/context.json
+```
+
+Targets are exact source graph node IDs, repository-relative paths, or
+`path#symbol` selectors. The result includes dependencies, dependents,
+visibility, evidence, analysis boundaries, and an explicit truncation status.
+The source context graph remains separate from the declared architecture graph
+because the two graphs have different authority and semantics.
 
 ## Documentation Checks
 

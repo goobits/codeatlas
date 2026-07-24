@@ -1,11 +1,11 @@
 # generated: true
-# generator: codeatlas.tool.reference-validator/0.1.0
-# command: cargo run --locked --jobs 1 --manifest-path design/architecture-dsl/v0.1/reference-validator/Cargo.toml --bin generate_artifacts -- --write
+# generator: codeatlas.task.check-architecture-spec/1
+# command: pnpm run spec:write
 # manual-editing: prohibited
 # excludes: MANIFEST.sha256
-407fcf476912cac40e62f414445b78c2bb69d390635b6dc6ba1abd418ccd9748  ACCEPTANCE.md
-33db07f9563ed0dfb0cb689c7605df93e0af37d0e21d9344e415da2dc6012485  DECISIONS.md
-c5c53268f40b6013820cfee525009d08ad550b177d0fe5b1fd804ab63c7e1216  README.md
+d154c9c8603ec0b710954da015d9ff891a36c61bbdb18ec7c1bbcacedbe58c1b  ACCEPTANCE.md
+707a548b1f3c8758fd61e2e319779419322a867230f1541d8c997ea5ded86090  DECISIONS.md
+a28e4b0d11de7b9d9f42128ea48b3e2975bd72c8747a2eddf2d454ac2cea69c1  README.md
 3ece70f918b34c8851bbe1afa7493675d217ad79d42a668865229c52ce7b571e  examples/conformance/architecture-conformance.generated.yaml
 b8fcb869759dafa1426b027fe2f061eb5d23a24b6645beb2f8e054a1ef902af1  examples/observation/architecture-observation.generated.yaml
 057ce9f8fa2ee0533134fba6f44b26dcaaa40a92bbcc66672ac5118dac3481bd  examples/observation/source-facts.yaml
@@ -20,10 +20,10 @@ c9ebca4308254a8b7dd950956e39db94bd3ae46f52970fbaadc969e6eae70f5c  schemas/archit
 7224fad459a1d2907503ce8669c677d76fe35114cbb59c2bc644b660f579228a  schemas/architecture-policy.v0.1.schema.yaml
 72f4f307232e8d3538c6b2fc664e198e7452c546e137bd89c097ea478ac6764b  schemas/architecture-vocabulary.v0.1.schema.yaml
 bbc26226e9c6ebce99870eb1ba4980c3191c37a0f703112bc1d1a9e9457a2fe5  schemas/common.v0.1.schema.yaml
-b9de22f9cc5228655e7cf7875a632fa9f867e0d7482b3eb18356d8d145854ff7  spec/atlas-architecture-dsl-v0.1.md
-df3979c15faf28de47f8e4f0e8f4ed23d99c7f8bda213dcb3e2c482aabc11a6f  spec/canonicalization-and-hashing.md
+9e353cf1b7c8ff1a189c34c10a9085e51ee521a5325c14a612e6b3672028791d  spec/atlas-architecture-dsl-v0.1.md
+be3c0b22a1fa17f494b8570da97fb7ee62bb7ba6b25206b77ec15a8cf13d2f6c  spec/canonicalization-and-hashing.md
 92786257b70c10b0fbb22b81815aa91d90bd2da5a970fadd5e975021e9dba121  spec/compiler-semantics.md
-da19f9ac21b3d781799419caae91aecfb84212517a6ae0518c365dec378b10f4  spec/conformance-semantics.md
-6f934dc0b8918cd09c2900d071e3bda81e4c0d4a07a5c32224da81a90aa4ee10  spec/security-and-resource-limits.md
-5dc91645d8a29d75edee517b6e27c028f968a976ed701a06b986e3b608d15e57  spec/versioning-and-migration.md
+78364cc8117df3c56b52b3ea9d9cc5d806833c453faae93dcf02ac02e075c3bc  spec/conformance-semantics.md
+a42ad7253abfe1dffd8c69b3760cabdfe885dc10411568f8dc14f1ba21c5a3d7  spec/security-and-resource-limits.md
+7599d2728668acce3dc7782357b6ecc9d62ebd7081efaab38e75d56d6d512442  spec/versioning-and-migration.md
 c267bbd915286e6029e3d18bbfacfc7418293e33f7d73aa41ef90aed55658bfa  vocabularies/core.v0.1.atlas.yaml

@@ -27,11 +27,13 @@ The accepted package consists of:
 - security, resource-limit, versioning, and migration rules;
 - the examples under this directory.
 
-The exact Phase 7 evidence remains reproducible through
-`design/architecture-dsl/v0.1/PHASE7_MANIFEST.sha256` and the private reference
-validator. The manifest records paths at their reviewed design-package
-locations. This promotion record maps the accepted normative files into
-`spec/architecture/v0.1/`.
+The exact Phase 7 evidence remains reproducible from commit `8f5a2df` and its
+immutable
+`design/architecture-dsl/v0.1/PHASE7_MANIFEST.sha256`. The manifest records
+paths at their reviewed design-package locations, including the private
+validator that existed during review. The validator was retired after a
+separately reviewed production implementation took ownership. This promotion
+record maps the accepted normative files into `spec/architecture/v0.1/`.
 
 ## Authority boundary
 

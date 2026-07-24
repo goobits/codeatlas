@@ -6,12 +6,17 @@ Validation proved that the reviewed specification was internally coherent,
 reproducible, and contained. Owner acceptance and later production
 authorization are recorded separately.
 
+This is a historical record. The commands below reproduce commit `8f5a2df`,
+where the private validator still existed. It was retired after the production
+architecture implementation covered its semantics. Current checks run through
+`pnpm run spec:check` and the production Cargo test suite.
+
 ## Baseline
 
 The repository audit began from Code Atlas commit `253b18a`, after the
 source-first wrapper and CI baseline was independently verified. Review
-fixtures and the private validator remain under
-`design/architecture-dsl/v0.1/`. Accepted normative artifacts were later
+fixtures remain under `design/architecture-dsl/v0.1/`. The reviewed private
+validator remains in Git history. Accepted normative artifacts were later
 promoted to `spec/architecture/v0.1/`.
 
 ## Reproduction

@@ -19,18 +19,18 @@ current deterministic manifest now live under `spec/architecture/v0.1/`.
 | `ARCHITECTURE_IMPACT_CHECK.md` | Original ownership and scope classification |
 | `REQUIREMENTS.md` | Phase 7 requirements traceability |
 | `fixtures/` | Valid and invalid review fixtures |
-| `reference-validator/` | Private executable specification evidence |
 | `VALIDATION.md` | Reproducible Phase 7 checks |
 | `RELEASE_NOTES.md` | Historical review-candidate notes |
 | `PHASE7_MANIFEST.sha256` | Immutable manifest of the reviewed package at commit `8f5a2df` |
 
 The historical manifest intentionally records the original design-package
-paths. Do not regenerate or edit it. The canonical package has its own
-generated `MANIFEST.sha256`.
+paths, including the private validator that existed at review time. Do not
+regenerate or edit it. The removed validator remains recoverable from commit
+`8f5a2df`. The canonical package has its own generated `MANIFEST.sha256`.
 
 ## Boundary
 
-The private validator:
+The retired private validator:
 
 - is unpublished and outside the production Code Atlas workspace;
 - has no supported public API or CLI contract;
@@ -38,6 +38,7 @@ The private validator:
 - performs no architecture mutation;
 - owns no Goobits, Workshop, Access, Shell, Git, or coordination behavior.
 
-It now validates the canonical specification while retaining the original
-fixtures locally. Production code may reuse proven semantics only through the
-separately reviewed product implementation.
+Production Code Atlas now owns the separately reviewed compiler, observation,
+and conformance implementation. The original review fixtures remain here as
+historical evidence, while current product tests exercise the accepted
+semantics.

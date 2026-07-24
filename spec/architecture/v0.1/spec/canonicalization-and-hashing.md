@@ -230,7 +230,7 @@ conformanceInputs:
   policyClosureDigest: sha256:...
   observationContentDigest: sha256:...
   vocabularyDigest: sha256:...
-  validatorVersion: codeatlas-reference-validator/0.1
+  validatorVersion: codeatlas.tool.architecture-conformance/0.1
   asOf: "2026-07-23T00:00:00Z"
 result: {}
 ```
@@ -258,7 +258,7 @@ ID and excludes local absolute paths.
 
 `MANIFEST.sha256`:
 
-- is generated from committed design-package files;
+- is generated from committed specification-package files;
 - excludes itself;
 - sorts paths by UTF-8 byte order;
 - uses forward-slash relative paths;

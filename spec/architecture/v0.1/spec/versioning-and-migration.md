@@ -200,9 +200,10 @@ spec/architecture/v0.1/
 ```
 
 `../ACCEPTANCE.md` records the source commit, evidence, accepted scope, and
-deferred implementation work. Historical fixtures and the private reference
-validator remain under `design/architecture-dsl/v0.1/` as non-authoritative
-evidence.
+separately authorized implementation work. Historical fixtures and the Phase 7
+manifest remain under `design/architecture-dsl/v0.1/` as non-authoritative
+evidence. The retired proof validator remains recoverable from the reviewed
+commit.
 
 ## 10. Earlier v0alpha1 proof
 
@@ -219,23 +220,15 @@ It may not coexist as a second editable authority. Any accepted semantic content
 must be migrated into v0.1 with stable IDs, explicit authority, and a recorded
 change.
 
-## 11. Future production compiler
+## 11. Production compiler
 
-The private reference validator is not promoted automatically.
+The owner separately authorized the production compiler after Phase 7
+acceptance. The implementation defines its own narrow CLI and versioned JSON
+contracts, production dependencies, security boundary, and compatibility
+tests. It did not promote the private validator crate or inherit its test APIs
+as public contracts.
 
-A later production proposal must independently define:
-
-- public capability and API ownership;
-- compatibility and support policy;
-- production dependencies;
-- CLI or service surface;
-- performance budgets;
-- migration from private evidence code;
-- security review;
-- Code Atlas release and Goobits pinning sequence.
-
-Production code may reuse proven algorithms only after that review. It must not
-inherit private test APIs as accidental public contracts.
+Goobits adoption and provider pinning remain separate consumer changes.
 
 ## 12. Removal rule
 
