@@ -1,4 +1,5 @@
 mod analysis;
+mod architecture;
 mod cli;
 mod commands;
 mod config;

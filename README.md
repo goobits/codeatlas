@@ -11,6 +11,7 @@ code dead when the source graph is incomplete.
 npx @goobits/codeatlas scan .
 npx @goobits/codeatlas audit .
 npx @goobits/codeatlas dead-code . --format json
+npx @goobits/codeatlas architecture compile architecture/root.atlas.yaml --source-root .
 npx @goobits/codeatlas docs . --out docs/API-Reference.md
 npx @goobits/codeatlas docs . --format html --out docs/API-Reference.html
 ```
@@ -33,12 +34,35 @@ a positive integer to allow more parallel build work.
 | `scan` | Show the public surface as a tree, Mermaid, or versioned JSON report |
 | `audit` | Report public exports with no detected repository consumers |
 | `dead-code` | Classify source reachability, context-only code, and uncertain boundaries |
+| `architecture` | Compile and compare accepted Atlas Architecture DSL declarations |
 | `ci` | Write a JSON baseline and fail on configured audit findings |
 | `diff` | Compare the current public symbols with a JSON baseline |
 | `map` | Generate a Mermaid dependency diagram |
 | `docs` | Generate deterministic Markdown or searchable HTML from public exports and source docs |
 
 Run `codeatlas <command> --help` for command-specific options.
+
+## Declared Architecture
+
+`architecture compile` accepts one or more root `ArchitectureModule` files,
+resolves exact digest-pinned local imports inside `--source-root`, validates the
+closed v0.1 vocabulary, and emits a deterministic normalized graph plus its
+generated lockfile.
+
+```bash
+codeatlas architecture compile \
+  architecture/root.atlas.yaml \
+  --source-root . \
+  --mode governing \
+  --out .codeatlas/architecture.json \
+  --lock-out .codeatlas/architecture.lock.json
+```
+
+`governing` includes active accepted declarations only. `review` also includes
+proposed and unresolved declarations, but remains non-governing. Restricted
+YAML declarations are the editable authority. Generated graphs, lockfiles,
+observations, and conformance reports are evidence and must not be edited by
+hand.
 
 ## Configuration
 

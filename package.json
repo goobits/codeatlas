@@ -2,7 +2,7 @@
 	"name": "@goobits/codeatlas",
 	"license": "SEE LICENSE IN LICENSE",
 	"version": "0.6.1",
-	"description": "Map public APIs and analyze source reachability across languages",
+	"description": "Map source code and compile declared architecture across languages",
 	"type": "commonjs",
 	"packageManager": "pnpm@10.25.0",
 	"scripts": {
@@ -28,6 +28,7 @@
 	"files": [
 		"bin/**",
 		"src/**",
+		"spec/architecture/v0.1/**",
 		"Cargo.toml",
 		"Cargo.lock",
 		"LICENSE",

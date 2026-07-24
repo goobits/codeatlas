@@ -82,6 +82,12 @@ enum Command {
         check: bool,
     },
 
+    /// Compile and compare declared architecture
+    Architecture {
+        #[command(subcommand)]
+        command: ArchitectureCommand,
+    },
+
     /// CI mode: exit non-zero if issues found
     Ci {
         /// Path to scan
@@ -134,6 +140,28 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum ArchitectureCommand {
+    /// Compile accepted ArchitectureModule declarations
+    Compile {
+        /// Root ArchitectureModule documents
+        #[arg(required = true)]
+        modules: Vec<PathBuf>,
+        /// Filesystem boundary for modules and local imports
+        #[arg(long, default_value = ".")]
+        source_root: PathBuf,
+        /// Compile the governing or non-governing review graph
+        #[arg(long, value_enum, default_value_t = ArchitectureCompileMode::Governing)]
+        mode: ArchitectureCompileMode,
+        /// Write the complete compilation result instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Also write the generated import lockfile
+        #[arg(long)]
+        lock_out: Option<PathBuf>,
+    },
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub(crate) enum OutputFormat {
     /// ASCII tree view (default)
@@ -160,6 +188,14 @@ pub(crate) enum DeadCodeFormat {
     Json,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ArchitectureCompileMode {
+    /// Compile active accepted declarations only
+    Governing,
+    /// Compile accepted, proposed, and unresolved declarations for review
+    Review,
+}
+
 pub(crate) fn run() -> i32 {
     let cli = Cli::parse();
     let config_path = cli.config.clone();
@@ -180,6 +216,21 @@ pub(crate) fn run() -> i32 {
         }) => {
             commands::dead_code::run(&path, format, out.as_deref(), check, config_path.as_deref())
         }
+        Some(Command::Architecture { command }) => match command {
+            ArchitectureCommand::Compile {
+                modules,
+                source_root,
+                mode,
+                out,
+                lock_out,
+            } => commands::architecture::compile::run(
+                &modules,
+                &source_root,
+                mode,
+                out.as_deref(),
+                lock_out.as_deref(),
+            ),
+        },
         Some(Command::Ci {
             path,
             fail_unused,
