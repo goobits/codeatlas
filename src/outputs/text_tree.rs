@@ -1,5 +1,6 @@
 use crate::domain::{ScanReport, Visibility};
 use colored::*;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 fn visibility_icon(vis: &Visibility) -> ColoredString {
@@ -40,7 +41,7 @@ pub(crate) fn render(report: &ScanReport) -> String {
         output.push_str(&format!("{} {}\n", "│".blue(), short_path.bold()));
 
         let symbols = files.get_mut(&file).unwrap();
-        symbols.sort_by_key(|s| s.span.as_ref().map(|sp| sp.start_line).unwrap_or(0));
+        symbols.sort_by(|left, right| compare_symbols(left, right));
 
         for (i, sym) in symbols.iter().enumerate() {
             let is_last = i == symbols.len() - 1 && sym.children.is_empty();
@@ -72,9 +73,11 @@ pub(crate) fn render(report: &ScanReport) -> String {
                 sym.name
             ));
 
-            for (j, child) in sym.children.iter().enumerate() {
+            let mut children = sym.children.iter().collect::<Vec<_>>();
+            children.sort_by(|left, right| compare_symbols(left, right));
+            for (j, child) in children.iter().enumerate() {
                 let child_prefix = if i == symbols.len() - 1 { " " } else { "│" };
-                let child_branch = if j == sym.children.len() - 1 {
+                let child_branch = if j == children.len() - 1 {
                     "└"
                 } else {
                     "├"
@@ -154,4 +157,60 @@ pub(crate) fn render(report: &ScanReport) -> String {
     ));
 
     output
+}
+
+fn compare_symbols(left: &crate::domain::Symbol, right: &crate::domain::Symbol) -> Ordering {
+    left.span
+        .cmp(&right.span)
+        .then_with(|| left.id.cmp(&right.id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render;
+    use crate::domain::{Language, ScanReport, Symbol, SymbolKind, Visibility};
+
+    fn symbol(id: &str, name: &str, children: Vec<Symbol>) -> Symbol {
+        Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Interface,
+            visibility: Visibility::Public,
+            language: Language::TypeScript,
+            file_path: "src/example.ts".to_string(),
+            span: None,
+            signature: format!("interface {name}"),
+            docs: None,
+            export_paths: Vec::new(),
+            referenced: false,
+            package: None,
+            children,
+        }
+    }
+
+    #[test]
+    fn equal_source_positions_use_stable_symbol_identity() {
+        let child_a = symbol("ts:src/example.ts:property#a", "a", Vec::new());
+        let child_b = symbol("ts:src/example.ts:property#b", "b", Vec::new());
+        let parent_a = symbol(
+            "ts:src/example.ts:interface#A",
+            "A",
+            vec![child_b.clone(), child_a.clone()],
+        );
+        let parent_b = symbol("ts:src/example.ts:interface#B", "B", Vec::new());
+
+        let first = ScanReport {
+            symbols: vec![parent_b.clone(), parent_a.clone()],
+            ..ScanReport::default()
+        };
+        let second = ScanReport {
+            symbols: vec![
+                symbol("ts:src/example.ts:interface#A", "A", vec![child_a, child_b]),
+                parent_b,
+            ],
+            ..ScanReport::default()
+        };
+
+        assert_eq!(render(&first), render(&second));
+    }
 }
