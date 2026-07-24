@@ -8,9 +8,9 @@ import rawAsset from "./asset.svg?raw";
 import "$app/environment";
 import "$env/static/public";
 import type { PageData } from "./$types";
-import "./missing.ts";
 
-const pages = import.meta.glob("./pages/*.ts");
+const pages = import.meta.glob("/src/pages/*.ts");
+const content = import.meta.glob("/src/content/**/*.md");
 
 export async function loadPlugin(name: string): Promise<unknown> {
   return import(`./plugins/${name}.ts`);
@@ -23,6 +23,7 @@ export async function loadUnknown(specifier: string): Promise<unknown> {
 void config;
 void rawAsset;
 void pages;
+void content;
 void (null as PageData | null);
 void loadPlugin("plugin");
 void loadUnknown("./unknown");

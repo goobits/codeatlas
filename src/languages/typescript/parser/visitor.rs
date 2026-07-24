@@ -460,22 +460,26 @@ impl Visit for SymbolVisitor {
                 if let Some(property) = member.prop.as_ident() {
                     let method_name = property.sym.to_string();
                     const HTTP_METHODS: &[&str] = &["get", "post", "put", "delete", "patch"];
+                    const HTTP_RECEIVERS: &[&str] = &["app", "router", "fastify", "server", "api"];
                     if HTTP_METHODS.contains(&method_name.as_str()) {
-                        let object_name = if let Expr::Ident(ident) = &*member.obj {
-                            ident.sym.to_string()
-                        } else {
-                            "unknown".to_string()
+                        let object_name = match &*member.obj {
+                            Expr::Ident(ident) if HTTP_RECEIVERS.contains(&ident.sym.as_ref()) => {
+                                Some(ident.sym.to_string())
+                            }
+                            _ => None,
                         };
-                        let name = format!("{}.{}", object_name, method_name);
-                        if let Some(argument) = call.args.first() {
-                            if let Expr::Lit(Lit::Str(path)) = &*argument.expr {
-                                self.symbols.push(self.create_symbol(
-                                    name.clone(),
-                                    SymbolKind::Function,
-                                    Visibility::Internal,
-                                    call.span,
-                                    format!("{}('{}', ...)", name, path.value),
-                                ));
+                        if let Some(object_name) = object_name {
+                            let name = format!("{}.{}", object_name, method_name);
+                            if let Some(argument) = call.args.first() {
+                                if let Expr::Lit(Lit::Str(path)) = &*argument.expr {
+                                    self.symbols.push(self.create_symbol(
+                                        name.clone(),
+                                        SymbolKind::Function,
+                                        Visibility::Internal,
+                                        call.span,
+                                        format!("{}('{}', ...)", name, path.value),
+                                    ));
+                                }
                             }
                         }
                     }

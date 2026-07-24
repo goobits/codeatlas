@@ -29,6 +29,14 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
     let mut unreachable_files = BTreeSet::new();
 
     for project in graph.projects.values() {
+        let mut files_by_language = BTreeMap::new();
+        for node in graph.nodes.values() {
+            if let SourceNode::File(file) = node {
+                if file.project == project.id {
+                    *files_by_language.entry(file.language).or_insert(0) += 1;
+                }
+            }
+        }
         report.projects.push(DeadCodeProjectSummary {
             project: project.id.0.clone(),
             root: project.root.clone(),
@@ -40,6 +48,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     matches!(node, SourceNode::File(file) if file.project == project.id)
                 })
                 .count(),
+            files_by_language,
             symbols: graph
                 .nodes
                 .values()

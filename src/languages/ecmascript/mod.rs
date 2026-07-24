@@ -126,6 +126,9 @@ fn add_symbols(
 ) -> Result<BTreeMap<String, BTreeSet<NodeId>>> {
     let mut by_name = BTreeMap::<String, BTreeSet<NodeId>>::new();
     for symbol in symbols {
+        if symbol.name.contains('.') {
+            continue;
+        }
         let id = NodeId::symbol(file, &symbol.id);
         graph
             .add_node(

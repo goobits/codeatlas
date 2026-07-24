@@ -102,13 +102,14 @@ impl ModuleResolver {
             || specifier.starts_with("../")
             || specifier.starts_with('/')
         {
-            if unsupported_relative_specifier(specifier) {
-                return Resolution::Unsupported(specifier.to_string());
+            if let Some(resolved) = self.resolve_relative(module, specifier) {
+                return Resolution::Resolved(resolved);
             }
-            return self
-                .resolve_relative(module, specifier)
-                .map(Resolution::Resolved)
-                .unwrap_or_else(|| Resolution::UnresolvedInternal(specifier.to_string()));
+            return if unsupported_relative_specifier(specifier) {
+                Resolution::Unsupported(specifier.to_string())
+            } else {
+                Resolution::UnresolvedInternal(specifier.to_string())
+            };
         }
         if specifier.starts_with('#') {
             return match self.resolve_package_import(module, specifier) {
@@ -156,6 +157,10 @@ impl ModuleResolver {
     }
 
     fn resolve_relative(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
+        if let Some(path) = specifier.strip_prefix('/') {
+            let package_root = self.nearest_package_directory(module)?;
+            return self.resolve_project_path(&module.project, &package_root.join(path));
+        }
         let parent = Path::new(&module.path)
             .parent()
             .unwrap_or_else(|| Path::new(""));
@@ -231,11 +236,16 @@ impl ModuleResolver {
     }
 
     fn resolve_pattern(&self, module: &Module, prefix: &str, suffix: &str) -> Vec<Resolution> {
+        let combined = format!("{prefix}{suffix}");
+        if is_non_source_specifier(&combined) {
+            return vec![Resolution::External(combined)];
+        }
         if !is_bounded_local_pattern(prefix, suffix) {
             return vec![Resolution::DynamicUnknown(format!("{prefix}*{suffix}"))];
         }
         let matches = self
-            .module_specifiers(module)
+            .module_specifiers(module, prefix.starts_with('/'))
+            .into_iter()
             .filter(|(specifier, _)| specifier.starts_with(prefix) && specifier.ends_with(suffix))
             .map(|(_, key)| Resolution::Resolved(key))
             .collect::<Vec<_>>();
@@ -247,6 +257,9 @@ impl ModuleResolver {
     }
 
     fn resolve_glob(&self, module: &Module, pattern: &str) -> Vec<Resolution> {
+        if is_non_source_specifier(pattern) {
+            return vec![Resolution::External(format!("glob:{pattern}"))];
+        }
         if !is_bounded_local_pattern(pattern, "") || pattern.starts_with('!') {
             return vec![Resolution::DynamicUnknown(pattern.to_string())];
         }
@@ -255,7 +268,8 @@ impl ModuleResolver {
             Err(_) => return vec![Resolution::DynamicUnknown(pattern.to_string())],
         };
         let matches = self
-            .module_specifiers(module)
+            .module_specifiers(module, pattern.starts_with('/'))
+            .into_iter()
             .filter(|(specifier, _)| matcher.is_match(specifier))
             .map(|(_, key)| Resolution::Resolved(key))
             .collect::<Vec<_>>();
@@ -266,26 +280,51 @@ impl ModuleResolver {
         }
     }
 
-    fn module_specifiers<'a>(
-        &'a self,
-        module: &'a Module,
-    ) -> impl Iterator<Item = (String, ModuleKey)> + 'a {
-        let parent = Path::new(&module.path)
-            .parent()
-            .unwrap_or_else(|| Path::new(""));
+    fn module_specifiers(
+        &self,
+        module: &Module,
+        package_absolute: bool,
+    ) -> Vec<(String, ModuleKey)> {
+        let base = if package_absolute {
+            self.nearest_package_directory(module).unwrap_or_default()
+        } else {
+            Path::new(&module.path)
+                .parent()
+                .unwrap_or_else(|| Path::new(""))
+                .to_path_buf()
+        };
         self.modules
             .iter()
-            .filter(move |(project, _)| project == &module.project)
-            .filter_map(move |key| {
-                let relative = pathdiff::diff_paths(Path::new(&key.1), parent)?;
+            .filter(|(project, _)| project == &module.project)
+            .filter_map(|key| {
+                let relative = pathdiff::diff_paths(Path::new(&key.1), &base)?;
                 let normalized = crate::paths::normalize_path(&relative);
-                let specifier = if normalized.starts_with("../") {
+                if package_absolute && normalized.starts_with("../") {
+                    return None;
+                }
+                let specifier = if package_absolute {
+                    format!("/{normalized}")
+                } else if normalized.starts_with("../") {
                     normalized
                 } else {
                     format!("./{normalized}")
                 };
                 Some((specifier, key.clone()))
             })
+            .collect()
+    }
+
+    fn nearest_package_directory(&self, module: &Module) -> Option<PathBuf> {
+        let project = self.projects.get(&module.project)?;
+        let mut directory = Path::new(&module.path).parent();
+        while let Some(current) = directory {
+            let key = crate::paths::normalize_path(current);
+            if project.package_imports.contains_key(&key) {
+                return Some(current.to_path_buf());
+            }
+            directory = current.parent();
+        }
+        None
     }
 }
 
@@ -321,7 +360,8 @@ fn is_sveltekit_virtual(specifier: &str) -> bool {
 }
 
 fn is_non_source_specifier(specifier: &str) -> bool {
-    if specifier.ends_with("?raw") || specifier.ends_with("?url") {
+    if specifier.ends_with("?raw") || specifier.ends_with("?url") || specifier.ends_with("?compose")
+    {
         return true;
     }
     let normalized = specifier.split(['?', '#']).next().unwrap_or(specifier);
@@ -350,13 +390,19 @@ fn is_non_source_specifier(specifier: &str) -> bool {
                 | "woff"
                 | "woff2"
                 | "ttf"
+                | "glsl"
+                | "vert"
+                | "frag"
+                | "md"
+                | "mdx"
+                | "svx"
         )
     )
 }
 
 fn is_bounded_local_pattern(prefix: &str, suffix: &str) -> bool {
     let combined = format!("{prefix}{suffix}");
-    (prefix.starts_with("./") || prefix.starts_with("../"))
+    (prefix.starts_with("./") || prefix.starts_with("../") || prefix.starts_with('/'))
         && !combined.contains('\0')
         && !is_non_source_specifier(&combined)
 }
@@ -476,6 +522,11 @@ fn module_candidates(raw: &Path) -> Vec<PathBuf> {
         .is_some_and(|name| name.ends_with(".d.ts"));
     let mut candidates = vec![raw.to_path_buf()];
     for extension in ["ts", "tsx", "js", "jsx", "mjs", "cjs", "svelte"] {
+        candidates.push(PathBuf::from(format!(
+            "{}.{}",
+            raw.to_string_lossy(),
+            extension
+        )));
         candidates.push(raw.with_extension(extension));
     }
     if !declaration {

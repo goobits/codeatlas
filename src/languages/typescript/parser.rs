@@ -152,3 +152,29 @@ fn syntax_for_path(path: &Path) -> Syntax {
         }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_source;
+
+    #[test]
+    fn route_symbols_require_a_framework_receiver() {
+        let info = parse_source(
+            r#"
+const store = new Map()
+store.get('/ordinary')
+app.get('/route', () => undefined)
+"#,
+            "src/routes.ts",
+        )
+        .expect("module info");
+        let names = info
+            .symbols
+            .iter()
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"app.get"));
+        assert!(!names.contains(&"store.get"));
+    }
+}

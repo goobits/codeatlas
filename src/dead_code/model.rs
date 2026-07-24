@@ -2,7 +2,7 @@ use crate::domain::source_graph::{
     AnalysisCompleteness, ContextRole, FindingConfidence, SourceEvidence, SourceLanguage,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const DEAD_CODE_SCHEMA_VERSION: u32 = 3;
 
@@ -48,6 +48,7 @@ pub(crate) struct DeadCodeProjectSummary {
     pub root: String,
     pub completeness: AnalysisCompleteness,
     pub files: usize,
+    pub files_by_language: BTreeMap<SourceLanguage, usize>,
     pub symbols: usize,
 }
 

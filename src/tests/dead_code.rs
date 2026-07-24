@@ -1,9 +1,13 @@
 use crate::config::ProjectConfig;
 use crate::dead_code::{DeadCodeFinding, DeadCodeFindingKind};
 use crate::domain::source_graph::{
-    ContextRole, FindingConfidence, SourceEdgeKind, SourceLanguage, SourceNode,
+    AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, EdgeTarget,
+    FindingConfidence, NodeId, ProjectId, SourceContext, SourceEdge, SourceEdgeKind,
+    SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceProject,
+    SourceSymbol, SourceSymbolKind, SourceVisibility,
 };
 use crate::{dead_code, languages, outputs};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 fn fixture_root(path: &str) -> PathBuf {
@@ -42,7 +46,7 @@ fn finding<'a>(
 }
 
 #[test]
-fn ecmascript_reachability_preserves_contexts_and_private_symbol_gates() {
+fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
     let report = analyze_fixture("ecmascript");
 
     let unused_file = finding(
@@ -53,15 +57,6 @@ fn ecmascript_reachability_preserves_contexts_and_private_symbol_gates() {
     );
     assert_eq!(unused_file.confidence, FindingConfidence::High);
     assert!(unused_file.gates);
-
-    let unused_private = finding(
-        &report.findings,
-        DeadCodeFindingKind::UnusedPrivateSymbol,
-        "src/used.ts",
-        Some("unusedPrivate"),
-    );
-    assert_eq!(unused_private.confidence, FindingConfidence::High);
-    assert!(unused_private.gates);
 
     let test_only = finding(
         &report.findings,
@@ -102,6 +97,10 @@ fn ecmascript_reachability_preserves_contexts_and_private_symbol_gates() {
 fn svelte_reachability_connects_script_facts_without_private_symbol_gates() {
     let graph = source_graph_fixture("svelte");
     let report = dead_code::analyze(&graph).expect("dead-code report");
+    assert_eq!(
+        report.projects[0].files_by_language[&SourceLanguage::Svelte],
+        7
+    );
 
     let unreachable = finding(
         &report.findings,
@@ -187,14 +186,10 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
         .iter()
         .all(|finding| finding.confidence != FindingConfidence::High && !finding.gates));
     assert!(boundaries[0].message.contains("<dynamic expression>"));
-    let unresolved = report
+    assert!(!report
         .findings
         .iter()
-        .find(|finding| finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge)
-        .expect("unresolved internal import");
-    assert!(unresolved.message.contains("./missing.ts"));
-    assert_eq!(unresolved.confidence, FindingConfidence::High);
-    assert!(unresolved.gates);
+        .any(|finding| finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge));
 
     let candidate = finding(
         &report.findings,
@@ -204,16 +199,6 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
     );
     assert_ne!(candidate.confidence, FindingConfidence::High);
     assert!(!candidate.gates);
-    let private = finding(
-        &report.findings,
-        DeadCodeFindingKind::UnusedPrivateSymbol,
-        "src/rootAlias.ts",
-        Some("unusedPrivate"),
-    );
-    assert_eq!(private.confidence, FindingConfidence::High);
-    assert!(private.gates);
-    assert_eq!(private.root_contexts[0].root, "src/index.ts");
-
     for path in [
         "src/component.svelte",
         "src/plugins/plugin.ts",
@@ -227,6 +212,142 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
             finding.kind == DeadCodeFindingKind::UnreachableFile && finding.path == path
         }));
     }
+}
+
+#[test]
+fn unresolved_internal_edges_remain_high_confidence_gates() {
+    let project = ProjectId("unresolved".to_string());
+    let entry = NodeId::file(&project, "src/index.ts");
+    let mut graph = SourceGraph::new();
+    graph
+        .add_project(SourceProject {
+            id: project.clone(),
+            root: ".".to_string(),
+            languages: BTreeSet::from([SourceLanguage::TypeScript]),
+            completeness: AnalysisCompleteness::Partial,
+        })
+        .expect("project");
+    graph
+        .add_node(
+            entry.clone(),
+            SourceNode::File(SourceFile {
+                project: project.clone(),
+                path: "src/index.ts".to_string(),
+                language: SourceLanguage::TypeScript,
+            }),
+        )
+        .expect("entry");
+    graph.edges.insert(SourceEdge {
+        from: entry.clone(),
+        to: EdgeTarget::UnresolvedInternal("./missing.ts".to_string()),
+        kind: SourceEdgeKind::ModuleDependency,
+        bindings: Vec::new(),
+        evidence: SourceEvidence {
+            path: "src/index.ts".to_string(),
+            span: None,
+            extractor: "test".to_string(),
+        },
+    });
+    graph
+        .add_context(SourceContext {
+            id: ContextId::new(&project, "application"),
+            project,
+            name: "application".to_string(),
+            role: ContextRole::Production,
+            roots: BTreeSet::from([entry]),
+        })
+        .expect("context");
+
+    let report = dead_code::analyze(&graph).expect("dead-code report");
+    let unresolved = report
+        .findings
+        .iter()
+        .find(|finding| finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge)
+        .expect("unresolved internal import");
+    assert_eq!(unresolved.confidence, FindingConfidence::High);
+    assert!(unresolved.gates);
+}
+
+#[test]
+fn unrelated_dynamic_imports_do_not_lower_private_symbol_confidence() {
+    let project = ProjectId("private-symbol".to_string());
+    let entry = NodeId::file(&project, "src/index.ts");
+    let symbol = NodeId::symbol(&entry, "function/unused");
+    let mut graph = SourceGraph::new();
+    graph
+        .add_project(SourceProject {
+            id: project.clone(),
+            root: ".".to_string(),
+            languages: BTreeSet::from([SourceLanguage::TypeScript]),
+            completeness: AnalysisCompleteness::Partial,
+        })
+        .expect("project");
+    graph
+        .add_node(
+            entry.clone(),
+            SourceNode::File(SourceFile {
+                project: project.clone(),
+                path: "src/index.ts".to_string(),
+                language: SourceLanguage::TypeScript,
+            }),
+        )
+        .expect("entry");
+    graph
+        .add_node(
+            symbol.clone(),
+            SourceNode::Symbol(SourceSymbol {
+                project: project.clone(),
+                file: entry.clone(),
+                name: "unused".to_string(),
+                symbol_kind: SourceSymbolKind::Function,
+                visibility: SourceVisibility::Private,
+                span: None,
+            }),
+        )
+        .expect("symbol");
+    graph.edges.insert(SourceEdge {
+        from: entry.clone(),
+        to: EdgeTarget::Node(symbol),
+        kind: SourceEdgeKind::Contains,
+        bindings: Vec::new(),
+        evidence: SourceEvidence {
+            path: "src/index.ts".to_string(),
+            span: None,
+            extractor: "test".to_string(),
+        },
+    });
+    graph.boundaries.insert(AnalysisBoundary {
+        project: project.clone(),
+        node: Some(entry.clone()),
+        kind: BoundaryKind::DynamicImport,
+        effect: AnalysisCompleteness::Partial,
+        message: "dynamic import".to_string(),
+        evidence: SourceEvidence {
+            path: "src/index.ts".to_string(),
+            span: None,
+            extractor: "test".to_string(),
+        },
+    });
+    graph
+        .add_context(SourceContext {
+            id: ContextId::new(&project, "application"),
+            project,
+            name: "application".to_string(),
+            role: ContextRole::Production,
+            roots: BTreeSet::from([entry]),
+        })
+        .expect("context");
+
+    let report = dead_code::analyze(&graph).expect("dead-code report");
+    let private = finding(
+        &report.findings,
+        DeadCodeFindingKind::UnusedPrivateSymbol,
+        "src/index.ts",
+        Some("unused"),
+    );
+    assert_eq!(private.confidence, FindingConfidence::High);
+    assert!(private.gates);
+    assert_eq!(private.root_contexts[0].root, "src/index.ts");
 }
 
 #[test]
