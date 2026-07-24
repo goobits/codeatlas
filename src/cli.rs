@@ -82,6 +82,25 @@ enum Command {
         check: bool,
     },
 
+    /// Produce a bounded source context slice for exact files or symbols
+    Context {
+        /// Path to the repository or configured project set
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Exact node ID, source path, or path#symbol target
+        #[arg(long, required = true)]
+        target: Vec<String>,
+        /// Incoming and outgoing graph traversal depth
+        #[arg(long, default_value_t = 2)]
+        depth: usize,
+        /// Maximum source nodes in the returned slice
+        #[arg(long, default_value_t = 128)]
+        max_nodes: usize,
+        /// Write the JSON report instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
+
     /// Compile and compare declared architecture
     Architecture {
         #[command(subcommand)]
@@ -272,6 +291,20 @@ pub(crate) fn run() -> i32 {
         }) => {
             commands::dead_code::run(&path, format, out.as_deref(), check, config_path.as_deref())
         }
+        Some(Command::Context {
+            path,
+            target,
+            depth,
+            max_nodes,
+            out,
+        }) => commands::context_slice::run(
+            &path,
+            target,
+            depth,
+            max_nodes,
+            out.as_deref(),
+            config_path.as_deref(),
+        ),
         Some(Command::Architecture { command }) => match command {
             ArchitectureCommand::Compile {
                 modules,

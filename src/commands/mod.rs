@@ -1,4 +1,5 @@
 pub(crate) mod architecture;
+pub(crate) mod context_slice;
 pub(crate) mod dead_code;
 pub(crate) mod diff;
 pub(crate) mod docs;

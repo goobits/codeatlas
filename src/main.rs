@@ -3,6 +3,7 @@ mod architecture;
 mod cli;
 mod commands;
 mod config;
+mod context_slice;
 mod dead_code;
 mod domain;
 mod languages;

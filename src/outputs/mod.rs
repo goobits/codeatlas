@@ -1,4 +1,5 @@
 pub mod audit;
+pub(crate) mod context_slice;
 pub(crate) mod dead_code;
 pub mod html;
 pub mod json;
