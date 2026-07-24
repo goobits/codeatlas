@@ -2,7 +2,9 @@ mod format;
 mod module_info;
 mod visitor;
 
-pub(crate) use module_info::{DynamicDependencyKind, ExportInfo, ImportInfo, TypeScriptModuleInfo};
+pub(crate) use module_info::{
+    DynamicDependencyKind, DynamicDependencyTarget, ExportInfo, ImportInfo, TypeScriptModuleInfo,
+};
 
 use anyhow::Result;
 use module_info::{collect_exports, collect_imports, collect_reachability_facts};

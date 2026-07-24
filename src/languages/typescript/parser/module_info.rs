@@ -56,14 +56,23 @@ pub(crate) struct ReachabilityFacts {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DynamicDependency {
-    pub specifier: Option<String>,
+    pub target: DynamicDependencyTarget,
     pub kind: DynamicDependencyKind,
     pub span: crate::domain::Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum DynamicDependencyTarget {
+    Literal(String),
+    Pattern { prefix: String, suffix: String },
+    Glob(String),
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DynamicDependencyKind {
     Import,
+    ImportMetaGlob,
     Require,
 }
 
@@ -370,30 +379,97 @@ impl Visit for DynamicDependencyCollector {
             Callee::Expr(expression) if matches!(&**expression, Expr::Ident(identifier) if identifier.sym == *"require") => {
                 Some(DynamicDependencyKind::Require)
             }
+            Callee::Expr(expression) if is_import_meta_glob(expression) => {
+                Some(DynamicDependencyKind::ImportMetaGlob)
+            }
             _ => None,
         };
         if let Some(kind) = kind {
-            let specifier = call
-                .args
-                .first()
-                .and_then(|argument| match &*argument.expr {
-                    Expr::Lit(Lit::Str(value)) => Some(value.value.to_string()),
-                    _ => None,
-                });
             let start = self.source_map.lookup_char_pos(call.span.lo);
             let end = self.source_map.lookup_char_pos(call.span.hi);
-            self.dependencies.push(DynamicDependency {
-                specifier,
-                kind,
-                span: crate::domain::Span {
-                    start_line: start.line as u32,
-                    start_col: start.col.0 as u32,
-                    end_line: end.line as u32,
-                    end_col: end.col.0 as u32,
-                },
-            });
+            let span = crate::domain::Span {
+                start_line: start.line as u32,
+                start_col: start.col.0 as u32,
+                end_line: end.line as u32,
+                end_col: end.col.0 as u32,
+            };
+            let targets = call
+                .args
+                .first()
+                .map(|argument| dependency_targets(&argument.expr, kind))
+                .unwrap_or_else(|| vec![DynamicDependencyTarget::Unknown]);
+            self.dependencies
+                .extend(targets.into_iter().map(|target| DynamicDependency {
+                    target,
+                    kind,
+                    span: span.clone(),
+                }));
         }
         call.visit_children_with(self);
+    }
+}
+
+fn is_import_meta_glob(expression: &Expr) -> bool {
+    let Expr::Member(member) = expression else {
+        return false;
+    };
+    let Expr::MetaProp(meta) = &*member.obj else {
+        return false;
+    };
+    meta.kind == MetaPropKind::ImportMeta
+        && matches!(&member.prop, MemberProp::Ident(identifier) if identifier.sym == *"glob")
+}
+
+fn dependency_targets(
+    expression: &Expr,
+    kind: DynamicDependencyKind,
+) -> Vec<DynamicDependencyTarget> {
+    match expression {
+        Expr::Lit(Lit::Str(value)) => vec![if kind == DynamicDependencyKind::ImportMetaGlob {
+            DynamicDependencyTarget::Glob(value.value.to_string())
+        } else {
+            DynamicDependencyTarget::Literal(value.value.to_string())
+        }],
+        Expr::Tpl(template) if template.exprs.is_empty() => vec![DynamicDependencyTarget::Literal(
+            template
+                .quasis
+                .iter()
+                .map(|quasi| quasi.raw.to_string())
+                .collect(),
+        )],
+        Expr::Tpl(template) => vec![DynamicDependencyTarget::Pattern {
+            prefix: template
+                .quasis
+                .first()
+                .map(|quasi| quasi.raw.to_string())
+                .unwrap_or_default(),
+            suffix: template
+                .quasis
+                .last()
+                .map(|quasi| quasi.raw.to_string())
+                .unwrap_or_default(),
+        }],
+        Expr::Array(array) if kind == DynamicDependencyKind::ImportMetaGlob => {
+            let targets = array
+                .elems
+                .iter()
+                .map(|element| match element {
+                    Some(element) => match &*element.expr {
+                        Expr::Lit(Lit::Str(value)) => {
+                            DynamicDependencyTarget::Glob(value.value.to_string())
+                        }
+                        _ => DynamicDependencyTarget::Unknown,
+                    },
+                    None => DynamicDependencyTarget::Unknown,
+                })
+                .collect::<Vec<_>>();
+            if targets.is_empty() {
+                vec![DynamicDependencyTarget::Unknown]
+            } else {
+                targets
+            }
+        }
+        _ => vec![DynamicDependencyTarget::Unknown],
     }
 }
 

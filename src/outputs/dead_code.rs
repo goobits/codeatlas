@@ -47,9 +47,19 @@ pub(crate) fn render_text(report: &DeadCodeReport) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         };
+        let roots = if finding.root_contexts.is_empty() {
+            "none".to_string()
+        } else {
+            finding
+                .root_contexts
+                .iter()
+                .map(|root| format!("{}:{}", root.context, root.root))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let gate = if finding.gates { " [gate]" } else { "" };
         output.push_str(&format!(
-            "{} {}{} ({}, confidence: {}){}\n  {}\n  contexts: {}; roles: {}\n",
+            "{} {}{} ({}, confidence: {}){}\n  {}\n  contexts: {}; roots: {}; roles: {}\n",
             finding.kind.as_str(),
             finding.path,
             symbol,
@@ -58,6 +68,7 @@ pub(crate) fn render_text(report: &DeadCodeReport) -> String {
             gate,
             finding.message,
             contexts,
+            roots,
             roles
         ));
     }

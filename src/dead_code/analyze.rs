@@ -1,5 +1,8 @@
-use super::model::{DeadCodeFinding, DeadCodeFindingKind, DeadCodeProjectSummary, DeadCodeReport};
-use crate::analysis::reachability::{project_confidence, Reachability};
+use super::model::{
+    DeadCodeFinding, DeadCodeFindingKind, DeadCodeProjectSummary, DeadCodeReport,
+    DeadCodeRootContext,
+};
+use crate::analysis::reachability::{project_confidence, symbol_confidence, Reachability};
 use crate::domain::source_graph::{
     BoundaryKind, ContextRole, EdgeTarget, FindingConfidence, NodeId, SourceEvidence, SourceGraph,
     SourceLanguage, SourceNode, SourceVisibility,
@@ -53,6 +56,8 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         };
         let confidence = project_confidence(graph, &file.project);
         let contexts = reachability.contexts(node_id);
+        let root_contexts =
+            root_context_labels(&reachability.roots(node_id), &context_names, graph);
         let roles = reachability.roles(node_id);
         if contexts.is_empty() {
             unreachable_files.insert(node_id.clone());
@@ -64,6 +69,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     symbol: None,
                     language: Some(file.language),
                     contexts: context_labels(&contexts, &context_names),
+                    root_contexts: root_contexts.clone(),
                     roles,
                     confidence,
                     evidence: SourceEvidence {
@@ -88,6 +94,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     symbol: None,
                     language: Some(file.language),
                     contexts: context_labels(&contexts, &context_names),
+                    root_contexts,
                     roles,
                     confidence,
                     evidence: SourceEvidence {
@@ -114,7 +121,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             continue;
         }
         let language = file_language(graph, &symbol.file);
-        let project_confidence = project_confidence(graph, &symbol.project);
+        let project_confidence = symbol_confidence(graph, &symbol.project, &symbol.file);
         let (kind, confidence, message) = match symbol.visibility {
             SourceVisibility::Private | SourceVisibility::Internal => (
                 DeadCodeFindingKind::UnusedPrivateSymbol,
@@ -145,6 +152,11 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 symbol: Some(symbol.name.clone()),
                 language,
                 contexts: Vec::new(),
+                root_contexts: root_context_labels(
+                    &reachability.roots(&symbol.file),
+                    &context_names,
+                    graph,
+                ),
                 roles: BTreeSet::new(),
                 confidence,
                 evidence: SourceEvidence {
@@ -193,6 +205,11 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 symbol: None,
                 language: file_language(graph, &edge.from),
                 contexts: context_labels(&reachability.contexts(&edge.from), &context_names),
+                root_contexts: root_context_labels(
+                    &reachability.roots(&edge.from),
+                    &context_names,
+                    graph,
+                ),
                 roles: reachability.roles(&edge.from),
                 confidence,
                 evidence: edge.evidence.clone(),
@@ -238,6 +255,13 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     .as_ref()
                     .map(|node| context_labels(&reachability.contexts(node), &context_names))
                     .unwrap_or_default(),
+                root_contexts: boundary
+                    .node
+                    .as_ref()
+                    .map(|node| {
+                        root_context_labels(&reachability.roots(node), &context_names, graph)
+                    })
+                    .unwrap_or_default(),
                 roles: boundary
                     .node
                     .as_ref()
@@ -260,6 +284,7 @@ struct FindingDetails {
     symbol: Option<String>,
     language: Option<SourceLanguage>,
     contexts: Vec<String>,
+    root_contexts: Vec<DeadCodeRootContext>,
     roles: BTreeSet<ContextRole>,
     confidence: FindingConfidence,
     evidence: SourceEvidence,
@@ -274,12 +299,37 @@ fn finding(kind: DeadCodeFindingKind, details: FindingDetails) -> DeadCodeFindin
         symbol: details.symbol,
         language: details.language,
         contexts: details.contexts,
+        root_contexts: details.root_contexts,
         roles: details.roles,
         confidence: details.confidence,
         evidence: details.evidence,
         message: details.message,
         gates: kind.gates_at(details.confidence),
     }
+}
+
+fn root_context_labels(
+    roots: &BTreeSet<crate::analysis::reachability::ReachabilityRoot>,
+    names: &BTreeMap<crate::domain::source_graph::ContextId, String>,
+    graph: &SourceGraph,
+) -> Vec<DeadCodeRootContext> {
+    roots
+        .iter()
+        .map(|root| DeadCodeRootContext {
+            context: names
+                .get(&root.context)
+                .cloned()
+                .unwrap_or_else(|| root.context.0.clone()),
+            root: graph
+                .nodes
+                .get(&root.root)
+                .and_then(|node| match node {
+                    SourceNode::File(file) => Some(file.path.clone()),
+                    SourceNode::Symbol(_) => None,
+                })
+                .unwrap_or_else(|| root.root.0.clone()),
+        })
+        .collect()
 }
 
 fn context_labels(

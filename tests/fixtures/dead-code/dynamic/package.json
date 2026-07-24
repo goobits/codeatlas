@@ -1,0 +1,6 @@
+{
+  "name": "dynamic-fixture",
+  "imports": {
+    "#root": "./src/rootAlias.ts"
+  }
+}

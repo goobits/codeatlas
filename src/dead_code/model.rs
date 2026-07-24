@@ -4,7 +4,7 @@ use crate::domain::source_graph::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-pub(crate) const DEAD_CODE_SCHEMA_VERSION: u32 = 2;
+pub(crate) const DEAD_CODE_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DeadCodeReport {
@@ -61,11 +61,18 @@ pub(crate) struct DeadCodeFinding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<SourceLanguage>,
     pub contexts: Vec<String>,
+    pub root_contexts: Vec<DeadCodeRootContext>,
     pub roles: BTreeSet<ContextRole>,
     pub confidence: FindingConfidence,
     pub evidence: SourceEvidence,
     pub message: String,
     pub gates: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct DeadCodeRootContext {
+    pub context: String,
+    pub root: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -276,29 +276,35 @@ fn connect_module(
     }
 
     for dependency in &module.info.reachability.dynamic_dependencies {
-        let specifier = dependency
-            .specifier
-            .as_deref()
-            .unwrap_or("<dynamic expression>");
-        let resolution = dependency
-            .specifier
-            .as_deref()
-            .map(|specifier| resolver.resolve(module, specifier))
-            .unwrap_or_else(|| Resolution::DynamicUnknown(specifier.to_string()));
+        let specifier = dynamic_dependency_label(&dependency.target);
         let edge_kind = match dependency.kind {
             parser::DynamicDependencyKind::Import => SourceEdgeKind::DynamicImport,
+            parser::DynamicDependencyKind::ImportMetaGlob => SourceEdgeKind::GlobImport,
             parser::DynamicDependencyKind::Require => SourceEdgeKind::Require,
         };
-        connect_module_resolution(
-            graph,
-            module,
-            specifier,
-            &resolution,
-            edge_kind,
-            Some(dependency.span.clone()),
-        );
+        for resolution in resolver.resolve_dynamic(module, &dependency.target) {
+            connect_module_resolution(
+                graph,
+                module,
+                &specifier,
+                &resolution,
+                edge_kind,
+                Some(dependency.span.clone()),
+            );
+        }
     }
     Ok(())
+}
+
+fn dynamic_dependency_label(target: &parser::DynamicDependencyTarget) -> String {
+    match target {
+        parser::DynamicDependencyTarget::Literal(specifier) => specifier.clone(),
+        parser::DynamicDependencyTarget::Pattern { prefix, suffix } => {
+            format!("{prefix}*{suffix}")
+        }
+        parser::DynamicDependencyTarget::Glob(pattern) => pattern.clone(),
+        parser::DynamicDependencyTarget::Unknown => "<dynamic expression>".to_string(),
+    }
 }
 
 fn connect_local_references(graph: &mut SourceGraph, module: &Module) {

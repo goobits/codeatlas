@@ -182,33 +182,51 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
         .iter()
         .filter(|finding| finding.kind == DeadCodeFindingKind::DynamicBoundary)
         .collect::<Vec<_>>();
-    assert!(boundaries.len() >= 2);
+    assert_eq!(boundaries.len(), 1);
     assert!(boundaries
         .iter()
         .all(|finding| finding.confidence != FindingConfidence::High && !finding.gates));
-    assert!(boundaries
+    assert!(boundaries[0].message.contains("<dynamic expression>"));
+    let unresolved = report
+        .findings
         .iter()
-        .any(|finding| finding.message.contains("\".\"")));
-    assert!(!boundaries
-        .iter()
-        .any(|finding| finding.message.contains("./component.svelte")));
-    assert!(!report.findings.iter().any(|finding| {
-        finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
-            && finding.message.contains("\".\"")
-    }));
+        .find(|finding| finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge)
+        .expect("unresolved internal import");
+    assert!(unresolved.message.contains("./missing.ts"));
+    assert_eq!(unresolved.confidence, FindingConfidence::High);
+    assert!(unresolved.gates);
 
     let candidate = finding(
         &report.findings,
         DeadCodeFindingKind::UnreachableFile,
-        "src/plugin.ts",
+        "src/unreachable.ts",
         None,
     );
     assert_ne!(candidate.confidence, FindingConfidence::High);
     assert!(!candidate.gates);
-    assert!(!report.findings.iter().any(|finding| {
-        finding.kind == DeadCodeFindingKind::UnreachableFile
-            && finding.path == "src/component.svelte"
-    }));
+    let private = finding(
+        &report.findings,
+        DeadCodeFindingKind::UnusedPrivateSymbol,
+        "src/rootAlias.ts",
+        Some("unusedPrivate"),
+    );
+    assert_eq!(private.confidence, FindingConfidence::High);
+    assert!(private.gates);
+    assert_eq!(private.root_contexts[0].root, "src/index.ts");
+
+    for path in [
+        "src/component.svelte",
+        "src/plugins/plugin.ts",
+        "src/pages/a.ts",
+        "src/pages/b.ts",
+        "src/rootAlias.ts",
+        "src/feature/consumer.ts",
+        "src/feature/nestedTarget.ts",
+    ] {
+        assert!(!report.findings.iter().any(|finding| {
+            finding.kind == DeadCodeFindingKind::UnreachableFile && finding.path == path
+        }));
+    }
 }
 
 #[test]
@@ -217,7 +235,8 @@ fn dead_code_json_is_canonical_and_schema_versioned() {
     let first = outputs::dead_code::render_json(&report).expect("first JSON");
     let second = outputs::dead_code::render_json(&report).expect("second JSON");
     assert_eq!(first, second);
-    assert!(first.contains("\"schema_version\": 2"));
+    assert!(first.contains("\"schema_version\": 3"));
+    assert!(first.contains("\"root_contexts\""));
     assert!(first.ends_with('\n'));
 }
 

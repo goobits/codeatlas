@@ -98,10 +98,10 @@ void import('./Lazy.svelte')
         assert_eq!(info.imports.len(), 1);
         assert_eq!(info.imports[0].source, "./Child.svelte");
         assert_eq!(
-            info.reachability.dynamic_dependencies[0]
-                .specifier
-                .as_deref(),
-            Some("./Lazy.svelte")
+            info.reachability.dynamic_dependencies[0].target,
+            crate::languages::typescript::parser::DynamicDependencyTarget::Literal(
+                "./Lazy.svelte".to_string()
+            )
         );
         assert_eq!(info.reachability.dynamic_dependencies[0].span.start_line, 8);
         assert_eq!(

@@ -14,6 +14,13 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 pub(crate) struct Reachability {
     contexts_by_node: BTreeMap<NodeId, BTreeSet<ContextId>>,
     roles_by_node: BTreeMap<NodeId, BTreeSet<ContextRole>>,
+    roots_by_node: BTreeMap<NodeId, BTreeSet<ReachabilityRoot>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ReachabilityRoot {
+    pub context: ContextId,
+    pub root: NodeId,
 }
 
 impl Reachability {
@@ -40,26 +47,36 @@ impl Reachability {
 
         let mut result = Self::default();
         for context in graph.contexts.values() {
-            let mut visited = BTreeSet::new();
-            let mut queue = VecDeque::from_iter(context.roots.iter().cloned());
+            for root in &context.roots {
+                let mut visited = BTreeSet::new();
+                let mut queue = VecDeque::from([root.clone()]);
 
-            while let Some(node) = queue.pop_front() {
-                if !visited.insert(node.clone()) {
-                    continue;
-                }
-                result
-                    .contexts_by_node
-                    .entry(node.clone())
-                    .or_default()
-                    .insert(context.id.clone());
-                result
-                    .roles_by_node
-                    .entry(node.clone())
-                    .or_default()
-                    .insert(context.role);
+                while let Some(node) = queue.pop_front() {
+                    if !visited.insert(node.clone()) {
+                        continue;
+                    }
+                    result
+                        .contexts_by_node
+                        .entry(node.clone())
+                        .or_default()
+                        .insert(context.id.clone());
+                    result
+                        .roles_by_node
+                        .entry(node.clone())
+                        .or_default()
+                        .insert(context.role);
+                    result
+                        .roots_by_node
+                        .entry(node.clone())
+                        .or_default()
+                        .insert(ReachabilityRoot {
+                            context: context.id.clone(),
+                            root: root.clone(),
+                        });
 
-                if let Some(targets) = adjacency.get(&node) {
-                    queue.extend(targets.iter().cloned());
+                    if let Some(targets) = adjacency.get(&node) {
+                        queue.extend(targets.iter().cloned());
+                    }
                 }
             }
         }
@@ -73,6 +90,10 @@ impl Reachability {
 
     pub(crate) fn roles(&self, node: &NodeId) -> BTreeSet<ContextRole> {
         self.roles_by_node.get(node).cloned().unwrap_or_default()
+    }
+
+    pub(crate) fn roots(&self, node: &NodeId) -> BTreeSet<ReachabilityRoot> {
+        self.roots_by_node.get(node).cloned().unwrap_or_default()
     }
 }
 
@@ -93,6 +114,47 @@ pub(crate) fn project_confidence(graph: &SourceGraph, project: &ProjectId) -> Fi
             .map(|boundary| least_complete(project_completeness, boundary))
             .unwrap_or(project_completeness),
     )
+}
+
+pub(crate) fn symbol_confidence(
+    graph: &SourceGraph,
+    project: &ProjectId,
+    file: &NodeId,
+) -> FindingConfidence {
+    let Some(source_project) = graph.projects.get(project) else {
+        return FindingConfidence::Low;
+    };
+    if source_project.completeness == AnalysisCompleteness::Unsupported {
+        return FindingConfidence::Low;
+    }
+
+    let project_boundaries = graph
+        .boundaries
+        .iter()
+        .filter(|boundary| &boundary.project == project)
+        .collect::<Vec<_>>();
+    let mut completeness = if source_project.completeness == AnalysisCompleteness::Partial
+        && project_boundaries.is_empty()
+    {
+        AnalysisCompleteness::Partial
+    } else {
+        AnalysisCompleteness::Complete
+    };
+    for boundary in project_boundaries {
+        let applies = boundary.node.is_none()
+            || boundary.kind == crate::domain::source_graph::BoundaryKind::Reflection
+            || (boundary.node.as_ref() == Some(file)
+                && matches!(
+                    boundary.kind,
+                    crate::domain::source_graph::BoundaryKind::MacroExpansion
+                        | crate::domain::source_graph::BoundaryKind::ConditionalCompilation
+                        | crate::domain::source_graph::BoundaryKind::UnsupportedSyntax
+                ));
+        if applies {
+            completeness = least_complete(completeness, boundary.effect);
+        }
+    }
+    confidence_for_completeness(completeness)
 }
 
 fn least_complete(left: AnalysisCompleteness, right: AnalysisCompleteness) -> AnalysisCompleteness {
@@ -185,6 +247,9 @@ mod tests {
             reachability.roles(&helper),
             BTreeSet::from([ContextRole::Production])
         );
+        let roots = reachability.roots(&helper);
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots.iter().next().map(|root| &root.root), Some(&entry));
     }
 
     #[test]

@@ -1,6 +1,8 @@
 use super::{Module, ModuleKey, ProjectSelection};
 use crate::domain::source_graph::ProjectId;
+use crate::languages::typescript::parser::DynamicDependencyTarget;
 use anyhow::{Context, Result};
+use globset::GlobBuilder;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -31,6 +33,7 @@ pub(super) struct ModuleResolver {
 
 struct ProjectResolution {
     aliases: AliasConfig,
+    package_imports: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 struct PackageResolution {
@@ -42,7 +45,6 @@ struct PackageResolution {
 struct AliasConfig {
     base_url: PathBuf,
     paths: BTreeMap<String, Vec<String>>,
-    imports: BTreeMap<String, String>,
 }
 
 impl ModuleResolver {
@@ -71,6 +73,13 @@ impl ModuleResolver {
                 project.id.clone(),
                 ProjectResolution {
                     aliases: load_alias_config(&project.root)?,
+                    package_imports: load_package_imports(
+                        &project.root,
+                        modules
+                            .keys()
+                            .filter(|(project_id, _)| project_id == &project.id)
+                            .map(|(_, path)| path.as_str()),
+                    )?,
                 },
             );
         }
@@ -82,10 +91,16 @@ impl ModuleResolver {
     }
 
     pub(super) fn resolve(&self, module: &Module, specifier: &str) -> Resolution {
-        if matches!(specifier, "." | "..") {
-            return Resolution::Unsupported(specifier.to_string());
+        if is_sveltekit_virtual(specifier) {
+            return Resolution::External(specifier.to_string());
         }
-        if specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/')
+        if is_non_source_specifier(specifier) {
+            return Resolution::External(specifier.to_string());
+        }
+        if matches!(specifier, "." | "..")
+            || specifier.starts_with("./")
+            || specifier.starts_with("../")
+            || specifier.starts_with('/')
         {
             if unsupported_relative_specifier(specifier) {
                 return Resolution::Unsupported(specifier.to_string());
@@ -101,6 +116,7 @@ impl ModuleResolver {
                 PackageImportResolution::DeclaredButMissing => {
                     Resolution::UnresolvedInternal(specifier.to_string())
                 }
+                PackageImportResolution::External(target) => Resolution::External(target),
                 PackageImportResolution::NotDeclared => {
                     Resolution::Unsupported(specifier.to_string())
                 }
@@ -118,6 +134,25 @@ impl ModuleResolver {
                 .unwrap_or_else(|| Resolution::UnresolvedInternal(specifier.to_string()));
         }
         Resolution::External(specifier.to_string())
+    }
+
+    pub(super) fn resolve_dynamic(
+        &self,
+        module: &Module,
+        target: &DynamicDependencyTarget,
+    ) -> Vec<Resolution> {
+        match target {
+            DynamicDependencyTarget::Literal(specifier) => vec![self.resolve(module, specifier)],
+            DynamicDependencyTarget::Pattern { prefix, suffix } => {
+                self.resolve_pattern(module, prefix, suffix)
+            }
+            DynamicDependencyTarget::Glob(pattern) => self.resolve_glob(module, pattern),
+            DynamicDependencyTarget::Unknown => {
+                vec![Resolution::DynamicUnknown(
+                    "<dynamic expression>".to_string(),
+                )]
+            }
+        }
     }
 
     fn resolve_relative(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
@@ -152,15 +187,27 @@ impl ModuleResolver {
         let Some(project) = self.projects.get(&module.project) else {
             return PackageImportResolution::NotDeclared;
         };
-        for (pattern, target) in &project.aliases.imports {
-            let Some(capture) = match_alias(pattern, specifier) else {
-                continue;
-            };
-            let target = apply_alias_capture(target, capture.as_deref());
-            return self
-                .resolve_project_path(&module.project, Path::new(target.trim_start_matches("./")))
-                .map(PackageImportResolution::Resolved)
-                .unwrap_or(PackageImportResolution::DeclaredButMissing);
+        let mut directory = Path::new(&module.path).parent();
+        while let Some(current) = directory {
+            let directory_key = crate::paths::normalize_path(current);
+            if let Some(imports) = project.package_imports.get(&directory_key) {
+                for (pattern, target) in imports {
+                    let Some(capture) = match_alias(pattern, specifier) else {
+                        continue;
+                    };
+                    let target = apply_alias_capture(target, capture.as_deref());
+                    if !target.starts_with("./") && !target.starts_with("../") {
+                        return PackageImportResolution::External(target);
+                    }
+                    let raw = current.join(target.trim_start_matches("./"));
+                    return self
+                        .resolve_project_path(&module.project, &raw)
+                        .map(PackageImportResolution::Resolved)
+                        .unwrap_or(PackageImportResolution::DeclaredButMissing);
+                }
+                return PackageImportResolution::NotDeclared;
+            }
+            directory = current.parent();
         }
         PackageImportResolution::NotDeclared
     }
@@ -182,23 +229,75 @@ impl ModuleResolver {
         }
         None
     }
+
+    fn resolve_pattern(&self, module: &Module, prefix: &str, suffix: &str) -> Vec<Resolution> {
+        if !is_bounded_local_pattern(prefix, suffix) {
+            return vec![Resolution::DynamicUnknown(format!("{prefix}*{suffix}"))];
+        }
+        let matches = self
+            .module_specifiers(module)
+            .filter(|(specifier, _)| specifier.starts_with(prefix) && specifier.ends_with(suffix))
+            .map(|(_, key)| Resolution::Resolved(key))
+            .collect::<Vec<_>>();
+        if matches.is_empty() {
+            vec![Resolution::UnresolvedInternal(format!("{prefix}*{suffix}"))]
+        } else {
+            matches
+        }
+    }
+
+    fn resolve_glob(&self, module: &Module, pattern: &str) -> Vec<Resolution> {
+        if !is_bounded_local_pattern(pattern, "") || pattern.starts_with('!') {
+            return vec![Resolution::DynamicUnknown(pattern.to_string())];
+        }
+        let matcher = match GlobBuilder::new(pattern).literal_separator(true).build() {
+            Ok(glob) => glob.compile_matcher(),
+            Err(_) => return vec![Resolution::DynamicUnknown(pattern.to_string())],
+        };
+        let matches = self
+            .module_specifiers(module)
+            .filter(|(specifier, _)| matcher.is_match(specifier))
+            .map(|(_, key)| Resolution::Resolved(key))
+            .collect::<Vec<_>>();
+        if matches.is_empty() {
+            vec![Resolution::External(format!("glob:{pattern}"))]
+        } else {
+            matches
+        }
+    }
+
+    fn module_specifiers<'a>(
+        &'a self,
+        module: &'a Module,
+    ) -> impl Iterator<Item = (String, ModuleKey)> + 'a {
+        let parent = Path::new(&module.path)
+            .parent()
+            .unwrap_or_else(|| Path::new(""));
+        self.modules
+            .iter()
+            .filter(move |(project, _)| project == &module.project)
+            .filter_map(move |key| {
+                let relative = pathdiff::diff_paths(Path::new(&key.1), parent)?;
+                let normalized = crate::paths::normalize_path(&relative);
+                let specifier = if normalized.starts_with("../") {
+                    normalized
+                } else {
+                    format!("./{normalized}")
+                };
+                Some((specifier, key.clone()))
+            })
+    }
 }
 
 enum PackageImportResolution {
     Resolved(ModuleKey),
     DeclaredButMissing,
+    External(String),
     NotDeclared,
 }
 
 fn unsupported_relative_specifier(specifier: &str) -> bool {
     let normalized = specifier.split(['?', '#']).next().unwrap_or(specifier);
-    if Path::new(normalized)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name == "$types")
-    {
-        return true;
-    }
     let Some(extension) = Path::new(normalized)
         .extension()
         .and_then(|extension| extension.to_str())
@@ -209,6 +308,57 @@ fn unsupported_relative_specifier(specifier: &str) -> bool {
         extension,
         "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "svelte"
     )
+}
+
+fn is_sveltekit_virtual(specifier: &str) -> bool {
+    matches!(specifier, "$app" | "$env" | "$types")
+        || specifier.starts_with("$app/")
+        || specifier.starts_with("$env/")
+        || Path::new(specifier)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == "$types")
+}
+
+fn is_non_source_specifier(specifier: &str) -> bool {
+    if specifier.ends_with("?raw") || specifier.ends_with("?url") {
+        return true;
+    }
+    let normalized = specifier.split(['?', '#']).next().unwrap_or(specifier);
+    matches!(
+        Path::new(normalized)
+            .extension()
+            .and_then(|extension| extension.to_str()),
+        Some(
+            "css"
+                | "scss"
+                | "sass"
+                | "less"
+                | "styl"
+                | "json"
+                | "json5"
+                | "yaml"
+                | "yml"
+                | "toml"
+                | "svg"
+                | "png"
+                | "jpg"
+                | "jpeg"
+                | "gif"
+                | "webp"
+                | "avif"
+                | "woff"
+                | "woff2"
+                | "ttf"
+        )
+    )
+}
+
+fn is_bounded_local_pattern(prefix: &str, suffix: &str) -> bool {
+    let combined = format!("{prefix}{suffix}");
+    (prefix.starts_with("./") || prefix.starts_with("../"))
+        && !combined.contains('\0')
+        && !is_non_source_specifier(&combined)
 }
 
 fn load_alias_config(root: &Path) -> Result<AliasConfig> {
@@ -244,28 +394,61 @@ fn load_alias_config(root: &Path) -> Result<AliasConfig> {
         break;
     }
 
-    let manifest_path = root.join("package.json");
-    if manifest_path.is_file() {
+    Ok(config)
+}
+
+fn load_package_imports<'a>(
+    root: &Path,
+    module_paths: impl Iterator<Item = &'a str>,
+) -> Result<BTreeMap<String, BTreeMap<String, String>>> {
+    let mut directories = BTreeSet::new();
+    for module_path in module_paths {
+        let mut directory = Path::new(module_path).parent();
+        while let Some(current) = directory {
+            directories.insert(crate::paths::normalize_path(current));
+            directory = current.parent();
+        }
+    }
+
+    let mut package_imports = BTreeMap::new();
+    for directory in directories {
+        let manifest_path = root.join(&directory).join("package.json");
+        if !manifest_path.is_file() {
+            continue;
+        }
         let source = std::fs::read_to_string(&manifest_path)
             .with_context(|| format!("Could not read {}", manifest_path.display()))?;
         let manifest: Value = serde_json::from_str(&source)
             .with_context(|| format!("Invalid package manifest at {}", manifest_path.display()))?;
-        if let Some(imports) = manifest["imports"].as_object() {
-            for (pattern, target) in imports {
-                if let Some(target) = first_string_target(target) {
-                    config.imports.insert(pattern.clone(), target.to_string());
-                }
-            }
-        }
+        let imports = manifest["imports"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(pattern, target)| {
+                first_string_target(target).map(|target| (pattern.clone(), target.to_string()))
+            })
+            .collect::<BTreeMap<_, _>>();
+        package_imports.insert(directory, imports);
     }
-    Ok(config)
+    Ok(package_imports)
 }
 
 fn first_string_target(value: &Value) -> Option<&str> {
     match value {
         Value::String(value) => Some(value),
         Value::Array(values) => values.iter().find_map(first_string_target),
-        Value::Object(values) => values.values().find_map(first_string_target),
+        Value::Object(values) => [
+            "import",
+            "default",
+            "node",
+            "browser",
+            "development",
+            "production",
+            "types",
+        ]
+        .into_iter()
+        .find_map(|condition| values.get(condition).and_then(first_string_target))
+        .or_else(|| values.values().find_map(first_string_target)),
         _ => None,
     }
 }
