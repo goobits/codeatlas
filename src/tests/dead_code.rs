@@ -486,7 +486,24 @@ fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
 
 #[test]
 fn rust_cfg_and_macro_boundaries_prevent_false_hard_gates() {
-    let report = analyze_fixture("rust-dynamic");
+    let graph = source_graph_fixture("rust-dynamic");
+    let report = dead_code::analyze(&graph).expect("dead-code report");
+    let runtime_modes = graph
+        .nodes
+        .values()
+        .filter(|node| {
+            matches!(
+                node,
+                SourceNode::Symbol(symbol) if symbol.name == "runtime_mode"
+            )
+        })
+        .count();
+    assert_eq!(runtime_modes, 1);
+    assert!(graph.boundaries.iter().any(|boundary| {
+        boundary
+            .message
+            .contains("Multiple Rust definitions share semantic symbol runtime_mode")
+    }));
     assert!(report
         .findings
         .iter()

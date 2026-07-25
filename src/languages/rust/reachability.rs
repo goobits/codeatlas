@@ -149,19 +149,44 @@ fn add_symbols(
     let mut by_name = BTreeMap::<String, BTreeSet<NodeId>>::new();
     for symbol in symbols {
         let id = NodeId::symbol(file, &symbol.id);
-        graph
-            .add_node(
-                id.clone(),
-                SourceNode::Symbol(SourceSymbol {
-                    project: project.id.clone(),
-                    file: file.clone(),
-                    name: symbol.name.clone(),
-                    symbol_kind: source_symbol_kind(symbol.kind),
-                    visibility: source_visibility(symbol.visibility),
-                    span: symbol.span.clone(),
-                }),
-            )
-            .map_err(anyhow::Error::from)?;
+        let visibility = source_visibility(symbol.visibility);
+        let node = SourceSymbol {
+            project: project.id.clone(),
+            file: file.clone(),
+            name: symbol.name.clone(),
+            symbol_kind: source_symbol_kind(symbol.kind),
+            visibility,
+            span: symbol.span.clone(),
+        };
+        match graph.nodes.get_mut(&id) {
+            None => graph
+                .add_node(id.clone(), SourceNode::Symbol(node))
+                .map_err(anyhow::Error::from)?,
+            Some(SourceNode::Symbol(existing))
+                if existing.project == node.project
+                    && existing.file == node.file
+                    && existing.name == node.name
+                    && existing.symbol_kind == node.symbol_kind =>
+            {
+                if existing.visibility != visibility {
+                    existing.visibility = SourceVisibility::Unknown;
+                }
+                mark_partial(
+                    graph,
+                    project,
+                    Some(id.clone()),
+                    BoundaryKind::UnsupportedSyntax,
+                    format!(
+                        "Multiple Rust definitions share semantic symbol {}; \
+                         definition variants were merged conservatively.",
+                        symbol.name
+                    ),
+                    path.to_string(),
+                    symbol.span.clone(),
+                );
+            }
+            Some(_) => anyhow::bail!("Rust symbol ID {id} resolves to conflicting definitions"),
+        }
         graph.edges.insert(SourceEdge {
             from: file.clone(),
             to: EdgeTarget::Node(id.clone()),
