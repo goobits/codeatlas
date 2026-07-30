@@ -9,12 +9,28 @@ mod typescript;
 pub(crate) type Importers = HashMap<String, HashSet<String>>;
 pub(crate) type FileEdges = HashSet<FileEdge>;
 
+pub(crate) struct UsageAnalysis {
+    importers: Importers,
+    dynamic_references: HashSet<String>,
+}
+
+impl UsageAnalysis {
+    pub(crate) fn is_referenced(&self, symbol_id: &str) -> bool {
+        self.dynamic_references.contains(symbol_id)
+            || self
+                .importers
+                .get(symbol_id)
+                .is_some_and(|files| !files.is_empty())
+    }
+}
+
 pub(crate) fn build_importers(
     report: &ScanReport,
     root_dir: &Path,
     no_default_ignore: bool,
-) -> (Importers, FileEdges) {
+) -> (UsageAnalysis, FileEdges) {
     let mut importers = HashMap::new();
+    let mut dynamic_references = HashSet::new();
     let mut file_edges = HashSet::new();
 
     let public_symbols: Vec<&Symbol> = report
@@ -29,6 +45,7 @@ pub(crate) fn build_importers(
         root_dir,
         &symbol_index,
         &mut importers,
+        &mut dynamic_references,
         &mut file_edges,
         no_default_ignore,
     );
@@ -47,7 +64,13 @@ pub(crate) fn build_importers(
         no_default_ignore,
     );
 
-    (importers, file_edges)
+    (
+        UsageAnalysis {
+            importers,
+            dynamic_references,
+        },
+        file_edges,
+    )
 }
 
 /// Add a file-to-file dependency edge
@@ -81,9 +104,9 @@ pub(crate) fn add_importer(importers: &mut Importers, symbol_id: &str, importer:
         .insert(importer.to_string());
 }
 
-pub(crate) fn to_import_usage(importers: &Importers) -> Vec<ImportUsage> {
+pub(crate) fn to_import_usage(analysis: &UsageAnalysis) -> Vec<ImportUsage> {
     let mut usage = Vec::new();
-    for (id, files) in importers {
+    for (id, files) in &analysis.importers {
         let mut importers: Vec<String> = files.iter().cloned().collect();
         importers.sort();
         usage.push(ImportUsage {

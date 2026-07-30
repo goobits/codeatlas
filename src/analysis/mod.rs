@@ -13,19 +13,19 @@ pub(crate) fn annotate_imports(
     report: &mut ScanReport,
     root_dir: &Path,
     no_default_ignore: bool,
-) -> imports::Importers {
-    let (importers, file_edges) = imports::build_importers(report, root_dir, no_default_ignore);
-    report.imports = imports::to_import_usage(&importers);
+) -> imports::UsageAnalysis {
+    let (usage, file_edges) = imports::build_importers(report, root_dir, no_default_ignore);
+    report.imports = imports::to_import_usage(&usage);
     report.file_edges = file_edges.into_iter().collect();
-    importers
+    usage
 }
 
 pub(crate) fn annotate_unused_public(
     report: &mut ScanReport,
-    importers: &imports::Importers,
+    usage: &imports::UsageAnalysis,
     no_default_ignore: bool,
 ) {
-    report.unused_public = unused_public::compute(report, importers, no_default_ignore);
+    report.unused_public = unused_public::compute(report, usage, no_default_ignore);
 }
 
 pub(crate) use dependency_types::annotate_dependency_types;

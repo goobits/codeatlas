@@ -9,6 +9,7 @@ pub(crate) fn collect_importers(
     root_dir: &Path,
     symbol_index: &HashMap<Language, HashMap<String, HashMap<String, String>>>,
     importers: &mut Importers,
+    dynamic_references: &mut HashSet<String>,
     file_edges: &mut FileEdges,
     no_default_ignore: bool,
 ) {
@@ -30,6 +31,7 @@ pub(crate) fn collect_importers(
     };
 
     for (file, info) in &modules {
+        record_dynamic_references(file, info, symbols_by_file, dynamic_references);
         process_imports(file, info, &mut resolution, importers, file_edges);
     }
 }
@@ -81,6 +83,7 @@ fn load_modules(
             ModuleInfo {
                 exports: info.exports,
                 imports: info.imports,
+                dynamic_entrypoints: info.reachability.dynamic_entrypoints,
                 module_name,
                 file_path: relative,
             },
@@ -225,8 +228,25 @@ fn process_imports(
 struct ModuleInfo {
     exports: Option<Vec<String>>,
     imports: Vec<parser::PythonImport>,
+    dynamic_entrypoints: std::collections::BTreeSet<String>,
     module_name: String,
     file_path: String,
+}
+
+fn record_dynamic_references(
+    file: &str,
+    module: &ModuleInfo,
+    symbols_by_file: Option<&HashMap<String, HashMap<String, String>>>,
+    dynamic_references: &mut HashSet<String>,
+) {
+    let Some(symbols) = symbols_by_file.and_then(|symbols| symbols.get(file)) else {
+        return;
+    };
+    for name in &module.dynamic_entrypoints {
+        if let Some(symbol_id) = symbols.get(name) {
+            dynamic_references.insert(symbol_id.clone());
+        }
+    }
 }
 
 fn add_importers(importers: &mut Importers, file: &str, symbol_ids: Arc<Vec<String>>) {

@@ -1,10 +1,10 @@
 use crate::analysis::ignore;
-use crate::analysis::imports::Importers;
+use crate::analysis::imports::UsageAnalysis;
 use crate::domain::{ScanReport, UnusedPublic, Visibility};
 
 pub(crate) fn compute(
     report: &ScanReport,
-    importers: &Importers,
+    usage: &UsageAnalysis,
     no_default_ignore: bool,
 ) -> Vec<UnusedPublic> {
     let mut unused = Vec::new();
@@ -16,10 +16,7 @@ pub(crate) fn compute(
         if ignore::is_ignored_path(&symbol.file_path, no_default_ignore) {
             continue;
         }
-        if importers
-            .get(&symbol.id)
-            .is_none_or(|files| files.is_empty())
-        {
+        if !usage.is_referenced(&symbol.id) {
             unused.push(UnusedPublic {
                 id: symbol.id.clone(),
                 suggestion: suggestion_for(symbol.language),

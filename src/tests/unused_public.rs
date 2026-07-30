@@ -43,6 +43,7 @@ fn unused_public_python() {
     let unused = collect_unused_ids(&root, "py");
     assert!(unused.contains("py:pkg/api.py:def#unused_func"));
     assert!(!unused.contains("py:pkg/api.py:def#public_func"));
+    assert!(!unused.contains("py:pkg/api.py:def#registered_func"));
 }
 
 #[test]

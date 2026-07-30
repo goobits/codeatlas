@@ -22,6 +22,7 @@ pub(crate) struct PythonReachabilityFacts {
     pub top_level_references: BTreeSet<String>,
     pub symbol_references: BTreeMap<String, BTreeSet<String>>,
     pub dynamic_dependencies: Vec<PythonDynamicDependency>,
+    pub dynamic_entrypoints: BTreeSet<String>,
     pub uncertainties: Vec<PythonUncertainty>,
 }
 
@@ -247,6 +248,9 @@ fn collect_reachability(
             }
             ast::Stmt::ClassDef(class) => {
                 let owner = class.name.as_str().to_string();
+                if has_unknown_decorator(&class.decorator_list) {
+                    facts.dynamic_entrypoints.insert(owner.clone());
+                }
                 let mut body = ReferenceCollector::new(Some(owner.clone()), source, line_index);
                 for statement in &class.body {
                     body.visit_stmt(statement.clone());
@@ -290,6 +294,9 @@ fn collect_callable_reachability(
     facts: &mut PythonReachabilityFacts,
 ) {
     let owner = name.as_str().to_string();
+    if has_unknown_decorator(decorators) {
+        facts.dynamic_entrypoints.insert(owner.clone());
+    }
     let mut callable = ReferenceCollector::new(Some(owner.clone()), source, line_index);
     for statement in body {
         callable.visit_stmt(statement.clone());
@@ -446,6 +453,12 @@ fn record_unknown_decorators(
             ),
         });
     }
+}
+
+fn has_unknown_decorator(decorators: &[ast::Expr]) -> bool {
+    decorators
+        .iter()
+        .any(|decorator| !known_decorator(decorator))
 }
 
 fn known_decorator(expression: &ast::Expr) -> bool {
