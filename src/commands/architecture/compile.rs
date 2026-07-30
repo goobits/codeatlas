@@ -1,7 +1,16 @@
-use super::output;
+use super::output as diagnostic_output;
 use crate::architecture::{compile, CompileMode, CompileRequest, CompileResult};
-use crate::cli::ArchitectureCompileMode;
+use crate::commands::output;
+use clap::ValueEnum;
 use std::path::{Path, PathBuf};
+
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ArchitectureCompileMode {
+    /// Compile active accepted declarations only
+    Governing,
+    /// Compile accepted, proposed, and unresolved declarations for review
+    Review,
+}
 
 pub(crate) fn run(
     modules: &[PathBuf],
@@ -27,7 +36,7 @@ pub(crate) fn run(
             }
         },
         Err(diagnostics) => {
-            output::print_diagnostics(&diagnostics);
+            diagnostic_output::print_diagnostics(&diagnostics);
             1
         }
     }

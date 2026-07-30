@@ -1,8 +1,16 @@
-use super::{annotate_report, build_scan_config, exit_code, load_project, scan_project};
-use crate::cli::DocsFormat;
+use super::{annotate_report, build_scan_config, exit_code, load_project, output, scan_project};
 use crate::{analysis, outputs, package};
 use anyhow::{Context, Result};
+use clap::ValueEnum;
 use std::path::Path;
+
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub(crate) enum DocsFormat {
+    /// Markdown reference
+    Markdown,
+    /// Standalone searchable HTML reference
+    Html,
+}
 
 pub(crate) fn run(
     path: &Path,
@@ -95,17 +103,7 @@ fn generate(
         return Ok(0);
     }
 
-    if let Some(output_path) = output_path {
-        if let Some(parent) = output_path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Could not create {}", parent.display()))?;
-        }
-        std::fs::write(&output_path, rendered)
-            .with_context(|| format!("Could not write {}", output_path.display()))?;
-        println!("API documentation written to {}", output_path.display());
-    } else {
-        print!("{}", rendered);
-    }
+    output::write_text_or_print(&rendered, output_path.as_deref(), "API documentation")?;
     Ok(0)
 }
 

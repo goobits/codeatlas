@@ -1,8 +1,16 @@
-use super::{exit_code, load_project};
-use crate::cli::DeadCodeFormat;
+use super::{exit_code, load_project, output};
 use crate::{dead_code, languages, outputs};
-use anyhow::{Context, Result};
+use anyhow::Result;
+use clap::ValueEnum;
 use std::path::Path;
+
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub(crate) enum DeadCodeFormat {
+    /// Human-readable findings and project completeness
+    Text,
+    /// Stable schema-versioned JSON
+    Json,
+}
 
 pub(crate) fn run(
     path: &Path,
@@ -30,17 +38,7 @@ fn analyze(
         DeadCodeFormat::Json => outputs::dead_code::render_json(&report)?,
     };
 
-    if let Some(output_path) = out {
-        if let Some(parent) = output_path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Could not create {}", parent.display()))?;
-        }
-        std::fs::write(output_path, rendered)
-            .with_context(|| format!("Could not write {}", output_path.display()))?;
-        eprintln!("Dead-code report written to {}", output_path.display());
-    } else {
-        print!("{rendered}");
-    }
+    output::write_text_or_print(&rendered, out, "Dead-code report")?;
 
     Ok(if check && report.gate_count() > 0 {
         1

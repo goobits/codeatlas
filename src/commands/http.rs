@@ -1,12 +1,41 @@
-use super::{exit_code, load_project};
-use crate::cli::HttpFuzzProfile;
+use super::{exit_code, load_project, output};
 use crate::http;
-use crate::http::model::{
-    HttpBaselineReport, HttpCheckReport, HttpDiffReport, HttpInventoryReport,
+use crate::http::{
+    FuzzRunOptions, HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpDiffReport,
+    HttpInventoryReport, HTTP_BASELINE_API_VERSION,
 };
 use anyhow::{Context, Result};
-use serde::Serialize;
+use clap::ValueEnum;
 use std::path::{Path, PathBuf};
+
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub(crate) enum HttpFuzzProfile {
+    Standard,
+    Stateful,
+    Thorough,
+}
+
+impl HttpFuzzProfile {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Stateful => "stateful",
+            Self::Thorough => "thorough",
+        }
+    }
+
+    fn max_examples(self) -> u32 {
+        match self {
+            Self::Standard => 75,
+            Self::Stateful => 25,
+            Self::Thorough => 750,
+        }
+    }
+
+    fn includes_stateful_workflows(self) -> bool {
+        matches!(self, Self::Stateful)
+    }
+}
 
 pub(crate) fn run_inventory(
     path: &Path,
@@ -68,7 +97,7 @@ fn inventory(
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let report = build_inventory(path, openapi, config_path)?;
-    write_or_print(&report, out, "HTTP inventory")?;
+    output::write_or_print(&report, out, "HTTP inventory")?;
     Ok(0)
 }
 
@@ -80,7 +109,7 @@ fn baseline(
 ) -> Result<i32> {
     let inventory = build_inventory(path, openapi, config_path)?;
     let report = HttpBaselineReport::from_inventory(&inventory);
-    write_or_print(&report, out, "HTTP baseline")?;
+    output::write_or_print(&report, out, "HTTP baseline")?;
     Ok(0)
 }
 
@@ -93,11 +122,11 @@ fn check(
 ) -> Result<i32> {
     let inventory = build_inventory(path, openapi, config_path)?;
     let baseline_report = baseline
-        .map(|path| load_baseline(path).map(|baseline| http::diff::compare(&baseline, &inventory)))
+        .map(|path| load_baseline(path).map(|baseline| http::compare(&baseline, &inventory)))
         .transpose()?;
-    let report: HttpCheckReport = http::conformance::check(inventory);
+    let report: HttpCheckReport = http::check(inventory);
     let gate_count = report.gate_count();
-    write_or_print(&report, out, "HTTP conformance report")?;
+    output::write_or_print(&report, out, "HTTP conformance report")?;
     if let Some(diff) = &baseline_report {
         print_diff_summary(diff);
     }
@@ -115,9 +144,9 @@ fn diff(
 ) -> Result<i32> {
     let baseline = load_baseline(baseline)?;
     let current = build_inventory(path, openapi, config_path)?;
-    let report: HttpDiffReport = http::diff::compare(&baseline, &current);
+    let report: HttpDiffReport = http::compare(&baseline, &current);
     let breaking_changes = report.breaking_changes;
-    write_or_print(&report, out, "HTTP diff")?;
+    output::write_or_print(&report, out, "HTTP diff")?;
     Ok(i32::from(breaking_changes > 0))
 }
 
@@ -126,11 +155,11 @@ fn load_baseline(path: &Path) -> Result<HttpBaselineReport> {
         .with_context(|| format!("Could not read HTTP baseline {}", path.display()))?;
     let baseline: HttpBaselineReport = serde_json::from_str(&source)
         .with_context(|| format!("Invalid CodeAtlas HTTP baseline {}", path.display()))?;
-    if baseline.api_version != crate::http::model::HTTP_BASELINE_API_VERSION {
+    if baseline.api_version != HTTP_BASELINE_API_VERSION {
         anyhow::bail!(
             "Unsupported CodeAtlas HTTP baseline API version {:?}; expected {:?}",
             baseline.api_version,
-            crate::http::model::HTTP_BASELINE_API_VERSION
+            HTTP_BASELINE_API_VERSION
         );
     }
     Ok(baseline)
@@ -144,8 +173,8 @@ fn print_diff_summary(report: &HttpDiffReport) {
     for contract in &report.contracts {
         for change in &contract.changes {
             let marker = match change.kind {
-                crate::http::model::HttpChangeKind::Additive => "+",
-                crate::http::model::HttpChangeKind::Breaking => "!",
+                HttpChangeKind::Additive => "+",
+                HttpChangeKind::Breaking => "!",
             };
             eprintln!(
                 "  {marker} {} {}: {}",
@@ -158,9 +187,9 @@ fn print_diff_summary(report: &HttpDiffReport) {
 fn fuzz(options: &FuzzOptions<'_>) -> Result<i32> {
     let project = load_project(options.path, options.config_path)?;
     let target = project.http_fuzz_target(options.target)?;
-    http::fuzz::run(
+    http::run_fuzz(
         &target,
-        &http::fuzz::RunOptions {
+        &FuzzRunOptions {
             max_examples: options
                 .max_examples
                 .unwrap_or_else(|| options.profile.max_examples()),
@@ -181,21 +210,4 @@ fn build_inventory(
     let project = load_project(path, config_path)?;
     let contracts = project.http_contracts(openapi)?;
     http::inventory(&contracts)
-}
-
-fn write_or_print(value: &impl Serialize, out: Option<&Path>, label: &str) -> Result<()> {
-    let mut rendered = serde_json::to_string_pretty(value)?;
-    rendered.push('\n');
-    if let Some(path) = out {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Could not create {}", parent.display()))?;
-        }
-        std::fs::write(path, rendered)
-            .with_context(|| format!("Could not write {}", path.display()))?;
-        eprintln!("{label} written to {}", path.display());
-    } else {
-        print!("{rendered}");
-    }
-    Ok(())
 }

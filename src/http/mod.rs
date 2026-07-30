@@ -1,8 +1,8 @@
-pub(crate) mod conformance;
-pub(crate) mod diff;
-pub(crate) mod fuzz;
+mod conformance;
+mod diff;
+mod fuzz;
 mod fuzz_report;
-pub(crate) mod model;
+mod model;
 mod openapi;
 mod provider;
 mod request_adapter;
@@ -13,7 +13,15 @@ mod toolchain;
 use crate::config::ResolvedHttpContract;
 use anyhow::Result;
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use model::{HttpContractInventory, HttpInventoryReport};
+use model::HttpContractInventory;
+
+pub(crate) use conformance::check;
+pub(crate) use diff::compare;
+pub(crate) use fuzz::{run as run_fuzz, RunOptions as FuzzRunOptions};
+pub(crate) use model::{
+    HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpDiffReport, HttpInventoryReport,
+    HTTP_BASELINE_API_VERSION,
+};
 
 pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInventoryReport> {
     let mut inventories = Vec::with_capacity(contracts.len());

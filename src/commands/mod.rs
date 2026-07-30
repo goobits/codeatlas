@@ -4,13 +4,24 @@ pub(crate) mod dead_code;
 pub(crate) mod diff;
 pub(crate) mod docs;
 pub(crate) mod http;
+mod output;
 
-use crate::cli::OutputFormat;
 use crate::config::ProjectConfig;
 use crate::domain::{ScanConfig, ScanReport};
 use crate::{analysis, languages, outputs, package};
-use anyhow::{Context, Result};
+use anyhow::Result;
+use clap::ValueEnum;
 use std::path::{Path, PathBuf};
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub(crate) enum OutputFormat {
+    /// ASCII tree view (default)
+    Tree,
+    /// Mermaid diagram
+    Mermaid,
+    /// JSON for tooling
+    Json,
+}
 
 pub(crate) fn run_scan(
     path: &Path,
@@ -91,9 +102,7 @@ fn ci(
 
     if let Some(baseline_path) = baseline {
         let json = outputs::json::render(&report)?;
-        create_parent_dir(&baseline_path)?;
-        std::fs::write(&baseline_path, json)
-            .with_context(|| format!("Could not write {}", baseline_path.display()))?;
+        output::write_file(&baseline_path, &json)?;
         eprintln!("Baseline written to {}", baseline_path.display());
     }
 
@@ -122,15 +131,8 @@ fn map(path: &Path, out: Option<PathBuf>, config_path: Option<&Path>) -> Result<
     analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
     annotate_report(&mut report, &project)?;
 
-    let output = outputs::mermaid::render(&report);
-    if let Some(out_path) = out {
-        create_parent_dir(&out_path)?;
-        std::fs::write(&out_path, output)
-            .with_context(|| format!("Could not write {}", out_path.display()))?;
-        println!("Mermaid diagram written to {}", out_path.display());
-    } else {
-        println!("{}", output);
-    }
+    let rendered = outputs::mermaid::render(&report);
+    output::write_text_or_print(&rendered, out.as_deref(), "Mermaid diagram")?;
     Ok(0)
 }
 
@@ -266,29 +268,11 @@ fn render_format(report: &ScanReport, format: OutputFormat) -> Result<String> {
 }
 
 fn write_report(content: String, out: Option<PathBuf>, format: OutputFormat) -> Result<()> {
-    let Some(out_dir) = out else {
-        println!("{}", content);
-        return Ok(());
-    };
-
-    std::fs::create_dir_all(&out_dir)
-        .with_context(|| format!("Could not create {}", out_dir.display()))?;
     let filename = match format {
         OutputFormat::Tree => "atlas.txt",
         OutputFormat::Mermaid => "atlas.mmd",
         OutputFormat::Json => "atlas.json",
     };
-    let out_path = out_dir.join(filename);
-    std::fs::write(&out_path, content)
-        .with_context(|| format!("Could not write {}", out_path.display()))?;
-    println!("Report written to {}", out_path.display());
-    Ok(())
-}
-
-fn create_parent_dir(path: &Path) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("Could not create {}", parent.display()))?;
-    }
-    Ok(())
+    let out_path = out.map(|directory| directory.join(filename));
+    output::write_text_or_print(&content, out_path.as_deref(), "Report")
 }

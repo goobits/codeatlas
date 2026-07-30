@@ -1,9 +1,27 @@
-use super::output;
+use super::output as diagnostic_output;
 use crate::architecture::{
     compile, query_approved_providers, CompileMode, CompileRequest, ProviderQueryReport,
 };
-use crate::cli::ArchitectureProviderApprovalScope;
+use crate::commands::output;
+use clap::ValueEnum;
 use std::path::{Path, PathBuf};
+
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ArchitectureProviderApprovalScope {
+    Personal,
+    Project,
+    Organization,
+}
+
+impl ArchitectureProviderApprovalScope {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Personal => "personal",
+            Self::Project => "project",
+            Self::Organization => "organization",
+        }
+    }
+}
 
 pub(crate) fn run(
     modules: &[PathBuf],
@@ -21,7 +39,7 @@ pub(crate) fn run(
             }
         },
         Err(diagnostics) => {
-            output::print_diagnostics(&diagnostics);
+            diagnostic_output::print_diagnostics(&diagnostics);
             1
         }
     }
