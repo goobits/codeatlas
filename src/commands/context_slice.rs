@@ -1,6 +1,6 @@
-use super::{exit_code, load_project};
+use super::{exit_code, load_project, output};
 use crate::{context_slice, languages, outputs};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::path::Path;
 
 pub(crate) fn run(
@@ -34,16 +34,6 @@ fn generate(
         },
     )?;
     let rendered = outputs::context_slice::render_json(&report)?;
-    if let Some(output_path) = out {
-        if let Some(parent) = output_path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Could not create {}", parent.display()))?;
-        }
-        std::fs::write(output_path, rendered)
-            .with_context(|| format!("Could not write {}", output_path.display()))?;
-        eprintln!("Context slice written to {}", output_path.display());
-    } else {
-        print!("{rendered}");
-    }
+    output::write_text_or_print(&rendered, out, "Context slice")?;
     Ok(0)
 }

@@ -1,7 +1,8 @@
-use super::output;
+use super::output as diagnostic_output;
 use crate::architecture::{
     compile, conform, conformance_source_inputs, CompileMode, CompileRequest, ConformanceRequest,
 };
+use crate::commands::output;
 use std::path::{Path, PathBuf};
 
 pub(crate) struct Options<'a> {
@@ -23,7 +24,7 @@ pub(crate) fn run(options: &Options<'_>) -> i32 {
     }) {
         Ok(compilation) => compilation,
         Err(diagnostics) => {
-            output::print_diagnostics(&diagnostics);
+            diagnostic_output::print_diagnostics(&diagnostics);
             return 1;
         }
     };
@@ -51,7 +52,7 @@ pub(crate) fn run(options: &Options<'_>) -> i32 {
             i32::from(options.check && report.has_errors())
         }
         Err(diagnostics) => {
-            output::print_diagnostics(&diagnostics);
+            diagnostic_output::print_diagnostics(&diagnostics);
             1
         }
     }
