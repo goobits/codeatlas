@@ -1,16 +1,12 @@
 mod parser;
-pub(crate) mod reachability;
+pub(super) mod reachability;
 
 use crate::domain::{Language, Symbol};
 use crate::languages::definition::LanguageDefinition;
 use anyhow::Result;
 use std::path::Path;
 
-// ============================================================================
-// New Pluggable System Implementation (for future use)
-// ============================================================================
-
-/// Svelte/SvelteKit language definition for the pluggable system.
+/// Svelte/SvelteKit language adapter.
 pub(crate) struct SvelteLanguage;
 
 impl LanguageDefinition for SvelteLanguage {
@@ -57,10 +53,6 @@ impl LanguageDefinition for SvelteLanguage {
             || is_sveltekit_script(path)
     }
 }
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
 
 /// Check if this is a SvelteKit special file (+page.ts, +server.ts, etc.)
 fn is_sveltekit_script(path: &Path) -> bool {

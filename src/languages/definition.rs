@@ -1,34 +1,15 @@
-//! Core trait that defines what a language plugin must provide.
+//! Internal contract implemented by CodeAtlas language adapters.
 //!
 //! To add support for a new language:
 //! 1. Implement `LanguageDefinition` for your language
-//! 2. Register it with the `LanguageRegistry`
-//!
-//! Example:
-//! ```ignore
-//! pub struct GoLanguage;
-//!
-//! impl LanguageDefinition for GoLanguage {
-//!     fn id(&self) -> &'static str { "go" }
-//!     fn language(&self) -> Language { Language::Unknown } // or add Go to Language enum
-//!     fn extensions(&self) -> &'static [&'static str] { &["go"] }
-//!     fn config_files(&self) -> &'static [&'static str] { &["go.mod", "go.sum"] }
-//!     fn ignored_dirs(&self) -> &'static [&'static str] { &["vendor"] }
-//!     fn parse_file(&self, path: &Path, root: &Path, source: Option<&str>) -> Result<Vec<Symbol>> {
-//!         // Your parsing logic here
-//!     }
-//! }
-//! ```
+//! 2. Add it to the built-in `LanguageRegistry`
 
 use crate::domain::{Language, ScanConfig, ScanReport, Symbol};
 use anyhow::Result;
 use std::path::Path;
 
-/// Core trait that all language plugins must implement.
-///
-/// This follows the Open/Closed Principle: the scanning system is open for
-/// extension (new languages) but closed for modification (core code doesn't change).
-pub trait LanguageDefinition: Send + Sync {
+/// Core trait implemented by each built-in language adapter.
+pub(super) trait LanguageDefinition: Send + Sync {
     // =========================================================================
     // METADATA - Required for language identification and auto-detection
     // =========================================================================
@@ -95,10 +76,4 @@ pub trait LanguageDefinition: Send + Sync {
     fn should_ignore_dir(&self, name: &str) -> bool {
         name.starts_with('.') || self.ignored_dirs().contains(&name)
     }
-}
-
-/// Helper to create a symbol ID in the standard format: "lang:path:kind#name"
-#[allow(dead_code)]
-pub fn make_symbol_id(lang_id: &str, file_path: &str, kind: &str, name: &str) -> String {
-    format!("{}:{}:{}#{}", lang_id, file_path, kind, name)
 }

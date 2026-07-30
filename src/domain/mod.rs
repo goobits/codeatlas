@@ -1,6 +1,6 @@
-pub mod model;
+mod model;
 pub(crate) mod source_graph;
-pub mod traits;
+mod traits;
 
-pub use model::*;
-pub use traits::*;
+pub(crate) use model::*;
+pub(crate) use traits::*;

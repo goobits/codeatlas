@@ -25,7 +25,7 @@ pub(super) struct DocumentSet {
 }
 
 impl DocumentSet {
-    pub fn load(
+    pub(super) fn load(
         roots: &[PathBuf],
         allowed_root: &Path,
         expected_kind: &str,
@@ -210,14 +210,14 @@ impl DocumentSet {
         }
     }
 
-    pub fn values(&self) -> Vec<Value> {
+    pub(super) fn values(&self) -> Vec<Value> {
         self.documents
             .values()
             .map(|document| document.value.clone())
             .collect()
     }
 
-    pub fn import_closure_digest(&self, root: &str) -> Result<TypedDigest, Vec<Diagnostic>> {
+    pub(super) fn import_closure_digest(&self, root: &str) -> Result<TypedDigest, Vec<Diagnostic>> {
         let mut pending = vec![root.to_owned()];
         let mut visited = BTreeSet::new();
         let mut members = Vec::new();

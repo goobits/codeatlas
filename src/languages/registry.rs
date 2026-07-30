@@ -1,7 +1,6 @@
-//! Language registry for managing pluggable language support.
+//! Registry for CodeAtlas's built-in language adapters.
 //!
 //! The registry allows:
-//! - Registering new languages at runtime
 //! - Auto-detecting languages in a directory
 //! - Creating scanners for specific languages
 
@@ -11,54 +10,22 @@ use std::path::Path;
 use std::sync::Arc;
 use walkdir::WalkDir;
 
-/// Registry of all available language definitions.
-///
-/// Use `LanguageRegistry::with_defaults()` to get a registry with all built-in languages,
-/// or `LanguageRegistry::new()` and add languages manually.
-pub struct LanguageRegistry {
+/// Registry of all built-in language definitions.
+pub(super) struct LanguageRegistry {
     languages: Vec<Arc<dyn LanguageDefinition>>,
 }
 
-impl Default for LanguageRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl LanguageRegistry {
-    /// Create an empty registry.
-    pub fn new() -> Self {
-        Self { languages: vec![] }
-    }
-
     /// Create a registry with all built-in languages.
-    pub fn with_defaults() -> Self {
-        let mut registry = Self::new();
-
-        // Register built-in languages
-        registry.register(Arc::new(super::typescript::TypeScriptLanguage));
-        registry.register(Arc::new(super::python::PythonLanguage));
-        registry.register(Arc::new(super::rust::RustLanguage));
-        registry.register(Arc::new(super::svelte::SvelteLanguage));
-
-        registry
-    }
-
-    /// Register a new language definition.
-    pub fn register(&mut self, language: Arc<dyn LanguageDefinition>) {
-        self.languages.push(language);
-    }
-
-    /// Get all registered language definitions.
-    #[allow(dead_code)]
-    pub fn all_languages(&self) -> &[Arc<dyn LanguageDefinition>] {
-        &self.languages
-    }
-
-    /// Find a language by its ID (e.g., "ts", "py", "rs").
-    #[allow(dead_code)]
-    pub fn find_by_id(&self, id: &str) -> Option<Arc<dyn LanguageDefinition>> {
-        self.languages.iter().find(|lang| lang.id() == id).cloned()
+    pub(super) fn with_defaults() -> Self {
+        Self {
+            languages: vec![
+                Arc::new(super::typescript::TypeScriptLanguage),
+                Arc::new(super::python::PythonLanguage),
+                Arc::new(super::rust::RustLanguage),
+                Arc::new(super::svelte::SvelteLanguage),
+            ],
+        }
     }
 
     /// Auto-detect which languages are present in a directory.
@@ -66,28 +33,21 @@ impl LanguageRegistry {
     /// Returns language definitions for any language where:
     /// - A file with a matching extension exists, OR
     /// - A config file exists (e.g., Cargo.toml, package.json)
-    pub fn detect_languages(&self, root_dir: &Path) -> Vec<Arc<dyn LanguageDefinition>> {
+    fn detect_languages(&self, root_dir: &Path) -> Vec<Arc<dyn LanguageDefinition>> {
         let mut detected: Vec<bool> = vec![false; self.languages.len()];
 
-        // Quick scan for language indicators
         let walker = WalkDir::new(root_dir)
-            .max_depth(5) // Don't go too deep for detection
+            .max_depth(5)
             .into_iter()
             .filter_entry(|e| {
+                if e.depth() == 0 {
+                    return true;
+                }
                 let name = e.file_name().to_string_lossy();
-                // Skip common non-source directories (union of all languages)
-                !matches!(
-                    name.as_ref(),
-                    "node_modules"
-                        | "target"
-                        | ".git"
-                        | "dist"
-                        | "build"
-                        | "__pycache__"
-                        | ".venv"
-                        | "venv"
-                        | ".svelte-kit"
-                )
+                !self
+                    .languages
+                    .iter()
+                    .any(|language| language.should_ignore_dir(&name))
             });
 
         for entry in walker.flatten() {
@@ -101,28 +61,24 @@ impl LanguageRegistry {
             // Check each language
             for (idx, lang) in self.languages.iter().enumerate() {
                 if detected[idx] {
-                    continue; // Already found this language
+                    continue;
                 }
 
-                // Check file extension
                 if lang.is_language_file(path) {
                     detected[idx] = true;
                     continue;
                 }
 
-                // Check config files
                 if lang.config_files().contains(&file_name.as_ref()) {
                     detected[idx] = true;
                 }
             }
 
-            // Early exit if all languages detected
             if detected.iter().all(|&d| d) {
                 break;
             }
         }
 
-        // Return detected languages
         self.languages
             .iter()
             .enumerate()
@@ -135,7 +91,7 @@ impl LanguageRegistry {
     ///
     /// If `lang_ids` is None, returns scanners for all registered languages.
     /// If `lang_ids` is Some, returns scanners only for the specified languages.
-    pub fn get_scanners(&self, lang_ids: Option<&[&str]>) -> Vec<Box<dyn LanguageScanner>> {
+    pub(super) fn get_scanners(&self, lang_ids: Option<&[&str]>) -> Vec<Box<dyn LanguageScanner>> {
         match lang_ids {
             None => self
                 .languages
@@ -156,7 +112,7 @@ impl LanguageRegistry {
     }
 
     /// Get scanners for auto-detected languages in a directory.
-    pub fn get_scanners_auto(&self, root_dir: &Path) -> Vec<Box<dyn LanguageScanner>> {
+    pub(super) fn get_scanners_auto(&self, root_dir: &Path) -> Vec<Box<dyn LanguageScanner>> {
         self.detect_languages(root_dir)
             .into_iter()
             .map(|lang| -> Box<dyn LanguageScanner> { Box::new(GenericScanner::new(lang)) })
@@ -168,12 +124,12 @@ impl LanguageRegistry {
 ///
 /// This implements the LanguageScanner trait by delegating to the
 /// language definition's methods.
-pub(crate) struct GenericScanner {
+struct GenericScanner {
     language: Arc<dyn LanguageDefinition>,
 }
 
 impl GenericScanner {
-    pub fn new(language: Arc<dyn LanguageDefinition>) -> Self {
+    fn new(language: Arc<dyn LanguageDefinition>) -> Self {
         Self { language }
     }
 }

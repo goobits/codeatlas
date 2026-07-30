@@ -1,23 +1,18 @@
-// Language modules
-pub(crate) mod ecmascript;
-pub mod python;
+mod definition;
+mod ecmascript;
+pub(crate) mod python;
 pub(crate) mod reachability;
-pub mod rust;
-pub mod svelte;
-pub mod typescript;
-
-// Pluggable language system
-pub mod definition;
-pub mod registry;
-
-// Re-export key types for external use
-pub use definition::LanguageDefinition;
-pub use registry::LanguageRegistry;
+mod registry;
+pub(crate) mod rust;
+mod svelte;
+pub(crate) mod typescript;
 
 use crate::domain::{
     LanguageScanner, ScanConfig, ScanReport, SkippedFile, Symbol, SymbolKind, Visibility,
 };
+use definition::LanguageDefinition;
 use rayon::prelude::*;
+use registry::LanguageRegistry;
 use std::path::{Path, PathBuf};
 
 /// Get scanners for specified languages using the pluggable registry system.
@@ -91,9 +86,8 @@ struct FileResult {
     skipped: Option<SkippedFile>,
 }
 
-/// Scan using a LanguageDefinition (pluggable system).
-/// This function uses the language definition's methods for all language-specific behavior.
-pub(crate) fn scan_language_with_definition(
+/// Scan using one built-in language definition.
+fn scan_language_with_definition(
     root_dir: &Path,
     config: &ScanConfig,
     lang: &dyn LanguageDefinition,

@@ -1,3 +1,5 @@
+#![deny(unreachable_pub)]
+
 mod analysis;
 mod architecture;
 mod cli;

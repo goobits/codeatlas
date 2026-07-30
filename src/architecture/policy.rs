@@ -37,7 +37,7 @@ pub(super) struct ExceptionContext<'a> {
 }
 
 impl PolicySet {
-    pub fn load(
+    pub(super) fn load(
         roots: &[PathBuf],
         allowed_root: &Path,
         vocabulary: &Vocabulary,

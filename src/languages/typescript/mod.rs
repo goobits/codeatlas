@@ -3,7 +3,7 @@ use crate::languages::definition::LanguageDefinition;
 use anyhow::Result;
 use std::path::Path;
 
-pub mod parser;
+pub(crate) mod parser;
 mod public_api;
 
 pub(crate) use public_api::{

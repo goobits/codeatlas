@@ -1,9 +1,9 @@
-pub mod audit;
+pub(crate) mod audit;
 pub(crate) mod context_slice;
 pub(crate) mod dead_code;
-pub mod html;
-pub mod json;
-pub mod markdown;
-pub mod mermaid;
+pub(crate) mod html;
+pub(crate) mod json;
+pub(crate) mod markdown;
+pub(crate) mod mermaid;
 pub(crate) mod reference;
-pub mod text_tree;
+pub(crate) mod text_tree;

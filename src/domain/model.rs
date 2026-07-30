@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScanReport {
+pub(crate) struct ScanReport {
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
     #[serde(default = "default_tool_version")]
@@ -45,7 +45,7 @@ fn default_tool_version() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PackageInfo {
+pub(crate) struct PackageInfo {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
@@ -54,34 +54,34 @@ pub struct PackageInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PackageExport {
+pub(crate) struct PackageExport {
     pub public_path: String,
     pub source_path: String,
 }
 
 /// A dependency edge from one file to another.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct FileEdge {
+pub(crate) struct FileEdge {
     pub from: String,
     pub to: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ScanStats {
+pub(crate) struct ScanStats {
     pub files_scanned: usize,
     pub files_skipped: usize,
     pub symbols_found: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkippedFile {
+pub(crate) struct SkippedFile {
     pub path: String,
     pub reason: String,
     pub language: Language,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Span {
+pub(crate) struct Span {
     pub start_line: u32,
     pub start_col: u32,
     pub end_line: u32,
@@ -89,7 +89,7 @@ pub struct Span {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Symbol {
+pub(crate) struct Symbol {
     /// ID Format: "{lang}:{repo_path}:{kind}#{name}"
     pub id: String,
     pub name: String,
@@ -112,7 +112,7 @@ pub struct Symbol {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct SymbolDocs {
+pub(crate) struct SymbolDocs {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub summary: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -137,26 +137,26 @@ pub struct SymbolDocs {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum Stability {
+pub(crate) enum Stability {
     Experimental,
     Beta,
     Stable,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImportUsage {
+pub(crate) struct ImportUsage {
     pub id: String,
     pub importers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UnusedPublic {
+pub(crate) struct UnusedPublic {
     pub id: String,
     pub suggestion: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Visibility {
+pub(crate) enum Visibility {
     Public,
     Internal,
     Private,
@@ -164,7 +164,7 @@ pub enum Visibility {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum Language {
+pub(crate) enum Language {
     TypeScript,
     Python,
     Rust,
@@ -172,7 +172,7 @@ pub enum Language {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-pub enum SymbolKind {
+pub(crate) enum SymbolKind {
     Module,
     Class,
     Method,

@@ -3,9 +3,9 @@ use crate::languages::definition::LanguageDefinition;
 use anyhow::Result;
 use std::path::Path;
 
-pub mod parser;
+pub(crate) mod parser;
 mod public_api;
-pub(crate) mod reachability;
+pub(super) mod reachability;
 
 /// Python language definition for scanning and project detection.
 pub(crate) struct PythonLanguage;
