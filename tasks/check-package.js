@@ -16,9 +16,15 @@ const requiredFiles = [
 	'LICENSE',
 	'package.json',
 	'README.md',
+	'src/http/schemathesis-requirements.txt',
+	'src/http/schemathesis_hooks.py',
 	'src/main.rs'
 ]
 const forbiddenPrefixes = ['.github/', 'node_modules/', 'target/', 'tasks/']
+const isForbiddenFile = file =>
+	forbiddenPrefixes.some(prefix => file.startsWith(prefix)) ||
+	file.split('/').includes('__pycache__') ||
+	/\.py[co]$/.test(file)
 
 try {
 	const result = spawnSync('pnpm', [
@@ -42,7 +48,7 @@ try {
 	const manifest = JSON.parse(result.stdout)
 	const files = new Set(manifest.files.map(file => file.path))
 	const missing = requiredFiles.filter(file => !files.has(file))
-	const forbidden = [...files].filter(file => forbiddenPrefixes.some(prefix => file.startsWith(prefix)))
+	const forbidden = [...files].filter(isForbiddenFile)
 
 	if (manifest.name !== pkg.name || manifest.version !== pkg.version) {
 		throw new Error(`Packed identity ${manifest.name}@${manifest.version} does not match package.json`)
