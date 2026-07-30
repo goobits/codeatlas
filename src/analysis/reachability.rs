@@ -111,7 +111,7 @@ pub(crate) fn project_confidence(graph: &SourceGraph, project: &ProjectId) -> Fi
         .max();
     confidence_for_completeness(
         boundary_completeness
-            .map(|boundary| least_complete(project_completeness, boundary))
+            .map(|boundary| project_completeness.worst(boundary))
             .unwrap_or(project_completeness),
     )
 }
@@ -151,19 +151,10 @@ pub(crate) fn symbol_confidence(
                         | crate::domain::source_graph::BoundaryKind::UnsupportedSyntax
                 ));
         if applies {
-            completeness = least_complete(completeness, boundary.effect);
+            completeness = completeness.worst(boundary.effect);
         }
     }
     confidence_for_completeness(completeness)
-}
-
-fn least_complete(left: AnalysisCompleteness, right: AnalysisCompleteness) -> AnalysisCompleteness {
-    use AnalysisCompleteness::{Complete, Partial, Unsupported};
-    match (left, right) {
-        (Unsupported, _) | (_, Unsupported) => Unsupported,
-        (Partial, _) | (_, Partial) => Partial,
-        (Complete, Complete) => Complete,
-    }
 }
 
 fn confidence_for_completeness(completeness: AnalysisCompleteness) -> FindingConfidence {

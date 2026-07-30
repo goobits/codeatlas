@@ -1,10 +1,9 @@
 use super::parser;
 use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
-    AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, EdgeTarget,
-    NodeId, ProjectId, SourceBinding, SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence,
-    SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceSymbol, SourceSymbolKind,
-    SourceVisibility,
+    AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, EdgeTarget, NodeId, ProjectId,
+    SourceBinding, SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence, SourceFile,
+    SourceGraph, SourceLanguage, SourceNode, SourceSymbol, SourceSymbolKind, SourceVisibility,
 };
 use crate::domain::{Symbol, SymbolKind, Visibility};
 use anyhow::{Context, Result};
@@ -14,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 type ModuleKey = (ProjectId, String);
+const EXTRACTOR: &str = "codeatlas.rust";
 
 pub(crate) fn collect_projects(
     graph: &mut SourceGraph,
@@ -62,14 +62,13 @@ fn collect_modules(
     let discovery =
         crate::analysis::source_files::discover_with_patterns(project, &target_patterns);
     for warning in discovery.warnings {
-        mark_partial(
-            graph,
-            project,
+        graph.record_boundary(
+            &project.id,
             None,
             BoundaryKind::UnsupportedSyntax,
+            AnalysisCompleteness::Partial,
             format!("Could not inspect Rust source tree: {warning}"),
-            project.report_root.clone(),
-            None,
+            SourceEvidence::new(project.report_root.clone(), None, EXTRACTOR),
         );
     }
     for source_path in discovery.files {
@@ -95,14 +94,13 @@ fn collect_modules(
         let source = match std::fs::read_to_string(&source_path) {
             Ok(source) => source,
             Err(error) => {
-                mark_partial(
-                    graph,
-                    project,
+                graph.record_boundary(
+                    &project.id,
                     Some(file),
                     BoundaryKind::UnsupportedSyntax,
+                    AnalysisCompleteness::Partial,
                     format!("Could not read {path}: {error}"),
-                    path,
-                    None,
+                    SourceEvidence::new(path, None, EXTRACTOR),
                 );
                 continue;
             }
@@ -110,14 +108,13 @@ fn collect_modules(
         let info = match parser::parse_module_info(&source_path, &project.root, &source) {
             Ok(info) => info,
             Err(error) => {
-                mark_partial(
-                    graph,
-                    project,
+                graph.record_boundary(
+                    &project.id,
                     Some(file),
                     BoundaryKind::UnsupportedSyntax,
+                    AnalysisCompleteness::Partial,
                     format!("Could not parse {path}: {error}"),
-                    path,
-                    None,
+                    SourceEvidence::new(path, None, EXTRACTOR),
                 );
                 continue;
             }
@@ -149,7 +146,7 @@ fn add_symbols(
     let mut by_name = BTreeMap::<String, BTreeSet<NodeId>>::new();
     for symbol in symbols {
         let id = NodeId::symbol(file, &symbol.id);
-        let visibility = source_visibility(symbol.visibility);
+        let visibility = symbol.visibility.into();
         let node = SourceSymbol {
             project: project.id.clone(),
             file: file.clone(),
@@ -171,18 +168,17 @@ fn add_symbols(
                 if existing.visibility != visibility {
                     existing.visibility = SourceVisibility::Unknown;
                 }
-                mark_partial(
-                    graph,
-                    project,
+                graph.record_boundary(
+                    &project.id,
                     Some(id.clone()),
                     BoundaryKind::UnsupportedSyntax,
+                    AnalysisCompleteness::Partial,
                     format!(
                         "Multiple Rust definitions share semantic symbol {}; \
                          definition variants were merged conservatively.",
                         symbol.name
                     ),
-                    path.to_string(),
-                    symbol.span.clone(),
+                    SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
                 );
             }
             Some(_) => anyhow::bail!("Rust symbol ID {id} resolves to conflicting definitions"),
@@ -192,7 +188,7 @@ fn add_symbols(
             to: EdgeTarget::Node(id.clone()),
             kind: SourceEdgeKind::Contains,
             bindings: Vec::new(),
-            evidence: evidence(path, symbol.span.clone()),
+            evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
         });
         if symbol.visibility == Visibility::Public {
             graph.edges.insert(SourceEdge {
@@ -200,7 +196,7 @@ fn add_symbols(
                 to: EdgeTarget::Node(id.clone()),
                 kind: SourceEdgeKind::ReExport,
                 bindings: Vec::new(),
-                evidence: evidence(path, symbol.span.clone()),
+                evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
             });
         }
         by_name.entry(symbol.name.clone()).or_default().insert(id);
@@ -219,17 +215,16 @@ fn connect_module(
 
     for declaration in &module.info.modules {
         if declaration.inline {
-            mark_partial_by_id(
-                graph,
+            graph.record_boundary(
                 &module.project,
                 Some(module.file.clone()),
                 BoundaryKind::ConditionalCompilation,
+                AnalysisCompleteness::Partial,
                 format!(
                     "Inline Rust module {} requires scope-aware reachability.",
                     declaration.name
                 ),
-                module.path.clone(),
-                Some(declaration.span.clone()),
+                SourceEvidence::new(&module.path, Some(declaration.span.clone()), EXTRACTOR),
             );
             continue;
         }
@@ -268,17 +263,16 @@ fn connect_module(
             .and_then(|symbols| symbols.first())
             .cloned()
             .or_else(|| Some(module.file.clone()));
-        mark_partial_by_id(
-            graph,
+        graph.record_boundary(
             &module.project,
             node,
             kind,
+            AnalysisCompleteness::Partial,
             format!(
                 "Rust source boundary requires conservative analysis: {}",
                 uncertainty.expression
             ),
-            module.path.clone(),
-            Some(uncertainty.span.clone()),
+            SourceEvidence::new(&module.path, Some(uncertainty.span.clone()), EXTRACTOR),
         );
     }
 }
@@ -314,7 +308,7 @@ fn connect_reference_path(
                     to: EdgeTarget::Node(symbol.clone()),
                     kind: SourceEdgeKind::LexicalReference,
                     bindings: Vec::new(),
-                    evidence: evidence(&module.path, None),
+                    evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
                 });
             }
             return;
@@ -332,7 +326,7 @@ fn connect_reference_path(
                 to: EdgeTarget::Node(target),
                 kind: SourceEdgeKind::LexicalReference,
                 bindings: Vec::new(),
-                evidence: evidence(&module.path, None),
+                evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
             });
         }
     }
@@ -372,7 +366,7 @@ fn connect_use(
                             namespace: import.is_glob,
                             type_only: false,
                         }],
-                        evidence: evidence(&module.path, None),
+                        evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
                     });
                 }
             }
@@ -397,7 +391,7 @@ fn connect_use(
                     to: EdgeTarget::External(value),
                     kind: SourceEdgeKind::Import,
                     bindings: Vec::new(),
-                    evidence: evidence(&module.path, None),
+                    evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
                 });
             }
         }
@@ -428,7 +422,7 @@ fn connect_use(
                             SourceEdgeKind::Import
                         },
                         bindings: Vec::new(),
-                        evidence: evidence(&module.path, None),
+                        evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
                     });
                 }
             }
@@ -497,14 +491,13 @@ fn add_cargo_contexts(
         let path = crate::paths::normalize_relative_path(&target.root, &project.root);
         let key = (project.id.clone(), path);
         let Some(module) = modules.get(&key) else {
-            mark_partial(
-                graph,
-                project,
+            graph.record_boundary(
+                &project.id,
                 None,
                 BoundaryKind::UnresolvedInternal,
+                AnalysisCompleteness::Partial,
                 format!("Cargo target {} source was not parsed", target.name),
-                "Cargo.toml".to_string(),
-                None,
+                SourceEvidence::new("Cargo.toml", None, EXTRACTOR),
             );
             continue;
         };
@@ -1050,20 +1043,19 @@ fn connect_resolution(
         to: target,
         kind,
         bindings,
-        evidence: evidence(&module.path, None),
+        evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
     });
     if let Resolution::UnresolvedInternal(value) = resolution {
-        mark_partial_by_id(
-            graph,
+        graph.record_boundary(
             &module.project,
             Some(module.file.clone()),
             BoundaryKind::UnresolvedInternal,
+            AnalysisCompleteness::Partial,
             format!(
                 "Could not resolve internal Rust path {value:?} from {}",
                 module.path
             ),
-            module.path.clone(),
-            None,
+            SourceEvidence::new(&module.path, None, EXTRACTOR),
         );
     }
 }
@@ -1088,57 +1080,6 @@ fn source_symbol_kind(kind: SymbolKind) -> SourceSymbolKind {
         SymbolKind::TypeAlias => SourceSymbolKind::TypeAlias,
         _ => SourceSymbolKind::Other,
     }
-}
-
-fn source_visibility(visibility: Visibility) -> SourceVisibility {
-    match visibility {
-        Visibility::Public => SourceVisibility::Public,
-        Visibility::Internal => SourceVisibility::Internal,
-        Visibility::Private => SourceVisibility::Private,
-        Visibility::Unknown => SourceVisibility::Unknown,
-    }
-}
-
-fn evidence(path: &str, span: Option<crate::domain::Span>) -> SourceEvidence {
-    SourceEvidence {
-        path: path.to_string(),
-        span,
-        extractor: "codeatlas.rust".to_string(),
-    }
-}
-
-fn mark_partial(
-    graph: &mut SourceGraph,
-    project: &ResolvedAnalysisProject,
-    node: Option<NodeId>,
-    kind: BoundaryKind,
-    message: String,
-    path: String,
-    span: Option<crate::domain::Span>,
-) {
-    mark_partial_by_id(graph, &project.id, node, kind, message, path, span);
-}
-
-fn mark_partial_by_id(
-    graph: &mut SourceGraph,
-    project: &ProjectId,
-    node: Option<NodeId>,
-    kind: BoundaryKind,
-    message: String,
-    path: String,
-    span: Option<crate::domain::Span>,
-) {
-    if let Some(source_project) = graph.projects.get_mut(project) {
-        source_project.completeness = AnalysisCompleteness::Partial;
-    }
-    graph.boundaries.insert(AnalysisBoundary {
-        project: project.clone(),
-        node,
-        kind,
-        effect: AnalysisCompleteness::Partial,
-        message,
-        evidence: evidence(&path, span),
-    });
 }
 
 trait ContextRoleName {

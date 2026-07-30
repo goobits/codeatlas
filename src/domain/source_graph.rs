@@ -8,7 +8,7 @@
 //! architecture and observed source reachability have different identities,
 //! authority, and lifecycle rules.
 
-use super::Span;
+use super::{Span, Visibility};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -62,6 +62,28 @@ impl SourceGraph {
             return Err(GraphError::Context);
         }
         Ok(())
+    }
+
+    pub(crate) fn record_boundary(
+        &mut self,
+        project: &ProjectId,
+        node: Option<NodeId>,
+        kind: BoundaryKind,
+        effect: AnalysisCompleteness,
+        message: impl Into<String>,
+        evidence: SourceEvidence,
+    ) {
+        if let Some(source_project) = self.projects.get_mut(project) {
+            source_project.completeness = source_project.completeness.worst(effect);
+        }
+        self.boundaries.insert(AnalysisBoundary {
+            project: project.clone(),
+            node,
+            kind,
+            effect,
+            message: message.into(),
+            evidence,
+        });
     }
 
     pub(crate) fn validate(&self) -> Result<(), Vec<GraphDiagnostic>> {
@@ -308,12 +330,34 @@ pub(crate) enum SourceVisibility {
     Unknown,
 }
 
+impl From<Visibility> for SourceVisibility {
+    fn from(visibility: Visibility) -> Self {
+        match visibility {
+            Visibility::Public => Self::Public,
+            Visibility::Internal => Self::Internal,
+            Visibility::Private => Self::Private,
+            Visibility::Unknown => Self::Unknown,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AnalysisCompleteness {
     Complete,
     Partial,
     Unsupported,
+}
+
+impl AnalysisCompleteness {
+    pub(crate) fn worst(self, other: Self) -> Self {
+        use AnalysisCompleteness::{Complete, Partial, Unsupported};
+        match (self, other) {
+            (Unsupported, _) | (_, Unsupported) => Unsupported,
+            (Partial, _) | (_, Partial) => Partial,
+            (Complete, Complete) => Complete,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -407,6 +451,20 @@ pub(crate) struct SourceEvidence {
     pub extractor: String,
 }
 
+impl SourceEvidence {
+    pub(crate) fn new(
+        path: impl Into<String>,
+        span: Option<Span>,
+        extractor: impl Into<String>,
+    ) -> Self {
+        Self {
+            path: path.into(),
+            span,
+            extractor: extractor.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct AnalysisBoundary {
     pub project: ProjectId,
@@ -458,7 +516,12 @@ fn escape_id_segment(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ContextId, NodeId, ProjectId};
+    use super::{
+        AnalysisCompleteness, BoundaryKind, ContextId, NodeId, ProjectId, SourceEvidence,
+        SourceGraph, SourceLanguage, SourceProject, SourceVisibility,
+    };
+    use crate::domain::Visibility;
+    use std::collections::BTreeSet;
 
     #[test]
     fn node_and_context_ids_escape_path_boundaries_deterministically() {
@@ -473,5 +536,42 @@ mod tests {
             "symbol/file~1workspace~01root~1src~01a~00b.ts/function~1value"
         );
         assert_eq!(context.0, "context/workspace~1root/unit~1tests");
+    }
+
+    #[test]
+    fn boundary_recording_preserves_the_worst_completeness() {
+        let project = ProjectId("example".to_string());
+        let mut graph = SourceGraph::new();
+        graph
+            .add_project(SourceProject {
+                id: project.clone(),
+                root: ".".to_string(),
+                languages: BTreeSet::from([SourceLanguage::Python]),
+                completeness: AnalysisCompleteness::Unsupported,
+            })
+            .expect("project");
+
+        graph.record_boundary(
+            &project,
+            None,
+            BoundaryKind::Reflection,
+            AnalysisCompleteness::Partial,
+            "dynamic registration",
+            SourceEvidence::new("src/plugin.py", None, "test"),
+        );
+
+        assert_eq!(
+            graph.projects[&project].completeness,
+            AnalysisCompleteness::Unsupported
+        );
+        assert_eq!(graph.boundaries.len(), 1);
+    }
+
+    #[test]
+    fn source_visibility_uses_the_canonical_domain_mapping() {
+        assert_eq!(
+            SourceVisibility::from(Visibility::Internal),
+            SourceVisibility::Internal
+        );
     }
 }
