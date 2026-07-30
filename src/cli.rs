@@ -83,6 +83,12 @@ enum Command {
         command: ArchitectureCommand,
     },
 
+    /// Inventory and compare HTTP contracts
+    Http {
+        #[command(subcommand)]
+        command: HttpCommand,
+    },
+
     /// CI mode: exit non-zero if issues found
     Ci {
         /// Path to scan
@@ -230,6 +236,116 @@ enum ArchitectureCommand {
         #[arg(long)]
         check: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum HttpCommand {
+    /// Normalize OpenAPI contracts and static source evidence
+    Inventory {
+        /// Repository path
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// OpenAPI file override; repeat once per configured contract
+        #[arg(long)]
+        openapi: Vec<PathBuf>,
+        /// Write the versioned JSON report instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
+    /// Write a compact behavioral baseline without source evidence
+    Baseline {
+        /// Repository path
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// OpenAPI file override; repeat once per configured contract
+        #[arg(long)]
+        openapi: Vec<PathBuf>,
+        /// Write the versioned JSON baseline instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
+    /// Check OpenAPI contracts against static source evidence
+    Check {
+        /// Repository path
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// OpenAPI file override; repeat once per configured contract
+        #[arg(long)]
+        openapi: Vec<PathBuf>,
+        /// Write the versioned JSON report instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Also compare the checked inventory with this HTTP baseline
+        #[arg(long)]
+        baseline: Option<PathBuf>,
+    },
+    /// Compare a prior HTTP inventory with the current contracts
+    Diff {
+        /// Baseline from `codeatlas http baseline --out`
+        baseline: PathBuf,
+        /// Repository path
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// OpenAPI file override; repeat once per configured contract
+        #[arg(long)]
+        openapi: Vec<PathBuf>,
+        /// Write the versioned JSON report instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
+    /// Fuzz a configured live HTTP target with a managed Schemathesis toolchain
+    Fuzz {
+        /// Repository path
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Configured HTTP fuzz target ID; optional when exactly one target exists
+        #[arg(long)]
+        target: Option<String>,
+        /// Standard local depth or a substantially deeper run
+        #[arg(long, value_enum, default_value_t = HttpFuzzProfile::Standard)]
+        profile: HttpFuzzProfile,
+        /// Override examples generated per operation
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        max_examples: Option<u32>,
+        /// Reuse an exact random seed from a prior run
+        #[arg(long)]
+        seed: Option<u128>,
+        /// Test one exact operation, formatted as `METHOD /path`
+        #[arg(long)]
+        operation: Option<String>,
+        /// Use an existing Schemathesis executable instead of the managed toolchain
+        #[arg(long)]
+        schemathesis: Option<PathBuf>,
+    },
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub(crate) enum HttpFuzzProfile {
+    Standard,
+    Stateful,
+    Thorough,
+}
+
+impl HttpFuzzProfile {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Stateful => "stateful",
+            Self::Thorough => "thorough",
+        }
+    }
+
+    pub(crate) fn max_examples(self) -> u32 {
+        match self {
+            Self::Standard => 75,
+            Self::Stateful => 25,
+            Self::Thorough => 750,
+        }
+    }
+
+    pub(crate) fn includes_stateful_workflows(self) -> bool {
+        matches!(self, Self::Stateful)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -381,6 +497,62 @@ pub(crate) fn run() -> i32 {
                 check,
             }),
         },
+        Command::Http { command } => match command {
+            HttpCommand::Inventory { path, openapi, out } => commands::http::run_inventory(
+                &path,
+                &openapi,
+                out.as_deref(),
+                config_path.as_deref(),
+            ),
+            HttpCommand::Baseline { path, openapi, out } => commands::http::run_baseline(
+                &path,
+                &openapi,
+                out.as_deref(),
+                config_path.as_deref(),
+            ),
+            HttpCommand::Check {
+                path,
+                openapi,
+                out,
+                baseline,
+            } => commands::http::run_check(
+                &path,
+                &openapi,
+                out.as_deref(),
+                baseline.as_deref(),
+                config_path.as_deref(),
+            ),
+            HttpCommand::Diff {
+                baseline,
+                path,
+                openapi,
+                out,
+            } => commands::http::run_diff(
+                &baseline,
+                &path,
+                &openapi,
+                out.as_deref(),
+                config_path.as_deref(),
+            ),
+            HttpCommand::Fuzz {
+                path,
+                target,
+                profile,
+                max_examples,
+                seed,
+                operation,
+                schemathesis,
+            } => commands::http::run_fuzz(&commands::http::FuzzOptions {
+                path: &path,
+                target: target.as_deref(),
+                profile,
+                max_examples,
+                seed,
+                operation: operation.as_deref(),
+                schemathesis: schemathesis.as_deref(),
+                config_path: config_path.as_deref(),
+            }),
+        },
         Command::Ci {
             path,
             fail_unused,
@@ -416,6 +588,15 @@ mod tests {
     fn requires_an_explicit_command() {
         assert!(Cli::try_parse_from(["codeatlas"]).is_err());
         assert!(Cli::try_parse_from(["codeatlas", "scan", "."]).is_ok());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "http",
+            "inventory",
+            ".",
+            "--openapi",
+            "openapi.json"
+        ])
+        .is_ok());
     }
 
     #[test]

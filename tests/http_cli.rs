@@ -1,0 +1,145 @@
+use serde_json::json;
+use std::fs;
+use std::net::TcpListener;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+struct TestDirectory(PathBuf);
+
+impl TestDirectory {
+    fn create() -> Self {
+        let unique = format!(
+            "codeatlas-http-cli-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should follow the Unix epoch")
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(unique);
+        fs::create_dir_all(path.join("src")).expect("HTTP test directory should be created");
+        Self(path)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TestDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn target_provider_starts_fetches_and_stops_its_server() {
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("http");
+    let directory = TestDirectory::create();
+    let openapi = directory.path().join("openapi.yaml");
+    fs::copy(fixture.join("openapi.yaml"), &openapi).expect("OpenAPI fixture should be copied");
+    fs::copy(
+        fixture.join("src").join("routes.ts"),
+        directory.path().join("src").join("routes.ts"),
+    )
+    .expect("route fixture should be copied");
+
+    let port = available_port();
+    let python = std::env::var("CODEATLAS_PYTHON").unwrap_or_else(|_| {
+        if cfg!(windows) {
+            "python".to_string()
+        } else {
+            "python3".to_string()
+        }
+    });
+    let config_path = directory.path().join("codeatlas.json");
+    let report_path = directory.path().join("report.json");
+    let config = json!({
+        "root": ".",
+        "package_exports": false,
+        "http": {
+            "contracts": [{
+                "id": "fixture-api",
+                "openapi": {
+                    "kind": "target",
+                    "target": "fixture-local"
+                },
+                "source_roots": ["src"],
+                "source_complete": true
+            }],
+            "fuzz": {
+                "targets": [{
+                    "id": "fixture-local",
+                    "contract": "fixture-api",
+                    "base_url": format!("http://127.0.0.1:{port}"),
+                    "openapi_path": "/openapi.yaml",
+                    "server": {
+                        "command": python,
+                        "args": [
+                            fixture.join("server.py"),
+                            port.to_string(),
+                            &openapi
+                        ],
+                        "cwd": directory.path()
+                    }
+                }]
+            }
+        }
+    });
+    fs::write(
+        &config_path,
+        serde_json::to_vec_pretty(&config).expect("HTTP config should serialize"),
+    )
+    .expect("HTTP config should be written");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+        .args([
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "http",
+            "check",
+            directory
+                .path()
+                .to_str()
+                .expect("fixture root should be UTF-8"),
+            "--out",
+            report_path.to_str().expect("report path should be UTF-8"),
+        ])
+        .env("CODEATLAS_PYTHON", &python)
+        .output()
+        .expect("CodeAtlas HTTP check should start");
+    assert!(
+        output.status.success(),
+        "CodeAtlas HTTP check failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let report: serde_json::Value = serde_json::from_slice(
+        &fs::read(&report_path).expect("HTTP check report should be written"),
+    )
+    .expect("HTTP check report should be JSON");
+    assert_eq!(report["inventory"]["contracts"][0]["id"], "fixture-api");
+    assert_eq!(
+        report["inventory"]["contracts"][0]["operations"][0]["key"],
+        "GET /health"
+    );
+    assert_eq!(report["findings"], json!([]));
+    assert!(
+        TcpListener::bind(("127.0.0.1", port)).is_ok(),
+        "owned HTTP target should release its port after the check"
+    );
+}
+
+fn available_port() -> u16 {
+    let listener =
+        TcpListener::bind(("127.0.0.1", 0)).expect("an ephemeral HTTP port should be available");
+    listener
+        .local_addr()
+        .expect("ephemeral HTTP port should have an address")
+        .port()
+}

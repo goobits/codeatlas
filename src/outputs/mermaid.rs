@@ -149,30 +149,6 @@ pub(crate) fn render(report: &ScanReport) -> String {
         }
     }
 
-    // Add routes section if any routes exist
-    if !report.routes.is_empty() {
-        output.push_str("\n  %% HTTP Routes\n");
-        for route in &report.routes {
-            let route_id = sanitize_id(&format!("route_{}_{}", route.method, route.path));
-            let label = format!("{} {}", route.method, route.path);
-            output.push_str(&format!(
-                "  {}{{{{ {} }}}}\n",
-                route_id,
-                escape_mermaid(&label)
-            ));
-
-            // Link route to handler file if known
-            if let Some(ref handler_id) = route.handler_id {
-                let parts: Vec<&str> = handler_id.splitn(3, ':').collect();
-                if parts.len() >= 2 {
-                    if let Some(handler_node) = file_ids.get(parts[1]) {
-                        output.push_str(&format!("  {} -.-> {}\n", route_id, handler_node));
-                    }
-                }
-            }
-        }
-    }
-
     output
 }
 

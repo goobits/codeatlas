@@ -158,7 +158,7 @@ mod tests {
     use super::parse_source;
 
     #[test]
-    fn route_symbols_require_a_framework_receiver() {
+    fn http_calls_do_not_pollute_public_symbol_scans() {
         let info = parse_source(
             r#"
 const store = new Map()
@@ -174,7 +174,7 @@ app.get('/route', () => undefined)
             .map(|symbol| symbol.name.as_str())
             .collect::<Vec<_>>();
 
-        assert!(names.contains(&"app.get"));
         assert!(!names.contains(&"store.get"));
+        assert!(!names.contains(&"app.get"));
     }
 }

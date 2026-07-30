@@ -6,6 +6,7 @@ mod config;
 mod context_slice;
 mod dead_code;
 mod domain;
+mod http;
 mod languages;
 mod outputs;
 mod package;

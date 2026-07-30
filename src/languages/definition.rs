@@ -20,7 +20,7 @@
 //! }
 //! ```
 
-use crate::domain::{Language, Route, ScanConfig, ScanReport, Symbol};
+use crate::domain::{Language, ScanConfig, ScanReport, Symbol};
 use anyhow::Result;
 use std::path::Path;
 
@@ -65,16 +65,6 @@ pub trait LanguageDefinition: Send + Sync {
     /// * `root` - Root directory of the scan (for computing relative paths)
     /// * `source` - File content (Some if needs_source() is true)
     fn parse_file(&self, path: &Path, root: &Path, source: Option<&str>) -> Result<Vec<Symbol>>;
-
-    // =========================================================================
-    // ROUTE DETECTION - Optional, for web frameworks
-    // =========================================================================
-
-    /// Detect HTTP routes/endpoints from the parsed symbols.
-    /// Default implementation returns no routes.
-    fn detect_routes(&self, _path: &Path, _source: &str, _symbols: &mut [Symbol]) -> Vec<Route> {
-        vec![]
-    }
 
     // =========================================================================
     // PUBLIC API PROJECTION - Optional, for entrypoint-aware API scans

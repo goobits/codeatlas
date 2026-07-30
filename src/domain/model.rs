@@ -12,7 +12,6 @@ pub struct ScanReport {
     pub package: Option<PackageInfo>,
     pub stats: ScanStats,
     pub symbols: Vec<Symbol>,
-    pub routes: Vec<Route>,
     pub skipped_files: Vec<SkippedFile>,
     pub imports: Vec<ImportUsage>,
     pub unused_public: Vec<UnusedPublic>,
@@ -29,7 +28,6 @@ impl Default for ScanReport {
             package: None,
             stats: ScanStats::default(),
             symbols: Vec::new(),
-            routes: Vec::new(),
             skipped_files: Vec::new(),
             imports: Vec::new(),
             unused_public: Vec::new(),
@@ -39,7 +37,7 @@ impl Default for ScanReport {
 }
 
 fn default_schema_version() -> u32 {
-    1
+    2
 }
 
 fn default_tool_version() -> String {
@@ -73,7 +71,6 @@ pub struct ScanStats {
     pub files_scanned: usize,
     pub files_skipped: usize,
     pub symbols_found: usize,
-    pub routes_found: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,16 +141,6 @@ pub enum Stability {
     Experimental,
     Beta,
     Stable,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Route {
-    pub method: String, // "GET", "POST", etc.
-    pub path: String,   // "/v1/users/:id"
-    pub handler_id: Option<String>,
-    pub source_framework: String,
-    pub file_path: String,
-    pub span: Option<Span>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

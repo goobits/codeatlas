@@ -1,0 +1,16 @@
+{
+  "root": ".",
+  "package_exports": false,
+  "http": {
+    "contracts": [
+      {
+        "id": "fixture-api",
+        "openapi": "openapi.yaml",
+        "source_roots": [
+          "src"
+        ],
+        "source_complete": true
+      }
+    ]
+  }
+}

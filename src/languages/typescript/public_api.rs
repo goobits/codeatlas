@@ -1,4 +1,4 @@
-use super::{frameworks, parser};
+use super::parser;
 use crate::analysis::ignore;
 use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
@@ -36,10 +36,6 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
             .unwrap_or_default();
         symbols.extend(referenced.remove(&file).unwrap_or_default());
         if !symbols.is_empty() {
-            let file_routes = frameworks::detect_routes(Path::new(&file), "", &mut symbols);
-            report.stats.routes_found += file_routes.len();
-            report.routes.extend(file_routes);
-
             crate::languages::apply_symbol_filters(&mut symbols, config);
             report.stats.symbols_found += symbols.len();
             report.symbols.extend(symbols);
@@ -353,27 +349,8 @@ fn parse_modules(
     let mut modules = HashMap::new();
     let mut skipped_files = Vec::new();
 
+    parse_explicit_entrypoints(root_dir, entrypoints, &mut modules, &mut skipped_files);
     if no_default_ignore && !entrypoints.is_empty() {
-        for relative in entrypoints {
-            let path = root_dir.join(relative);
-            match parser::parse_module_info(&path, root_dir) {
-                Ok(info) => {
-                    modules.insert(
-                        relative.clone(),
-                        ModuleInfo {
-                            symbols: info.symbols,
-                            exports: info.exports,
-                            imports: info.imports,
-                        },
-                    );
-                }
-                Err(error) => skipped_files.push(SkippedFile {
-                    path: path.to_string_lossy().to_string(),
-                    reason: error.to_string(),
-                    language: Language::TypeScript,
-                }),
-            }
-        }
         return (modules, skipped_files);
     }
 
@@ -410,6 +387,9 @@ fn parse_modules(
         }
 
         let relative = crate::paths::normalize_relative_path(path, root_dir);
+        if modules.contains_key(&relative) {
+            continue;
+        }
         match parser::parse_module_info(path, root_dir) {
             Ok(info) => {
                 modules.insert(
@@ -432,6 +412,34 @@ fn parse_modules(
     }
 
     (modules, skipped_files)
+}
+
+fn parse_explicit_entrypoints(
+    root_dir: &Path,
+    entrypoints: &HashSet<String>,
+    modules: &mut HashMap<String, ModuleInfo>,
+    skipped_files: &mut Vec<SkippedFile>,
+) {
+    for relative in entrypoints {
+        let path = root_dir.join(relative);
+        match parser::parse_module_info(&path, root_dir) {
+            Ok(info) => {
+                modules.insert(
+                    relative.clone(),
+                    ModuleInfo {
+                        symbols: info.symbols,
+                        exports: info.exports,
+                        imports: info.imports,
+                    },
+                );
+            }
+            Err(error) => skipped_files.push(SkippedFile {
+                path: path.to_string_lossy().to_string(),
+                reason: error.to_string(),
+                language: Language::TypeScript,
+            }),
+        }
+    }
 }
 
 fn ignored_entrypoint_roots(entrypoints: &HashSet<String>) -> Vec<String> {

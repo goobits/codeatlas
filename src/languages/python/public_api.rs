@@ -1,4 +1,4 @@
-use super::{frameworks, parser};
+use super::parser;
 use crate::analysis::ignore;
 use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
 use std::path::Path;
@@ -8,7 +8,6 @@ struct ModuleInfo {
     exports: Option<std::collections::HashSet<String>>,
     imports: Vec<parser::PythonImport>,
     module_name: String,
-    source: String,
 }
 
 pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
@@ -83,7 +82,6 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                         exports,
                         imports: info.imports,
                         module_name,
-                        source,
                     },
                 );
             }
@@ -178,11 +176,6 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 .into_iter()
                 .filter(|sym| names.contains(&sym.name))
                 .collect();
-
-            let file_routes =
-                frameworks::detect_routes(Path::new(&file), &info.source, &mut symbols);
-            report.stats.routes_found += file_routes.len();
-            report.routes.extend(file_routes);
 
             crate::languages::apply_symbol_filters(&mut symbols, config);
             report.stats.symbols_found += symbols.len();

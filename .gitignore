@@ -1,8 +1,12 @@
-# Rust build artifacts
-/target/
+# Rust build artifacts (directory or managed workspace symlink)
+/target
 
-# Node
-/node_modules/
+# Node dependencies (directory or managed workspace symlink)
+/node_modules
+
+# Python bytecode
+__pycache__/
+*.py[cod]
 
 # Local agent tooling
 .llm/

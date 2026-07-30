@@ -15,7 +15,7 @@ pub use definition::LanguageDefinition;
 pub use registry::LanguageRegistry;
 
 use crate::domain::{
-    LanguageScanner, Route, ScanConfig, ScanReport, SkippedFile, Symbol, SymbolKind, Visibility,
+    LanguageScanner, ScanConfig, ScanReport, SkippedFile, Symbol, SymbolKind, Visibility,
 };
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
@@ -56,10 +56,7 @@ pub(crate) fn scan_all(
         combined_report.stats.files_scanned += report.stats.files_scanned;
         combined_report.stats.files_skipped += report.stats.files_skipped;
         combined_report.stats.symbols_found += report.stats.symbols_found;
-        combined_report.stats.routes_found += report.stats.routes_found;
-
         combined_report.symbols.extend(report.symbols);
-        combined_report.routes.extend(report.routes);
         combined_report.skipped_files.extend(report.skipped_files);
     }
 
@@ -91,7 +88,6 @@ pub(crate) fn apply_symbol_filters(symbols: &mut Vec<Symbol>, config: &ScanConfi
 /// Result of scanning a single file
 struct FileResult {
     symbols: Vec<Symbol>,
-    routes: Vec<Route>,
     skipped: Option<SkippedFile>,
 }
 
@@ -153,7 +149,6 @@ pub(crate) fn scan_language_with_definition(
                     Err(e) => {
                         return FileResult {
                             symbols: vec![],
-                            routes: vec![],
                             skipped: Some(SkippedFile {
                                 path: path.to_string_lossy().to_string(),
                                 reason: e.to_string(),
@@ -168,19 +163,15 @@ pub(crate) fn scan_language_with_definition(
 
             match lang.parse_file(path, root_dir, source.as_deref()) {
                 Ok(mut symbols) => {
-                    let file_routes =
-                        lang.detect_routes(path, source.as_deref().unwrap_or(""), &mut symbols);
                     apply_symbol_filters(&mut symbols, config);
 
                     FileResult {
                         symbols,
-                        routes: file_routes,
                         skipped: None,
                     }
                 }
                 Err(e) => FileResult {
                     symbols: vec![],
-                    routes: vec![],
                     skipped: Some(SkippedFile {
                         path: path.to_string_lossy().to_string(),
                         reason: e.to_string(),
@@ -201,9 +192,7 @@ pub(crate) fn scan_language_with_definition(
         } else {
             report.stats.files_scanned += 1;
             report.stats.symbols_found += result.symbols.len();
-            report.stats.routes_found += result.routes.len();
             report.symbols.extend(result.symbols);
-            report.routes.extend(result.routes);
         }
     }
 

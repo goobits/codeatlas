@@ -1,9 +1,8 @@
-use crate::domain::{Language, Route, ScanConfig, ScanReport, Symbol};
+use crate::domain::{Language, ScanConfig, ScanReport, Symbol};
 use crate::languages::definition::LanguageDefinition;
 use anyhow::Result;
 use std::path::Path;
 
-pub mod frameworks;
 pub mod parser;
 mod public_api;
 
@@ -51,10 +50,6 @@ impl LanguageDefinition for TypeScriptLanguage {
 
     fn parse_file(&self, path: &Path, root: &Path, _source: Option<&str>) -> Result<Vec<Symbol>> {
         parser::parse_file(path, root)
-    }
-
-    fn detect_routes(&self, path: &Path, source: &str, symbols: &mut [Symbol]) -> Vec<Route> {
-        frameworks::detect_routes(path, source, symbols)
     }
 
     fn scan_public_api(&self, root_dir: &Path, config: &ScanConfig) -> Option<ScanReport> {

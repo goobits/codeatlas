@@ -3,6 +3,7 @@ pub(crate) mod context_slice;
 pub(crate) mod dead_code;
 pub(crate) mod diff;
 pub(crate) mod docs;
+pub(crate) mod http;
 
 use crate::cli::OutputFormat;
 use crate::config::ProjectConfig;
@@ -140,6 +141,21 @@ pub(super) fn build_scan_config(
 ) -> Result<ScanConfig> {
     let configured_entrypoints =
         (!project.config.entrypoints.is_empty()).then(|| project.config.entrypoints.clone());
+    if project.config.docs.declaration_contract {
+        if let Some(entrypoints) = configured_entrypoints.as_ref() {
+            let missing = entrypoints
+                .iter()
+                .filter(|entrypoint| !project.root.join(entrypoint).is_file())
+                .cloned()
+                .collect::<Vec<_>>();
+            if !missing.is_empty() {
+                anyhow::bail!(
+                    "Declaration contract entrypoint(s) do not exist: {}. Build the package declarations before running CodeAtlas.",
+                    missing.join(", ")
+                );
+            }
+        }
+    }
     let entrypoints = match entrypoints.or(configured_entrypoints) {
         Some(entrypoints) => Some(entrypoints),
         None if project.config.package_exports => {

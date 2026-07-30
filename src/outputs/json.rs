@@ -9,12 +9,6 @@ pub(crate) fn render(report: &ScanReport) -> Result<String> {
 
 fn canonicalize(report: &mut ScanReport) {
     sort_symbols(&mut report.symbols);
-    report.routes.sort_by(|left, right| {
-        left.file_path
-            .cmp(&right.file_path)
-            .then_with(|| left.path.cmp(&right.path))
-            .then_with(|| left.method.cmp(&right.method))
-    });
     report
         .skipped_files
         .sort_by(|left, right| left.path.cmp(&right.path));

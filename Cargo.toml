@@ -1,6 +1,6 @@
 [package]
 name = "codeatlas"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
 description = "Map source code and compile declared architecture across languages"
 license-file = "LICENSE"

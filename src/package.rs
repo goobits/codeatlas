@@ -112,7 +112,18 @@ pub(crate) fn discover_for_docs(
     root_dir: &Path,
     declaration_contract: bool,
 ) -> Result<Option<PackageInfo>> {
-    discover_with_export_condition(root_dir, declaration_contract)
+    let package = discover_with_export_condition(root_dir, declaration_contract)?;
+    if declaration_contract
+        && package
+            .as_ref()
+            .is_some_and(|package| package.exports.is_empty())
+    {
+        anyhow::bail!(
+            "Declaration contract has no existing TypeScript declaration export targets in {}. Build the package declarations before running CodeAtlas.",
+            root_dir.display()
+        );
+    }
+    Ok(package)
 }
 
 fn discover_with_export_condition(

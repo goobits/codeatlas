@@ -115,6 +115,105 @@ fn declaration_contract_rejects_empty_public_export_scans() {
 }
 
 #[test]
+fn declaration_contract_rejects_missing_configured_entrypoints() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("docs-dist");
+    let mut project =
+        ProjectConfig::load(&root, Some(&root.join("codeatlas.json"))).expect("project config");
+    project.config.entrypoints = vec!["dist/types/missing.d.ts".to_string()];
+
+    let error = commands::build_scan_config(&project, false, None)
+        .expect_err("missing declaration entrypoint must fail");
+    assert!(error.to_string().contains("dist/types/missing.d.ts"));
+    assert!(error.to_string().contains("Build the package declarations"));
+}
+
+#[test]
+fn declaration_contract_rejects_missing_package_type_targets() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "codeatlas-missing-declaration-target-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("temporary package");
+    fs::write(
+        root.join("package.json"),
+        r#"{
+            "name": "@example/missing-declarations",
+            "exports": { ".": { "types": "./dist/index.d.ts" } }
+        }"#,
+    )
+    .expect("package manifest");
+
+    let error = package::discover_for_docs(&root, true)
+        .expect_err("missing package declaration target must fail");
+    assert!(error
+        .to_string()
+        .contains("no existing TypeScript declaration export targets"));
+    fs::remove_dir_all(root).expect("remove temporary package");
+}
+
+#[cfg(unix)]
+#[test]
+fn declaration_contract_scans_an_entrypoint_through_a_managed_directory_symlink() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "codeatlas-symlinked-declaration-root-{}-{nonce}",
+        std::process::id()
+    ));
+    let output = std::env::temp_dir().join(format!(
+        "codeatlas-symlinked-declaration-output-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("temporary package");
+    fs::create_dir_all(&output).expect("managed declaration output");
+    fs::write(
+        root.join("package.json"),
+        r#"{
+            "name": "@example/symlinked-declarations",
+            "exports": { ".": { "types": "./dist/index.d.ts" } }
+        }"#,
+    )
+    .expect("package manifest");
+    fs::write(
+        root.join("codeatlas.json"),
+        r#"{
+            "entrypoints": ["dist/index.d.ts"],
+            "languages": ["ts"],
+            "docs": { "declaration_contract": true }
+        }"#,
+    )
+    .expect("CodeAtlas config");
+    fs::write(
+        output.join("index.d.ts"),
+        "/** Public managed declaration. */\nexport interface ManagedPublicAPI { ready: boolean }\n",
+    )
+    .expect("managed declaration");
+    std::os::unix::fs::symlink(&output, root.join("dist")).expect("managed output symlink");
+
+    let project =
+        ProjectConfig::load(&root, Some(&root.join("codeatlas.json"))).expect("project config");
+    let config = commands::build_scan_config(&project, false, None).expect("scan config");
+    let mut report = commands::scan_project(&project, &config).expect("declaration scan");
+    commands::annotate_report(&mut report, &project).expect("annotated declaration report");
+
+    assert!(report
+        .symbols
+        .iter()
+        .any(|symbol| symbol.name == "ManagedPublicAPI"));
+    fs::remove_dir_all(root).expect("remove temporary package");
+    fs::remove_dir_all(output).expect("remove managed declaration output");
+}
+
+#[test]
 fn declaration_contract_includes_transitive_referenced_types() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -351,7 +450,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(configured_html.contains("--atlas-accent: #c4b5fd"));
 
     let json = outputs::json::render(&report).expect("JSON report");
-    assert!(json.contains("\"schema_version\": 1"));
+    assert!(json.contains("\"schema_version\": 2"));
     assert!(json.contains("\"package\""));
     assert!(json.contains("\"export_paths\""));
     let mut reordered = report.clone();
@@ -613,7 +712,7 @@ fn legacy_json_reports_deserialize_with_schema_defaults() {
     let report: crate::domain::ScanReport =
         serde_json::from_str(legacy).expect("legacy report should remain readable");
 
-    assert_eq!(report.schema_version, 1);
+    assert_eq!(report.schema_version, 2);
     assert!(!report.tool_version.is_empty());
     assert!(report.symbols[0].docs.is_none());
     assert!(report.symbols[0].export_paths.is_empty());

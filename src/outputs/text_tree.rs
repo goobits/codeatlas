@@ -138,18 +138,6 @@ pub(crate) fn render(report: &ScanReport) -> String {
         ));
     }
 
-    // Routes if any
-    if !report.routes.is_empty() {
-        output.push_str(&format!(
-            "\n{} {} HTTP routes detected\n",
-            "◆".cyan(),
-            report.routes.len()
-        ));
-        for route in &report.routes {
-            output.push_str(&format!("  {} {}\n", route.method.cyan(), route.path));
-        }
-    }
-
     // Tip for more info
     output.push_str(&format!(
         "\n{}\n",
