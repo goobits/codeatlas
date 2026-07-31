@@ -1,6 +1,6 @@
 use super::model::{
     HttpConfidence, HttpSkippedFile, HttpSourceCompleteness, HttpSourceEvidence,
-    HttpSourceInventory, HttpSourceOperation,
+    HttpSourceInventory, HttpSourceOperation, HttpSourceOperationKind,
 };
 use super::openapi::{normalize_path, operation_key};
 use anyhow::{Context, Result};
@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 mod ecmascript;
+mod node;
 mod python;
 mod rust;
 mod sveltekit;
@@ -26,11 +27,17 @@ pub(super) fn inventory(
             format!("HTTP source root does not exist: {}", source_root.display())
         })?;
         let mut builder = ignore::WalkBuilder::new(&source_root);
+        let boundary_root = source_root.clone();
         builder
             .hidden(false)
             .git_ignore(true)
             .git_global(false)
-            .git_exclude(true);
+            .git_exclude(true)
+            .filter_entry(move |entry| {
+                entry.path() == boundary_root
+                    || !entry.file_type().is_some_and(|kind| kind.is_dir())
+                    || !is_nested_project_root(entry.path())
+            });
         for entry in builder.build() {
             let entry = match entry {
                 Ok(entry) => entry,
@@ -43,7 +50,10 @@ pub(super) fn inventory(
                 }
             };
             let path = entry.path();
-            if !entry.file_type().is_some_and(|kind| kind.is_file()) || !is_source_file(path) {
+            if !entry.file_type().is_some_and(|kind| kind.is_file())
+                || !is_source_file(path)
+                || is_test_source(path)
+            {
                 continue;
             }
             let canonical = match path.canonicalize() {
@@ -81,8 +91,10 @@ pub(super) fn inventory(
     });
     operations.dedup_by(|left, right| {
         left.key == right.key
-            && left.evidence.path == right.evidence.path
-            && left.evidence.line == right.evidence.line
+            && ((left.kind == HttpSourceOperationKind::Page
+                && right.kind == HttpSourceOperationKind::Page)
+                || (left.evidence.path == right.evidence.path
+                    && left.evidence.line == right.evidence.line))
     });
     skipped_files.sort_by(|left, right| left.path.cmp(&right.path));
 
@@ -103,10 +115,45 @@ pub(super) fn inventory(
 }
 
 fn is_source_file(path: &Path) -> bool {
+    if sveltekit::is_route(path) {
+        return true;
+    }
     matches!(
         path.extension().and_then(|extension| extension.to_str()),
         Some("ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "rs" | "svelte")
     )
+}
+
+fn is_nested_project_root(path: &Path) -> bool {
+    ["package.json", "Cargo.toml", "pyproject.toml", "go.mod"]
+        .iter()
+        .any(|manifest| path.join(manifest).is_file())
+}
+
+fn is_test_source(path: &Path) -> bool {
+    if sveltekit::is_route(path) {
+        return false;
+    }
+    let test_directory = path.components().any(|component| {
+        component.as_os_str().to_str().is_some_and(|component| {
+            matches!(
+                component.to_ascii_lowercase().as_str(),
+                "test" | "tests" | "__tests__" | "integration-tests" | "fixtures"
+            )
+        })
+    });
+    if test_directory {
+        return true;
+    }
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            let name = name.to_ascii_lowercase();
+            name.contains(".test.")
+                || name.contains(".spec.")
+                || name.ends_with("_test.py")
+                || name.ends_with("_test.rs")
+        })
 }
 
 fn detect_file(
@@ -116,12 +163,13 @@ fn detect_file(
     output: &mut Vec<HttpSourceOperation>,
 ) {
     let extension = path.extension().and_then(|value| value.to_str());
-    if sveltekit::is_server(path) {
+    if sveltekit::is_route(path) {
         sveltekit::detect(path, repository_root, source, output);
     }
     match extension {
         Some("ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "svelte") => {
             ecmascript::detect(path, repository_root, source, output);
+            node::detect(path, repository_root, source, output);
         }
         Some("py") => python::detect(path, repository_root, source, output),
         Some("rs") => rust::detect(path, repository_root, source, output),
@@ -146,11 +194,68 @@ fn push_operation(
         key: operation_key(&method, &path),
         method,
         path,
+        kind: HttpSourceOperationKind::Endpoint,
+        schema_missing: true,
+        path_pattern: None,
         detector: detector.to_string(),
         confidence,
         evidence: HttpSourceEvidence {
             path: display_path(file_path, repository_root),
             line,
+        },
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_pattern_operation(
+    output: &mut Vec<HttpSourceOperation>,
+    method: &str,
+    path: &str,
+    path_pattern: &str,
+    detector: &str,
+    confidence: HttpConfidence,
+    file_path: &Path,
+    repository_root: &Path,
+    line: u32,
+) {
+    let method = method.to_uppercase();
+    let path = normalize_path(path);
+    output.push(HttpSourceOperation {
+        key: operation_key(&method, &path),
+        method,
+        path,
+        kind: HttpSourceOperationKind::Endpoint,
+        schema_missing: true,
+        path_pattern: Some(path_pattern.to_string()),
+        detector: detector.to_string(),
+        confidence,
+        evidence: HttpSourceEvidence {
+            path: display_path(file_path, repository_root),
+            line,
+        },
+    });
+}
+
+fn push_page(
+    output: &mut Vec<HttpSourceOperation>,
+    path: &str,
+    path_pattern: &str,
+    file_path: &Path,
+    repository_root: &Path,
+) {
+    let path = normalize_path(path);
+    output.push(HttpSourceOperation {
+        key: operation_key("PAGE", &path),
+        method: "PAGE".to_string(),
+        path,
+        kind: HttpSourceOperationKind::Page,
+        schema_missing: false,
+        path_pattern: Some(path_pattern.to_string()),
+        detector: "sveltekit_page".to_string(),
+        confidence: HttpConfidence::High,
+        evidence: HttpSourceEvidence {
+            path: display_path(file_path, repository_root),
+            line: 1,
         },
     });
 }
@@ -236,5 +341,40 @@ app.get("/health", handler)
             .collect::<Vec<_>>();
         assert!(keys.contains(&"GET /users/{id}"));
         assert!(keys.contains(&"DELETE /users/{id}"));
+    }
+
+    #[test]
+    fn detects_sveltekit_pages_and_bounded_node_routes() {
+        let mut page = Vec::new();
+        detect_file(
+            Path::new("/repo/src/routes/[[lang=lang]]/(site)/users/[id]/+page.svelte"),
+            Path::new("/repo"),
+            "<h1>User</h1>",
+            &mut page,
+        );
+        let keys = page
+            .iter()
+            .map(|operation| operation.key.as_str())
+            .collect::<Vec<_>>();
+        assert!(keys.contains(&"PAGE /users/{id}"));
+        assert!(keys.contains(&"PAGE /{lang}/users/{id}"));
+
+        let mut node = Vec::new();
+        detect_file(
+            Path::new("/repo/src/server.ts"),
+            Path::new("/repo"),
+            r#"
+if (req.method === 'GET' && url.pathname === '/health') {}
+const documentMatch = url.pathname.match(/^\/documents\/([^/]+)$/)
+if (req.method === 'DELETE' && documentMatch) {}
+"#,
+            &mut node,
+        );
+        let keys = node
+            .iter()
+            .map(|operation| operation.key.as_str())
+            .collect::<Vec<_>>();
+        assert!(keys.contains(&"GET /health"));
+        assert!(keys.contains(&"DELETE /documents/{segment1}"));
     }
 }

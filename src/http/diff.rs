@@ -31,7 +31,7 @@ pub(crate) fn compare(
         let changes = match (baseline_contracts.get(id), current_contracts.get(id)) {
             (Some(previous), Some(current)) => {
                 let mut changes = compare_operations(&previous.operations, &current.operations);
-                if previous.openapi_version != current.openapi_version {
+                if Some(previous.openapi_version.as_str()) != current.openapi_version.as_deref() {
                     changes.insert(
                         0,
                         HttpOperationChange {
@@ -39,7 +39,8 @@ pub(crate) fn compare(
                             operation: "<contract>".to_string(),
                             message: format!(
                                 "OpenAPI version changed from {} to {}",
-                                previous.openapi_version, current.openapi_version
+                                previous.openapi_version,
+                                current.openapi_version.as_deref().unwrap_or("<missing>")
                             ),
                         },
                     );
@@ -200,8 +201,9 @@ mod tests {
     ) -> HttpInventoryReport {
         HttpInventoryReport::new(vec![HttpContractInventory {
             id: "api".to_string(),
-            contract_source: "openapi.json".to_string(),
-            openapi_version: openapi_version.to_string(),
+            contract_source: Some("openapi.json".to_string()),
+            openapi_version: Some(openapi_version.to_string()),
+            schema_missing: false,
             operations,
             diagnostics: Vec::new(),
             source: HttpSourceInventory {
@@ -216,10 +218,9 @@ mod tests {
     #[test]
     fn classifies_removed_operations_as_breaking_and_new_operations_as_additive() {
         let baseline = report(vec![operation("/old", &["200"])]);
-        let result = compare(
-            &HttpBaselineReport::from_inventory(&baseline),
-            &report(vec![operation("/new", &["200"])]),
-        );
+        let baseline =
+            HttpBaselineReport::from_inventory(&baseline).expect("schema-backed baseline");
+        let result = compare(&baseline, &report(vec![operation("/new", &["200"])]));
         assert_eq!(result.breaking_changes, 1);
         assert_eq!(result.additive_changes, 1);
     }
@@ -227,8 +228,10 @@ mod tests {
     #[test]
     fn treats_response_only_additions_as_additive() {
         let baseline = report(vec![operation("/users", &["200"])]);
+        let baseline =
+            HttpBaselineReport::from_inventory(&baseline).expect("schema-backed baseline");
         let result = compare(
-            &HttpBaselineReport::from_inventory(&baseline),
+            &baseline,
             &report(vec![operation("/users", &["200", "404"])]),
         );
         assert_eq!(result.breaking_changes, 0);
@@ -239,10 +242,9 @@ mod tests {
     fn treats_openapi_version_drift_as_a_breaking_contract_change() {
         let operations = vec![operation("/users", &["200"])];
         let baseline = report_with_version("3.0.3", operations.clone());
-        let result = compare(
-            &HttpBaselineReport::from_inventory(&baseline),
-            &report_with_version("3.1.0", operations),
-        );
+        let baseline =
+            HttpBaselineReport::from_inventory(&baseline).expect("schema-backed baseline");
+        let result = compare(&baseline, &report_with_version("3.1.0", operations));
 
         assert_eq!(result.breaking_changes, 1);
         assert_eq!(result.contracts[0].changes[0].operation, "<contract>");

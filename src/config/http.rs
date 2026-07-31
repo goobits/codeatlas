@@ -139,8 +139,8 @@ impl HttpFuzzHealthCheck {
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedHttpContract {
     pub id: String,
-    pub openapi: ResolvedHttpOpenApiSource,
-    pub openapi_display: String,
+    pub openapi: Option<ResolvedHttpOpenApiSource>,
+    pub openapi_display: Option<String>,
     pub source_roots: Vec<PathBuf>,
     pub source_complete: bool,
     pub source_include_paths: Vec<String>,
@@ -200,9 +200,16 @@ impl ProjectConfig {
     ) -> Result<Vec<ResolvedHttpContract>> {
         if self.config.http.contracts.is_empty() {
             if openapi_overrides.is_empty() {
-                anyhow::bail!(
-                    "No HTTP contracts configured. Add `http.contracts` to codeatlas.json or pass --openapi."
-                );
+                return Ok(vec![ResolvedHttpContract {
+                    id: "source".to_string(),
+                    openapi: None,
+                    openapi_display: None,
+                    source_roots: vec![self.root.clone()],
+                    source_complete: false,
+                    source_include_paths: Vec::new(),
+                    source_exclude_paths: Vec::new(),
+                    repository_root: self.root.clone(),
+                }]);
             }
             let current_dir = std::env::current_dir()?;
             let mut ids = BTreeSet::new();
@@ -228,11 +235,11 @@ impl ProjectConfig {
                     }
                     Ok(ResolvedHttpContract {
                         id,
-                        openapi: ResolvedHttpOpenApiSource::File(openapi),
-                        openapi_display: crate::paths::normalize_relative_path(
+                        openapi: Some(ResolvedHttpOpenApiSource::File(openapi)),
+                        openapi_display: Some(crate::paths::normalize_relative_path(
                             &unresolved,
                             &self.root,
-                        ),
+                        )),
                         source_roots: vec![self.root.clone()],
                         source_complete: false,
                         source_include_paths: Vec::new(),
@@ -267,29 +274,26 @@ impl ProjectConfig {
                 if !ids.insert(contract.id.clone()) {
                     anyhow::bail!("Duplicate HTTP contract ID: {}", contract.id);
                 }
-                let (openapi, openapi_display) = if let Some(path) = openapi_overrides.get(index) {
+                let resolved_openapi = if let Some(path) = openapi_overrides.get(index) {
                     let unresolved = if path.is_absolute() {
                         path.clone()
                     } else {
                         current_dir.join(path)
                     };
-                    (
+                    Some((
                         ResolvedHttpOpenApiSource::File(absolute_existing(
                             path,
                             &current_dir,
                             "OpenAPI contract",
                         )?),
                         crate::paths::normalize_relative_path(&unresolved, &self.root),
-                    )
+                    ))
                 } else {
-                    self.resolve_http_openapi_source(contract.openapi.as_ref().with_context(
-                        || {
-                            format!(
-                                "HTTP contract {} needs `openapi` or a matching --openapi override",
-                                contract.id
-                            )
-                        },
-                    )?)?
+                    contract
+                        .openapi
+                        .as_ref()
+                        .map(|source| self.resolve_http_openapi_source(source))
+                        .transpose()?
                 };
                 let source_roots = if contract.source_roots.is_empty() {
                     vec![self.root.clone()]
@@ -302,8 +306,10 @@ impl ProjectConfig {
                 };
                 Ok(ResolvedHttpContract {
                     id: contract.id.clone(),
-                    openapi,
-                    openapi_display,
+                    openapi: resolved_openapi
+                        .as_ref()
+                        .map(|(openapi, _)| openapi.clone()),
+                    openapi_display: resolved_openapi.map(|(_, display)| display),
                     source_roots,
                     source_complete: contract.source_complete,
                     source_include_paths: contract.source_include_paths.clone(),

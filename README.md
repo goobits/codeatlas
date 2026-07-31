@@ -42,7 +42,7 @@ a positive integer to allow more parallel build work.
 | `diff`         | Compare the current public symbols with a JSON baseline                                |
 | `map`          | Generate a Mermaid dependency diagram                                                  |
 | `docs`         | Generate deterministic Markdown or searchable HTML from public exports and source docs |
-| `http`         | Inventory, check, diff, and schema-fuzz OpenAPI contracts                              |
+| `http`         | Inventory source routes, check/diff OpenAPI contracts, and run schema fuzzing           |
 
 Run `codeatlas <command> --help` for command-specific options.
 
@@ -338,8 +338,15 @@ remain readable.
 ## HTTP Contracts
 
 HTTP contracts are a separate, versioned domain rather than part of the public
-symbol scan. Configure one or more OpenAPI 3.0 or 3.1 documents and their
-domain-owned source roots:
+symbol scan. `http inventory <path>` works without configuration or an OpenAPI
+document: it reports statically detected pages and HTTP endpoints, marks
+endpoints as schema-missing, excludes conventional test sources, and stops at
+nested project manifests. SvelteKit pages and server handlers, bounded Node
+request guards, and supported framework declarations retain their detector and
+source evidence.
+
+Add one or more OpenAPI 3.0 or 3.1 documents when request/response contracts,
+conformance comparison, baselines, or fuzzing are needed:
 
 ```json
 {
@@ -398,6 +405,7 @@ Path filters partition mixed public/internal source files without creating
 duplicate route inventories.
 
 ```bash
+codeatlas http inventory . --out source-routes.json
 codeatlas http inventory --config codeatlas.json --out http-inventory.json
 codeatlas http baseline --config codeatlas.json --out http-baseline.json
 codeatlas http check --config codeatlas.json
@@ -420,7 +428,11 @@ content, response content, and referenced schema digests. CodeAtlas compares
 that evidence; runtime schema libraries and the OpenAPI document remain the
 contract authority.
 
-`http check` also reports malformed path parameters, undefined security
+Without OpenAPI, `http check` emits one non-gating schema-missing warning while
+retaining the source inventory. `http baseline`, `http diff`, and baseline
+comparison require schema-backed contracts.
+
+With OpenAPI, `http check` also reports malformed path parameters, undefined security
 schemes, missing success/error responses, missing request/response schemas,
 unconstrained object or array shapes, and JavaScript regex flags accidentally
 serialized into OpenAPI patterns. Static source evidence names the detector

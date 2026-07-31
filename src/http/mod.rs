@@ -14,6 +14,7 @@ use crate::config::ResolvedHttpContract;
 use anyhow::Result;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use model::HttpContractInventory;
+use std::collections::BTreeSet;
 
 pub(crate) use conformance::check;
 pub(crate) use diff::compare;
@@ -26,7 +27,12 @@ pub(crate) use model::{
 pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInventoryReport> {
     let mut inventories = Vec::with_capacity(contracts.len());
     for contract in contracts {
-        let openapi = provider::load(&contract.openapi, &contract.openapi_display)?;
+        let openapi = contract
+            .openapi
+            .as_ref()
+            .zip(contract.openapi_display.as_deref())
+            .map(|(source, display)| provider::load(source, display))
+            .transpose()?;
         let mut source = source::inventory(
             &contract.source_roots,
             &contract.repository_root,
@@ -50,12 +56,33 @@ pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInvent
                     .as_ref()
                     .is_none_or(|patterns| !patterns.is_match(&operation.path))
         });
+        let schema_operations = openapi
+            .as_ref()
+            .map(|openapi| {
+                openapi
+                    .operations
+                    .iter()
+                    .map(|operation| operation.key.as_str())
+                    .collect::<BTreeSet<_>>()
+            })
+            .unwrap_or_default();
+        for operation in &mut source.operations {
+            operation.schema_missing = operation.kind == model::HttpSourceOperationKind::Endpoint
+                && !schema_operations.contains(operation.key.as_str());
+        }
+        let schema_missing = openapi.is_none();
         inventories.push(HttpContractInventory {
             id: contract.id.clone(),
             contract_source: contract.openapi_display.clone(),
-            openapi_version: openapi.version,
-            operations: openapi.operations,
-            diagnostics: openapi.diagnostics,
+            openapi_version: openapi.as_ref().map(|openapi| openapi.version.clone()),
+            operations: openapi
+                .as_ref()
+                .map(|openapi| openapi.operations.clone())
+                .unwrap_or_default(),
+            diagnostics: openapi
+                .map(|openapi| openapi.diagnostics)
+                .unwrap_or_default(),
+            schema_missing,
             source,
         });
     }

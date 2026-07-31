@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-pub(crate) const HTTP_API_VERSION: &str = "codeatlas.http/v1";
-pub(crate) const HTTP_SCHEMA_VERSION: u32 = 1;
+pub(crate) const HTTP_API_VERSION: &str = "codeatlas.http/v2";
+pub(crate) const HTTP_SCHEMA_VERSION: u32 = 2;
 pub(crate) const HTTP_BASELINE_API_VERSION: &str = "codeatlas.http-baseline/v1";
+pub(crate) const HTTP_BASELINE_SCHEMA_VERSION: u32 = 1;
 pub(crate) const HTTP_FUZZ_API_VERSION: &str = "codeatlas.http-fuzz/v1";
+pub(crate) const HTTP_FUZZ_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,20 +36,29 @@ pub(crate) struct HttpBaselineReport {
 }
 
 impl HttpBaselineReport {
-    pub(crate) fn from_inventory(inventory: &HttpInventoryReport) -> Self {
-        Self {
-            schema_version: HTTP_SCHEMA_VERSION,
-            api_version: HTTP_BASELINE_API_VERSION.to_string(),
-            contracts: inventory
-                .contracts
-                .iter()
-                .map(|contract| HttpBaselineContract {
+    pub(crate) fn from_inventory(inventory: &HttpInventoryReport) -> anyhow::Result<Self> {
+        let contracts = inventory
+            .contracts
+            .iter()
+            .map(|contract| {
+                let openapi_version = contract.openapi_version.clone().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "HTTP contract {} has no OpenAPI schema; baselines require schema-backed contracts",
+                        contract.id
+                    )
+                })?;
+                Ok(HttpBaselineContract {
                     id: contract.id.clone(),
-                    openapi_version: contract.openapi_version.clone(),
+                    openapi_version,
                     operations: contract.operations.clone(),
                 })
-                .collect(),
-        }
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        Ok(Self {
+            schema_version: HTTP_BASELINE_SCHEMA_VERSION,
+            api_version: HTTP_BASELINE_API_VERSION.to_string(),
+            contracts,
+        })
     }
 }
 
@@ -63,8 +74,11 @@ pub(crate) struct HttpBaselineContract {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpContractInventory {
     pub id: String,
-    pub contract_source: String,
-    pub openapi_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub openapi_version: Option<String>,
+    pub schema_missing: bool,
     pub operations: Vec<HttpOperation>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub diagnostics: Vec<HttpContractDiagnostic>,
@@ -160,9 +174,20 @@ pub(crate) struct HttpSourceOperation {
     pub key: String,
     pub method: String,
     pub path: String,
+    pub kind: HttpSourceOperationKind,
+    pub schema_missing: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_pattern: Option<String>,
     pub detector: String,
     pub confidence: HttpConfidence,
     pub evidence: HttpSourceEvidence,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HttpSourceOperationKind {
+    Endpoint,
+    Page,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

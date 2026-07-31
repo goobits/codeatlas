@@ -1,6 +1,6 @@
 use crate::http::model::{
     HttpFuzzOperationSummary, HttpFuzzPositiveCoverage, HttpFuzzReport, HttpFuzzStatefulSummary,
-    HttpFuzzTotals, HTTP_FUZZ_API_VERSION, HTTP_SCHEMA_VERSION,
+    HttpFuzzTotals, HTTP_FUZZ_API_VERSION, HTTP_FUZZ_SCHEMA_VERSION,
 };
 use anyhow::{Context, Result};
 use serde_json::Value;
@@ -183,7 +183,7 @@ pub(super) fn summarize_reader(
         stats.summary
     });
     Ok(HttpFuzzReport {
-        schema_version: HTTP_SCHEMA_VERSION,
+        schema_version: HTTP_FUZZ_SCHEMA_VERSION,
         api_version: HTTP_FUZZ_API_VERSION.to_string(),
         tool_version: env!("CARGO_PKG_VERSION").to_string(),
         target_id: target_id.to_string(),

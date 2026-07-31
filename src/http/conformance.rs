@@ -1,5 +1,6 @@
 use super::model::{
     HttpCheckReport, HttpFinding, HttpFindingSeverity, HttpInventoryReport, HttpSourceCompleteness,
+    HttpSourceOperationKind,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -7,6 +8,18 @@ pub(crate) fn check(inventory: HttpInventoryReport) -> HttpCheckReport {
     let mut findings = Vec::new();
     for contract in &inventory.contracts {
         let asserted_complete = contract.source.completeness == HttpSourceCompleteness::Complete;
+        if contract.schema_missing {
+            findings.push(HttpFinding {
+                severity: HttpFindingSeverity::Warning,
+                code: "contract.schema_missing".to_string(),
+                contract_id: contract.id.clone(),
+                operation: None,
+                message:
+                    "No OpenAPI schema was provided; source routes are inventoried without request or response contracts."
+                        .to_string(),
+                evidence: None,
+            });
+        }
         for diagnostic in &contract.diagnostics {
             findings.push(HttpFinding {
                 severity: diagnostic.severity,
@@ -62,7 +75,12 @@ pub(crate) fn check(inventory: HttpInventoryReport) -> HttpCheckReport {
         }
 
         let mut source_by_key = BTreeMap::new();
-        for operation in &contract.source.operations {
+        for operation in contract
+            .source
+            .operations
+            .iter()
+            .filter(|operation| operation.kind == HttpSourceOperationKind::Endpoint)
+        {
             source_by_key
                 .entry(operation.key.as_str())
                 .or_insert_with(Vec::new)
@@ -90,6 +108,9 @@ pub(crate) fn check(inventory: HttpInventoryReport) -> HttpCheckReport {
             }
         }
 
+        if contract.schema_missing {
+            continue;
+        }
         let contract_keys = operations.keys().copied().collect::<BTreeSet<_>>();
         let source_keys = source_by_key.keys().copied().collect::<BTreeSet<_>>();
         for key in contract_keys.difference(&source_keys) {
@@ -144,13 +165,15 @@ mod tests {
     use crate::http::model::{
         HttpConfidence, HttpContractInventory, HttpInventoryReport, HttpOperation, HttpResponse,
         HttpSourceCompleteness, HttpSourceEvidence, HttpSourceInventory, HttpSourceOperation,
+        HttpSourceOperationKind,
     };
 
     fn report(completeness: HttpSourceCompleteness) -> HttpInventoryReport {
         HttpInventoryReport::new(vec![HttpContractInventory {
             id: "api".to_string(),
-            contract_source: "openapi.json".to_string(),
-            openapi_version: "3.1.0".to_string(),
+            contract_source: Some("openapi.json".to_string()),
+            openapi_version: Some("3.1.0".to_string()),
+            schema_missing: false,
             operations: vec![HttpOperation {
                 key: "GET /declared".to_string(),
                 method: "GET".to_string(),
@@ -172,6 +195,9 @@ mod tests {
                     key: "GET /runtime".to_string(),
                     method: "GET".to_string(),
                     path: "/runtime".to_string(),
+                    kind: HttpSourceOperationKind::Endpoint,
+                    schema_missing: true,
+                    path_pattern: None,
                     detector: "fixture".to_string(),
                     confidence: HttpConfidence::High,
                     evidence: HttpSourceEvidence {
@@ -195,5 +221,24 @@ mod tests {
     fn asserted_complete_detection_turns_mismatches_into_errors() {
         let report = check(report(HttpSourceCompleteness::Complete));
         assert_eq!(report.gate_count(), 2);
+    }
+
+    #[test]
+    fn source_only_inventory_warns_once_without_treating_pages_as_endpoints() {
+        let mut inventory = report(HttpSourceCompleteness::Partial);
+        let contract = &mut inventory.contracts[0];
+        contract.contract_source = None;
+        contract.openapi_version = None;
+        contract.schema_missing = true;
+        contract.operations.clear();
+        contract.source.operations[0].kind = HttpSourceOperationKind::Page;
+        contract.source.operations[0].method = "PAGE".to_string();
+        contract.source.operations[0].key = "PAGE /runtime".to_string();
+        contract.source.operations[0].schema_missing = false;
+
+        let report = check(inventory);
+        assert_eq!(report.gate_count(), 0);
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].code, "contract.schema_missing");
     }
 }

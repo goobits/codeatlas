@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Subcommand)]
 pub(super) enum HttpCommand {
-    /// Normalize OpenAPI contracts and static source evidence
+    /// Inventory static HTTP/page routes and optional OpenAPI schemas
     Inventory {
         /// Repository path
         #[arg(default_value = ".")]
@@ -17,7 +17,7 @@ pub(super) enum HttpCommand {
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
-    /// Write a compact behavioral baseline without source evidence
+    /// Write a compact OpenAPI behavioral baseline without source evidence
     Baseline {
         /// Repository path
         #[arg(default_value = ".")]
