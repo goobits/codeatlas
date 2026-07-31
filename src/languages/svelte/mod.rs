@@ -79,3 +79,58 @@ fn is_sveltekit_script(path: &Path) -> bool {
         false
     }
 }
+
+pub(crate) fn is_sveltekit_runtime_entrypoint(path: &str) -> bool {
+    let path = Path::new(path);
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let components = path
+        .components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .collect::<Vec<_>>();
+
+    if matches!(
+        name,
+        "hooks.ts"
+            | "hooks.js"
+            | "hooks.server.ts"
+            | "hooks.server.js"
+            | "hooks.client.ts"
+            | "hooks.client.js"
+            | "service-worker.ts"
+            | "service-worker.js"
+    ) {
+        return components.first() == Some(&"src");
+    }
+
+    if components
+        .windows(2)
+        .any(|window| window == ["src", "params"])
+    {
+        return matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("ts" | "js")
+        );
+    }
+
+    components
+        .windows(2)
+        .any(|window| window == ["src", "routes"])
+        && matches!(
+            name,
+            "+page.svelte"
+                | "+page.ts"
+                | "+page.js"
+                | "+page.server.ts"
+                | "+page.server.js"
+                | "+layout.svelte"
+                | "+layout.ts"
+                | "+layout.js"
+                | "+layout.server.ts"
+                | "+layout.server.js"
+                | "+server.ts"
+                | "+server.js"
+                | "+error.svelte"
+        )
+}

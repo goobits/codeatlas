@@ -251,9 +251,10 @@ Context scopes describe how roots are interpreted:
 
 JavaScript, TypeScript, and Svelte projects automatically add a production
 `npm-package-exports` public-surface context when `package.json` exposes source
-entries. Local source paths in npm `start` and `serve` scripts also become
-production roots in an `npm-package-runtime` context. Conventional `*.test.*`
-and `*.spec.*` files become runtime roots in an `ecmascript-tests` context.
+entries. Local source paths in npm `start` and `serve` lifecycle scripts also
+become production roots in an `npm-package-runtime` context; source paths in
+other package scripts become tooling roots. Conventional `*.test.*` and
+`*.spec.*` files become runtime roots in an `ecmascript-tests` context.
 Files such as `__tests__/support.ts` are scanned and followed when imported,
 but are not roots merely because they live in a test directory. Explicit
 contexts remain additive and can override automatic contexts by using their
@@ -271,6 +272,12 @@ static imports, literal dynamic imports, bounded template imports, and Vite
 globs. Svelte component symbols remain conservative because markup-level
 references are not yet a complete symbol graph. They are never emitted as
 high-confidence unused-private findings.
+SvelteKit route modules, pages, hooks, parameter matchers, and service workers
+are discovered as framework-owned production roots. Generated `$types.js`
+imports are framework boundaries rather than missing source files.
+Generated, ignored, existing-but-excluded, and out-of-project relative source
+imports remain visible as uncertainty advisories. A genuinely missing
+in-project source import remains a high-confidence gate.
 
 The versioned dead-code report distinguishes unreachable private code,
 test-only files and symbols, tooling-only code, unreferenced public APIs,

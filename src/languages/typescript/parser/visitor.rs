@@ -171,6 +171,56 @@ impl Visit for SymbolVisitor {
         }
     }
 
+    fn visit_export_default_decl(&mut self, declaration: &ExportDefaultDecl) {
+        let start_len = self.symbols.len();
+        match &declaration.decl {
+            DefaultDecl::Class(expression) => {
+                self.visit_class_decl(&ClassDecl {
+                    ident: expression
+                        .ident
+                        .clone()
+                        .unwrap_or_else(|| Ident::new("default".into(), expression.class.span)),
+                    declare: false,
+                    class: expression.class.clone(),
+                });
+            }
+            DefaultDecl::Fn(expression) => {
+                self.visit_fn_decl(&FnDecl {
+                    ident: expression
+                        .ident
+                        .clone()
+                        .unwrap_or_else(|| Ident::new("default".into(), expression.function.span)),
+                    declare: false,
+                    function: expression.function.clone(),
+                });
+            }
+            DefaultDecl::TsInterfaceDecl(interface) => {
+                self.visit_ts_interface_decl(interface);
+            }
+        }
+        for symbol in &mut self.symbols[start_len..] {
+            symbol.visibility = Visibility::Public;
+        }
+    }
+
+    fn visit_export_default_expr(&mut self, declaration: &ExportDefaultExpr) {
+        if matches!(&*declaration.expr, Expr::Ident(_)) {
+            return;
+        }
+        let kind = match &*declaration.expr {
+            Expr::Arrow(_) | Expr::Fn(_) => SymbolKind::Function,
+            Expr::Class(_) => SymbolKind::Class,
+            _ => SymbolKind::Const,
+        };
+        self.symbols.push(self.create_symbol(
+            "default".to_string(),
+            kind,
+            Visibility::Public,
+            declaration.span,
+            "default export".to_string(),
+        ));
+    }
+
     fn visit_class_decl(&mut self, declaration: &ClassDecl) {
         let name = declaration.ident.sym.to_string();
         let extends = declaration

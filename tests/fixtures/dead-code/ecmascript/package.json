@@ -1,5 +1,8 @@
 {
   "name": "ecmascript-fixture",
+  "scripts": {
+    "audit": "tsx scripts/build.ts"
+  },
   "exports": {
     ".": {
       "source": "./src/index.ts"

@@ -12,6 +12,7 @@ pub(super) enum Resolution {
     Resolved(ModuleKey),
     External(String),
     UnresolvedInternal(String),
+    Unscanned(String),
     DynamicUnknown(String),
     Unsupported(String),
 }
@@ -32,6 +33,7 @@ pub(super) struct ModuleResolver {
 }
 
 struct ProjectResolution {
+    root: PathBuf,
     aliases: AliasConfig,
     package_imports: BTreeMap<String, BTreeMap<String, String>>,
 }
@@ -72,6 +74,7 @@ impl ModuleResolver {
             project_resolutions.insert(
                 project.id.clone(),
                 ProjectResolution {
+                    root: project.root.clone(),
                     aliases: load_alias_config(&project.root)?,
                     package_imports: load_package_imports(
                         &project.root,
@@ -103,6 +106,8 @@ impl ModuleResolver {
             }
             return if unsupported_relative_specifier(specifier) {
                 Resolution::Unsupported(specifier.to_string())
+            } else if self.is_unscanned_relative(module, specifier) {
+                Resolution::Unscanned(specifier.to_string())
             } else {
                 Resolution::UnresolvedInternal(specifier.to_string())
             };
@@ -154,15 +159,40 @@ impl ModuleResolver {
     }
 
     fn resolve_relative(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
+        let raw = self.relative_path(module, specifier)?;
+        self.resolve_project_path(&module.project, &raw)
+    }
+
+    fn is_unscanned_relative(&self, module: &Module, specifier: &str) -> bool {
+        let Some(raw) = self.relative_path(module, specifier) else {
+            return false;
+        };
+        let normalized = crate::paths::normalize_path(&raw);
+        if normalized == ".." || normalized.starts_with("../") {
+            return true;
+        }
+        if is_generated_source_path(&raw) {
+            return true;
+        }
+        let Some(project) = self.projects.get(&module.project) else {
+            return false;
+        };
+        module_candidates(&raw)
+            .into_iter()
+            .any(|candidate| project.root.join(candidate).is_file())
+    }
+
+    fn relative_path(&self, module: &Module, specifier: &str) -> Option<PathBuf> {
         let specifier = source_path_specifier(specifier);
         if let Some(path) = specifier.strip_prefix('/') {
-            let package_root = self.nearest_package_directory(module)?;
-            return self.resolve_project_path(&module.project, &package_root.join(path));
+            return self
+                .nearest_package_directory(module)
+                .map(|package_root| package_root.join(path));
         }
         let parent = Path::new(&module.path)
             .parent()
             .unwrap_or_else(|| Path::new(""));
-        self.resolve_project_path(&module.project, &parent.join(specifier))
+        Some(parent.join(specifier))
     }
 
     fn resolve_alias(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
@@ -369,6 +399,15 @@ fn unsupported_relative_specifier(specifier: &str) -> bool {
     )
 }
 
+fn is_generated_source_path(path: &Path) -> bool {
+    path.components().any(|component| {
+        matches!(
+            component.as_os_str().to_str(),
+            Some(".svelte-kit" | "__generated__" | "generated" | "paraglide")
+        )
+    })
+}
+
 fn is_sveltekit_virtual(specifier: &str) -> bool {
     matches!(specifier, "$app" | "$env" | "$types")
         || specifier.starts_with("$app/")
@@ -376,7 +415,7 @@ fn is_sveltekit_virtual(specifier: &str) -> bool {
         || Path::new(specifier)
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name == "$types")
+            .is_some_and(|name| name == "$types" || name.starts_with("$types."))
 }
 
 fn is_relative_specifier(specifier: &str) -> bool {

@@ -61,6 +61,15 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
         .find(|context| context.name == "npm-package-exports")
         .expect("npm package export context");
     assert_eq!(package_context.scope, ContextScope::PublicSurface);
+    let tooling_context = graph
+        .contexts
+        .values()
+        .find(|context| context.name == "ecmascript-tooling")
+        .expect("npm script tooling context");
+    assert!(tooling_context.roots.contains(&NodeId::file(
+        &ProjectId("ecmascript".to_string()),
+        "scripts/build.ts"
+    )));
     let report = dead_code::analyze(&graph).expect("dead-code report");
 
     let unused_file = finding(
@@ -131,6 +140,11 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
                     | "src/common.cjs"
             )
     }));
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnusedPrivateSymbol
+            && finding.path == "src/defaultThing.ts"
+            && finding.symbol.as_deref() == Some("defaultHelper")
+    }));
 }
 
 #[test]
@@ -139,7 +153,23 @@ fn svelte_reachability_connects_script_facts_without_private_symbol_gates() {
     let report = dead_code::analyze(&graph).expect("dead-code report");
     assert_eq!(
         report.projects[0].files_by_language[&SourceLanguage::Svelte],
-        7
+        8
+    );
+    let runtime_context = graph
+        .contexts
+        .values()
+        .find(|context| context.name == "sveltekit-runtime")
+        .expect("SvelteKit runtime context");
+    assert_eq!(runtime_context.scope, ContextScope::PublicSurface);
+    assert_eq!(
+        runtime_context.roots,
+        BTreeSet::from([
+            NodeId::file(&ProjectId("svelte".to_string()), "src/routes/+page.svelte"),
+            NodeId::file(
+                &ProjectId("svelte".to_string()),
+                "src/routes/api/+server.ts"
+            ),
+        ])
     );
 
     let unreachable = finding(
@@ -185,11 +215,17 @@ fn svelte_reachability_connects_script_facts_without_private_symbol_gates() {
         "src/components/Child.svelte",
         "src/components/Nested.svelte",
         "src/lazy/Lazy.svelte",
+        "src/routes/+page.svelte",
+        "src/routes/api/+server.ts",
     ] {
         assert!(!report.findings.iter().any(|finding| {
             finding.kind == DeadCodeFindingKind::UnreachableFile && finding.path == path
         }));
     }
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
+            && finding.message.contains("$types.js")
+    }));
 
     let load = graph.nodes.values().find_map(|node| match node {
         SourceNode::Symbol(symbol) if symbol.name == "load" => Some(symbol),
@@ -273,6 +309,26 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
             finding.kind == DeadCodeFindingKind::UnreachableFile && finding.path == path
         }));
     }
+}
+
+#[test]
+fn excluded_generated_sources_are_uncertain_instead_of_missing() {
+    let report = analyze_fixture("generated");
+    let boundary = report
+        .findings
+        .iter()
+        .find(|finding| {
+            finding.kind == DeadCodeFindingKind::DynamicBoundary
+                && finding.path == "src/index.ts"
+                && finding.message.contains("./generated/client.js")
+        })
+        .expect("generated source boundary");
+    assert_ne!(boundary.confidence, FindingConfidence::High);
+    assert!(!boundary.gates);
+    assert!(!report
+        .findings
+        .iter()
+        .any(|finding| finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge));
 }
 
 #[test]

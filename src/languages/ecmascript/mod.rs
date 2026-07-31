@@ -17,6 +17,7 @@ type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.ecmascript";
 const PACKAGE_EXPORT_CONTEXT: &str = "npm-package-exports";
 const PACKAGE_RUNTIME_CONTEXT: &str = "npm-package-runtime";
+const SVELTEKIT_RUNTIME_CONTEXT: &str = "sveltekit-runtime";
 const TEST_CONTEXT: &str = "ecmascript-tests";
 const TOOLING_CONTEXT: &str = "ecmascript-tooling";
 const TEST_DISCOVERY_PATTERN: &str = "**/*.test.ts";
@@ -92,6 +93,30 @@ fn add_discovered_contexts(
         )?;
     }
 
+    if project
+        .languages
+        .iter()
+        .any(|language| language == "svelte")
+        && !project.contexts.contains_key(SVELTEKIT_RUNTIME_CONTEXT)
+    {
+        let roots = modules
+            .values()
+            .filter(|module| {
+                module.project == project.id
+                    && crate::languages::svelte::is_sveltekit_runtime_entrypoint(&module.path)
+            })
+            .map(|module| module.file.clone())
+            .collect();
+        add_discovered_context(
+            graph,
+            project,
+            SVELTEKIT_RUNTIME_CONTEXT,
+            ContextRole::Production,
+            ContextScope::PublicSurface,
+            roots,
+        )?;
+    }
+
     if !project.contexts.contains_key(TEST_CONTEXT) {
         let roots = modules
             .values()
@@ -111,13 +136,19 @@ fn add_discovered_contexts(
     }
 
     if !project.contexts.contains_key(TOOLING_CONTEXT) {
-        let roots = modules
+        let mut roots = modules
             .values()
             .filter(|module| {
                 module.project == project.id && is_conventional_tooling_module(&module.path)
             })
             .map(|module| module.file.clone())
-            .collect();
+            .collect::<BTreeSet<_>>();
+        roots.extend(
+            crate::package::discover_tooling_entrypoints(&project.root)?
+                .into_iter()
+                .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, &path))
+                .filter_map(|key| modules.get(&key).map(|module| module.file.clone())),
+        );
         add_discovered_context(
             graph,
             project,
@@ -555,6 +586,7 @@ fn connect_module_resolution(
             .unwrap_or_else(|| EdgeTarget::UnresolvedInternal(specifier.to_string())),
         Resolution::External(value) => EdgeTarget::External(value.clone()),
         Resolution::UnresolvedInternal(value) => EdgeTarget::UnresolvedInternal(value.clone()),
+        Resolution::Unscanned(value) => EdgeTarget::Unsupported(value.clone()),
         Resolution::DynamicUnknown(value) => EdgeTarget::DynamicUnknown(value.clone()),
         Resolution::Unsupported(value) => EdgeTarget::Unsupported(value.clone()),
     };
@@ -577,6 +609,13 @@ fn connect_module_resolution(
         Resolution::DynamicUnknown(_) => (
             Some(BoundaryKind::DynamicImport),
             format!("Dynamic module boundary in {}", module.path),
+        ),
+        Resolution::Unscanned(value) => (
+            Some(BoundaryKind::UnsupportedDependency),
+            format!(
+                "Source boundary {value:?} from {} is generated, excluded, or outside the scanned project",
+                module.path
+            ),
         ),
         Resolution::Unsupported(value) => (
             Some(BoundaryKind::UnsupportedDependency),

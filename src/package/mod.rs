@@ -13,3 +13,4 @@ pub(crate) use dependency::{
 };
 pub(crate) use manifest::{discover, discover_for_docs};
 pub(crate) use runtime::discover_entrypoints as discover_runtime_entrypoints;
+pub(crate) use runtime::discover_tooling_entrypoints;

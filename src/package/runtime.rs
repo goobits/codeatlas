@@ -6,6 +6,17 @@ const RUNTIME_SCRIPTS: [&str; 2] = ["start", "serve"];
 const SOURCE_EXTENSIONS: [&str; 7] = ["cjs", "js", "jsx", "mjs", "svelte", "ts", "tsx"];
 
 pub(crate) fn discover_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
+    discover_script_entrypoints(root_dir, is_runtime_script)
+}
+
+pub(crate) fn discover_tooling_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
+    discover_script_entrypoints(root_dir, |name| !is_runtime_script(name))
+}
+
+fn discover_script_entrypoints(
+    root_dir: &Path,
+    include: impl Fn(&str) -> bool,
+) -> Result<Vec<String>> {
     let manifest_path = root_dir.join("package.json");
     if !manifest_path.is_file() {
         return Ok(Vec::new());
@@ -19,14 +30,21 @@ pub(crate) fn discover_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
         return Ok(Vec::new());
     };
 
-    let mut entrypoints = RUNTIME_SCRIPTS
+    let mut entrypoints = scripts
         .iter()
-        .filter_map(|name| scripts.get(*name).and_then(Value::as_str))
+        .filter(|(name, _)| include(name))
+        .filter_map(|(_, command)| command.as_str())
         .flat_map(script_source_paths)
         .collect::<Vec<_>>();
     entrypoints.sort();
     entrypoints.dedup();
     Ok(entrypoints)
+}
+
+fn is_runtime_script(name: &str) -> bool {
+    RUNTIME_SCRIPTS.iter().any(|runtime| {
+        name == *runtime || name == format!("pre{runtime}") || name == format!("post{runtime}")
+    })
 }
 
 fn script_source_paths(script: &str) -> impl Iterator<Item = String> + '_ {

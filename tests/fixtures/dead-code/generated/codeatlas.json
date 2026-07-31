@@ -1,0 +1,15 @@
+{
+  "projects": [
+    {
+      "id": "generated",
+      "root": ".",
+      "languages": ["ts"],
+      "contexts": {
+        "application": {
+          "role": "production",
+          "entrypoints": ["src/index.ts"]
+        }
+      }
+    }
+  ]
+}
