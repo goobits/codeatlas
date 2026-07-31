@@ -332,6 +332,7 @@ pub(super) fn collect_reachability_facts(
         source_map,
         dependencies: Vec::new(),
         static_bindings: static_bindings.unique(),
+        local_bindings: module.body.iter().flat_map(declared_names).collect(),
     };
     module.visit_with(&mut dynamic);
     facts.dynamic_dependencies = dynamic.dependencies;
@@ -801,6 +802,7 @@ struct DynamicDependencyCollector {
     source_map: Lrc<SourceMap>,
     dependencies: Vec<DynamicDependency>,
     static_bindings: BTreeMap<String, Vec<DynamicDependencyTarget>>,
+    local_bindings: BTreeSet<String>,
 }
 
 #[derive(Default)]
@@ -846,7 +848,7 @@ impl Visit for DynamicDependencyCollector {
             Callee::Expr(expression) if matches!(&**expression, Expr::Ident(identifier) if identifier.sym == *"importScripts") => {
                 Some(DynamicDependencyKind::ImportScripts)
             }
-            Callee::Expr(expression) if is_static_file_reader(expression) => {
+            Callee::Expr(expression) if is_static_file_reader(expression, &self.local_bindings) => {
                 Some(DynamicDependencyKind::RuntimeFile)
             }
             _ => None,
@@ -932,13 +934,15 @@ fn runtime_path_targets_source_module(target: &DynamicDependencyTarget) -> bool 
     )
 }
 
-fn is_static_file_reader(expression: &Expr) -> bool {
+fn is_static_file_reader(expression: &Expr, local_bindings: &BTreeSet<String>) -> bool {
     fn is_reader(name: &str) -> bool {
         matches!(name, "load" | "read" | "readFile" | "readFileSync")
     }
 
     match expression {
-        Expr::Ident(identifier) => is_reader(identifier.sym.as_ref()),
+        Expr::Ident(identifier) => {
+            is_reader(identifier.sym.as_ref()) && !local_bindings.contains(identifier.sym.as_ref())
+        }
         Expr::Member(member) => match &member.prop {
             MemberProp::Ident(identifier) => is_reader(identifier.sym.as_ref()),
             MemberProp::Computed(computed) => {

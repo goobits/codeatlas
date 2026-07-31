@@ -342,4 +342,27 @@ const generated = read(outputPath)
                     && matches!(dependency.target, DynamicDependencyTarget::Unknown)
             }));
     }
+
+    #[test]
+    fn local_reader_helpers_do_not_create_source_dependencies() {
+        let info = parse_source(
+            r#"
+const routePath = "src/routes/example"
+const read = (name) => readFile(`${routePath}/${name}`, "utf8")
+const source = read("+page.svelte")
+"#,
+            "tests/page-boundary.test.ts",
+        )
+        .expect("module info");
+
+        assert!(!info
+            .reachability
+            .dynamic_dependencies
+            .iter()
+            .any(|dependency| {
+                dependency.kind == DynamicDependencyKind::RuntimeFile
+                    && dependency.target
+                        == DynamicDependencyTarget::Literal("+page.svelte".to_string())
+            }));
+    }
 }
