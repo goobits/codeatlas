@@ -37,6 +37,7 @@ pub(crate) fn discover_with_patterns(
     let root = project.root.clone();
     let filter_root = root.clone();
     let filter_patterns = patterns.clone();
+    let excluded_roots = project.excluded_roots.clone();
     let no_default_ignore = project.no_default_ignore;
     let mut builder = ignore::WalkBuilder::new(&root);
     builder
@@ -45,17 +46,18 @@ pub(crate) fn discover_with_patterns(
         .git_exclude(false)
         .require_git(false)
         .filter_entry(move |entry| {
-            should_descend(
-                entry.depth(),
-                entry
-                    .file_type()
-                    .is_some_and(|file_type| file_type.is_dir()),
-                &entry.file_name().to_string_lossy(),
-                entry.path(),
-                &filter_root,
-                no_default_ignore,
-                &filter_patterns,
-            )
+            !excluded_roots.iter().any(|root| entry.path() == root)
+                && should_descend(
+                    entry.depth(),
+                    entry
+                        .file_type()
+                        .is_some_and(|file_type| file_type.is_dir()),
+                    &entry.file_name().to_string_lossy(),
+                    entry.path(),
+                    &filter_root,
+                    no_default_ignore,
+                    &filter_patterns,
+                )
         });
     let walker = builder.build();
 
@@ -199,6 +201,8 @@ mod tests {
             assume_reachable: Vec::new(),
             no_default_ignore: false,
             rust: RustAnalysisConfig::default(),
+            workspace_member: false,
+            excluded_roots: Vec::new(),
         };
 
         let paths = discover(&project)

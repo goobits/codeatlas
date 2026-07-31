@@ -22,7 +22,7 @@ pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result
     let mut languages_by_project = BTreeMap::new();
     for project in projects {
         let languages = configured_or_detected_languages(project)?;
-        if languages.is_empty() {
+        if languages.is_empty() && !project.workspace_member {
             anyhow::bail!(
                 "No supported reachability languages found in {}",
                 project.root.display()
@@ -33,7 +33,11 @@ pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result
                 id: project.id.clone(),
                 root: project.report_root.clone(),
                 languages: languages.clone(),
-                completeness: AnalysisCompleteness::Complete,
+                completeness: if languages.is_empty() {
+                    AnalysisCompleteness::Unsupported
+                } else {
+                    AnalysisCompleteness::Complete
+                },
             })
             .map_err(anyhow::Error::from)?;
         languages_by_project.insert(project.id.clone(), languages);
@@ -73,6 +77,9 @@ pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result
     crate::languages::rust::reachability::collect_projects(&mut graph, &rust_projects)?;
 
     for project in projects {
+        if languages_by_project[&project.id].is_empty() {
+            continue;
+        }
         add_contexts(&mut graph, project)?;
     }
     graph
@@ -108,24 +115,18 @@ fn configured_or_detected_languages(
 
     let mut languages = BTreeSet::new();
     let is_cargo_project = project.root.join("Cargo.toml").is_file();
-    let walker = walkdir::WalkDir::new(&project.root).into_iter();
-    for entry in walker.filter_entry(|entry| {
-        entry.depth() == 0
-            || !crate::analysis::ignore::is_ignored_dir(
-                &entry.file_name().to_string_lossy(),
-                project.no_default_ignore,
-            )
-    }) {
-        let entry = entry.with_context(|| {
-            format!(
-                "Could not inspect reachability project {}",
-                project.root.display()
-            )
-        })?;
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        if let Some(language) = detected_language(entry.path(), is_cargo_project) {
+    let discovery = crate::analysis::source_files::discover_with_patterns(
+        project,
+        &["**/*.test.ts".to_string()],
+    );
+    if let Some(warning) = discovery.warnings.first() {
+        anyhow::bail!(
+            "Could not inspect reachability project {}: {warning}",
+            project.root.display()
+        );
+    }
+    for path in discovery.files {
+        if let Some(language) = detected_language(&path, is_cargo_project) {
             languages.insert(language);
         }
     }
@@ -151,6 +152,9 @@ fn add_contexts(graph: &mut SourceGraph, project: &ResolvedAnalysisProject) -> R
         .values()
         .any(|context| context.project == project.id);
     if project.contexts.is_empty() && !has_discovered_context {
+        if project.workspace_member {
+            return Ok(());
+        }
         anyhow::bail!(
             "Analysis project {} needs at least one named context with entrypoints",
             project.id

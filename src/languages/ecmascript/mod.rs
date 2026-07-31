@@ -20,6 +20,7 @@ const PACKAGE_RUNTIME_CONTEXT: &str = "npm-package-runtime";
 const SVELTEKIT_RUNTIME_CONTEXT: &str = "sveltekit-runtime";
 const TEST_CONTEXT: &str = "ecmascript-tests";
 const TOOLING_CONTEXT: &str = "ecmascript-tooling";
+const DECLARATION_CONTEXT: &str = "ecmascript-declarations";
 const TEST_DISCOVERY_PATTERN: &str = "**/*.test.ts";
 
 mod resolver;
@@ -118,13 +119,30 @@ fn add_discovered_contexts(
     }
 
     if !project.contexts.contains_key(TEST_CONTEXT) {
-        let roots = modules
+        let mut roots = modules
             .values()
             .filter(|module| {
                 module.project == project.id && is_conventional_test_module(&module.path)
             })
             .map(|module| module.file.clone())
-            .collect();
+            .collect::<BTreeSet<_>>();
+        for config in modules
+            .values()
+            .filter(|module| module.project == project.id && is_test_config_module(&module.path))
+        {
+            roots.insert(config.file.clone());
+            roots.extend(
+                config
+                    .info
+                    .reachability
+                    .configured_test_entrypoints
+                    .iter()
+                    .filter_map(|path| {
+                        resolver.resolve_project_entrypoint_or_unique_suffix(&project.id, path)
+                    })
+                    .filter_map(|key| modules.get(&key).map(|module| module.file.clone())),
+            );
+        }
         add_discovered_context(
             graph,
             project,
@@ -153,6 +171,22 @@ fn add_discovered_contexts(
             graph,
             project,
             TOOLING_CONTEXT,
+            ContextRole::Tooling,
+            ContextScope::Runtime,
+            roots,
+        )?;
+    }
+
+    if !project.contexts.contains_key(DECLARATION_CONTEXT) {
+        let roots = modules
+            .values()
+            .filter(|module| module.project == project.id && module.path.ends_with(".d.ts"))
+            .map(|module| module.file.clone())
+            .collect();
+        add_discovered_context(
+            graph,
+            project,
+            DECLARATION_CONTEXT,
             ContextRole::Tooling,
             ContextScope::Runtime,
             roots,
@@ -191,7 +225,19 @@ fn is_conventional_test_module(path: &str) -> bool {
     matches!(
         extension,
         "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "svelte"
-    ) && (stem.ends_with(".test") || stem.ends_with(".spec"))
+    ) && (stem.ends_with(".test") || stem.ends_with(".spec") || stem.ends_with(".playwright"))
+}
+
+fn is_test_config_module(path: &str) -> bool {
+    let Some(name) = Path::new(path).file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let name = name.to_ascii_lowercase();
+    name.starts_with("vitest.config.")
+        || name.starts_with("vite.config.")
+        || name.starts_with("jest.config.")
+        || name.starts_with("playwright.config.")
+        || (name.contains("playwright") && name.contains("config"))
 }
 
 fn is_conventional_tooling_module(path: &str) -> bool {
@@ -270,7 +316,27 @@ fn collect_project_modules(
                 continue;
             }
         };
-        let symbols = add_symbols(graph, project, &path, &file, language, &info.symbols)?;
+        let opaque_vendor = is_opaque_vendor_source(&source_path, &path);
+        if opaque_vendor {
+            graph.record_boundary(
+                &project.id,
+                Some(file.clone()),
+                BoundaryKind::UnsupportedSyntax,
+                AnalysisCompleteness::Complete,
+                format!(
+                    "Vendored or minified source is treated as an opaque runtime module: {path}"
+                ),
+                SourceEvidence::new(&path, None, EXTRACTOR),
+            );
+        }
+        let symbols = add_symbols(
+            graph,
+            project,
+            &path,
+            &file,
+            language,
+            if opaque_vendor { &[] } else { &info.symbols },
+        )?;
         modules.insert(
             (project.id.clone(), path.clone()),
             Module {
@@ -283,6 +349,25 @@ fn collect_project_modules(
         );
     }
     Ok(())
+}
+
+fn is_opaque_vendor_source(source_path: &Path, path: &str) -> bool {
+    let file_name = source_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    if file_name.contains(".min.") {
+        return true;
+    }
+    if !Path::new(path)
+        .components()
+        .any(|component| component.as_os_str() == "vendor")
+    {
+        return false;
+    }
+    std::fs::read_to_string(source_path)
+        .ok()
+        .is_some_and(|source| source.lines().any(|line| line.len() >= 8_192))
 }
 
 fn add_symbols(
@@ -452,9 +537,11 @@ fn connect_module(
         let edge_kind = match dependency.kind {
             parser::DynamicDependencyKind::Import => SourceEdgeKind::DynamicImport,
             parser::DynamicDependencyKind::ImportMetaGlob => SourceEdgeKind::GlobImport,
+            parser::DynamicDependencyKind::ImportScripts => SourceEdgeKind::Require,
             parser::DynamicDependencyKind::Require => SourceEdgeKind::Require,
+            parser::DynamicDependencyKind::RuntimeUrl => SourceEdgeKind::DynamicImport,
         };
-        for resolution in resolver.resolve_dynamic(module, &dependency.target) {
+        for resolution in resolver.resolve_dynamic(module, &dependency.target, dependency.kind) {
             connect_module_resolution(
                 graph,
                 module,

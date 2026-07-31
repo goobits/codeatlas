@@ -11,6 +11,7 @@ incomplete.
 npx @goobits/codeatlas scan .
 npx @goobits/codeatlas audit .
 npx @goobits/codeatlas dead-code . --format json
+npx @goobits/codeatlas dead-code packages --workspace --format json
 npx @goobits/codeatlas context . --target src/main.rs
 npx @goobits/codeatlas architecture compile architecture/root.atlas.yaml --source-root .
 npx @goobits/codeatlas architecture providers architecture/root.atlas.yaml --source-root . --capability example.capability.context
@@ -251,14 +252,17 @@ Context scopes describe how roots are interpreted:
 
 JavaScript, TypeScript, and Svelte projects automatically add a production
 `npm-package-exports` public-surface context when `package.json` exposes source
-entries. Local source paths in npm `start` and `serve` lifecycle scripts also
-become production roots in an `npm-package-runtime` context; source paths in
-other package scripts become tooling roots. Conventional `*.test.*` and
-`*.spec.*` files become runtime roots in an `ecmascript-tests` context.
-Files such as `__tests__/support.ts` are scanned and followed when imported,
-but are not roots merely because they live in a test directory. Explicit
-contexts remain additive and can override automatic contexts by using their
-names.
+entries, including concrete files exposed through wildcard subpath exports.
+Local source paths in npm `start` and `serve` lifecycle scripts also become
+production roots in an `npm-package-runtime` context; source paths in other
+package scripts become tooling roots. Conventional `*.test.*`, `*.spec.*`, and
+test-config files become runtime roots in an `ecmascript-tests` context.
+Configured setup, teardown, and replacement modules are followed from those
+configs. Ambient `.d.ts` modules are classified as tooling declarations rather
+than runtime dead code. Files such as `__tests__/support.ts` are scanned and
+followed when imported, but are not roots merely because they live in a test
+directory. Explicit contexts remain additive and can override automatic
+contexts by using their names.
 
 Each project may select `js`, `ts`, `svelte`, `py`, and `rs`. Rust projects can
 also configure `rust.all_features` or an explicit `rust.features` list. Cargo
@@ -269,7 +273,9 @@ runtime roots.
 Svelte reachability reads both module and instance scripts, preserves their
 source spans, and connects JavaScript, TypeScript, and Svelte modules through
 static imports, literal dynamic imports, bounded template imports, and Vite
-globs. Svelte component symbols remain conservative because markup-level
+globs. Static worker, worklet, and `importScripts` dependencies are followed;
+non-source asset URLs remain outside the source graph. Svelte component symbols
+remain conservative because markup-level
 references are not yet a complete symbol graph. They are never emitted as
 high-confidence unused-private findings.
 SvelteKit route modules, pages, hooks, parameter matchers, and service workers

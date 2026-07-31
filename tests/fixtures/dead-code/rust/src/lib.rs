@@ -1,5 +1,6 @@
 mod api;
 mod custom;
+pub mod exposed;
 
 #[path = "renamed.rs"]
 mod special;

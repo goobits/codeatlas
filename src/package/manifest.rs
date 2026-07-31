@@ -104,7 +104,14 @@ fn collect_exports(
 ) {
     match value {
         Value::String(target) => {
-            if let Some(source_path) = normalize_target(root_dir, source_layout, target) {
+            if public_path.contains('*') && target.contains('*') {
+                exports.extend(expand_wildcard_export(
+                    root_dir,
+                    source_layout,
+                    public_path,
+                    target,
+                ));
+            } else if let Some(source_path) = normalize_target(root_dir, source_layout, target) {
                 exports.push(PackageExport {
                     public_path: public_path.to_string(),
                     source_path,
@@ -156,6 +163,52 @@ fn collect_exports(
         }
         _ => {}
     }
+}
+
+fn expand_wildcard_export(
+    root_dir: &Path,
+    source_layout: Option<&SourceLayout>,
+    public_pattern: &str,
+    target_pattern: &str,
+) -> Vec<PackageExport> {
+    let target_pattern = target_pattern
+        .strip_prefix("./")
+        .unwrap_or(target_pattern)
+        .replace(std::path::MAIN_SEPARATOR, "/");
+    let mut target_patterns = source_layout
+        .and_then(|layout| layout.pattern_candidates(&target_pattern))
+        .unwrap_or_default();
+    target_patterns.push(target_pattern);
+    target_patterns.sort();
+    target_patterns.dedup();
+
+    walkdir::WalkDir::new(root_dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_file())
+        .filter_map(|entry| {
+            let source_path = entry.path().strip_prefix(root_dir).ok().map(|path| {
+                path.to_string_lossy()
+                    .replace(std::path::MAIN_SEPARATOR, "/")
+            })?;
+            let capture = target_patterns
+                .iter()
+                .find_map(|pattern| wildcard_capture(pattern, &source_path))?;
+            Some(PackageExport {
+                public_path: public_pattern.replacen('*', capture, 1),
+                source_path,
+            })
+        })
+        .collect()
+}
+
+fn wildcard_capture<'a>(pattern: &str, value: &'a str) -> Option<&'a str> {
+    let (prefix, suffix) = pattern.split_once('*')?;
+    if suffix.contains('*') {
+        return None;
+    }
+    value.strip_prefix(prefix)?.strip_suffix(suffix)
 }
 
 fn normalize_target(

@@ -31,6 +31,68 @@ fn source_graph_fixture(path: &str) -> crate::domain::source_graph::SourceGraph 
     languages::reachability::build_source_graph(&projects).expect("source graph")
 }
 
+#[test]
+fn workspace_reachability_discovers_members_resolves_packages_and_preserves_ownership() {
+    let root = fixture_root("workspace");
+    let project = ProjectConfig::load(&root, None).expect("workspace configuration");
+    let projects = project
+        .workspace_analysis_projects()
+        .expect("workspace projects");
+    assert_eq!(projects.len(), 3);
+    let graph = languages::reachability::build_source_graph(&projects).expect("workspace graph");
+
+    let package_a = ProjectId("@fixture/a".to_string());
+    let package_b = ProjectId("@fixture/b".to_string());
+    let a_entry = NodeId::file(&package_a, "src/index.ts");
+    let b_entry = NodeId::file(&package_b, "src/index.ts");
+    let b_absolute = NodeId::file(&package_b, "src/absolute.ts");
+    let b_feature = NodeId::file(&package_b, "src/features/feature.ts");
+    assert!(graph.edges.iter().any(|edge| {
+        edge.from == a_entry
+            && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.to == EdgeTarget::Node(b_entry.clone())
+    }));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.from == a_entry
+            && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.to == EdgeTarget::Node(b_absolute.clone())
+    }));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.from == a_entry
+            && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.to == EdgeTarget::Node(b_feature.clone())
+    }));
+    assert!(!graph.nodes.values().any(|node| {
+        matches!(
+            node,
+            SourceNode::File(file)
+                if file.project == package_a && file.path == "child/src/index.ts"
+        )
+    }));
+
+    let report = dead_code::analyze(&graph).expect("workspace dead-code report");
+    let test_only = report
+        .findings
+        .iter()
+        .find(|finding| {
+            finding.project == "@fixture/b"
+                && finding.path == "src/testOnly.ts"
+                && finding.kind == DeadCodeFindingKind::TestOnly
+        })
+        .expect("test-only workspace source");
+    assert_eq!(test_only.roles, [ContextRole::Test].into_iter().collect());
+    let orphan = report
+        .findings
+        .iter()
+        .find(|finding| {
+            finding.project == "@fixture/b"
+                && finding.path == "src/orphan.ts"
+                && finding.kind == DeadCodeFindingKind::UnreachableFile
+        })
+        .expect("unreachable workspace source");
+    assert!(orphan.gates);
+}
+
 fn finding<'a>(
     findings: &'a [DeadCodeFinding],
     kind: DeadCodeFindingKind,
@@ -55,6 +117,11 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
         .expect("conventional ECMAScript test context");
     assert_eq!(test_context.role, ContextRole::Test);
     assert_eq!(test_context.scope, ContextScope::Runtime);
+    for path in ["src/test/setup.ts", "src/test/mock.ts", "vitest.config.ts"] {
+        assert!(test_context
+            .roots
+            .contains(&NodeId::file(&ProjectId("ecmascript".to_string()), path)));
+    }
     let package_context = graph
         .contexts
         .values()
@@ -70,6 +137,16 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
         &ProjectId("ecmascript".to_string()),
         "scripts/build.ts"
     )));
+    let declaration_context = graph
+        .contexts
+        .values()
+        .find(|context| context.name == "ecmascript-declarations")
+        .expect("ambient declaration context");
+    assert_eq!(declaration_context.role, ContextRole::Tooling);
+    assert!(declaration_context.roots.contains(&NodeId::file(
+        &ProjectId("ecmascript".to_string()),
+        "src/styles.d.ts"
+    )));
     let report = dead_code::analyze(&graph).expect("dead-code report");
 
     let unused_file = finding(
@@ -80,6 +157,22 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
     );
     assert_eq!(unused_file.confidence, FindingConfidence::High);
     assert!(unused_file.gates);
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnreachableFile
+            && matches!(
+                finding.path.as_str(),
+                "src/worker.ts" | "src/vendor/worker-support.js" | "src/vendor/helper.min.js"
+            )
+    }));
+    assert!(!report
+        .findings
+        .iter()
+        .any(|finding| finding.symbol.as_deref() == Some("generatedHelper")));
+    assert!(!report.findings.iter().any(|finding| {
+        finding.gates
+            && (finding.path == "src/styles.d.ts"
+                || (finding.path == "vitest.config.ts" && finding.message.contains("\".\"")))
+    }));
 
     let test_only = finding(
         &report.findings,
@@ -552,6 +645,33 @@ fn python_reflection_and_dynamic_imports_lower_certainty() {
 fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
     let report = analyze_fixture("rust");
 
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
+            && finding.message.contains("FacadeType")
+    }));
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnreferencedPublic
+            && finding.symbol.as_deref() == Some("public_api")
+    }));
+    assert!(!report
+        .findings
+        .iter()
+        .any(|finding| finding.symbol.as_deref() == Some("internal_api")));
+    assert!(!report.findings.iter().any(|finding| {
+        matches!(
+            finding.symbol.as_deref(),
+            Some("nested_public" | "nested_helper")
+        )
+    }));
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
+            && finding.message.contains("tooling")
+    }));
+    assert!(!report
+        .findings
+        .iter()
+        .any(|finding| finding.symbol.as_deref() == Some("run")));
+
     let unused_file = finding(
         &report.findings,
         DeadCodeFindingKind::UnreachableFile,
@@ -590,6 +710,8 @@ fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
                 finding.path.as_str(),
                 "src/api.rs"
                     | "src/custom/mod.rs"
+                    | "src/exposed.rs"
+                    | "src/tooling.rs"
                     | "src/renamed.rs"
                     | "src/feature.rs"
                     | "src/bin/cli.rs"

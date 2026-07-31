@@ -34,6 +34,7 @@ pub(super) struct ModuleResolver {
 
 struct ProjectResolution {
     root: PathBuf,
+    report_root: String,
     aliases: AliasConfig,
     package_imports: BTreeMap<String, BTreeMap<String, String>>,
 }
@@ -59,22 +60,33 @@ impl ModuleResolver {
         for (project, _) in projects {
             let package = crate::package::discover_for_docs(&project.root, false)?;
             if let Some(package) = &package {
-                packages.insert(
-                    package.name.clone(),
-                    PackageResolution {
-                        project: project.id.clone(),
-                        exports: package
-                            .exports
-                            .iter()
-                            .map(|export| (export.public_path.clone(), export.source_path.clone()))
-                            .collect(),
-                    },
-                );
+                if packages
+                    .insert(
+                        package.name.clone(),
+                        PackageResolution {
+                            project: project.id.clone(),
+                            exports: package
+                                .exports
+                                .iter()
+                                .map(|export| {
+                                    (export.public_path.clone(), export.source_path.clone())
+                                })
+                                .collect(),
+                        },
+                    )
+                    .is_some()
+                {
+                    anyhow::bail!(
+                        "Duplicate package name {:?} in analysis projects",
+                        package.name
+                    );
+                }
             }
             project_resolutions.insert(
                 project.id.clone(),
                 ProjectResolution {
                     root: project.root.clone(),
+                    report_root: project.report_root.clone(),
                     aliases: load_alias_config(&project.root)?,
                     package_imports: load_package_imports(
                         &project.root,
@@ -101,6 +113,11 @@ impl ModuleResolver {
             return Resolution::External(specifier.to_string());
         }
         if is_relative_specifier(specifier) {
+            if specifier.starts_with('/') {
+                if let Some(resolved) = self.resolve_workspace_absolute(specifier) {
+                    return Resolution::Resolved(resolved);
+                }
+            }
             if let Some(resolved) = self.resolve_relative(module, specifier) {
                 return Resolution::Resolved(resolved);
             }
@@ -143,9 +160,23 @@ impl ModuleResolver {
         &self,
         module: &Module,
         target: &DynamicDependencyTarget,
+        kind: crate::languages::typescript::parser::DynamicDependencyKind,
     ) -> Vec<Resolution> {
         match target {
-            DynamicDependencyTarget::Literal(specifier) => vec![self.resolve(module, specifier)],
+            DynamicDependencyTarget::Literal(specifier) => {
+                let resolved = self.resolve(module, specifier);
+                if kind
+                    == crate::languages::typescript::parser::DynamicDependencyKind::ImportScripts
+                    && matches!(resolved, Resolution::UnresolvedInternal(_))
+                {
+                    if let Some(resolved) =
+                        self.resolve_unique_project_suffix(&module.project, specifier)
+                    {
+                        return vec![Resolution::Resolved(resolved)];
+                    }
+                }
+                vec![resolved]
+            }
             DynamicDependencyTarget::Pattern { prefix, suffix } => {
                 self.resolve_pattern(module, prefix, suffix)
             }
@@ -158,9 +189,52 @@ impl ModuleResolver {
         }
     }
 
+    fn resolve_unique_project_suffix(
+        &self,
+        project_id: &ProjectId,
+        specifier: &str,
+    ) -> Option<ModuleKey> {
+        let suffix = crate::paths::normalize_path(Path::new(
+            source_path_specifier(specifier).trim_start_matches("./"),
+        ));
+        if suffix.is_empty() || suffix.starts_with("../") {
+            return None;
+        }
+        let mut matches = self
+            .modules
+            .iter()
+            .filter(|(project, path)| {
+                project == project_id && (path == &suffix || path.ends_with(&format!("/{suffix}")))
+            })
+            .cloned();
+        let resolved = matches.next()?;
+        matches.next().is_none().then_some(resolved)
+    }
+
     fn resolve_relative(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
         let raw = self.relative_path(module, specifier)?;
         self.resolve_project_path(&module.project, &raw)
+    }
+
+    fn resolve_workspace_absolute(&self, specifier: &str) -> Option<ModuleKey> {
+        let path = source_path_specifier(specifier).trim_start_matches('/');
+        self.projects
+            .iter()
+            .filter_map(|(project_id, project)| {
+                let report_root = project.report_root.trim_matches('/');
+                if report_root.is_empty() || report_root == "." {
+                    return None;
+                }
+                let relative = path
+                    .strip_prefix(report_root)?
+                    .strip_prefix('/')
+                    .unwrap_or("");
+                Some((report_root.len(), project_id, relative))
+            })
+            .max_by_key(|(root_length, _, _)| *root_length)
+            .and_then(|(_, project, relative)| {
+                self.resolve_project_path(project, Path::new(relative))
+            })
     }
 
     fn is_unscanned_relative(&self, module: &Module, specifier: &str) -> bool {
@@ -248,8 +322,12 @@ impl ModuleResolver {
     fn resolve_workspace_package(&self, specifier: &str) -> Option<Option<ModuleKey>> {
         let (package_name, public_path) = crate::package::split_package_specifier(specifier)?;
         let package = self.packages.get(&package_name)?;
-        let source = package.exports.get(&public_path)?;
-        Some(self.resolve_project_path(&package.project, Path::new(source)))
+        Some(
+            package
+                .exports
+                .get(&public_path)
+                .and_then(|source| self.resolve_project_path(&package.project, Path::new(source))),
+        )
     }
 
     fn resolve_project_path(&self, project: &ProjectId, raw: &Path) -> Option<ModuleKey> {
@@ -269,6 +347,15 @@ impl ModuleResolver {
         path: &str,
     ) -> Option<ModuleKey> {
         self.resolve_project_path(project, Path::new(path))
+    }
+
+    pub(super) fn resolve_project_entrypoint_or_unique_suffix(
+        &self,
+        project: &ProjectId,
+        path: &str,
+    ) -> Option<ModuleKey> {
+        self.resolve_project_entrypoint(project, path)
+            .or_else(|| self.resolve_unique_project_suffix(project, path))
     }
 
     fn resolve_pattern(&self, module: &Module, prefix: &str, suffix: &str) -> Vec<Resolution> {

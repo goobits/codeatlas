@@ -28,13 +28,27 @@ impl SourceLayout {
     }
 
     pub(super) fn resolve(&self, package_root: &Path, target: &str) -> Option<String> {
-        let target = Path::new(target.strip_prefix("./").unwrap_or(target));
-        let relative = target.strip_prefix(&self.output_root).ok()?;
-        let source_target = self.source_root.join(relative);
+        let source_target = self.source_target(target)?;
         source_candidates(&source_target)
             .into_iter()
             .find(|candidate| package_root.join(candidate).is_file())
             .map(normalize_path)
+    }
+
+    pub(super) fn pattern_candidates(&self, target: &str) -> Option<Vec<String>> {
+        let source_target = self.source_target(target)?;
+        Some(
+            source_candidates(&source_target)
+                .into_iter()
+                .map(normalize_path)
+                .collect(),
+        )
+    }
+
+    fn source_target(&self, target: &str) -> Option<PathBuf> {
+        let target = Path::new(target.strip_prefix("./").unwrap_or(target));
+        let relative = target.strip_prefix(&self.output_root).ok()?;
+        Some(self.source_root.join(relative))
     }
 }
 

@@ -5,6 +5,7 @@ mod dependency;
 mod manifest;
 mod runtime;
 mod source_layout;
+mod workspace;
 
 pub(crate) use annotation::{annotate, consolidate_declaration_symbols};
 pub(crate) use dependency::{
@@ -14,3 +15,4 @@ pub(crate) use dependency::{
 pub(crate) use manifest::{discover, discover_for_docs};
 pub(crate) use runtime::discover_entrypoints as discover_runtime_entrypoints;
 pub(crate) use runtime::discover_tooling_entrypoints;
+pub(crate) use workspace::discover as discover_workspace;

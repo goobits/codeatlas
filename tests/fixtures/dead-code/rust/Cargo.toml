@@ -16,6 +16,7 @@ extra = []
 
 [lib]
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "fixture-cli"

@@ -63,6 +63,8 @@ pub(crate) struct ResolvedAnalysisProject {
     pub assume_reachable: Vec<String>,
     pub no_default_ignore: bool,
     pub rust: RustAnalysisConfig,
+    pub workspace_member: bool,
+    pub excluded_roots: Vec<PathBuf>,
 }
 
 impl ProjectConfig {
@@ -148,9 +150,54 @@ impl ProjectConfig {
                 assume_reachable: project.assume_reachable,
                 no_default_ignore: self.config.no_default_ignore,
                 rust: project.rust,
+                workspace_member: false,
+                excluded_roots: Vec::new(),
             });
         }
+        add_nested_project_boundaries(&mut resolved);
         Ok(resolved)
+    }
+
+    pub(crate) fn workspace_analysis_projects(&self) -> Result<Vec<ResolvedAnalysisProject>> {
+        if !self.config.projects.is_empty() {
+            anyhow::bail!(
+                "`dead-code --workspace` cannot be combined with configured analysis projects"
+            );
+        }
+        let workspace = crate::package::discover_workspace(&self.root)?;
+        let mut resolved = workspace
+            .members
+            .into_iter()
+            .map(|member| ResolvedAnalysisProject {
+                id: crate::domain::source_graph::ProjectId(member.name),
+                root: member.root,
+                report_root: member.report_root,
+                languages: Vec::new(),
+                contexts: BTreeMap::new(),
+                assume_reachable: Vec::new(),
+                no_default_ignore: self.config.no_default_ignore,
+                rust: RustAnalysisConfig::default(),
+                workspace_member: true,
+                excluded_roots: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        add_nested_project_boundaries(&mut resolved);
+        Ok(resolved)
+    }
+}
+
+fn add_nested_project_boundaries(projects: &mut [ResolvedAnalysisProject]) {
+    let roots = projects
+        .iter()
+        .map(|project| project.root.clone())
+        .collect::<Vec<_>>();
+    for project in projects {
+        project.excluded_roots = roots
+            .iter()
+            .filter(|root| **root != project.root && root.starts_with(&project.root))
+            .cloned()
+            .collect();
+        project.excluded_roots.sort();
     }
 }
 

@@ -33,7 +33,7 @@ fn collect_project(graph: &mut SourceGraph, project: &ResolvedAnalysisProject) -
     let resolver = RustResolver::new(&cargo, &modules);
 
     for module in modules.values() {
-        connect_module(graph, module, &modules, &resolver, &cargo);
+        connect_module(graph, module, &resolver, &cargo);
     }
     add_cargo_contexts(graph, project, &cargo, &modules)?;
     Ok(())
@@ -208,7 +208,6 @@ fn add_symbols(
 fn connect_module(
     graph: &mut SourceGraph,
     module: &Module,
-    modules: &BTreeMap<ModuleKey, Module>,
     resolver: &RustResolver,
     cargo: &CargoLayout,
 ) {
@@ -234,16 +233,20 @@ fn connect_module(
             graph,
             module,
             &resolution,
-            SourceEdgeKind::ModuleDependency,
+            if module.info.public_mods.contains(&declaration.name) {
+                SourceEdgeKind::ReExport
+            } else {
+                SourceEdgeKind::ModuleDependency
+            },
             Vec::new(),
         );
     }
 
     for import in &module.info.uses {
-        connect_use(graph, module, import, modules, resolver, false);
+        connect_use(graph, module, import, resolver, false);
     }
     for export in &module.info.public_uses {
-        connect_use(graph, module, export, modules, resolver, true);
+        connect_use(graph, module, export, resolver, true);
     }
     for uncertainty in &module.info.reachability.uncertainties {
         if uncertainty.kind == parser::RustUncertaintyKind::ConditionalCompilation
@@ -315,7 +318,10 @@ fn connect_reference_path(
             return;
         }
     }
-    if let Some(resolved) = resolver.resolve_symbol_path(module, path) {
+    if let Some(resolved) = resolver
+        .resolve_imported_reference(module, path)
+        .or_else(|| resolver.resolve_symbol_path(module, path))
+    {
         let targets = if resolved.symbols.is_empty() {
             BTreeSet::from([NodeId::file(&resolved.module.0, &resolved.module.1)])
         } else {
@@ -337,7 +343,6 @@ fn connect_use(
     graph: &mut SourceGraph,
     module: &Module,
     import: &parser::UseExport,
-    modules: &BTreeMap<ModuleKey, Module>,
     resolver: &RustResolver,
     reexport: bool,
 ) {
@@ -407,7 +412,7 @@ fn connect_use(
 
     if import.is_glob {
         if let Some(key) = resolver.resolve_use_module(module, &import.module_path) {
-            for (name, symbol) in public_symbols(&key, modules) {
+            for (name, symbol) in resolver.exported_symbols(&key) {
                 let glob_sources = if reexport {
                     BTreeSet::from([module.file.clone()])
                 } else {
@@ -456,29 +461,6 @@ fn reference_sources(module: &Module, local: &str) -> BTreeSet<NodeId> {
     sources
 }
 
-fn public_symbols(
-    key: &ModuleKey,
-    modules: &BTreeMap<ModuleKey, Module>,
-) -> BTreeSet<(String, NodeId)> {
-    modules
-        .get(key)
-        .map(|module| {
-            module
-                .symbols
-                .iter()
-                .filter(|(name, _)| {
-                    module.info.symbols.iter().any(|symbol| {
-                        symbol.name == **name && symbol.visibility == Visibility::Public
-                    })
-                })
-                .flat_map(|(name, symbols)| {
-                    symbols.iter().cloned().map(|symbol| (name.clone(), symbol))
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 fn add_cargo_contexts(
     graph: &mut SourceGraph,
     project: &ResolvedAnalysisProject,
@@ -486,9 +468,6 @@ fn add_cargo_contexts(
     modules: &BTreeMap<ModuleKey, Module>,
 ) -> Result<()> {
     for target in &cargo.targets {
-        if !target.enabled {
-            continue;
-        }
         let path = crate::paths::normalize_relative_path(&target.root, &project.root);
         let key = (project.id.clone(), path);
         let Some(module) = modules.get(&key) else {
@@ -578,7 +557,6 @@ struct CargoTarget {
     root: PathBuf,
     module_base: PathBuf,
     role: ContextRole,
-    enabled: bool,
     library: bool,
 }
 
@@ -628,7 +606,7 @@ impl CargoLayout {
                 default_features: default_features(package),
             });
             for target in &package.targets {
-                targets.push(cargo_target(project, package, target));
+                targets.push(cargo_target(package, target));
             }
         }
         packages.sort_by(|left, right| left.root.cmp(&right.root));
@@ -708,11 +686,7 @@ fn default_features(package: &Package) -> BTreeSet<String> {
         .collect()
 }
 
-fn cargo_target(
-    project: &ResolvedAnalysisProject,
-    package: &Package,
-    target: &Target,
-) -> CargoTarget {
+fn cargo_target(package: &Package, target: &Target) -> CargoTarget {
     let root = target.src_path.as_std_path().to_path_buf();
     let role = if target.kind.iter().any(|kind| kind == "test") {
         ContextRole::Test
@@ -726,21 +700,18 @@ fn cargo_target(
         ContextRole::Production
     };
     let module_base = target_module_base(&root);
-    let enabled = project.rust.all_features
-        || target.required_features.iter().all(|feature| {
-            project.rust.features.contains(feature) || default_features(package).contains(feature)
-        });
     CargoTarget {
         package: package.name.clone(),
         name: target.name.clone(),
         root,
         module_base,
         role,
-        enabled,
-        library: target
-            .kind
-            .iter()
-            .any(|kind| matches!(kind.as_str(), "lib" | "proc-macro")),
+        library: target.kind.iter().any(|kind| {
+            matches!(
+                kind.as_str(),
+                "lib" | "rlib" | "dylib" | "cdylib" | "staticlib" | "proc-macro"
+            )
+        }),
     }
 }
 
@@ -771,6 +742,7 @@ enum UseResolution {
 struct RustResolver {
     module_paths: BTreeMap<PathBuf, ModuleKey>,
     symbols: BTreeMap<(ModuleKey, String), BTreeSet<NodeId>>,
+    exports: BTreeMap<(ModuleKey, String), ResolvedRustPath>,
     targets: Vec<CargoTarget>,
     workspace_libraries: BTreeMap<String, CargoTarget>,
 }
@@ -803,15 +775,15 @@ impl RustResolver {
                         root: target.root.clone(),
                         module_base: target.module_base.clone(),
                         role: target.role,
-                        enabled: target.enabled,
                         library: target.library,
                     },
                 )
             })
             .collect();
-        Self {
+        let mut resolver = Self {
             module_paths,
             symbols,
+            exports: BTreeMap::new(),
             targets: cargo
                 .targets
                 .iter()
@@ -821,12 +793,124 @@ impl RustResolver {
                     root: target.root.clone(),
                     module_base: target.module_base.clone(),
                     role: target.role,
-                    enabled: target.enabled,
                     library: target.library,
                 })
                 .collect(),
             workspace_libraries,
+        };
+        for (key, module) in modules {
+            for symbol in module
+                .info
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.visibility == Visibility::Public)
+            {
+                let Some(nodes) = module.symbols.get(&symbol.name) else {
+                    continue;
+                };
+                resolver.merge_export(
+                    key.clone(),
+                    symbol.name.clone(),
+                    ResolvedRustPath {
+                        module: key.clone(),
+                        symbols: nodes.clone(),
+                    },
+                );
+            }
+            for declaration in &module.info.modules {
+                if declaration.inline || !module.info.public_mods.contains(&declaration.name) {
+                    continue;
+                }
+                if let Resolution::Module(target) =
+                    resolver.resolve_module_declaration(module, declaration)
+                {
+                    resolver.merge_export(
+                        key.clone(),
+                        declaration.name.clone(),
+                        ResolvedRustPath {
+                            module: target,
+                            symbols: BTreeSet::new(),
+                        },
+                    );
+                }
+            }
         }
+        resolver.index_public_reexports(modules);
+        resolver
+    }
+
+    fn index_public_reexports(&mut self, modules: &BTreeMap<ModuleKey, Module>) {
+        loop {
+            let mut additions = Vec::new();
+            for (key, module) in modules {
+                for export in &module.info.public_uses {
+                    if export.is_glob {
+                        let Some(target) = self.resolve_symbol_path(module, &export.module_path)
+                        else {
+                            continue;
+                        };
+                        additions.extend(
+                            self.exports
+                                .iter()
+                                .filter(|((module, _), _)| module == &target.module)
+                                .map(|((_, name), resolved)| {
+                                    (key.clone(), name.clone(), resolved.clone())
+                                }),
+                        );
+                        continue;
+                    }
+
+                    let mut path = export.module_path.clone();
+                    if export.name != "self" {
+                        path.push(export.name.clone());
+                    }
+                    if let Some(resolved) = self.resolve_symbol_path(module, &path) {
+                        additions.push((key.clone(), export.alias.clone(), resolved));
+                    }
+                }
+            }
+
+            let mut changed = false;
+            for (module, name, resolved) in additions {
+                changed |= self.merge_export(module, name, resolved);
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    fn merge_export(
+        &mut self,
+        module: ModuleKey,
+        name: String,
+        resolved: ResolvedRustPath,
+    ) -> bool {
+        let key = (module, name);
+        let Some(existing) = self.exports.get_mut(&key) else {
+            self.exports.insert(key, resolved);
+            return true;
+        };
+        let previous = existing.symbols.len();
+        existing.symbols.extend(resolved.symbols);
+        if previous == 0 && !existing.symbols.is_empty() {
+            existing.module = resolved.module;
+        }
+        existing.symbols.len() != previous
+    }
+
+    fn exported_symbols(&self, module: &ModuleKey) -> BTreeSet<(String, NodeId)> {
+        self.exports
+            .iter()
+            .filter(|((owner, _), resolved)| owner == module && !resolved.symbols.is_empty())
+            .flat_map(|((_, name), resolved)| {
+                resolved
+                    .symbols
+                    .iter()
+                    .cloned()
+                    .map(|symbol| (name.clone(), symbol))
+            })
+            .collect()
     }
 
     fn resolve_module_declaration(
@@ -879,66 +963,139 @@ impl RustResolver {
             .map(|resolved| resolved.module)
     }
 
+    fn resolve_imported_reference(
+        &self,
+        module: &Module,
+        path: &[String],
+    ) -> Option<ResolvedRustPath> {
+        let local = path.first()?;
+        module
+            .info
+            .uses
+            .iter()
+            .chain(&module.info.public_uses)
+            .find_map(|import| {
+                let mut expanded = import.module_path.clone();
+                if import.is_glob {
+                    expanded.extend_from_slice(path);
+                } else {
+                    if &import.alias != local {
+                        return None;
+                    }
+                    if import.name != "self" {
+                        expanded.push(import.name.clone());
+                    }
+                    expanded.extend_from_slice(&path[1..]);
+                }
+                self.resolve_symbol_path(module, &expanded)
+            })
+    }
+
     fn resolve_symbol_path(&self, module: &Module, path: &[String]) -> Option<ResolvedRustPath> {
         if path.is_empty() {
             return None;
         }
-        let (target, segments) = self.target_and_segments(module, path)?;
-        if segments.is_empty() {
-            let key = self.module_paths.get(&target.root)?.clone();
-            return Some(ResolvedRustPath {
-                module: key,
-                symbols: BTreeSet::new(),
-            });
-        }
-        for split in (0..=segments.len()).rev() {
-            let module_segments = &segments[..split];
-            let symbol = segments.get(split);
-            let raw = module_segments
+        if !matches!(path[0].as_str(), "crate" | "self" | "super")
+            && module.package.as_deref().map(|name| name.replace('-', "_")) != Some(path[0].clone())
+        {
+            if let Some(declaration) = module
+                .info
+                .modules
                 .iter()
-                .fold(target.module_base.clone(), |path, segment| {
-                    path.join(segment)
-                });
-            let key = if module_segments.is_empty() {
-                self.module_paths.get(&target.root).cloned()
-            } else {
-                self.resolve_file_candidates(&raw)
-            };
-            let Some(key) = key else {
+                .find(|declaration| declaration.name == path[0] && !declaration.inline)
+            {
+                if let Resolution::Module(target) =
+                    self.resolve_module_declaration(module, declaration)
+                {
+                    if let Some(resolved) = self.resolve_from_module(&target, &path[1..]) {
+                        return Some(resolved);
+                    }
+                }
+            }
+        }
+        for (target, segments) in self.target_and_segment_options(module, path) {
+            let resolved = (0..=segments.len()).rev().find_map(|split| {
+                let module_segments = &segments[..split];
+                let raw = module_segments
+                    .iter()
+                    .fold(target.module_base.clone(), |path, segment| {
+                        path.join(segment)
+                    });
+                let key = if module_segments.is_empty() {
+                    self.module_paths.get(&target.root).cloned()
+                } else {
+                    self.resolve_file_candidates(&raw)
+                };
+                key.map(|key| (key, split))
+            });
+            let Some((key, split)) = resolved else {
                 continue;
             };
-            if let Some(symbol) = symbol {
-                let symbols = self
-                    .symbols
-                    .get(&(key.clone(), symbol.clone()))
-                    .cloned()
-                    .unwrap_or_default();
-                if symbols.is_empty() {
-                    continue;
-                }
+            let Some(symbol) = segments.get(split) else {
+                return Some(ResolvedRustPath {
+                    module: key,
+                    symbols: BTreeSet::new(),
+                });
+            };
+            if let Some(export) = self.exports.get(&(key.clone(), symbol.clone())) {
+                return Some(export.clone());
+            }
+            let symbols = self
+                .symbols
+                .get(&(key.clone(), symbol.clone()))
+                .cloned()
+                .unwrap_or_default();
+            if !symbols.is_empty() {
                 return Some(ResolvedRustPath {
                     module: key,
                     symbols,
                 });
             }
-            return Some(ResolvedRustPath {
-                module: key,
-                symbols: BTreeSet::new(),
-            });
         }
         None
     }
 
-    fn target_and_segments(
+    fn resolve_from_module(&self, module: &ModuleKey, path: &[String]) -> Option<ResolvedRustPath> {
+        let Some(first) = path.first() else {
+            return Some(ResolvedRustPath {
+                module: module.clone(),
+                symbols: BTreeSet::new(),
+            });
+        };
+        if let Some(export) = self.exports.get(&(module.clone(), first.clone())) {
+            if path.len() == 1 || !export.symbols.is_empty() {
+                return Some(export.clone());
+            }
+            return self.resolve_from_module(&export.module, &path[1..]);
+        }
+        if let Some(symbols) = self.symbols.get(&(module.clone(), first.clone())) {
+            return Some(ResolvedRustPath {
+                module: module.clone(),
+                symbols: symbols.clone(),
+            });
+        }
+        let absolute = self
+            .module_paths
+            .iter()
+            .find_map(|(path, key)| (key == module).then_some(path))?;
+        let child = self.resolve_file_candidates(&module_child_base(absolute).join(first))?;
+        self.resolve_from_module(&child, &path[1..])
+    }
+
+    fn target_and_segment_options(
         &self,
         module: &Module,
         path: &[String],
-    ) -> Option<(CargoTarget, Vec<String>)> {
-        let first = path.first()?.as_str();
+    ) -> Vec<(CargoTarget, Vec<String>)> {
+        let Some(first) = path.first().map(String::as_str) else {
+            return Vec::new();
+        };
         if let Some(target) = self.workspace_libraries.get(first) {
-            return Some((target.clone_target(), path[1..].to_vec()));
+            return vec![(target.clone_target(), path[1..].to_vec())];
         }
-        let target = self.target_for_module(module)?;
+        let Some(target) = self.target_for_module(module) else {
+            return Vec::new();
+        };
         let mut segments = module_segments(target, &module.absolute_path);
         let mut index = 0;
         match first {
@@ -960,12 +1117,18 @@ impl RustResolver {
                     segments.clear();
                     index = 1;
                 } else {
-                    segments.clear();
+                    let mut local = segments.clone();
+                    local.extend_from_slice(path);
+                    let mut options = vec![(target.clone_target(), local)];
+                    if !segments.is_empty() {
+                        options.push((target.clone_target(), path.to_vec()));
+                    }
+                    return options;
                 }
             }
         }
         segments.extend_from_slice(&path[index..]);
-        Some((target.clone_target(), segments))
+        vec![(target.clone_target(), segments)]
     }
 
     fn target_for_module(&self, module: &Module) -> Option<&CargoTarget> {
@@ -981,10 +1144,18 @@ impl RustResolver {
     fn resolve_file_candidates(&self, raw: &Path) -> Option<ModuleKey> {
         [raw.with_extension("rs"), raw.join("mod.rs")]
             .into_iter()
-            .find_map(|candidate| self.module_paths.get(&candidate).cloned())
+            .find_map(|candidate| {
+                self.module_paths.get(&candidate).cloned().or_else(|| {
+                    candidate
+                        .canonicalize()
+                        .ok()
+                        .and_then(|candidate| self.module_paths.get(&candidate).cloned())
+                })
+            })
     }
 }
 
+#[derive(Clone)]
 struct ResolvedRustPath {
     module: ModuleKey,
     symbols: BTreeSet<NodeId>,
@@ -998,7 +1169,6 @@ impl CargoTarget {
             root: self.root.clone(),
             module_base: self.module_base.clone(),
             role: self.role,
-            enabled: self.enabled,
             library: self.library,
         }
     }

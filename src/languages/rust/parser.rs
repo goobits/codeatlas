@@ -75,7 +75,7 @@ pub(crate) fn parse_module_info(
     let mut visitor = SymbolVisitor {
         symbols: Vec::new(),
         relative_path,
-        struct_indices: std::collections::HashMap::new(),
+        type_indices: std::collections::HashMap::new(),
         pending_methods: std::collections::HashMap::new(),
     };
 
@@ -219,6 +219,29 @@ impl ReferenceCollector {
 }
 
 impl<'ast> Visit<'ast> for ReferenceCollector {
+    fn visit_attribute(&mut self, attribute: &'ast Attribute) {
+        if attribute.path().is_ident("serde") {
+            let _ = attribute.parse_nested_meta(|meta| {
+                if meta.path.is_ident("default") && meta.input.peek(syn::Token![=]) {
+                    let literal: syn::LitStr = meta.value()?.parse()?;
+                    let path = literal
+                        .value()
+                        .split("::")
+                        .filter(|segment| !segment.is_empty())
+                        .map(str::to_string)
+                        .collect::<Vec<_>>();
+                    if !path.is_empty() {
+                        self.paths.insert(path);
+                    }
+                } else if meta.input.peek(syn::Token![=]) {
+                    let _: syn::Expr = meta.value()?.parse()?;
+                }
+                Ok(())
+            });
+        }
+        syn::visit::visit_attribute(self, attribute);
+    }
+
     fn visit_path(&mut self, path: &'ast syn::Path) {
         let segments = path
             .segments
@@ -402,7 +425,7 @@ struct SymbolVisitor {
     symbols: Vec<Symbol>,
     relative_path: String,
     // Map struct name to index in symbols vector
-    struct_indices: std::collections::HashMap<String, usize>,
+    type_indices: std::collections::HashMap<String, usize>,
     pending_methods: std::collections::HashMap<String, Vec<Symbol>>,
 }
 
@@ -444,7 +467,7 @@ impl SymbolVisitor {
 
     fn attach_pending_methods(&mut self) {
         for (type_name, methods) in self.pending_methods.drain() {
-            if let Some(idx) = self.struct_indices.get(&type_name).copied() {
+            if let Some(idx) = self.type_indices.get(&type_name).copied() {
                 self.symbols[idx].children.extend(methods);
             } else {
                 for mut method in methods {
@@ -717,7 +740,7 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
             node.ident.span(),
             sig,
         ));
-        self.struct_indices.insert(name.clone(), idx);
+        self.type_indices.insert(name.clone(), idx);
 
         if let Some(methods) = self.pending_methods.remove(&name) {
             self.symbols[idx].children.extend(methods);
@@ -741,7 +764,7 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                     .unwrap_or("?".to_string()),
                 _ => "?".to_string(),
             };
-            let parent_idx = self.struct_indices.get(&type_name).copied();
+            let parent_idx = self.type_indices.get(&type_name).copied();
 
             for item in &node.items {
                 if let syn::ImplItem::Fn(method) = item {
@@ -782,7 +805,7 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                 .unwrap_or("?".to_string());
 
             // Check if we have seen this struct
-            let parent_idx = self.struct_indices.get(&type_name).copied();
+            let parent_idx = self.type_indices.get(&type_name).copied();
 
             for item in &node.items {
                 if let syn::ImplItem::Fn(method) = item {
@@ -821,8 +844,18 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
             format!("enum {} {{ {}, ... }}", name, variants[..4].join(", "))
         };
 
-        self.symbols
-            .push(self.create_symbol(name, SymbolKind::Enum, vis, node.ident.span(), sig));
+        let idx = self.symbols.len();
+        self.symbols.push(self.create_symbol(
+            name.clone(),
+            SymbolKind::Enum,
+            vis,
+            node.ident.span(),
+            sig,
+        ));
+        self.type_indices.insert(name.clone(), idx);
+        if let Some(methods) = self.pending_methods.remove(&name) {
+            self.symbols[idx].children.extend(methods);
+        }
     }
 
     fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
@@ -838,6 +871,10 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
             node.ident.span(),
             sig,
         ));
+        self.type_indices.insert(name.clone(), idx);
+        if let Some(methods) = self.pending_methods.remove(&name) {
+            self.symbols[idx].children.extend(methods);
+        }
 
         // Collect trait methods as children
         for item in &node.items {
@@ -963,5 +1000,49 @@ fn collect_use_imports(tree: &syn::UseTree, prefix: Vec<String>, imports: &mut V
                 collect_use_imports(tree, prefix.clone(), imports);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_module_info;
+    use std::path::Path;
+
+    #[test]
+    fn reachability_tracks_serde_defaults_and_enum_methods_without_orphans() {
+        let source = r#"
+            struct Config {
+                #[serde(default = "fallback")]
+                value: u32,
+            }
+
+            fn fallback() -> u32 {
+                1
+            }
+
+            enum Mode {
+                One,
+            }
+
+            impl From<u32> for Mode {
+                fn from(_: u32) -> Self {
+                    Self::One
+                }
+            }
+        "#;
+        let info =
+            parse_module_info(Path::new("src/lib.rs"), Path::new("."), source).expect("Rust facts");
+        assert!(info
+            .reachability
+            .symbol_paths
+            .get("Config")
+            .is_some_and(|paths| paths.contains(&vec!["fallback".to_string()])));
+        let mode = info
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Mode")
+            .expect("enum symbol");
+        assert!(mode.children.iter().any(|symbol| symbol.name == "from"));
+        assert!(!info.symbols.iter().any(|symbol| symbol.name == "Mode.from"));
     }
 }

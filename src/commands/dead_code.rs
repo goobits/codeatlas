@@ -17,9 +17,10 @@ pub(crate) fn run(
     format: DeadCodeFormat,
     out: Option<&Path>,
     check: bool,
+    workspace: bool,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(analyze(path, format, out, check, config_path))
+    exit_code(analyze(path, format, out, check, workspace, config_path))
 }
 
 fn analyze(
@@ -27,10 +28,18 @@ fn analyze(
     format: DeadCodeFormat,
     out: Option<&Path>,
     check: bool,
+    workspace: bool,
     config_path: Option<&Path>,
 ) -> Result<i32> {
+    if workspace && config_path.is_some() {
+        anyhow::bail!("`dead-code --workspace` does not accept `--config`");
+    }
     let project = load_project(path, config_path)?;
-    let projects = project.analysis_projects()?;
+    let projects = if workspace {
+        project.workspace_analysis_projects()?
+    } else {
+        project.analysis_projects()?
+    };
     let graph = languages::reachability::build_source_graph(&projects)?;
     let report = dead_code::analyze(&graph)?;
     let rendered = match format {

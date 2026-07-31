@@ -65,6 +65,9 @@ enum Command {
         /// Exit non-zero for high-confidence gating findings
         #[arg(long)]
         check: bool,
+        /// Discover package projects from the nearest pnpm workspace
+        #[arg(long)]
+        workspace: bool,
     },
 
     /// Produce a bounded source context slice for exact files or symbols
@@ -167,7 +170,15 @@ pub(crate) fn run() -> i32 {
             format,
             out,
             check,
-        } => commands::dead_code::run(&path, format, out.as_deref(), check, config_path.as_deref()),
+            workspace,
+        } => commands::dead_code::run(
+            &path,
+            format,
+            out.as_deref(),
+            check,
+            workspace,
+            config_path.as_deref(),
+        ),
         Command::Context {
             path,
             target,
@@ -228,6 +239,7 @@ mod tests {
             "openapi.json"
         ])
         .is_ok());
+        assert!(Cli::try_parse_from(["codeatlas", "dead-code", "packages", "--workspace"]).is_ok());
     }
 
     #[test]
