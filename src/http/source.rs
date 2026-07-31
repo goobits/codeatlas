@@ -392,12 +392,19 @@ app.get("/health", handler)
             "export async function GET() {}\nexport const DELETE = handler\n",
             &mut operations,
         );
+        detect_file(
+            Path::new("/repo/src/routes/api/release/routes/+server.ts"),
+            Path::new("/repo"),
+            "export async function POST() {}\n",
+            &mut operations,
+        );
         let keys = operations
             .iter()
             .map(|operation| operation.key.as_str())
             .collect::<Vec<_>>();
         assert!(keys.contains(&"GET /users/{id}"));
         assert!(keys.contains(&"DELETE /users/{id}"));
+        assert!(keys.contains(&"POST /api/release/routes"));
     }
 
     #[test]
