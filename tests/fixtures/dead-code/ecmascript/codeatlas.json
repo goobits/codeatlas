@@ -15,5 +15,30 @@
         }
       }
     }
-  ]
+  ],
+  "http": {
+    "contracts": [
+      {
+        "id": "fixture",
+        "openapi": {
+          "kind": "command",
+          "command": "node",
+          "args": ["scripts/openapi.ts"]
+        }
+      }
+    ],
+    "fuzz": {
+      "targets": [
+        {
+          "id": "fixture",
+          "contract": "fixture",
+          "base_url": "http://127.0.0.1:3000",
+          "server": {
+            "command": "node",
+            "args": ["tests/httpFuzzServer.ts"]
+          }
+        }
+      ]
+    }
+  }
 }

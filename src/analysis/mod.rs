@@ -3,10 +3,9 @@ use std::path::Path;
 
 mod dependency_types;
 pub(crate) mod docs;
-pub(crate) mod ignore;
 mod imports;
+mod package_exports;
 pub(crate) mod reachability;
-pub(crate) mod source_files;
 mod unused_public;
 
 pub(crate) fn annotate_imports(
@@ -30,3 +29,6 @@ pub(crate) fn annotate_unused_public(
 
 pub(crate) use dependency_types::annotate_dependency_types;
 pub(crate) use docs::annotate_docs;
+pub(crate) use package_exports::{
+    annotate as annotate_package_exports, consolidate_declaration_symbols,
+};

@@ -1,12 +1,12 @@
 use super::parser;
-use crate::analysis::ignore;
 use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
+use crate::source_discovery;
 use std::path::Path;
 
 struct ModuleInfo {
     symbols: Vec<Symbol>,
-    public_mods: Vec<String>,
-    public_uses: Vec<parser::UseExport>,
+    modules: Vec<parser::ModuleDeclaration>,
+    uses: Vec<parser::UseExport>,
     file_path: String,
     module_path: Vec<String>,
 }
@@ -30,7 +30,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
             return true;
         }
         let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
-        if ignore::is_ignored_path(&relative, config.no_default_ignore) {
+        if source_discovery::is_ignored_path(&relative, config.no_default_ignore) {
             return false;
         }
         let name = e.file_name().to_string_lossy();
@@ -68,8 +68,8 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                     relative.clone(),
                     ModuleInfo {
                         symbols: info.symbols,
-                        public_mods: info.public_mods,
-                        public_uses: info.public_uses,
+                        modules: info.modules,
+                        uses: info.uses,
                         file_path: relative,
                         module_path,
                     },
@@ -140,14 +140,24 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         }
 
         if is_all {
-            for module in &info.public_mods {
-                if let Some(target) = resolve_rust_module(&info.file_path, module, &module_map) {
+            for module in info
+                .modules
+                .iter()
+                .filter(|module| module.visibility.is_public())
+            {
+                if let Some(target) =
+                    resolve_rust_module(&info.file_path, &module.name, &module_map)
+                {
                     queue.push_back((target, None));
                 }
             }
         }
 
-        for export in &info.public_uses {
+        for export in info
+            .uses
+            .iter()
+            .filter(|export| export.visibility.is_public())
+        {
             if is_all || export_names.contains(&export.alias) {
                 if export.is_glob {
                     if let Some(target) =

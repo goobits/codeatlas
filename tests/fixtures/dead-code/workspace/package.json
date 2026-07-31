@@ -1,0 +1,7 @@
+{
+	"name": "@fixture/root",
+	"private": true,
+	"scripts": {
+		"audit:b": "tsx packages/b/src/rootScript.ts"
+	}
+}

@@ -10,14 +10,15 @@ const pkg = require(path.join(rootDir, 'package.json'))
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codeatlas-pack-'))
 
 const requiredFiles = [
+	'bin/_installer.js',
 	'bin/codeatlas.js',
 	'Cargo.lock',
 	'Cargo.toml',
 	'LICENSE',
 	'package.json',
 	'README.md',
-	'src/http/schemathesis-requirements.txt',
-	'src/http/schemathesis_hooks.py',
+	'src/http/schemathesis/hooks.py',
+	'src/http/schemathesis/requirements.txt',
 	'src/main.rs'
 ]
 const forbiddenPrefixes = ['.github/', 'node_modules/', 'target/', 'tasks/']

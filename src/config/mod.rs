@@ -4,11 +4,9 @@ mod http;
 #[cfg(test)]
 pub(crate) use analysis::RustAnalysisConfig;
 pub(crate) use analysis::{AnalysisContextConfig, AnalysisProjectConfig, ResolvedAnalysisProject};
-#[cfg(test)]
-pub(crate) use http::HttpFuzzHealthCheck;
 pub(crate) use http::{
-    HttpConfig, HttpFuzzPositiveCoverageConfig, ResolvedHttpContract, ResolvedHttpFuzzCommand,
-    ResolvedHttpFuzzHeader, ResolvedHttpFuzzTarget, ResolvedHttpOpenApiSource,
+    HttpConfig, HttpFuzzCommandConfig, HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig,
+    HttpFuzzServerConfig, HttpOpenApiProviderConfig, HttpOpenApiSourceConfig,
 };
 
 use anyhow::{Context, Result};

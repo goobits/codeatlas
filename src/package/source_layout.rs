@@ -24,7 +24,7 @@ impl SourceLayout {
                 }
             }
         }
-        None
+        discover_svelte_package_layout(package_root)
     }
 
     pub(super) fn resolve(&self, package_root: &Path, target: &str) -> Option<String> {
@@ -50,6 +50,40 @@ impl SourceLayout {
         let relative = target.strip_prefix(&self.output_root).ok()?;
         Some(self.source_root.join(relative))
     }
+}
+
+fn discover_svelte_package_layout(package_root: &Path) -> Option<SourceLayout> {
+    let source_root = PathBuf::from("src/lib");
+    if !package_root.join(&source_root).is_dir() {
+        return None;
+    }
+    let manifest = std::fs::read_to_string(package_root.join("package.json")).ok()?;
+    let manifest: Value = serde_json::from_str(&manifest).ok()?;
+    let uses_svelte_package = manifest
+        .get("devDependencies")
+        .and_then(Value::as_object)
+        .is_some_and(|dependencies| dependencies.contains_key("@sveltejs/package"))
+        || manifest
+            .get("dependencies")
+            .and_then(Value::as_object)
+            .is_some_and(|dependencies| dependencies.contains_key("@sveltejs/package"));
+    if !uses_svelte_package {
+        return None;
+    }
+    let target = manifest.get("svelte").and_then(Value::as_str)?;
+    let target = target.strip_prefix("./").unwrap_or(target);
+    let output_root =
+        Path::new(target)
+            .components()
+            .next()
+            .and_then(|component| match component {
+                std::path::Component::Normal(path) => Some(PathBuf::from(path)),
+                _ => None,
+            })?;
+    (output_root != source_root).then_some(SourceLayout {
+        source_root,
+        output_root,
+    })
 }
 
 #[derive(Default)]
@@ -128,4 +162,47 @@ fn normalize_path(path: impl AsRef<Path>) -> String {
     path.as_ref()
         .to_string_lossy()
         .replace(std::path::MAIN_SEPARATOR, "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SourceLayout;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn discovers_standard_svelte_package_source_layout() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "codeatlas-svelte-package-layout-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("src/lib/utils")).expect("source layout");
+        fs::write(
+            root.join("package.json"),
+            r#"{
+                "name": "@fixture/svelte-package",
+                "svelte": "./dist/index.js",
+                "devDependencies": { "@sveltejs/package": "1.0.0" }
+            }"#,
+        )
+        .expect("package manifest");
+        fs::write(root.join("src/lib/index.ts"), "export const value = 1;\n")
+            .expect("source entrypoint");
+
+        let layout = SourceLayout::discover(&root).expect("Svelte package layout");
+        assert_eq!(
+            layout.resolve(&root, "./dist/index.js").as_deref(),
+            Some("src/lib/index.ts")
+        );
+        assert!(layout
+            .pattern_candidates("dist/utils/*")
+            .expect("source pattern")
+            .contains(&"src/lib/utils/*".to_string()));
+
+        fs::remove_dir_all(root).expect("remove temporary fixture");
+    }
 }

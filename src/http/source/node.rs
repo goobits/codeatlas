@@ -11,7 +11,10 @@ pub(super) fn detect(
     output: &mut Vec<HttpSourceOperation>,
 ) {
     detect_exact_paths(path, repository_root, source, output);
-    detect_regex_paths(path, repository_root, source, output);
+    detect_rejected_methods(path, repository_root, source, output);
+    detect_prefixed_paths(path, repository_root, source, output);
+    detect_fetch_path_defaults(path, repository_root, source, output);
+    super::node_regex::detect(path, repository_root, source, output);
 }
 
 fn detect_exact_paths(
@@ -20,37 +23,61 @@ fn detect_exact_paths(
     source: &str,
     output: &mut Vec<HttpSourceOperation>,
 ) {
-    static METHOD_THEN_PATH: OnceLock<Regex> = OnceLock::new();
-    static PATH_THEN_METHOD: OnceLock<Regex> = OnceLock::new();
-    let method_then_path = METHOD_THEN_PATH.get_or_init(|| {
+    static METHOD: OnceLock<Regex> = OnceLock::new();
+    static PATH: OnceLock<Regex> = OnceLock::new();
+    let method = METHOD.get_or_init(|| {
         Regex::new(
-            r#"(?s)\breq\s*\.\s*method\s*={2,3}\s*["'](GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH|TRACE)["'][^;{}]{0,240}?\b[A-Za-z_$][A-Za-z0-9_$]*\s*\.\s*pathname\s*={2,3}\s*["']([^"'`$]+)["']"#,
+            r#"\b(?:req|request)\s*\.\s*method\s*={2,3}\s*["'](GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH|TRACE)["']"#,
         )
-        .expect("Node method/path detector")
+        .expect("Node request method detector")
     });
-    let path_then_method = PATH_THEN_METHOD.get_or_init(|| {
+    let route = PATH.get_or_init(|| {
         Regex::new(
-            r#"(?s)\b[A-Za-z_$][A-Za-z0-9_$]*\s*\.\s*pathname\s*={2,3}\s*["']([^"'`$]+)["'][^;{}]{0,240}?\breq\s*\.\s*method\s*={2,3}\s*["'](GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH|TRACE)["']"#,
+            r#"\b(?:[A-Za-z_$][A-Za-z0-9_$]*\s*\.\s*pathname|(?:req|request)\s*\.\s*url)\s*={2,3}\s*["']([^"'`$]+)["']"#,
         )
-        .expect("Node path/method detector")
+        .expect("Node request path detector")
     });
 
-    for captures in method_then_path.captures_iter(source) {
-        let (Some(method), Some(route)) = (captures.get(1), captures.get(2)) else {
-            continue;
-        };
-        push_operation(
-            output,
-            method.as_str(),
-            route.as_str(),
-            "node_request_guard",
-            HttpConfidence::High,
-            path,
-            repository_root,
-            line_at(source, method.start()),
-        );
+    for (offset, expression) in if_conditions(source) {
+        let methods = method
+            .captures_iter(expression)
+            .filter_map(|captures| captures.get(1))
+            .collect::<Vec<_>>();
+        let routes = route
+            .captures_iter(expression)
+            .filter_map(|captures| captures.get(1))
+            .collect::<Vec<_>>();
+        for method in &methods {
+            for route in &routes {
+                push_operation(
+                    output,
+                    method.as_str(),
+                    route.as_str(),
+                    "node_request_guard",
+                    HttpConfidence::High,
+                    path,
+                    repository_root,
+                    line_at(source, offset + method.start().min(route.start())),
+                );
+            }
+        }
     }
-    for captures in path_then_method.captures_iter(source) {
+}
+
+fn detect_rejected_methods(
+    path: &Path,
+    repository_root: &Path,
+    source: &str,
+    output: &mut Vec<HttpSourceOperation>,
+) {
+    static PATH_THEN_REJECTED_METHOD: OnceLock<Regex> = OnceLock::new();
+    let pattern = PATH_THEN_REJECTED_METHOD.get_or_init(|| {
+        Regex::new(
+            r#"(?s)\b(?:req|request)\s*\.\s*url\s*={2,3}\s*["']([^"'`$]+)["'][^{}]{0,160}?\)\s*\{[^{}]{0,240}?\b(?:req|request)\s*\.\s*method\s*!={1,2}\s*["'](GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH|TRACE)["']"#,
+        )
+        .expect("Node allowed-method detector")
+    });
+    for captures in pattern.captures_iter(source) {
         let (Some(route), Some(method)) = (captures.get(1), captures.get(2)) else {
             continue;
         };
@@ -58,7 +85,7 @@ fn detect_exact_paths(
             output,
             method.as_str(),
             route.as_str(),
-            "node_request_guard",
+            "node_allowed_method_guard",
             HttpConfidence::High,
             path,
             repository_root,
@@ -67,175 +94,189 @@ fn detect_exact_paths(
     }
 }
 
-fn detect_regex_paths(
+fn detect_prefixed_paths(
     path: &Path,
     repository_root: &Path,
     source: &str,
     output: &mut Vec<HttpSourceOperation>,
 ) {
-    static DECLARATION: OnceLock<Regex> = OnceLock::new();
-    static CONDITION: OnceLock<Regex> = OnceLock::new();
     static METHOD: OnceLock<Regex> = OnceLock::new();
-    let declaration = DECLARATION.get_or_init(|| {
-        Regex::new(
-            r#"(?s)\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\.\s*pathname\s*\.\s*match\s*\(\s*"#,
-        )
-        .expect("Node pathname match declaration detector")
-    });
-    let condition = CONDITION.get_or_init(|| {
-        Regex::new(r#"(?s)\bif\s*\(([^)]{1,500})\)"#).expect("Node route condition detector")
-    });
+    static PREFIX: OnceLock<Regex> = OnceLock::new();
     let method = METHOD.get_or_init(|| {
         Regex::new(
-            r#"\breq\s*\.\s*method\s*={2,3}\s*["'](GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH|TRACE)["']"#,
+            r#"\b(?:req|request)\s*\.\s*method\s*={2,3}\s*["'](GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH|TRACE)["']"#,
         )
-        .expect("Node request method detector")
+        .expect("Node prefix method detector")
+    });
+    let prefix = PREFIX.get_or_init(|| {
+        Regex::new(
+            r#"\b(?:(?:req|request)\s*\.\s*url\s*\??|[A-Za-z_$][A-Za-z0-9_$]*\s*\.\s*pathname)\s*\.\s*startsWith\s*\(\s*["'](/[^"'`$]+)["']"#,
+        )
+        .expect("Node request URL prefix detector")
     });
 
-    for captures in declaration.captures_iter(source) {
-        let (Some(declaration_match), Some(variable)) = (captures.get(0), captures.get(1)) else {
-            continue;
-        };
-        let Some((pattern, _end)) = parse_regex_literal(source, declaration_match.end()) else {
-            continue;
-        };
-        let Some(route) = regex_path_template(&pattern) else {
-            continue;
-        };
-        for condition_match in condition.captures_iter(&source[declaration_match.end()..]) {
-            let Some(expression) = condition_match.get(1) else {
-                continue;
-            };
-            if !contains_identifier(expression.as_str(), variable.as_str()) {
-                continue;
+    for (offset, expression) in if_conditions(source) {
+        let methods = method
+            .captures_iter(expression)
+            .filter_map(|captures| captures.get(1))
+            .collect::<Vec<_>>();
+        let prefixes = prefix
+            .captures_iter(expression)
+            .filter_map(|captures| captures.get(1))
+            .collect::<Vec<_>>();
+        for method in &methods {
+            for prefix in &prefixes {
+                push_prefix_operation(
+                    output,
+                    method.as_str(),
+                    prefix.as_str(),
+                    path,
+                    repository_root,
+                    line_at(source, offset + method.start().min(prefix.start())),
+                );
             }
-            let Some(method_capture) = method.captures(expression.as_str()) else {
+        }
+    }
+}
+
+fn push_prefix_operation(
+    output: &mut Vec<HttpSourceOperation>,
+    method: &str,
+    prefix: &str,
+    path: &Path,
+    repository_root: &Path,
+    line: u32,
+) {
+    let route = if prefix.ends_with('/') {
+        format!("{prefix}{{path}}")
+    } else {
+        prefix.to_string()
+    };
+    push_pattern_operation(
+        output,
+        method,
+        &route,
+        &format!("{prefix}*"),
+        "node_url_prefix",
+        HttpConfidence::Medium,
+        path,
+        repository_root,
+        line,
+    );
+}
+
+fn detect_fetch_path_defaults(
+    path: &Path,
+    repository_root: &Path,
+    source: &str,
+    output: &mut Vec<HttpSourceOperation>,
+) {
+    static FETCH_HANDLER: OnceLock<Regex> = OnceLock::new();
+    static PATHNAME: OnceLock<Regex> = OnceLock::new();
+    static METHOD_REFERENCE: OnceLock<Regex> = OnceLock::new();
+    let fetch_handler = FETCH_HANDLER.get_or_init(|| {
+        Regex::new(r#"\b(?:async\s+)?fetch\s*\("#).expect("Fetch handler detector")
+    });
+    if !fetch_handler.is_match(source) {
+        return;
+    }
+    let pathname = PATHNAME.get_or_init(|| {
+        Regex::new(r#"\b[A-Za-z_$][A-Za-z0-9_$]*\s*\.\s*pathname\s*={2,3}\s*["']([^"'`$]+)["']"#)
+            .expect("Fetch pathname detector")
+    });
+    let method_reference = METHOD_REFERENCE.get_or_init(|| {
+        Regex::new(r#"\b(?:req|request)\s*\.\s*method\b"#).expect("Fetch method reference detector")
+    });
+
+    for (offset, expression) in if_conditions(source) {
+        if method_reference.is_match(expression)
+            || following_block(source, offset + expression.len())
+                .is_some_and(|body| method_reference.is_match(body))
+        {
+            continue;
+        }
+        for route in pathname.captures_iter(expression) {
+            let Some(route) = route.get(1) else {
                 continue;
             };
-            let Some(http_method) = method_capture.get(1) else {
-                continue;
-            };
-            let offset =
-                declaration_match.end() + condition_match.get(0).map_or(0, |value| value.start());
-            push_pattern_operation(
+            push_operation(
                 output,
-                http_method.as_str(),
-                &route,
-                &format!("/{pattern}/"),
-                "node_pathname_regex",
-                HttpConfidence::High,
+                "GET",
+                route.as_str(),
+                "fetch_path_guard",
+                HttpConfidence::Medium,
                 path,
                 repository_root,
-                line_at(source, offset),
+                line_at(source, offset + route.start()),
             );
         }
     }
 }
 
-fn parse_regex_literal(source: &str, offset: usize) -> Option<(String, usize)> {
-    let bytes = source.as_bytes();
-    let mut index = offset;
-    while bytes.get(index).is_some_and(u8::is_ascii_whitespace) {
-        index += 1;
+fn if_conditions(source: &str) -> Vec<(usize, &str)> {
+    static IF_START: OnceLock<Regex> = OnceLock::new();
+    let if_start = IF_START
+        .get_or_init(|| Regex::new(r#"\bif\s*\("#).expect("JavaScript if-condition detector"));
+    let mut conditions = Vec::new();
+    for start in if_start.find_iter(source) {
+        let Some(relative_open) = source[start.start()..start.end()].rfind('(') else {
+            continue;
+        };
+        let open = start.start() + relative_open;
+        let Some(close) = matching_parenthesis(source, open) else {
+            continue;
+        };
+        conditions.push((open + 1, &source[open + 1..close]));
     }
-    if bytes.get(index) != Some(&b'/') {
+    conditions
+}
+
+fn matching_parenthesis(source: &str, start: usize) -> Option<usize> {
+    matching_delimiter(source, start, b'(', b')')
+}
+
+fn following_block(source: &str, condition_close: usize) -> Option<&str> {
+    let mut start = condition_close + 1;
+    while source
+        .as_bytes()
+        .get(start)
+        .is_some_and(u8::is_ascii_whitespace)
+    {
+        start += 1;
+    }
+    if source.as_bytes().get(start) != Some(&b'{') {
         return None;
     }
-    let start = index + 1;
-    index = start;
+    let end = matching_delimiter(source, start, b'{', b'}')?;
+    Some(&source[start + 1..end])
+}
+
+fn matching_delimiter(source: &str, start: usize, open: u8, close: u8) -> Option<usize> {
+    let mut depth = 0_u32;
+    let mut quote = None;
     let mut escaped = false;
-    let mut character_class = false;
-    while let Some(byte) = bytes.get(index).copied() {
-        if escaped {
-            escaped = false;
-        } else {
-            match byte {
-                b'\\' => escaped = true,
-                b'[' => character_class = true,
-                b']' => character_class = false,
-                b'/' if !character_class => {
-                    return Some((source[start..index].to_string(), index + 1));
-                }
-                b'\n' | b'\r' => return None,
-                _ => {}
+    for (index, byte) in source.as_bytes().iter().enumerate().skip(start) {
+        if let Some(active) = quote {
+            if escaped {
+                escaped = false;
+            } else if *byte == b'\\' {
+                escaped = true;
+            } else if *byte == active {
+                quote = None;
             }
+            continue;
         }
-        index += 1;
+        match *byte {
+            b'\'' | b'"' | b'`' => quote = Some(*byte),
+            byte if byte == open => depth += 1,
+            byte if byte == close => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
     }
     None
-}
-
-fn regex_path_template(pattern: &str) -> Option<String> {
-    let body = pattern.strip_prefix('^')?.strip_suffix('$')?;
-    let mut route = String::new();
-    let mut index = 0;
-    let mut segment = 1;
-    while index < body.len() {
-        let remaining = &body[index..];
-        if remaining.starts_with("([^/]+)") {
-            route.push_str(&format!("{{segment{segment}}}"));
-            segment += 1;
-            index += "([^/]+)".len();
-            continue;
-        }
-        let character = remaining.chars().next()?;
-        if character == '\\' {
-            let escaped = remaining.chars().nth(1)?;
-            if !matches!(escaped, '/' | '.' | '-' | '_') {
-                return None;
-            }
-            route.push(escaped);
-            index += character.len_utf8() + escaped.len_utf8();
-            continue;
-        }
-        if matches!(
-            character,
-            '(' | ')' | '[' | ']' | '{' | '}' | '|' | '?' | '*' | '+'
-        ) {
-            return None;
-        }
-        route.push(character);
-        index += character.len_utf8();
-    }
-    route.starts_with('/').then_some(route)
-}
-
-fn contains_identifier(source: &str, identifier: &str) -> bool {
-    source.match_indices(identifier).any(|(index, _)| {
-        let before = index
-            .checked_sub(1)
-            .and_then(|offset| source.as_bytes().get(offset))
-            .copied();
-        let after = source.as_bytes().get(index + identifier.len()).copied();
-        !before.is_some_and(is_identifier_byte) && !after.is_some_and(is_identifier_byte)
-    })
-}
-
-fn is_identifier_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$')
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{parse_regex_literal, regex_path_template};
-
-    #[test]
-    fn accepts_only_anchored_bounded_path_regexes() {
-        let source = r#"/^\/documents\/([^/]+)$/)"#;
-        let (pattern, _) = parse_regex_literal(source, 0).expect("regex literal");
-        assert_eq!(
-            regex_path_template(&pattern).as_deref(),
-            Some("/documents/{segment1}")
-        );
-        assert_eq!(
-            regex_path_template(r"^\/documents\/(.+)$"),
-            None,
-            "unbounded captures must not become route templates"
-        );
-        assert_eq!(
-            regex_path_template(r"^\/documents(?:\/([^/]+))?$"),
-            None,
-            "optional paths must not be fabricated"
-        );
-    }
 }

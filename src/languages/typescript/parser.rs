@@ -155,7 +155,7 @@ fn syntax_for_path(path: &Path) -> Syntax {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_source;
+    use super::{parse_source, DynamicDependencyKind, DynamicDependencyTarget};
 
     #[test]
     fn http_calls_do_not_pollute_public_symbol_scans() {
@@ -176,5 +176,170 @@ app.get('/route', () => undefined)
 
         assert!(!names.contains(&"store.get"));
         assert!(!names.contains(&"app.get"));
+    }
+
+    #[test]
+    fn exported_class_reachability_includes_private_top_level_dependencies() {
+        let info = parse_source(
+            r#"
+interface Uniforms {
+    intensity: number
+}
+
+const cache = new Map()
+
+function createTexture() {
+    return cache.get("texture")
+}
+
+export class Filter {
+    #uniforms: Uniforms
+
+    constructor() {
+        this.#uniforms = { intensity: createTexture() ?? 0 }
+    }
+}
+"#,
+            "src/filter.ts",
+        )
+        .expect("module info");
+        let references = &info.reachability.symbol_references["Filter"];
+
+        assert!(references.contains("Uniforms"));
+        assert!(references.contains("createTexture"));
+        assert!(info.reachability.symbol_references["createTexture"].contains("cache"));
+    }
+
+    #[test]
+    fn test_config_reachability_follows_static_alias_replacements() {
+        let info = parse_source(
+            r#"
+import path from "node:path"
+
+const sharedMock = path.resolve(__dirname, "./tests/mocks/shared.ts")
+
+export default {
+    resolve: {
+        alias: {
+            "$app/environment": path.resolve(__dirname, "./tests/mocks/environment.ts"),
+            "@zip.js/zip.js": resolveInstalledPackageEntry("@zip.js/zip.js")
+        }
+    },
+    test: {
+        aliases: [
+            { find: "shared", replacement: sharedMock },
+            {
+                find: "@swc/helpers",
+                replacement: resolveInstalledPackageFile("@swc/helpers", "esm/$1.js")
+            }
+        ]
+    }
+}
+"#,
+            "vitest.config.ts",
+        )
+        .expect("module info");
+
+        assert_eq!(
+            info.reachability.configured_test_entrypoints,
+            [
+                "./tests/mocks/environment.ts".to_string(),
+                "./tests/mocks/shared.ts".to_string()
+            ]
+            .into_iter()
+            .collect()
+        );
+        assert_eq!(
+            info.reachability.configured_aliases["shared"],
+            ["./tests/mocks/shared.ts".to_string()]
+                .into_iter()
+                .collect()
+        );
+    }
+
+    #[test]
+    fn config_reachability_extracts_static_runtime_aliases() {
+        let info = parse_source(
+            r#"
+import path from "node:path"
+
+const shared = path.resolve(__dirname, "./src/shared")
+
+export default {
+    kit: {
+        alias: {
+            "@domains": "src/domains",
+            "@shared": shared
+        }
+    }
+}
+"#,
+            "svelte.config.js",
+        )
+        .expect("module info");
+
+        assert_eq!(
+            info.reachability.configured_aliases["@domains"],
+            ["src/domains".to_string()].into_iter().collect()
+        );
+        assert_eq!(
+            info.reachability.configured_aliases["@shared"],
+            ["./src/shared".to_string()].into_iter().collect()
+        );
+    }
+
+    #[test]
+    fn package_alias_factories_track_static_replacement_sources() {
+        let info = parse_source(
+            r#"
+export function createCanvasShimAlias(workspaceRoot) {
+    return {
+        find: "canvas",
+        replacement: resolve(workspaceRoot, "packages/b/src/canvasBrowserShim.js")
+    }
+}
+"#,
+            "src/workspaceAliases.ts",
+        )
+        .expect("module info");
+
+        assert_eq!(
+            info.reachability.configured_aliases["canvas"],
+            ["packages/b/src/canvasBrowserShim.js".to_string()]
+                .into_iter()
+                .collect()
+        );
+    }
+
+    #[test]
+    fn static_file_readers_track_source_dependencies() {
+        let info = parse_source(
+            r#"
+const source = read("packages/example/src/runtime.js")
+const generated = read(outputPath)
+"#,
+            "scripts/build.mjs",
+        )
+        .expect("module info");
+
+        assert!(info
+            .reachability
+            .dynamic_dependencies
+            .iter()
+            .any(|dependency| {
+                dependency.kind == DynamicDependencyKind::RuntimeFile
+                    && dependency.target
+                        == DynamicDependencyTarget::Literal(
+                            "packages/example/src/runtime.js".to_string(),
+                        )
+            }));
+        assert!(!info
+            .reachability
+            .dynamic_dependencies
+            .iter()
+            .any(|dependency| {
+                dependency.kind == DynamicDependencyKind::RuntimeFile
+                    && matches!(dependency.target, DynamicDependencyTarget::Unknown)
+            }));
     }
 }

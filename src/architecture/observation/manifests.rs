@@ -32,7 +32,7 @@ impl ManifestIndex {
         let walker = walkdir::WalkDir::new(&root).into_iter();
         for entry in walker.filter_entry(|entry| {
             entry.depth() == 0
-                || !crate::analysis::ignore::is_ignored_dir(
+                || !crate::source_discovery::is_ignored_dir(
                     &entry.file_name().to_string_lossy(),
                     false,
                 )

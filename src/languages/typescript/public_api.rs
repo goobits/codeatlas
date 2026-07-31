@@ -1,6 +1,6 @@
 use super::parser;
-use crate::analysis::ignore;
 use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
+use crate::source_discovery;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 
@@ -364,7 +364,9 @@ fn parse_modules(
         let is_explicit_contract_tree = explicit_contract_roots
             .iter()
             .any(|root| relative == *root || relative.starts_with(&format!("{root}/")));
-        if ignore::is_ignored_path(&relative, no_default_ignore) && !is_explicit_contract_tree {
+        if source_discovery::is_ignored_path(&relative, no_default_ignore)
+            && !is_explicit_contract_tree
+        {
             return false;
         }
         let name = e.file_name().to_string_lossy();
@@ -452,7 +454,7 @@ fn ignored_entrypoint_roots(entrypoints: &HashSet<String>) -> Vec<String> {
                     prefix.push('/');
                 }
                 prefix.push_str(part);
-                if ignore::is_ignored_path(&prefix, false) {
+                if source_discovery::is_ignored_path(&prefix, false) {
                     return Some(prefix);
                 }
             }

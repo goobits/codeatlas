@@ -101,7 +101,7 @@ pub(crate) fn is_sveltekit_runtime_entrypoint(path: &str) -> bool {
             | "service-worker.ts"
             | "service-worker.js"
     ) {
-        return components.first() == Some(&"src");
+        return components.contains(&"src");
     }
 
     if components

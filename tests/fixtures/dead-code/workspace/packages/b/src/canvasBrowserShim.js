@@ -1,0 +1,1 @@
+export const canvasBrowserShim = true

@@ -230,7 +230,7 @@ fn scan_dependency(root: &Path, no_default_ignore: bool) -> Result<PackageBundle
     };
     let mut report = languages::scan_all(root, &config, languages::get_scanners_auto(root));
     let package_name = package.name.clone();
-    package::annotate(&mut report, root, package, no_default_ignore);
+    super::package_exports::annotate(&mut report, root, package, no_default_ignore);
     super::annotate_docs(&mut report, root);
     Ok(PackageBundle {
         package_name,

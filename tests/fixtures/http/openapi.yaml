@@ -45,11 +45,14 @@ components:
           type: string
           maxLength: 128
     Widget:
-      allOf:
-        - $ref: "#/components/schemas/WidgetUpdate"
-        - type: object
-          required:
-            - id
-          properties:
-            id:
-              type: string
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          maxLength: 128

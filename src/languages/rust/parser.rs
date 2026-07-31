@@ -14,6 +14,7 @@ pub(crate) struct UseExport {
     pub name: String,
     pub alias: String,
     pub is_glob: bool,
+    pub visibility: RustVisibility,
 }
 
 #[derive(Debug, Clone)]
@@ -22,14 +23,36 @@ pub(crate) struct ModuleDeclaration {
     pub path_override: Option<String>,
     pub inline: bool,
     pub span: Span,
+    pub visibility: RustVisibility,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RustVisibility {
+    Public,
+    Restricted(Vec<String>),
+    Private,
+}
+
+impl RustVisibility {
+    pub(crate) fn is_public(&self) -> bool {
+        matches!(self, Self::Public)
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RustReachabilityFacts {
     pub top_level_paths: BTreeSet<Vec<String>>,
     pub symbol_paths: BTreeMap<String, BTreeSet<Vec<String>>>,
+    pub embedded_sources: Vec<RustEmbeddedSource>,
     pub uncertainties: Vec<RustUncertainty>,
     pub test_symbols: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RustEmbeddedSource {
+    pub owner: Option<String>,
+    pub path: String,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,8 +72,7 @@ pub(crate) struct RustUncertainty {
 #[derive(Debug, Clone)]
 pub(crate) struct RustModuleInfo {
     pub symbols: Vec<Symbol>,
-    pub public_mods: Vec<String>,
-    pub public_uses: Vec<UseExport>,
+    pub symbol_visibilities: BTreeMap<String, Vec<RustVisibility>>,
     pub uses: Vec<UseExport>,
     pub modules: Vec<ModuleDeclaration>,
     pub reachability: RustReachabilityFacts,
@@ -82,40 +104,73 @@ pub(crate) fn parse_module_info(
     visitor.visit_file(&syntax);
     visitor.attach_pending_methods();
 
-    let mut public_mods = Vec::new();
-    let mut public_uses = Vec::new();
+    let mut symbol_visibilities = BTreeMap::<String, Vec<RustVisibility>>::new();
     let mut uses = Vec::new();
     let mut modules = Vec::new();
     for item in &syntax.items {
+        if let Some((name, visibility)) = item_symbol_visibility(item) {
+            symbol_visibilities
+                .entry(name)
+                .or_default()
+                .push(visibility);
+        }
         if let syn::Item::Mod(item_mod) = item {
-            if matches!(item_mod.vis, SynVis::Public(_)) {
-                public_mods.push(item_mod.ident.to_string());
-            }
             modules.push(ModuleDeclaration {
                 name: item_mod.ident.to_string(),
                 path_override: path_override(&item_mod.attrs),
                 inline: item_mod.content.is_some(),
                 span: span(item_mod.ident.span()),
+                visibility: rust_visibility(&item_mod.vis),
             });
         }
         if let syn::Item::Use(item_use) = item {
-            if matches!(item_use.vis, SynVis::Public(_)) {
-                collect_use_exports(&item_use.tree, Vec::new(), &mut public_uses);
-            } else {
-                collect_use_imports(&item_use.tree, Vec::new(), &mut uses);
-            }
+            collect_uses(
+                &item_use.tree,
+                Vec::new(),
+                &rust_visibility(&item_use.vis),
+                &mut uses,
+            );
         }
     }
     let reachability = collect_reachability(&syntax);
 
     Ok(RustModuleInfo {
         symbols: visitor.symbols,
-        public_mods,
-        public_uses,
+        symbol_visibilities,
         uses,
         modules,
         reachability,
     })
+}
+
+fn item_symbol_visibility(item: &syn::Item) -> Option<(String, RustVisibility)> {
+    match item {
+        syn::Item::Const(item) => Some((item.ident.to_string(), rust_visibility(&item.vis))),
+        syn::Item::Enum(item) => Some((item.ident.to_string(), rust_visibility(&item.vis))),
+        syn::Item::Fn(item) => Some((item.sig.ident.to_string(), rust_visibility(&item.vis))),
+        syn::Item::Static(item) => Some((item.ident.to_string(), rust_visibility(&item.vis))),
+        syn::Item::Struct(item) => Some((item.ident.to_string(), rust_visibility(&item.vis))),
+        syn::Item::Trait(item) => Some((item.ident.to_string(), rust_visibility(&item.vis))),
+        syn::Item::TraitAlias(item) => Some((item.ident.to_string(), rust_visibility(&item.vis))),
+        syn::Item::Type(item) => Some((item.ident.to_string(), rust_visibility(&item.vis))),
+        syn::Item::Union(item) => Some((item.ident.to_string(), rust_visibility(&item.vis))),
+        _ => None,
+    }
+}
+
+fn rust_visibility(visibility: &SynVis) -> RustVisibility {
+    match visibility {
+        SynVis::Public(_) => RustVisibility::Public,
+        SynVis::Restricted(restricted) => RustVisibility::Restricted(
+            restricted
+                .path
+                .segments
+                .iter()
+                .map(|segment| segment.ident.to_string())
+                .collect(),
+        ),
+        SynVis::Inherited => RustVisibility::Private,
+    }
 }
 
 fn collect_reachability(file: &syn::File) -> RustReachabilityFacts {
@@ -131,6 +186,7 @@ fn collect_reachability(file: &syn::File) -> RustReachabilityFacts {
                 .entry(owner)
                 .or_default()
                 .extend(collector.paths);
+            facts.embedded_sources.extend(collector.embedded_sources);
             facts.uncertainties.extend(collector.uncertainties);
             collect_attribute_uncertainties(
                 attrs,
@@ -141,6 +197,7 @@ fn collect_reachability(file: &syn::File) -> RustReachabilityFacts {
             let mut collector = ReferenceCollector::new(None);
             collector.visit_item(item);
             facts.top_level_paths.extend(collector.paths);
+            facts.embedded_sources.extend(collector.embedded_sources);
             facts.uncertainties.extend(collector.uncertainties);
             collect_attribute_uncertainties(attrs, None, &mut facts.uncertainties);
         }
@@ -205,6 +262,7 @@ fn impl_owner(item: &ItemImpl) -> Option<String> {
 struct ReferenceCollector {
     owner: Option<String>,
     paths: BTreeSet<Vec<String>>,
+    embedded_sources: Vec<RustEmbeddedSource>,
     uncertainties: Vec<RustUncertainty>,
 }
 
@@ -213,6 +271,7 @@ impl ReferenceCollector {
         Self {
             owner,
             paths: BTreeSet::new(),
+            embedded_sources: Vec::new(),
             uncertainties: Vec::new(),
         }
     }
@@ -261,7 +320,21 @@ impl<'ast> Visit<'ast> for ReferenceCollector {
             .last()
             .map(|segment| segment.ident.to_string())
             .unwrap_or_default();
-        if !known_macro(&name) {
+        if matches!(name.as_str(), "include_str" | "include_bytes") {
+            match syn::parse2::<syn::LitStr>(item.tokens.clone()) {
+                Ok(path) => self.embedded_sources.push(RustEmbeddedSource {
+                    owner: self.owner.clone(),
+                    path: path.value(),
+                    span: span(item.span()),
+                }),
+                Err(_) => self.uncertainties.push(RustUncertainty {
+                    owner: self.owner.clone(),
+                    kind: RustUncertaintyKind::MacroExpansion,
+                    expression: item.to_token_stream().to_string(),
+                    span: span(item.span()),
+                }),
+            }
+        } else if !known_macro(&name) {
             self.uncertainties.push(RustUncertainty {
                 owner: self.owner.clone(),
                 kind: RustUncertaintyKind::MacroExpansion,
@@ -923,81 +996,49 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
     }
 }
 
-fn collect_use_exports(tree: &syn::UseTree, prefix: Vec<String>, exports: &mut Vec<UseExport>) {
+fn collect_uses(
+    tree: &syn::UseTree,
+    prefix: Vec<String>,
+    visibility: &RustVisibility,
+    uses: &mut Vec<UseExport>,
+) {
     match tree {
         syn::UseTree::Name(name) => {
             let name = name.ident.to_string();
-            exports.push(UseExport {
+            uses.push(UseExport {
                 module_path: prefix,
                 name: name.clone(),
                 alias: name,
                 is_glob: false,
+                visibility: visibility.clone(),
             });
         }
         syn::UseTree::Rename(rename) => {
-            exports.push(UseExport {
+            uses.push(UseExport {
                 module_path: prefix,
                 name: rename.ident.to_string(),
                 alias: rename.rename.to_string(),
                 is_glob: false,
+                visibility: visibility.clone(),
             });
         }
         syn::UseTree::Glob(_) => {
-            exports.push(UseExport {
+            uses.push(UseExport {
                 module_path: prefix,
                 name: "*".to_string(),
                 alias: "*".to_string(),
                 is_glob: true,
+                visibility: visibility.clone(),
             });
         }
         syn::UseTree::Path(path) => {
             let mut next = prefix;
             next.push(path.ident.to_string());
-            collect_use_exports(&path.tree, next, exports);
+            collect_uses(&path.tree, next, visibility, uses);
         }
         syn::UseTree::Group(group) => {
             for tree in &group.items {
-                collect_use_exports(tree, prefix.clone(), exports);
-            }
-        }
-    }
-}
-
-fn collect_use_imports(tree: &syn::UseTree, prefix: Vec<String>, imports: &mut Vec<UseExport>) {
-    match tree {
-        syn::UseTree::Name(name) => {
-            let name = name.ident.to_string();
-            imports.push(UseExport {
-                module_path: prefix,
-                name: name.clone(),
-                alias: name,
-                is_glob: false,
-            });
-        }
-        syn::UseTree::Rename(rename) => {
-            imports.push(UseExport {
-                module_path: prefix,
-                name: rename.ident.to_string(),
-                alias: rename.rename.to_string(),
-                is_glob: false,
-            });
-        }
-        syn::UseTree::Glob(_) => {
-            imports.push(UseExport {
-                module_path: prefix,
-                name: "*".to_string(),
-                alias: "*".to_string(),
-                is_glob: true,
-            });
-        }
-        syn::UseTree::Path(path) => {
-            let mut next = prefix;
-            next.push(path.ident.to_string());
-            collect_use_imports(&path.tree, next, imports);
-        }
-        syn::UseTree::Group(group) => {
-            for tree in &group.items {
-                collect_use_imports(tree, prefix.clone(), imports);
+                collect_uses(tree, prefix.clone(), visibility, uses);
             }
         }
     }
@@ -1009,7 +1050,7 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn reachability_tracks_serde_defaults_and_enum_methods_without_orphans() {
+    fn reachability_tracks_attributes_methods_and_embedded_sources() {
         let source = r#"
             struct Config {
                 #[serde(default = "fallback")]
@@ -1029,6 +1070,8 @@ mod tests {
                     Self::One
                 }
             }
+
+            const HOOK: &str = include_str!("hooks.py");
         "#;
         let info =
             parse_module_info(Path::new("src/lib.rs"), Path::new("."), source).expect("Rust facts");
@@ -1044,5 +1087,8 @@ mod tests {
             .expect("enum symbol");
         assert!(mode.children.iter().any(|symbol| symbol.name == "from"));
         assert!(!info.symbols.iter().any(|symbol| symbol.name == "Mode.from"));
+        assert!(info.reachability.embedded_sources.iter().any(|source| {
+            source.owner.as_deref() == Some("HOOK") && source.path == "hooks.py"
+        }));
     }
 }

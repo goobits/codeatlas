@@ -2,6 +2,7 @@
   "name": "@fixture/b",
   "exports": {
     ".": "./src/index.ts",
-    "./features/*": "./src/features/*"
+    "./features/*": "./src/features/*",
+    "./generated": "./pkg/generated.js"
   }
 }

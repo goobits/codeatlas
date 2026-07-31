@@ -1,9 +1,7 @@
-use super::{line_at, push_page, push_pattern_operation};
+use super::{exported_http_methods, line_at, push_page, push_pattern_operation};
 use crate::http::model::{HttpConfidence, HttpSourceOperation};
 use crate::http::openapi::normalize_path;
-use regex::Regex;
 use std::path::Path;
-use std::sync::OnceLock;
 
 pub(super) fn detect(
     path: &Path,
@@ -13,17 +11,7 @@ pub(super) fn detect(
 ) {
     let routes = route_paths(path);
     if is_server(path) {
-        static EXPORT: OnceLock<Regex> = OnceLock::new();
-        let export = EXPORT.get_or_init(|| {
-            Regex::new(
-                r#"(?m)\bexport\s+(?:async\s+function|const|let|var)\s+(GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH)\b"#,
-            )
-            .expect("SvelteKit method detector")
-        });
-        for captures in export.captures_iter(source) {
-            let Some(method) = captures.get(1) else {
-                continue;
-            };
+        for method in exported_http_methods(source) {
             for route in &routes {
                 push_pattern_operation(
                     output,

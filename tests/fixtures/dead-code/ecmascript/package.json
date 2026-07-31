@@ -1,7 +1,9 @@
 {
   "name": "ecmascript-fixture",
   "scripts": {
-    "audit": "tsx scripts/build.ts"
+    "audit": "tsx scripts/build.ts",
+    "bundle": "esbuild src/bundledRuntime.ts --bundle --outfile=dist/runtime.js",
+    "compile": "tsx build/scripts/compile.ts"
   },
   "exports": {
     ".": {

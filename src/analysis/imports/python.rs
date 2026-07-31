@@ -49,7 +49,7 @@ fn load_modules(
             return true;
         }
         let name = e.file_name().to_string_lossy();
-        if crate::analysis::ignore::is_ignored_dir(&name, no_default_ignore) {
+        if crate::source_discovery::is_ignored_dir(&name, no_default_ignore) {
             return false;
         }
         name != "__pycache__" && name != "venv" && !name.ends_with(".egg-info")

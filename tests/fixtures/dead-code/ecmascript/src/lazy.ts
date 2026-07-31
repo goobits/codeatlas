@@ -1,1 +1,7 @@
-export const lazyValue = "lazy";
+function lazyHelper(): string {
+	return "lazy";
+}
+
+export function lazyValue(): string {
+	return lazyHelper();
+}

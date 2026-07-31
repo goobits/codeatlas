@@ -56,4 +56,5 @@ fn public_api_rust_exports() {
     assert!(names.contains(&"unused_public"));
     assert!(names.contains(&"used"));
     assert!(names.contains(&"unused_api"));
+    assert!(!names.contains(&"internal_api"));
 }

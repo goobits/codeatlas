@@ -115,10 +115,8 @@ fn configured_or_detected_languages(
 
     let mut languages = BTreeSet::new();
     let is_cargo_project = project.root.join("Cargo.toml").is_file();
-    let discovery = crate::analysis::source_files::discover_with_patterns(
-        project,
-        &["**/*.test.ts".to_string()],
-    );
+    let discovery =
+        crate::source_discovery::discover_with_patterns(project, &["**/*.test.ts".to_string()]);
     if let Some(warning) = discovery.warnings.first() {
         anyhow::bail!(
             "Could not inspect reachability project {}: {warning}",

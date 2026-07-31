@@ -1,6 +1,6 @@
-use crate::analysis::ignore;
 use crate::analysis::imports::UsageAnalysis;
 use crate::domain::{ScanReport, UnusedPublic, Visibility};
+use crate::source_discovery;
 
 pub(crate) fn compute(
     report: &ScanReport,
@@ -13,7 +13,7 @@ pub(crate) fn compute(
         if symbol.visibility != Visibility::Public {
             continue;
         }
-        if ignore::is_ignored_path(&symbol.file_path, no_default_ignore) {
+        if source_discovery::is_ignored_path(&symbol.file_path, no_default_ignore) {
             continue;
         }
         if !usage.is_referenced(&symbol.id) {

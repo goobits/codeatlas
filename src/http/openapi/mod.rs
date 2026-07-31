@@ -7,7 +7,6 @@ use schema::{parse_content, parse_parameter, parse_request_body, parse_security,
 use semantic::inspect_operation;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 const METHODS: &[&str] = &[
     "get", "put", "post", "delete", "options", "head", "patch", "trace",
@@ -17,12 +16,6 @@ pub(super) struct LoadedOpenApi {
     pub(super) version: String,
     pub(super) operations: Vec<HttpOperation>,
     pub(super) diagnostics: Vec<HttpContractDiagnostic>,
-}
-
-pub(super) fn load(path: &Path) -> Result<LoadedOpenApi> {
-    let source = std::fs::read_to_string(path)
-        .with_context(|| format!("Could not read OpenAPI contract {}", path.display()))?;
-    parse(&source, &path.display().to_string())
 }
 
 pub(super) fn parse(source: &str, label: &str) -> Result<LoadedOpenApi> {

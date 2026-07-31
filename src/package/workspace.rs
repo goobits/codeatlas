@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub(crate) struct PackageWorkspace {
+    pub root: PathBuf,
+    pub root_name: Option<String>,
     pub members: Vec<PackageWorkspaceMember>,
 }
 
@@ -49,6 +51,12 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
     let manifest: PnpmWorkspaceManifest = serde_yaml::from_str(&source)
         .with_context(|| format!("Invalid pnpm workspace at {}", manifest_path.display()))?;
     let patterns = WorkspacePatterns::compile(&manifest.packages)?;
+    let root_manifest = root.join("package.json");
+    let root_name = if root_manifest.is_file() {
+        Some(read_package_name(&root_manifest)?.unwrap_or_else(|| "workspace-root".to_string()))
+    } else {
+        None
+    };
 
     let mut builder = ignore::WalkBuilder::new(&root);
     builder
@@ -60,7 +68,7 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
         .filter_entry(|entry| {
             entry.depth() == 0
                 || !entry.file_type().is_some_and(|kind| kind.is_dir())
-                || !crate::analysis::ignore::is_ignored_dir(
+                || !crate::source_discovery::is_ignored_dir(
                     &entry.file_name().to_string_lossy(),
                     false,
                 )
@@ -90,16 +98,7 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
         if report_root.is_empty() || !patterns.matches(&report_root) {
             continue;
         }
-        let manifest_source = std::fs::read_to_string(entry.path())
-            .with_context(|| format!("Could not read {}", entry.path().display()))?;
-        let package: Value = serde_json::from_str(&manifest_source)
-            .with_context(|| format!("Invalid package manifest at {}", entry.path().display()))?;
-        let name = package
-            .get("name")
-            .and_then(Value::as_str)
-            .filter(|name| !name.trim().is_empty())
-            .unwrap_or(&report_root)
-            .to_string();
+        let name = read_package_name(entry.path())?.unwrap_or_else(|| report_root.clone());
         if let Some(previous) = names.insert(name.clone(), member_root.to_path_buf()) {
             anyhow::bail!(
                 "Duplicate workspace package name {name:?}: {} and {}",
@@ -124,7 +123,23 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
             scope.display()
         );
     }
-    Ok(PackageWorkspace { members })
+    Ok(PackageWorkspace {
+        root,
+        root_name,
+        members,
+    })
+}
+
+fn read_package_name(path: &Path) -> Result<Option<String>> {
+    let manifest_source = std::fs::read_to_string(path)
+        .with_context(|| format!("Could not read {}", path.display()))?;
+    let package: Value = serde_json::from_str(&manifest_source)
+        .with_context(|| format!("Invalid package manifest at {}", path.display()))?;
+    Ok(package
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .map(str::to_owned))
 }
 
 struct WorkspacePatterns {

@@ -1,6 +1,6 @@
 use super::parser;
-use crate::analysis::ignore;
 use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
+use crate::source_discovery;
 use std::path::Path;
 
 struct ModuleInfo {
@@ -29,7 +29,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
             return true;
         }
         let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
-        if ignore::is_ignored_path(&relative, config.no_default_ignore) {
+        if source_discovery::is_ignored_path(&relative, config.no_default_ignore) {
             return false;
         }
         let name = e.file_name().to_string_lossy();

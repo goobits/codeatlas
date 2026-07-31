@@ -22,7 +22,7 @@ pub(crate) fn collect_importers(
             return true;
         }
         let name = e.file_name().to_string_lossy();
-        !crate::analysis::ignore::is_ignored_dir(&name, no_default_ignore) && name != "target"
+        !crate::source_discovery::is_ignored_dir(&name, no_default_ignore) && name != "target"
     }) {
         let entry = match entry {
             Ok(e) => e,
@@ -48,8 +48,20 @@ pub(crate) fn collect_importers(
             Err(_) => continue,
         };
 
+        let public_uses = info
+            .uses
+            .iter()
+            .filter(|export| export.visibility.is_public())
+            .cloned()
+            .collect::<Vec<_>>();
+        let public_mods = info
+            .modules
+            .iter()
+            .filter(|module| module.visibility.is_public())
+            .map(|module| module.name.clone())
+            .collect::<Vec<_>>();
         let mut public_uses_map: HashMap<String, Vec<usize>> = HashMap::new();
-        for (i, export) in info.public_uses.iter().enumerate() {
+        for (i, export) in public_uses.iter().enumerate() {
             public_uses_map
                 .entry(export.alias.clone())
                 .or_default()
@@ -60,8 +72,8 @@ pub(crate) fn collect_importers(
             relative.clone(),
             ModuleInfo {
                 uses: info.uses,
-                public_uses: info.public_uses,
-                public_mods: info.public_mods,
+                public_uses,
+                public_mods,
                 module_path,
                 public_uses_map,
             },

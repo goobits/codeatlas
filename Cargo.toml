@@ -11,6 +11,7 @@ repository = "https://github.com/goobits/codeatlas"
 clap = { version = "4.4", features = ["derive"] }
 anyhow = "1.0"
 cargo_metadata = "0.18"
+ctrlc = "3.4"
 thiserror = "1.0"
 serde = { version = "=1.0.196", features = ["derive"] }
 serde_json = "1.0.143"
@@ -25,6 +26,7 @@ colored = "2.0"
 pulldown-cmark = "0.13"
 base64 = "0.22"
 sha2 = "0.10"
+url = "2.5"
 
 # Rust Parsing
 syn = { version = "2.0", features = ["full", "visit", "extra-traits"] }

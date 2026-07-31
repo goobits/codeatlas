@@ -21,7 +21,7 @@ pub(crate) fn collect_importers(
             return true;
         }
         let name = e.file_name().to_string_lossy();
-        !crate::analysis::ignore::is_ignored_dir(&name, no_default_ignore)
+        !crate::source_discovery::is_ignored_dir(&name, no_default_ignore)
     }) {
         let entry = match entry {
             Ok(e) => e,

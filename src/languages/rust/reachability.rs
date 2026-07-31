@@ -41,6 +41,7 @@ fn collect_project(graph: &mut SourceGraph, project: &ResolvedAnalysisProject) -
 
 struct Module {
     project: ProjectId,
+    root: PathBuf,
     path: String,
     absolute_path: PathBuf,
     file: NodeId,
@@ -60,8 +61,7 @@ fn collect_modules(
         .iter()
         .map(|target| crate::paths::normalize_relative_path(&target.root, &project.root))
         .collect::<Vec<_>>();
-    let discovery =
-        crate::analysis::source_files::discover_with_patterns(project, &target_patterns);
+    let discovery = crate::source_discovery::discover_with_patterns(project, &target_patterns);
     for warning in discovery.warnings {
         graph.record_boundary(
             &project.id,
@@ -72,7 +72,12 @@ fn collect_modules(
             SourceEvidence::new(project.report_root.clone(), None, EXTRACTOR),
         );
     }
-    for source_path in discovery.files {
+    let mut pending = discovery.files.into_iter().collect::<BTreeSet<_>>();
+    let mut seen = BTreeSet::new();
+    while let Some(source_path) = pending.pop_first() {
+        if !seen.insert(source_path.clone()) {
+            continue;
+        }
         if source_path
             .extension()
             .and_then(|extension| extension.to_str())
@@ -81,6 +86,10 @@ fn collect_modules(
             continue;
         }
         let path = crate::paths::normalize_relative_path(&source_path, &project.root);
+        let module_key = (project.id.clone(), path.clone());
+        if modules.contains_key(&module_key) {
+            continue;
+        }
         let file = NodeId::file(&project.id, &path);
         graph
             .add_node(
@@ -120,11 +129,31 @@ fn collect_modules(
                 continue;
             }
         };
+        for declaration in &info.modules {
+            if declaration.inline {
+                continue;
+            }
+            if let Some(child) =
+                module_file_candidates(&module_declaration_base(&source_path, declaration))
+                    .into_iter()
+                    .find(|candidate| {
+                        candidate.is_file()
+                            && candidate.starts_with(&project.root)
+                            && !project
+                                .excluded_roots
+                                .iter()
+                                .any(|root| candidate.starts_with(root))
+                    })
+            {
+                pending.insert(child);
+            }
+        }
         let symbols = add_symbols(graph, project, &path, &file, &info.symbols)?;
         modules.insert(
-            (project.id.clone(), path.clone()),
+            module_key,
             Module {
                 project: project.id.clone(),
+                root: project.root.clone(),
                 package: cargo.package_for_path(&source_path),
                 path,
                 absolute_path: source_path,
@@ -212,6 +241,7 @@ fn connect_module(
     cargo: &CargoLayout,
 ) {
     connect_references(graph, module, resolver);
+    connect_embedded_sources(graph, module);
 
     for declaration in &module.info.modules {
         if declaration.inline {
@@ -233,7 +263,7 @@ fn connect_module(
             graph,
             module,
             &resolution,
-            if module.info.public_mods.contains(&declaration.name) {
+            if declaration.visibility.is_public() {
                 SourceEdgeKind::ReExport
             } else {
                 SourceEdgeKind::ModuleDependency
@@ -243,10 +273,13 @@ fn connect_module(
     }
 
     for import in &module.info.uses {
-        connect_use(graph, module, import, resolver, false);
-    }
-    for export in &module.info.public_uses {
-        connect_use(graph, module, export, resolver, true);
+        connect_use(
+            graph,
+            module,
+            import,
+            resolver,
+            import.visibility.is_public(),
+        );
     }
     for uncertainty in &module.info.reachability.uncertainties {
         if uncertainty.kind == parser::RustUncertaintyKind::ConditionalCompilation
@@ -278,6 +311,39 @@ fn connect_module(
             ),
             SourceEvidence::new(&module.path, Some(uncertainty.span.clone()), EXTRACTOR),
         );
+    }
+}
+
+fn connect_embedded_sources(graph: &mut SourceGraph, module: &Module) {
+    for embedded in &module.info.reachability.embedded_sources {
+        let Some(parent) = module.absolute_path.parent() else {
+            continue;
+        };
+        let Ok(target) = parent.join(&embedded.path).canonicalize() else {
+            continue;
+        };
+        if !target.starts_with(&module.root) {
+            continue;
+        }
+        let path = crate::paths::normalize_relative_path(&target, &module.root);
+        let node = NodeId::file(&module.project, &path);
+        if !graph.nodes.contains_key(&node) {
+            continue;
+        }
+        let from = embedded
+            .owner
+            .as_deref()
+            .and_then(|owner| module.symbols.get(owner))
+            .and_then(|symbols| symbols.first())
+            .cloned()
+            .unwrap_or_else(|| module.file.clone());
+        graph.edges.insert(SourceEdge {
+            from,
+            to: EdgeTarget::Node(node),
+            kind: SourceEdgeKind::ModuleDependency,
+            bindings: Vec::new(),
+            evidence: SourceEvidence::new(&module.path, Some(embedded.span.clone()), EXTRACTOR),
+        });
     }
 }
 
@@ -412,7 +478,7 @@ fn connect_use(
 
     if import.is_glob {
         if let Some(key) = resolver.resolve_use_module(module, &import.module_path) {
-            for (name, symbol) in resolver.exported_symbols(&key) {
+            for (name, symbol) in resolver.exported_symbols(module, &key) {
                 let glob_sources = if reexport {
                     BTreeSet::from([module.file.clone()])
                 } else {
@@ -741,8 +807,8 @@ enum UseResolution {
 
 struct RustResolver {
     module_paths: BTreeMap<PathBuf, ModuleKey>,
-    symbols: BTreeMap<(ModuleKey, String), BTreeSet<NodeId>>,
-    exports: BTreeMap<(ModuleKey, String), ResolvedRustPath>,
+    module_files: BTreeMap<ModuleKey, PathBuf>,
+    exports: BTreeMap<(ModuleKey, String), ResolvedRustExport>,
     targets: Vec<CargoTarget>,
     workspace_libraries: BTreeMap<String, CargoTarget>,
 }
@@ -753,14 +819,9 @@ impl RustResolver {
             .iter()
             .map(|(key, module)| (module.absolute_path.clone(), key.clone()))
             .collect();
-        let symbols = modules
+        let module_files = modules
             .iter()
-            .flat_map(|(key, module)| {
-                module
-                    .symbols
-                    .iter()
-                    .map(move |(name, symbols)| ((key.clone(), name.clone()), symbols.clone()))
-            })
+            .map(|(key, module)| (key.clone(), module.absolute_path.clone()))
             .collect();
         let workspace_libraries = cargo
             .targets
@@ -782,7 +843,7 @@ impl RustResolver {
             .collect();
         let mut resolver = Self {
             module_paths,
-            symbols,
+            module_files,
             exports: BTreeMap::new(),
             targets: cargo
                 .targets
@@ -799,26 +860,24 @@ impl RustResolver {
             workspace_libraries,
         };
         for (key, module) in modules {
-            for symbol in module
-                .info
-                .symbols
-                .iter()
-                .filter(|symbol| symbol.visibility == Visibility::Public)
-            {
-                let Some(nodes) = module.symbols.get(&symbol.name) else {
+            for (name, visibilities) in &module.info.symbol_visibilities {
+                let Some(nodes) = module.symbols.get(name) else {
                     continue;
                 };
-                resolver.merge_export(
-                    key.clone(),
-                    symbol.name.clone(),
-                    ResolvedRustPath {
-                        module: key.clone(),
-                        symbols: nodes.clone(),
-                    },
-                );
+                for visibility in visibilities {
+                    resolver.merge_export(
+                        key.clone(),
+                        name.clone(),
+                        ResolvedRustPath {
+                            module: key.clone(),
+                            symbols: nodes.clone(),
+                        },
+                        visibility.clone(),
+                    );
+                }
             }
             for declaration in &module.info.modules {
-                if declaration.inline || !module.info.public_mods.contains(&declaration.name) {
+                if declaration.inline {
                     continue;
                 }
                 if let Resolution::Module(target) =
@@ -831,31 +890,31 @@ impl RustResolver {
                             module: target,
                             symbols: BTreeSet::new(),
                         },
+                        declaration.visibility.clone(),
                     );
                 }
             }
         }
-        resolver.index_public_reexports(modules);
+        resolver.index_reexports(modules);
         resolver
     }
 
-    fn index_public_reexports(&mut self, modules: &BTreeMap<ModuleKey, Module>) {
+    fn index_reexports(&mut self, modules: &BTreeMap<ModuleKey, Module>) {
         loop {
             let mut additions = Vec::new();
             for (key, module) in modules {
-                for export in &module.info.public_uses {
+                for export in &module.info.uses {
                     if export.is_glob {
                         let Some(target) = self.resolve_symbol_path(module, &export.module_path)
                         else {
                             continue;
                         };
                         additions.extend(
-                            self.exports
-                                .iter()
-                                .filter(|((module, _), _)| module == &target.module)
-                                .map(|((_, name), resolved)| {
-                                    (key.clone(), name.clone(), resolved.clone())
-                                }),
+                            self.exported_paths(module, &target.module).into_iter().map(
+                                |(name, resolved)| {
+                                    (key.clone(), name, resolved, export.visibility.clone())
+                                },
+                            ),
                         );
                         continue;
                     }
@@ -865,14 +924,19 @@ impl RustResolver {
                         path.push(export.name.clone());
                     }
                     if let Some(resolved) = self.resolve_symbol_path(module, &path) {
-                        additions.push((key.clone(), export.alias.clone(), resolved));
+                        additions.push((
+                            key.clone(),
+                            export.alias.clone(),
+                            resolved,
+                            export.visibility.clone(),
+                        ));
                     }
                 }
             }
 
             let mut changed = false;
-            for (module, name, resolved) in additions {
-                changed |= self.merge_export(module, name, resolved);
+            for (module, name, resolved, visibility) in additions {
+                changed |= self.merge_export(module, name, resolved, visibility);
             }
             if !changed {
                 break;
@@ -885,30 +949,59 @@ impl RustResolver {
         module: ModuleKey,
         name: String,
         resolved: ResolvedRustPath,
+        visibility: parser::RustVisibility,
     ) -> bool {
         let key = (module, name);
         let Some(existing) = self.exports.get_mut(&key) else {
-            self.exports.insert(key, resolved);
+            self.exports.insert(
+                key,
+                ResolvedRustExport {
+                    resolved,
+                    visibilities: vec![visibility],
+                },
+            );
             return true;
         };
-        let previous = existing.symbols.len();
-        existing.symbols.extend(resolved.symbols);
-        if previous == 0 && !existing.symbols.is_empty() {
-            existing.module = resolved.module;
+        let previous_symbols = existing.resolved.symbols.len();
+        existing.resolved.symbols.extend(resolved.symbols);
+        if previous_symbols == 0 && !existing.resolved.symbols.is_empty() {
+            existing.resolved.module = resolved.module;
         }
-        existing.symbols.len() != previous
+        let added_visibility = if existing.visibilities.contains(&visibility) {
+            false
+        } else {
+            existing.visibilities.push(visibility);
+            true
+        };
+        existing.resolved.symbols.len() != previous_symbols || added_visibility
     }
 
-    fn exported_symbols(&self, module: &ModuleKey) -> BTreeSet<(String, NodeId)> {
+    fn exported_paths(
+        &self,
+        requester: &Module,
+        module: &ModuleKey,
+    ) -> Vec<(String, ResolvedRustPath)> {
         self.exports
             .iter()
-            .filter(|((owner, _), resolved)| owner == module && !resolved.symbols.is_empty())
-            .flat_map(|((_, name), resolved)| {
+            .filter(|((owner, _), export)| {
+                owner == module && self.export_is_visible(requester, owner, export)
+            })
+            .map(|((_, name), export)| (name.clone(), export.resolved.clone()))
+            .collect()
+    }
+
+    fn exported_symbols(
+        &self,
+        requester: &Module,
+        module: &ModuleKey,
+    ) -> BTreeSet<(String, NodeId)> {
+        self.exported_paths(requester, module)
+            .into_iter()
+            .flat_map(|(name, resolved)| {
                 resolved
                     .symbols
-                    .iter()
-                    .cloned()
-                    .map(|symbol| (name.clone(), symbol))
+                    .into_iter()
+                    .map(move |symbol| (name.clone(), symbol))
             })
             .collect()
     }
@@ -918,18 +1011,7 @@ impl RustResolver {
         module: &Module,
         declaration: &parser::ModuleDeclaration,
     ) -> Resolution {
-        let base = module_child_base(&module.absolute_path);
-        let raw = declaration
-            .path_override
-            .as_ref()
-            .map(|path| {
-                module
-                    .absolute_path
-                    .parent()
-                    .unwrap_or_else(|| Path::new(""))
-                    .join(path)
-            })
-            .unwrap_or_else(|| base.join(&declaration.name));
+        let raw = module_declaration_base(&module.absolute_path, declaration);
         self.resolve_file_candidates(&raw).map_or_else(
             || Resolution::UnresolvedInternal(declaration.name.clone()),
             Resolution::Module,
@@ -969,26 +1051,21 @@ impl RustResolver {
         path: &[String],
     ) -> Option<ResolvedRustPath> {
         let local = path.first()?;
-        module
-            .info
-            .uses
-            .iter()
-            .chain(&module.info.public_uses)
-            .find_map(|import| {
-                let mut expanded = import.module_path.clone();
-                if import.is_glob {
-                    expanded.extend_from_slice(path);
-                } else {
-                    if &import.alias != local {
-                        return None;
-                    }
-                    if import.name != "self" {
-                        expanded.push(import.name.clone());
-                    }
-                    expanded.extend_from_slice(&path[1..]);
+        module.info.uses.iter().find_map(|import| {
+            let mut expanded = import.module_path.clone();
+            if import.is_glob {
+                expanded.extend_from_slice(path);
+            } else {
+                if &import.alias != local {
+                    return None;
                 }
-                self.resolve_symbol_path(module, &expanded)
-            })
+                if import.name != "self" {
+                    expanded.push(import.name.clone());
+                }
+                expanded.extend_from_slice(&path[1..]);
+            }
+            self.resolve_symbol_path(module, &expanded)
+        })
     }
 
     fn resolve_symbol_path(&self, module: &Module, path: &[String]) -> Option<ResolvedRustPath> {
@@ -1007,7 +1084,7 @@ impl RustResolver {
                 if let Resolution::Module(target) =
                     self.resolve_module_declaration(module, declaration)
                 {
-                    if let Some(resolved) = self.resolve_from_module(&target, &path[1..]) {
+                    if let Some(resolved) = self.resolve_from_module(module, &target, &path[1..]) {
                         return Some(resolved);
                     }
                 }
@@ -1038,24 +1115,20 @@ impl RustResolver {
                 });
             };
             if let Some(export) = self.exports.get(&(key.clone(), symbol.clone())) {
-                return Some(export.clone());
-            }
-            let symbols = self
-                .symbols
-                .get(&(key.clone(), symbol.clone()))
-                .cloned()
-                .unwrap_or_default();
-            if !symbols.is_empty() {
-                return Some(ResolvedRustPath {
-                    module: key,
-                    symbols,
-                });
+                if self.export_is_visible(module, &key, export) {
+                    return Some(export.resolved.clone());
+                }
             }
         }
         None
     }
 
-    fn resolve_from_module(&self, module: &ModuleKey, path: &[String]) -> Option<ResolvedRustPath> {
+    fn resolve_from_module(
+        &self,
+        requester: &Module,
+        module: &ModuleKey,
+        path: &[String],
+    ) -> Option<ResolvedRustPath> {
         let Some(first) = path.first() else {
             return Some(ResolvedRustPath {
                 module: module.clone(),
@@ -1063,23 +1136,64 @@ impl RustResolver {
             });
         };
         if let Some(export) = self.exports.get(&(module.clone(), first.clone())) {
-            if path.len() == 1 || !export.symbols.is_empty() {
-                return Some(export.clone());
+            if !self.export_is_visible(requester, module, export) {
+                return None;
             }
-            return self.resolve_from_module(&export.module, &path[1..]);
-        }
-        if let Some(symbols) = self.symbols.get(&(module.clone(), first.clone())) {
-            return Some(ResolvedRustPath {
-                module: module.clone(),
-                symbols: symbols.clone(),
-            });
+            if path.len() == 1 || !export.resolved.symbols.is_empty() {
+                return Some(export.resolved.clone());
+            }
+            return self.resolve_from_module(requester, &export.resolved.module, &path[1..]);
         }
         let absolute = self
             .module_paths
             .iter()
             .find_map(|(path, key)| (key == module).then_some(path))?;
         let child = self.resolve_file_candidates(&module_child_base(absolute).join(first))?;
-        self.resolve_from_module(&child, &path[1..])
+        self.resolve_from_module(requester, &child, &path[1..])
+    }
+
+    fn export_is_visible(
+        &self,
+        requester: &Module,
+        owner: &ModuleKey,
+        export: &ResolvedRustExport,
+    ) -> bool {
+        export
+            .visibilities
+            .iter()
+            .any(|visibility| self.visibility_allows(requester, owner, visibility))
+    }
+
+    fn visibility_allows(
+        &self,
+        requester: &Module,
+        owner: &ModuleKey,
+        visibility: &parser::RustVisibility,
+    ) -> bool {
+        if visibility.is_public() {
+            return true;
+        }
+        let Some(owner_path) = self.module_files.get(owner) else {
+            return false;
+        };
+        let Some(owner_target) = self.target_for_path(owner_path) else {
+            return false;
+        };
+        let Some(requester_target) = self.target_for_module(requester) else {
+            return false;
+        };
+        if owner_target.root != requester_target.root {
+            return false;
+        }
+
+        let owner_segments = module_segments(owner_target, owner_path);
+        let requester_segments = module_segments(requester_target, &requester.absolute_path);
+        let scope = match visibility {
+            parser::RustVisibility::Public => return true,
+            parser::RustVisibility::Private => owner_segments,
+            parser::RustVisibility::Restricted(path) => restricted_scope(&owner_segments, path),
+        };
+        requester_segments.starts_with(&scope)
     }
 
     fn target_and_segment_options(
@@ -1132,17 +1246,18 @@ impl RustResolver {
     }
 
     fn target_for_module(&self, module: &Module) -> Option<&CargoTarget> {
+        self.target_for_path(&module.absolute_path)
+    }
+
+    fn target_for_path(&self, path: &Path) -> Option<&CargoTarget> {
         self.targets
             .iter()
-            .filter(|target| {
-                module.absolute_path == target.root
-                    || module.absolute_path.starts_with(&target.module_base)
-            })
+            .filter(|target| path == target.root.as_path() || path.starts_with(&target.module_base))
             .max_by_key(|target| target.module_base.components().count())
     }
 
     fn resolve_file_candidates(&self, raw: &Path) -> Option<ModuleKey> {
-        [raw.with_extension("rs"), raw.join("mod.rs")]
+        module_file_candidates(raw)
             .into_iter()
             .find_map(|candidate| {
                 self.module_paths.get(&candidate).cloned().or_else(|| {
@@ -1153,6 +1268,12 @@ impl RustResolver {
                 })
             })
     }
+}
+
+#[derive(Clone)]
+struct ResolvedRustExport {
+    resolved: ResolvedRustPath,
+    visibilities: Vec<parser::RustVisibility>,
 }
 
 #[derive(Clone)]
@@ -1186,6 +1307,22 @@ fn module_child_base(path: &Path) -> PathBuf {
     }
 }
 
+fn module_declaration_base(path: &Path, declaration: &parser::ModuleDeclaration) -> PathBuf {
+    declaration
+        .path_override
+        .as_ref()
+        .map(|override_path| {
+            path.parent()
+                .unwrap_or_else(|| Path::new(""))
+                .join(override_path)
+        })
+        .unwrap_or_else(|| module_child_base(path).join(&declaration.name))
+}
+
+fn module_file_candidates(raw: &Path) -> [PathBuf; 2] {
+    [raw.with_extension("rs"), raw.join("mod.rs")]
+}
+
 fn module_segments(target: &CargoTarget, path: &Path) -> Vec<String> {
     if path == target.root {
         return Vec::new();
@@ -1202,6 +1339,38 @@ fn module_segments(target: &CargoTarget, path: &Path) -> Vec<String> {
         .filter(|segment| !segment.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+fn restricted_scope(owner: &[String], restriction: &[String]) -> Vec<String> {
+    let Some(first) = restriction.first().map(String::as_str) else {
+        return owner.to_vec();
+    };
+    let mut scope;
+    let mut index;
+    match first {
+        "crate" => {
+            scope = Vec::new();
+            index = 1;
+        }
+        "self" => {
+            scope = owner.to_vec();
+            index = 1;
+        }
+        "super" => {
+            scope = owner.to_vec();
+            index = 0;
+            while restriction.get(index).is_some_and(|part| part == "super") {
+                scope.pop();
+                index += 1;
+            }
+        }
+        _ => {
+            scope = owner.to_vec();
+            index = 0;
+        }
+    }
+    scope.extend_from_slice(&restriction[index..]);
+    scope
 }
 
 fn connect_resolution(

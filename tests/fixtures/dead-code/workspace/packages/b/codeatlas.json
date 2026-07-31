@@ -1,0 +1,15 @@
+{
+  "projects": [
+    {
+      "id": "configured-b",
+      "root": ".",
+      "languages": ["js", "ts"],
+      "contexts": {
+        "workspace-tool": {
+          "role": "tooling",
+          "entrypoints": ["src/workspaceTool.ts"]
+        }
+      }
+    }
+  ]
+}

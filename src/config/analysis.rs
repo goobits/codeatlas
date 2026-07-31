@@ -1,3 +1,4 @@
+use super::http::{HttpFuzzCommandConfig, HttpOpenApiProviderConfig, HttpOpenApiSourceConfig};
 use super::ProjectConfig;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -74,18 +75,7 @@ impl ProjectConfig {
                 id: Some("default".to_string()),
                 root: self.root.clone(),
                 languages: self.config.languages.clone(),
-                contexts: if self.config.entrypoints.is_empty() {
-                    BTreeMap::new()
-                } else {
-                    BTreeMap::from([(
-                        "application".to_string(),
-                        AnalysisContextConfig {
-                            role: crate::domain::source_graph::ContextRole::Production,
-                            scope: crate::domain::source_graph::ContextScope::Runtime,
-                            entrypoints: self.config.entrypoints.clone(),
-                        },
-                    )])
-                },
+                contexts: self.default_analysis_contexts(),
                 assume_reachable: Vec::new(),
                 rust: RustAnalysisConfig::default(),
             }]
@@ -154,6 +144,7 @@ impl ProjectConfig {
                 excluded_roots: Vec::new(),
             });
         }
+        self.add_http_contexts(&mut resolved)?;
         add_nested_project_boundaries(&mut resolved);
         Ok(resolved)
     }
@@ -165,10 +156,27 @@ impl ProjectConfig {
             );
         }
         let workspace = crate::package::discover_workspace(&self.root)?;
-        let mut resolved = workspace
-            .members
-            .into_iter()
-            .map(|member| ResolvedAnalysisProject {
+        let mut resolved = Vec::with_capacity(
+            workspace.members.len() + usize::from(workspace.root_name.is_some()),
+        );
+        if self.root == workspace.root {
+            if let Some(root_name) = workspace.root_name.clone() {
+                resolved.push(ResolvedAnalysisProject {
+                    id: crate::domain::source_graph::ProjectId(root_name),
+                    root: workspace.root.clone(),
+                    report_root: ".".to_string(),
+                    languages: self.config.languages.clone(),
+                    contexts: self.default_analysis_contexts(),
+                    assume_reachable: Vec::new(),
+                    no_default_ignore: self.config.no_default_ignore,
+                    rust: RustAnalysisConfig::default(),
+                    workspace_member: true,
+                    excluded_roots: Vec::new(),
+                });
+            }
+        }
+        for member in workspace.members {
+            let mut project = ResolvedAnalysisProject {
                 id: crate::domain::source_graph::ProjectId(member.name),
                 root: member.root,
                 report_root: member.report_root,
@@ -179,11 +187,156 @@ impl ProjectConfig {
                 rust: RustAnalysisConfig::default(),
                 workspace_member: true,
                 excluded_roots: Vec::new(),
-            })
-            .collect::<Vec<_>>();
+            };
+            let member_config_path = project.root.join("codeatlas.json");
+            if member_config_path.is_file() {
+                let member_config = ProjectConfig::load(&project.root, Some(&member_config_path))
+                    .with_context(|| {
+                    format!(
+                        "Could not load workspace member config {}",
+                        member_config_path.display()
+                    )
+                })?;
+                if let Some(configured) = member_config
+                    .analysis_projects()?
+                    .into_iter()
+                    .find(|configured| configured.root == project.root)
+                {
+                    project.languages = configured.languages;
+                    project.contexts = configured.contexts;
+                    project.assume_reachable = configured.assume_reachable;
+                    project.no_default_ignore |= configured.no_default_ignore;
+                    project.rust = configured.rust;
+                }
+            }
+            resolved.push(project);
+        }
+        self.add_http_contexts(&mut resolved)?;
         add_nested_project_boundaries(&mut resolved);
         Ok(resolved)
     }
+
+    fn default_analysis_contexts(&self) -> BTreeMap<String, AnalysisContextConfig> {
+        if self.config.entrypoints.is_empty() {
+            BTreeMap::new()
+        } else {
+            BTreeMap::from([(
+                "application".to_string(),
+                AnalysisContextConfig {
+                    role: crate::domain::source_graph::ContextRole::Production,
+                    scope: crate::domain::source_graph::ContextScope::Runtime,
+                    entrypoints: self.config.entrypoints.clone(),
+                },
+            )])
+        }
+    }
+
+    fn add_http_contexts(&self, projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
+        let mut fuzz_sources = Vec::new();
+        for target in &self.config.http.fuzz.targets {
+            if let Some(server) = &target.server {
+                fuzz_sources.extend(self.command_sources(
+                    &server.command,
+                    &server.args,
+                    server.cwd.as_deref(),
+                ));
+                for command in &server.prepare {
+                    fuzz_sources.extend(self.http_fuzz_command_sources(command));
+                }
+            }
+            if let Some(adapter) = &target.request_adapter {
+                fuzz_sources.extend(self.http_fuzz_command_sources(adapter));
+            }
+        }
+        add_inferred_context(
+            projects,
+            "codeatlas-http-fuzz",
+            crate::domain::source_graph::ContextRole::Test,
+            &fuzz_sources,
+        )?;
+
+        let contract_sources =
+            self.config
+                .http
+                .contracts
+                .iter()
+                .filter_map(|contract| match contract.openapi.as_ref() {
+                    Some(HttpOpenApiSourceConfig::Provider(
+                        HttpOpenApiProviderConfig::Command {
+                            command, args, cwd, ..
+                        },
+                    )) => Some(self.command_sources(command, args, cwd.as_deref())),
+                    _ => None,
+                })
+                .flatten()
+                .collect::<Vec<_>>();
+        add_inferred_context(
+            projects,
+            "codeatlas-http-contract",
+            crate::domain::source_graph::ContextRole::Tooling,
+            &contract_sources,
+        )
+    }
+
+    fn http_fuzz_command_sources(&self, command: &HttpFuzzCommandConfig) -> Vec<PathBuf> {
+        self.command_sources(&command.command, &command.args, command.cwd.as_deref())
+    }
+
+    fn command_sources(&self, command: &str, args: &[String], cwd: Option<&Path>) -> Vec<PathBuf> {
+        let root = cwd
+            .map(|cwd| self.config_dir.join(cwd))
+            .unwrap_or_else(|| self.root.clone());
+        std::iter::once(command)
+            .chain(args.iter().map(String::as_str))
+            .filter_map(crate::package::source_argument)
+            .map(|source| root.join(source))
+            .filter(|source| source.is_file())
+            .map(|source| source.canonicalize().unwrap_or(source))
+            .collect()
+    }
+}
+
+fn add_inferred_context(
+    projects: &mut [ResolvedAnalysisProject],
+    name: &str,
+    role: crate::domain::source_graph::ContextRole,
+    sources: &[PathBuf],
+) -> Result<()> {
+    for project in projects {
+        let mut entrypoints = sources
+            .iter()
+            .filter_map(|source| source.strip_prefix(&project.root).ok())
+            .map(crate::paths::normalize_path)
+            .filter(|source| !source.is_empty())
+            .collect::<Vec<_>>();
+        entrypoints.sort();
+        entrypoints.dedup();
+        if entrypoints.is_empty() {
+            continue;
+        }
+
+        let context =
+            project
+                .contexts
+                .entry(name.to_string())
+                .or_insert_with(|| AnalysisContextConfig {
+                    role,
+                    scope: crate::domain::source_graph::ContextScope::Runtime,
+                    entrypoints: Vec::new(),
+                });
+        if context.role != role
+            || context.scope != crate::domain::source_graph::ContextScope::Runtime
+        {
+            anyhow::bail!(
+                "Reserved inferred analysis context {name:?} in {} must use role {role:?} and runtime scope",
+                project.id.0
+            );
+        }
+        context.entrypoints.append(&mut entrypoints);
+        context.entrypoints.sort();
+        context.entrypoints.dedup();
+    }
+    Ok(())
 }
 
 fn add_nested_project_boundaries(projects: &mut [ResolvedAnalysisProject]) {

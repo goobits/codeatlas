@@ -13,6 +13,7 @@ mod languages;
 mod outputs;
 mod package;
 mod paths;
+mod source_discovery;
 
 #[cfg(test)]
 mod tests;

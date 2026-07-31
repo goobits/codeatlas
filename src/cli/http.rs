@@ -63,7 +63,7 @@ pub(super) enum HttpCommand {
         /// Repository path
         #[arg(default_value = ".")]
         path: PathBuf,
-        /// Configured HTTP fuzz target ID; optional when exactly one target exists
+        /// Configured HTTP fuzz runtime target ID (not a contract ID); optional when exactly one target exists
         #[arg(long)]
         target: Option<String>,
         /// Standard local depth or a substantially deeper run

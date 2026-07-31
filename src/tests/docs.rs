@@ -24,7 +24,7 @@ fn fixture_report(include_private: bool) -> crate::domain::ScanReport {
     let package = package::discover(&root)
         .expect("package manifest")
         .expect("package metadata");
-    package::annotate(&mut report, &root, package, false);
+    analysis::annotate_package_exports(&mut report, &root, package, false);
     analysis::annotate_docs(&mut report, &root);
     report
 }

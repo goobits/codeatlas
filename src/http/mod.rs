@@ -1,16 +1,17 @@
 mod conformance;
 mod diff;
-mod fuzz;
-mod fuzz_report;
+mod environment;
 mod model;
 mod openapi;
+mod private_fs;
 mod provider;
-mod request_adapter;
 mod runtime;
+mod schemathesis;
 mod source;
-mod toolchain;
+mod target;
+mod transport_schema;
 
-use crate::config::ResolvedHttpContract;
+use self::target::ResolvedHttpContract;
 use anyhow::Result;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use model::HttpContractInventory;
@@ -18,10 +19,12 @@ use std::collections::BTreeSet;
 
 pub(crate) use conformance::check;
 pub(crate) use diff::compare;
-pub(crate) use fuzz::{run as run_fuzz, RunOptions as FuzzRunOptions};
 pub(crate) use model::{
     HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpDiffReport, HttpInventoryReport,
     HTTP_BASELINE_API_VERSION,
+};
+pub(crate) use schemathesis::{
+    run as run_fuzz, Contract as FuzzContract, RunOptions as FuzzRunOptions,
 };
 
 pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInventoryReport> {
@@ -88,6 +91,31 @@ pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInvent
     }
     inventories.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(HttpInventoryReport::new(inventories))
+}
+
+pub(crate) fn fuzz_contract(
+    contracts: &[ResolvedHttpContract],
+    contract_id: &str,
+) -> Result<FuzzContract> {
+    let contract = contracts
+        .iter()
+        .find(|contract| contract.id == contract_id)
+        .ok_or_else(|| anyhow::anyhow!("Unknown HTTP contract {contract_id:?}"))?;
+    if let Some(source) = &contract.openapi {
+        return Ok(FuzzContract::OpenApi {
+            source: source.clone(),
+            display: contract
+                .openapi_display
+                .clone()
+                .unwrap_or_else(|| contract.id.clone()),
+        });
+    }
+    let mut report = inventory(std::slice::from_ref(contract))?;
+    let contract = report
+        .contracts
+        .pop()
+        .ok_or_else(|| anyhow::anyhow!("HTTP contract {contract_id:?} produced no inventory"))?;
+    Ok(FuzzContract::SourceTransport(contract.source))
 }
 
 fn compile_patterns(

@@ -3,6 +3,7 @@ import defaultThing from "./defaultThing";
 import * as namespace from "./namespace";
 import "./sideEffect";
 import { used } from "./used";
+import { svelteAliased } from "@svelte-alias/reachable";
 
 const common = require("./common.cjs");
 const workerUrl = new URL("./worker.ts", import.meta.url);
@@ -12,6 +13,7 @@ defaultThing();
 namespace.run();
 common.run();
 used();
+svelteAliased();
 void workerUrl;
 void import("./lazy");
 

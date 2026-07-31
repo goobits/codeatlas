@@ -207,8 +207,11 @@ fn print_diff_summary(report: &HttpDiffReport) {
 fn fuzz(options: &FuzzOptions<'_>) -> Result<i32> {
     let project = load_project(options.path, options.config_path)?;
     let target = project.http_fuzz_target(options.target)?;
+    let contracts = project.http_contracts(&[])?;
+    let contract = http::fuzz_contract(&contracts, &target.contract)?;
     http::run_fuzz(
         &target,
+        &contract,
         &FuzzRunOptions {
             max_examples: options
                 .max_examples

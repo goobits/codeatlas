@@ -7,7 +7,7 @@ use crate::domain::source_graph::{
     BoundaryKind, ContextRole, EdgeTarget, FindingConfidence, NodeId, SourceEvidence, SourceGraph,
     SourceLanguage, SourceNode, SourceVisibility,
 };
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
     let reachability = Reachability::analyze(graph).map_err(|diagnostics| {
@@ -30,6 +30,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         .values()
         .flat_map(|context| context.roots.iter().cloned())
         .collect::<BTreeSet<_>>();
+    let public_dependencies = public_dependency_nodes(graph);
     let mut report = DeadCodeReport::new();
     let mut unreachable_files = BTreeSet::new();
     let mut non_production_files = BTreeSet::new();
@@ -69,7 +70,13 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         let SourceNode::File(file) = node else {
             continue;
         };
-        let confidence = project_confidence(graph, &file.project);
+        let base_confidence = project_confidence(graph, &file.project);
+        let public_dependency = public_dependencies.contains(node_id);
+        let confidence = if public_dependency {
+            lower_confidence(base_confidence)
+        } else {
+            base_confidence
+        };
         let contexts = reachability.contexts(node_id);
         let root_contexts =
             root_context_labels(&reachability.roots(node_id), &context_names, graph);
@@ -92,7 +99,11 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                         span: None,
                         extractor: "codeatlas.source-graph".to_string(),
                     },
-                    message: "No configured context reaches this file.".to_string(),
+                    message: if public_dependency {
+                        "No configured context reaches this file, but an unreferenced public symbol depends on it; external consumers may exist.".to_string()
+                    } else {
+                        "No configured context reaches this file.".to_string()
+                    },
                 },
             ));
         } else if !roles.contains(&ContextRole::Production) {
@@ -117,8 +128,11 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                         span: None,
                         extractor: "codeatlas.source-graph".to_string(),
                     },
-                    message: "This file is reachable only from non-production contexts."
-                        .to_string(),
+                    message: if public_dependency {
+                        "This file is reachable only from non-production contexts and is also required by an unreferenced public symbol; external consumers may exist.".to_string()
+                    } else {
+                        "This file is reachable only from non-production contexts.".to_string()
+                    },
                 },
             ));
         }
@@ -134,6 +148,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         let contexts = reachability.contexts(node_id);
         let language = file_language(graph, &symbol.file);
         let project_confidence = symbol_confidence(graph, &symbol.project, &symbol.file);
+        let public_dependency = public_dependencies.contains(node_id);
         let path = graph
             .nodes
             .get(&symbol.file)
@@ -148,7 +163,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 continue;
             }
             let kind = context_only_kind(&roles);
-            let confidence = if symbol.visibility == SourceVisibility::Public {
+            let confidence = if symbol.visibility == SourceVisibility::Public || public_dependency {
                 lower_confidence(project_confidence)
             } else {
                 project_confidence
@@ -165,6 +180,13 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     }
                 }
                 _ => unreachable!(),
+            };
+            let message = if public_dependency && symbol.visibility != SourceVisibility::Public {
+                format!(
+                    "{message} It is also required by an unreferenced public symbol; external consumers may exist."
+                )
+            } else {
+                message.to_string()
             };
             report.findings.push(finding(
                 kind,
@@ -186,12 +208,17 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                         span: symbol.span.clone(),
                         extractor: "codeatlas.source-graph".to_string(),
                     },
-                    message: message.to_string(),
+                    message,
                 },
             ));
             continue;
         }
         let (kind, confidence, message) = match symbol.visibility {
+            SourceVisibility::Private | SourceVisibility::Internal if public_dependency => (
+                DeadCodeFindingKind::UnusedPrivateSymbol,
+                lower_confidence(project_confidence),
+                "No configured context reaches this private symbol, but an unreferenced public symbol depends on it; external consumers may exist.".to_string(),
+            ),
             SourceVisibility::Private | SourceVisibility::Internal => (
                 DeadCodeFindingKind::UnusedPrivateSymbol,
                 project_confidence,
@@ -345,6 +372,47 @@ fn context_only_kind(roles: &BTreeSet<ContextRole>) -> DeadCodeFindingKind {
     } else {
         DeadCodeFindingKind::ToolingOnly
     }
+}
+
+fn public_dependency_nodes(graph: &SourceGraph) -> BTreeSet<NodeId> {
+    let mut adjacency = BTreeMap::<NodeId, BTreeSet<NodeId>>::new();
+    for edge in &graph.edges {
+        if matches!(
+            edge.kind,
+            crate::domain::source_graph::SourceEdgeKind::Contains
+                | crate::domain::source_graph::SourceEdgeKind::ReExport
+        ) {
+            continue;
+        }
+        let EdgeTarget::Node(target) = &edge.to else {
+            continue;
+        };
+        adjacency
+            .entry(edge.from.clone())
+            .or_default()
+            .insert(target.clone());
+    }
+
+    let mut dependencies = BTreeSet::new();
+    let mut queue = graph
+        .nodes
+        .iter()
+        .filter_map(|(node_id, node)| match node {
+            SourceNode::Symbol(symbol) if symbol.visibility == SourceVisibility::Public => {
+                Some(node_id.clone())
+            }
+            _ => None,
+        })
+        .collect::<VecDeque<_>>();
+    while let Some(node) = queue.pop_front() {
+        if !dependencies.insert(node.clone()) {
+            continue;
+        }
+        if let Some(targets) = adjacency.get(&node) {
+            queue.extend(targets.iter().cloned());
+        }
+    }
+    dependencies
 }
 
 struct FindingDetails {

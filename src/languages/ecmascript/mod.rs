@@ -8,13 +8,16 @@ use crate::domain::source_graph::{
 };
 use crate::domain::{Symbol, SymbolKind};
 use anyhow::Result;
+use regex::Regex;
 use resolver::{ModuleResolver, Resolution};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::Path;
+use std::sync::LazyLock;
 
 type ProjectSelection<'a> = (&'a ResolvedAnalysisProject, BTreeSet<SourceLanguage>);
 type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.ecmascript";
+const BROWSER_RUNTIME_CONTEXT: &str = "browser-html-runtime";
 const PACKAGE_EXPORT_CONTEXT: &str = "npm-package-exports";
 const PACKAGE_RUNTIME_CONTEXT: &str = "npm-package-runtime";
 const SVELTEKIT_RUNTIME_CONTEXT: &str = "sveltekit-runtime";
@@ -58,6 +61,7 @@ fn add_discovered_contexts(
     modules: &BTreeMap<ModuleKey, Module>,
     resolver: &ModuleResolver,
 ) -> Result<()> {
+    let html_entrypoints = discover_html_entrypoints(project, resolver);
     if !project.contexts.contains_key(PACKAGE_EXPORT_CONTEXT) {
         let roots = crate::package::discover(&project.root)?
             .into_iter()
@@ -81,6 +85,7 @@ fn add_discovered_contexts(
     if !project.contexts.contains_key(PACKAGE_RUNTIME_CONTEXT) {
         let roots = crate::package::discover_runtime_entrypoints(&project.root)?
             .into_iter()
+            .chain(crate::package::discover_bundled_entrypoints(&project.root)?)
             .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, &path))
             .filter_map(|key| modules.get(&key).map(|module| module.file.clone()))
             .collect();
@@ -94,12 +99,20 @@ fn add_discovered_contexts(
         )?;
     }
 
-    if project
-        .languages
-        .iter()
-        .any(|language| language == "svelte")
-        && !project.contexts.contains_key(SVELTEKIT_RUNTIME_CONTEXT)
+    if !project.contexts.contains_key(BROWSER_RUNTIME_CONTEXT)
+        && !html_entrypoints.production.is_empty()
     {
+        add_discovered_context(
+            graph,
+            project,
+            BROWSER_RUNTIME_CONTEXT,
+            ContextRole::Production,
+            ContextScope::Runtime,
+            html_entrypoints.production,
+        )?;
+    }
+
+    if !project.contexts.contains_key(SVELTEKIT_RUNTIME_CONTEXT) {
         let roots = modules
             .values()
             .filter(|module| {
@@ -143,6 +156,7 @@ fn add_discovered_contexts(
                     .filter_map(|key| modules.get(&key).map(|module| module.file.clone())),
             );
         }
+        roots.extend(html_entrypoints.tests);
         add_discovered_context(
             graph,
             project,
@@ -157,7 +171,8 @@ fn add_discovered_contexts(
         let mut roots = modules
             .values()
             .filter(|module| {
-                module.project == project.id && is_conventional_tooling_module(&module.path)
+                module.project == project.id
+                    && is_project_tooling_module(&project.root, &module.path)
             })
             .map(|module| module.file.clone())
             .collect::<BTreeSet<_>>();
@@ -180,7 +195,10 @@ fn add_discovered_contexts(
     if !project.contexts.contains_key(DECLARATION_CONTEXT) {
         let roots = modules
             .values()
-            .filter(|module| module.project == project.id && module.path.ends_with(".d.ts"))
+            .filter(|module| {
+                module.project == project.id
+                    && (module.path.ends_with(".d.ts") || module.info.reachability.declaration_only)
+            })
             .map(|module| module.file.clone())
             .collect();
         add_discovered_context(
@@ -193,6 +211,113 @@ fn add_discovered_contexts(
         )?;
     }
     Ok(())
+}
+
+#[derive(Default)]
+struct HtmlEntrypoints {
+    production: BTreeSet<NodeId>,
+    tests: BTreeSet<NodeId>,
+}
+
+fn discover_html_entrypoints(
+    project: &ResolvedAnalysisProject,
+    resolver: &ModuleResolver,
+) -> HtmlEntrypoints {
+    static SCRIPT_SOURCE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?is)<script\b[^>]*?\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))"#)
+            .expect("valid HTML script source expression")
+    });
+
+    let discovery =
+        crate::source_discovery::discover_with_patterns(project, &["**/*.html".to_string()]);
+    let mut entrypoints = HtmlEntrypoints::default();
+    for html_path in discovery.files {
+        if html_path.extension().and_then(|value| value.to_str()) != Some("html") {
+            continue;
+        }
+        let relative = crate::paths::normalize_relative_path(&html_path, &project.root);
+        let Some(role) = html_entrypoint_role(&relative) else {
+            continue;
+        };
+        let Ok(source) = std::fs::read_to_string(&html_path) else {
+            continue;
+        };
+        for captures in SCRIPT_SOURCE.captures_iter(&source) {
+            let Some(source) = captures
+                .get(1)
+                .or_else(|| captures.get(2))
+                .or_else(|| captures.get(3))
+                .map(|value| value.as_str())
+                .and_then(local_html_script_path)
+            else {
+                continue;
+            };
+            let html_parent = Path::new(&relative)
+                .parent()
+                .unwrap_or_else(|| Path::new(""));
+            let source = if source.starts_with('/') {
+                source.trim_start_matches('/').to_string()
+            } else {
+                crate::paths::normalize_path(&html_parent.join(source))
+            };
+            let Some((project_id, path)) =
+                resolver.resolve_project_entrypoint(&project.id, &source)
+            else {
+                continue;
+            };
+            let root = NodeId::file(&project_id, &path);
+            match role {
+                ContextRole::Production => {
+                    entrypoints.production.insert(root);
+                }
+                ContextRole::Test => {
+                    entrypoints.tests.insert(root);
+                }
+                ContextRole::Tooling => {}
+            }
+        }
+    }
+    entrypoints
+}
+
+fn html_entrypoint_role(path: &str) -> Option<ContextRole> {
+    let file_name = Path::new(path)
+        .file_name()
+        .and_then(|value| value.to_str())?;
+    let test_path = path.split('/').any(|part| {
+        matches!(
+            part,
+            "test" | "tests" | "__test__" | "__tests__" | "__mocks__"
+        )
+    });
+    if test_path
+        || file_name.contains(".test.")
+        || file_name.contains(".spec.")
+        || file_name.starts_with("test-")
+        || file_name.contains("test-harness")
+    {
+        return Some(ContextRole::Test);
+    }
+    (file_name == "index.html").then_some(ContextRole::Production)
+}
+
+fn local_html_script_path(source: &str) -> Option<&str> {
+    let source = source
+        .split_once('#')
+        .map_or(source, |(path, _)| path)
+        .trim();
+    let source = source
+        .split_once('?')
+        .map_or(source, |(path, _)| path)
+        .trim();
+    (!source.is_empty()
+        && !source.starts_with("//")
+        && !source.contains("://")
+        && !matches!(
+            source.split_once(':').map(|(scheme, _)| scheme),
+            Some("blob" | "data" | "javascript")
+        ))
+    .then_some(source)
 }
 
 fn add_discovered_context(
@@ -244,6 +369,24 @@ fn is_conventional_tooling_module(path: &str) -> bool {
     if path.contains('/') {
         return false;
     }
+    is_tooling_module_name(path)
+}
+
+fn is_project_tooling_module(root: &Path, path: &str) -> bool {
+    if is_conventional_tooling_module(path) {
+        return true;
+    }
+    let path = Path::new(path);
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    is_tooling_module_name(name) && root.join(parent).join("package.json").is_file()
+}
+
+fn is_tooling_module_name(path: &str) -> bool {
     let Some((stem, extension)) = path.rsplit_once('.') else {
         return false;
     };
@@ -257,13 +400,17 @@ fn collect_project_modules(
     languages: &BTreeSet<SourceLanguage>,
     modules: &mut BTreeMap<ModuleKey, Module>,
 ) -> Result<()> {
-    let test_discovery_patterns = if project.contexts.contains_key(TEST_CONTEXT) {
+    let mut discovery_patterns = if project.contexts.contains_key(TEST_CONTEXT) {
         Vec::new()
     } else {
         vec![TEST_DISCOVERY_PATTERN.to_string()]
     };
-    let discovery =
-        crate::analysis::source_files::discover_with_patterns(project, &test_discovery_patterns);
+    discovery_patterns.extend(crate::package::discover_runtime_entrypoints(&project.root)?);
+    discovery_patterns.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
+    discovery_patterns.extend(crate::package::discover_tooling_entrypoints(&project.root)?);
+    discovery_patterns.sort();
+    discovery_patterns.dedup();
+    let discovery = crate::source_discovery::discover_with_patterns(project, &discovery_patterns);
     for warning in discovery.warnings {
         graph.record_boundary(
             &project.id,
@@ -539,6 +686,7 @@ fn connect_module(
             parser::DynamicDependencyKind::ImportMetaGlob => SourceEdgeKind::GlobImport,
             parser::DynamicDependencyKind::ImportScripts => SourceEdgeKind::Require,
             parser::DynamicDependencyKind::Require => SourceEdgeKind::Require,
+            parser::DynamicDependencyKind::RuntimeFile => SourceEdgeKind::ModuleDependency,
             parser::DynamicDependencyKind::RuntimeUrl => SourceEdgeKind::DynamicImport,
         };
         for resolution in resolver.resolve_dynamic(module, &dependency.target, dependency.kind) {
@@ -550,9 +698,64 @@ fn connect_module(
                 edge_kind,
                 Some(dependency.span.clone()),
             );
+            if dynamic_dependency_uses_module_namespace(dependency.kind) {
+                let Some(target) = resolution.resolved() else {
+                    continue;
+                };
+                for symbol in resolve_all_exports(target, modules, resolver, &mut HashSet::new()) {
+                    graph.edges.insert(SourceEdge {
+                        from: module.file.clone(),
+                        to: EdgeTarget::Node(symbol),
+                        kind: edge_kind,
+                        bindings: Vec::new(),
+                        evidence: SourceEvidence::new(
+                            &module.path,
+                            Some(dependency.span.clone()),
+                            EXTRACTOR,
+                        ),
+                    });
+                }
+            }
+        }
+    }
+    for targets in module.info.reachability.configured_aliases.values() {
+        for target in targets {
+            let resolution = resolver.resolve_configured_entrypoint(module, target);
+            if resolution.resolved().is_some() {
+                connect_module_resolution(
+                    graph,
+                    module,
+                    target,
+                    &resolution,
+                    SourceEdgeKind::ModuleDependency,
+                    None,
+                );
+            }
+        }
+    }
+    if is_test_config_module(&module.path) {
+        for entrypoint in &module.info.reachability.configured_test_entrypoints {
+            let resolution = resolver.resolve_configured_entrypoint(module, entrypoint);
+            connect_module_resolution(
+                graph,
+                module,
+                entrypoint,
+                &resolution,
+                SourceEdgeKind::ModuleDependency,
+                None,
+            );
         }
     }
     Ok(())
+}
+
+fn dynamic_dependency_uses_module_namespace(kind: parser::DynamicDependencyKind) -> bool {
+    matches!(
+        kind,
+        parser::DynamicDependencyKind::Import
+            | parser::DynamicDependencyKind::ImportMetaGlob
+            | parser::DynamicDependencyKind::Require
+    )
 }
 
 fn dynamic_dependency_label(target: &parser::DynamicDependencyTarget) -> String {

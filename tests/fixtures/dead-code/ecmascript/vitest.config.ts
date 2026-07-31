@@ -1,3 +1,7 @@
+import path from 'node:path'
+
+const mockModule = path.resolve(__dirname, './src/test/mock.ts')
+
 export default {
 	root: new URL('.', import.meta.url).pathname,
 	test: {
@@ -5,7 +9,7 @@ export default {
 	},
 	resolve: {
 		alias: [
-			{ find: 'fixture', replacement: './src/test/mock.ts' }
+			{ find: 'fixture', replacement: mockModule }
 		]
 	}
 }

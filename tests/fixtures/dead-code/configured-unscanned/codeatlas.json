@@ -1,0 +1,9 @@
+{
+  "projects": [
+    {
+      "id": "configured-unscanned",
+      "root": ".",
+      "languages": ["js", "ts"]
+    }
+  ]
+}

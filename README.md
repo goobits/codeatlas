@@ -43,7 +43,7 @@ a positive integer to allow more parallel build work.
 | `diff`         | Compare the current public symbols with a JSON baseline                                |
 | `map`          | Generate a Mermaid dependency diagram                                                  |
 | `docs`         | Generate deterministic Markdown or searchable HTML from public exports and source docs |
-| `http`         | Inventory source routes, check/diff OpenAPI contracts, and run schema fuzzing           |
+| `http`         | Inventory source routes, check/diff OpenAPI contracts, and run schema or transport fuzzing |
 
 Run `codeatlas <command> --help` for command-specific options.
 
@@ -254,36 +254,72 @@ JavaScript, TypeScript, and Svelte projects automatically add a production
 `npm-package-exports` public-surface context when `package.json` exposes source
 entries, including concrete files exposed through wildcard subpath exports.
 Local source paths in npm `start` and `serve` lifecycle scripts also become
-production roots in an `npm-package-runtime` context; source paths in other
-package scripts become tooling roots. Conventional `*.test.*`, `*.spec.*`, and
-test-config files become runtime roots in an `ecmascript-tests` context.
-Configured setup, teardown, and replacement modules are followed from those
-configs. Ambient `.d.ts` modules are classified as tooling declarations rather
-than runtime dead code. Files such as `__tests__/support.ts` are scanned and
-followed when imported, but are not roots merely because they live in a test
-directory. Explicit contexts remain additive and can override automatic
-contexts by using their names.
+production roots in an `npm-package-runtime` context, as do `main` entrypoints
+declared by `wrangler.toml`, `wrangler.json`, or `wrangler.jsonc`. Source entrypoints passed
+to common bundler CLIs (`esbuild`, Rollup, and webpack) are production roots;
+other package-script source paths become tooling roots, including maintained
+scripts under normally ignored `build` directories. Local scripts referenced by conventional
+`index.html` files become production browser roots; scripts referenced by test
+HTML and `test-harness.html` files become test roots. Conventional `*.test.*`,
+`*.spec.*`, and test-config files become runtime roots in an
+`ecmascript-tests` context.
+Configured setup, teardown, and Svelte/Vite/Vitest alias replacement modules
+are followed from those configs, including static `path.resolve(...)` values,
+`alias`/`aliases` objects and arrays, and named replacement constants. Strings passed to
+unknown package-resolution helpers are not guessed to be source paths. Ambient
+`.d.ts` and declaration-only TypeScript
+modules are classified as tooling declarations rather than runtime dead code.
+Files such as `__tests__/support.ts` are scanned and followed when imported,
+but are not roots merely because they live in a test directory. Explicit
+contexts remain additive and can override automatic contexts by using their
+names. Conventional nested fixture-data trees such as `tests/fixtures` and
+`testdata` are excluded from broad discovery unless an explicit project path or
+entrypoint selects them; scanning a fixture directory as the project root still
+works normally.
+
+`dead-code --workspace` preserves package ownership while applying the matching
+local project from each member's `codeatlas.json`. When the workspace root is
+also a package, its non-member source is scanned as one non-overlapping root
+project; member roots remain excluded from it. Packages can therefore own their
+exceptional roots without duplicating one workspace-wide configuration.
+Local source commands used by configured HTTP fuzz servers and request adapters
+become test roots; source commands used to generate OpenAPI contracts become
+tooling roots.
 
 Each project may select `js`, `ts`, `svelte`, `py`, and `rs`. Rust projects can
 also configure `rust.all_features` or an explicit `rust.features` list. Cargo
 library targets use public-surface semantics; binaries, examples, benches,
 build scripts, and tests use runtime semantics. Python project entrypoints are
-runtime roots.
+runtime roots. Rust reachability honors `pub(crate)`, `pub(super)`, and
+`pub(in path)` scope instead of treating restricted exports as public, follows
+explicitly declared modules, and connects literal `include_str!` and
+`include_bytes!` source dependencies.
 
 Svelte reachability reads both module and instance scripts, preserves their
 source spans, and connects JavaScript, TypeScript, and Svelte modules through
 static imports, literal dynamic imports, bounded template imports, and Vite
-globs. Static worker, worklet, and `importScripts` dependencies are followed;
+globs. Resolved dynamic module namespaces conservatively retain their exported
+symbols and private dependencies. Relative imports, TypeScript path aliases,
+workspace-root Vite globs, and physical absolute paths beneath the workspace
+can cross explicitly configured sibling project roots. Workspace root-absolute
+imports into existing unscanned source remain explicit partial boundaries
+rather than false missing-file gates. Standard `svelte-package` `src/lib` to
+`dist` layouts map generated exports back to maintained source. Static worker,
+worklet, and `importScripts`
+dependencies are followed;
 non-source asset URLs remain outside the source graph. Svelte component symbols
 remain conservative because markup-level
 references are not yet a complete symbol graph. They are never emitted as
 high-confidence unused-private findings.
-SvelteKit route modules, pages, hooks, parameter matchers, and service workers
-are discovered as framework-owned production roots. Generated `$types.js`
-imports are framework boundaries rather than missing source files.
+SvelteKit route modules, pages, nested-app hooks, parameter matchers, and
+service workers are discovered as framework-owned production roots. `$lib`
+resolves to the nearest SvelteKit app's `src/lib`; generated `$types.js` imports
+are framework boundaries rather than missing source files.
 Generated, ignored, existing-but-excluded, and out-of-project relative source
-imports remain visible as uncertainty advisories. A genuinely missing
-in-project source import remains a high-confidence gate.
+imports remain visible as uncertainty advisories. Declared package imports into
+conventional generated roots such as `dist`, `build`, and `pkg` are handled the
+same way when those outputs have not been built. A genuinely missing in-project
+source import remains a high-confidence gate.
 
 The versioned dead-code report distinguishes unreachable private code,
 test-only files and symbols, tooling-only code, unreferenced public APIs,
@@ -347,12 +383,18 @@ HTTP contracts are a separate, versioned domain rather than part of the public
 symbol scan. `http inventory <path>` works without configuration or an OpenAPI
 document: it reports statically detected pages and HTTP endpoints, marks
 endpoints as schema-missing, excludes conventional test sources, and stops at
-nested project manifests. SvelteKit pages and server handlers, bounded Node
-request guards, and supported framework declarations retain their detector and
-source evidence.
+nested project manifests. SvelteKit pages and server handlers, Medusa file-based
+API routes, bounded Node pathname/direct-URL/prefix guards, Cloudflare-style
+fetch path guards, and supported framework declarations retain their detector
+and source evidence.
+Genuinely dynamic dispatch can declare the otherwise unknowable transport
+shape next to its implementation with `@codeatlas-http GET /items/{id}`; use
+this narrow escape hatch only when static route detection cannot recover the
+path.
 
-Add one or more OpenAPI 3.0 or 3.1 documents when request/response contracts,
-conformance comparison, baselines, or fuzzing are needed:
+Add one or more OpenAPI 3.0 or 3.1 documents when exact request/response
+contracts, conformance comparison, baselines, schema fuzzing, or stateful
+workflows are needed:
 
 ```json
 {
@@ -390,7 +432,14 @@ conformance comparison, baselines, or fuzzing are needed:
           "server": {
             "command": "node",
             "args": ["src/test-server.js"],
-            "cwd": "."
+            "cwd": ".",
+            "prepare": [
+              {
+                "command": "node",
+                "args": ["src/prepare-test-data.js"],
+                "cwd": "."
+              }
+            ]
           },
           "positive_coverage": {
             "max_operations_without_success": 0,
@@ -432,11 +481,22 @@ one-off file override, repeated once per configured contract. The inventory
 normalizes operations, authentication requirements, parameters, request
 content, response content, and referenced schema digests. CodeAtlas compares
 that evidence; runtime schema libraries and the OpenAPI document remain the
-contract authority.
+contract authority. Provider output streams into a private file with a 16 MiB
+limit instead of being buffered without a bound. URL and target configuration
+rejects credentials, non-HTTP schemes, and ambiguous fuzz base URLs containing
+queries or fragments; provider URLs and headers are passed to the managed
+fetcher over standard input rather than exposed in process arguments.
 
 Without OpenAPI, `http check` emits one non-gating schema-missing warning while
-retaining the source inventory. `http baseline`, `http diff`, and baseline
-comparison require schema-backed contracts.
+retaining the source inventory. `http fuzz` automatically turns discovered
+endpoints into a temporary source-transport contract. It exercises path
+serialization, arbitrary request bodies, unsupported methods, and server-error
+handling without pretending that CodeAtlas inferred domain fields, query
+parameters, authentication rules, or response schemas. Source-transport
+reports are labeled `contractMode: "source_transport"`; aggregate positive
+coverage gates and the stateful profile remain exclusive to explicit OpenAPI
+contracts. `http baseline`, `http diff`, and baseline comparison also require
+schema-backed contracts.
 
 With OpenAPI, `http check` also reports malformed path parameters, undefined security
 schemes, missing success/error responses, missing request/response schemas,
@@ -453,9 +513,18 @@ requires package hashes, so a fresh machine cannot silently resolve a different
 fuzzer stack. Managed provisioning requires Python 3.10 or newer; set
 `CODEATLAS_PYTHON` when `python3` is not the intended interpreter. CodeAtlas
 also asks that exact CLI to load its bundled hook before starting the optional
-foreground test server. It then waits for the OpenAPI document and runs one
-standard policy for negative-data rejection, response conformance, missing
+foreground test server. CodeAtlas waits for owned servers to accept
+connections. Optional `server.prepare` commands run in order before the owned
+server and inherit the target's isolated environment; use them for idempotent
+local schema migrations or fixture preparation instead of project-specific
+wrapper scripts. Schema-backed targets materialize their configured `file`,
+`command`, `url`, or `target` provider into the private run directory, so the
+service does not also need to expose a schema route. They run one standard
+policy for negative-data rejection, response conformance, missing
 authentication, unsupported methods, and unhandled server errors.
+Source-transport targets run the narrower assertions that their static evidence
+can support: known operations must not crash and unsupported methods must be
+rejected.
 `standard` generates 75 examples per operation and `thorough` generates 750.
 The additive `stateful` profile runs 25 scenarios against explicit OpenAPI
 Links, rejects speculative link inference, and fails when it does not traverse
@@ -467,9 +536,11 @@ through `--seed` to reproduce the generated sequence.
 Schemathesis-specific filters. Header values can be literal test values or come
 from the target environment with `value_env`; do not commit real secrets.
 CodeAtlas injects these headers through its private Schemathesis hook rather
-than exposing their values in process arguments. A target may also declare a
-long-lived `request_adapter` command. CodeAtlas sends each exact serialized
-request and each observed response over the versioned
+than exposing their values in process arguments. Hook configuration lives in a
+unique owner-only file for the run, is removed when its owner exits normally,
+and is removed from the adapter process environment before the adapter starts.
+A target may also declare a long-lived `request_adapter` command. CodeAtlas
+sends each exact serialized request and each observed response over the versioned
 `codeatlas.http-request-adapter/v1` JSONL protocol. Request replies supply
 header and optional base64 body overrides before transport. CodeAtlas rejects
 an override when its component's generation mode is `negative`; overrides
@@ -479,13 +550,16 @@ application-owned adapter retain workflow credentials for linked requests.
 This keeps engine integration portable while each project reuses production
 signing or token code without depending on Schemathesis. Each run stores its
 report directory with owner-only permissions where the platform supports them.
+An interrupted run stops its managed processes and discards raw exchange
+evidence; the next run also clears any owned files left by an abnormal exit.
 It retains sanitized NDJSON, a compact evidence-safe JUnit report, and a compact
 versioned `codeatlas.http-fuzz/v1` summary; request and response bodies,
 sensitive headers, and URL queries are removed from retained evidence. The
 summary separates positive successes, negative rejections, server errors,
 operations whose positive cases only reached authentication rejection, and
 stateful link/scenario coverage. Projects retain only their domain-owned
-runtime fixture, explicit OpenAPI Links, adapter, and target configuration.
+runtime fixture, optional explicit OpenAPI contract and Links, adapter, and
+target configuration.
 
 For complete standard and thorough runs, `positive_coverage` turns that evidence
 into a regression gate without copying an operation allowlist. Set
@@ -497,10 +571,32 @@ working test credentials. Focused `--operation` runs and the additive stateful
 profile do not apply the aggregate budget. CodeAtlas's authentication probe
 accepts 401, 403, and privacy-preserving 404 rejections.
 
-This command covers HTTP operations exposed by the selected OpenAPI contract.
-It does not fuzz in-process APIs such as paint engines or brush models; those
-need language-native property tests over their own public operations and
-invariants.
+This command covers HTTP operations exposed by the selected OpenAPI contract or
+discovered in the selected source-transport boundary. It does not fuzz
+in-process APIs such as paint engines or brush models; those need
+language-native property tests over their public operations and invariants.
+
+## Local Development
+
+Run the complete local gate from this repository:
+
+```bash
+pnpm check
+```
+
+Local verification has three intentional layers:
+
+- `pnpm test` is the repeatable default and runs the npm installer tests plus the
+  fast Rust unit and executable-level integration tests.
+- `pnpm run test:http-fuzz` runs the explicit managed Schemathesis smoke against
+  a live fixture. It may provision the pinned Python toolchain on first use, so
+  it stays out of the default test loop.
+- `pnpm run self:check` dogfoods CodeAtlas's dead-code analysis against its own
+  source and writes the detailed report to `target/codeatlas-self-check.json`.
+
+`pnpm check` composes the default tests with architecture-spec validation, Rust
+formatting and linting, the dogfood scan, and the package-content check. Only
+high-confidence dead code or unresolved internal imports fail the dogfood gate.
 
 ## Release Model
 

@@ -1,0 +1,1 @@
+<p>Excluded fixture</p>

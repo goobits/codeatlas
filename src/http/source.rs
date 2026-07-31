@@ -8,7 +8,9 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 mod ecmascript;
+mod medusa;
 mod node;
+mod node_regex;
 mod python;
 mod rust;
 mod sveltekit;
@@ -163,8 +165,12 @@ fn detect_file(
     output: &mut Vec<HttpSourceOperation>,
 ) {
     let extension = path.extension().and_then(|value| value.to_str());
+    detect_annotations(path, repository_root, source, output);
     if sveltekit::is_route(path) {
         sveltekit::detect(path, repository_root, source, output);
+    }
+    if medusa::is_route(path) {
+        medusa::detect(path, repository_root, source, output);
     }
     match extension {
         Some("ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "svelte") => {
@@ -174,6 +180,39 @@ fn detect_file(
         Some("py") => python::detect(path, repository_root, source, output),
         Some("rs") => rust::detect(path, repository_root, source, output),
         _ => {}
+    }
+}
+
+fn detect_annotations(
+    path: &Path,
+    repository_root: &Path,
+    source: &str,
+    output: &mut Vec<HttpSourceOperation>,
+) {
+    use regex::Regex;
+    use std::sync::OnceLock;
+
+    static HTTP_ANNOTATION: OnceLock<Regex> = OnceLock::new();
+    let annotation = HTTP_ANNOTATION.get_or_init(|| {
+        Regex::new(
+            r#"(?mi)@codeatlas-http[ \t]+(GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH|TRACE)[ \t]+(/[^\s*]*)"#,
+        )
+        .expect("CodeAtlas HTTP annotation detector")
+    });
+    for captures in annotation.captures_iter(source) {
+        let (Some(method), Some(route)) = (captures.get(1), captures.get(2)) else {
+            continue;
+        };
+        push_operation(
+            output,
+            method.as_str(),
+            route.as_str(),
+            "codeatlas_http_annotation",
+            HttpConfidence::High,
+            path,
+            repository_root,
+            line_at(source, method.start()),
+        );
     }
 }
 
@@ -272,6 +311,22 @@ fn line_at(source: &str, offset: usize) -> u32 {
         + 1
 }
 
+fn exported_http_methods(source: &str) -> impl Iterator<Item = regex::Match<'_>> {
+    use regex::Regex;
+    use std::sync::OnceLock;
+
+    static EXPORT: OnceLock<Regex> = OnceLock::new();
+    let export = EXPORT.get_or_init(|| {
+		Regex::new(
+			r#"(?m)\bexport\s+(?:async\s+function|const|let|var)\s+(GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH)\b"#,
+		)
+		.expect("filesystem HTTP method detector")
+	});
+    export
+        .captures_iter(source)
+        .filter_map(|captures| captures.get(1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{detect_file, ecmascript::object_literals_after};
@@ -287,6 +342,7 @@ const createWidget = createRoute({
 })
 store.get('/ordinary')
 app.get("/health", handler)
+// @codeatlas-http GET /exports/{id}
 "#;
         let mut operations = Vec::new();
         detect_file(
@@ -301,6 +357,7 @@ app.get("/health", handler)
             .collect::<Vec<_>>();
         assert!(keys.contains(&"POST /widgets/{id}"));
         assert!(keys.contains(&"GET /health"));
+        assert!(keys.contains(&"GET /exports/{id}"));
         assert!(!keys.contains(&"GET /ordinary"));
         assert_eq!(object_literals_after(source, "createRoute").len(), 1);
     }
@@ -365,8 +422,15 @@ app.get("/health", handler)
             Path::new("/repo"),
             r#"
 if (req.method === 'GET' && url.pathname === '/health') {}
+if (request.method === 'GET' && request.url === '/readinessz') {}
+if (request.url === '/render') {
+    if (request.method !== 'POST') return
+    render()
+}
+if (req.method === 'GET' && req.url?.startsWith('/tmp-assets/')) {}
+if (req.method === 'GET' && requestUrl.pathname.startsWith('/downloads/')) {}
 const documentMatch = url.pathname.match(/^\/documents\/([^/]+)$/)
-if (req.method === 'DELETE' && documentMatch) {}
+if (request.method === 'DELETE' && documentMatch) {}
 "#,
             &mut node,
         );
@@ -375,6 +439,43 @@ if (req.method === 'DELETE' && documentMatch) {}
             .map(|operation| operation.key.as_str())
             .collect::<Vec<_>>();
         assert!(keys.contains(&"GET /health"));
+        assert!(keys.contains(&"GET /readinessz"));
+        assert!(keys.contains(&"POST /render"));
+        assert!(keys.contains(&"GET /tmp-assets/{path}"));
+        assert!(keys.contains(&"GET /downloads/{path}"));
         assert!(keys.contains(&"DELETE /documents/{segment1}"));
+    }
+
+    #[test]
+    fn detects_cloudflare_fetch_path_guards_without_inventing_gets_for_post_routes() {
+        let mut operations = Vec::new();
+        detect_file(
+            Path::new("/repo/src/worker.ts"),
+            Path::new("/repo"),
+            r#"
+export default {
+    async fetch(request: Request): Promise<Response> {
+        const url = new URL(request.url)
+        if (url.pathname === '/' || url.pathname === '/status') return new Response('ok')
+        if (url.pathname === '/api/check' && request.method === 'POST') return Response.json({})
+        if (url.pathname === '/upload') {
+            if (request.method !== 'POST') return new Response('wrong method', { status: 405 })
+            return new Response('upload')
+        }
+        return new Response('missing', { status: 404 })
+    }
+}
+"#,
+            &mut operations,
+        );
+        let keys = operations
+            .iter()
+            .map(|operation| operation.key.as_str())
+            .collect::<Vec<_>>();
+        assert!(keys.contains(&"GET /"));
+        assert!(keys.contains(&"GET /status"));
+        assert!(keys.contains(&"POST /api/check"), "{keys:?}");
+        assert!(!keys.contains(&"GET /api/check"));
+        assert!(!keys.contains(&"GET /upload"));
     }
 }

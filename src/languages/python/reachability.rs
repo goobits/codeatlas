@@ -52,7 +52,7 @@ fn collect_project_modules(
     source_roots: &[PathBuf],
     modules: &mut BTreeMap<ModuleKey, Module>,
 ) -> Result<()> {
-    let discovery = crate::analysis::source_files::discover(project);
+    let discovery = crate::source_discovery::discover(project);
     for warning in discovery.warnings {
         graph.record_boundary(
             &project.id,

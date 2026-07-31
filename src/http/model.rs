@@ -302,6 +302,8 @@ pub(crate) struct HttpFuzzReport {
     pub tool_version: String,
     pub target_id: String,
     pub contract_id: String,
+    #[serde(default)]
+    pub contract_mode: HttpFuzzContractMode,
     pub profile: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<String>,
@@ -309,6 +311,24 @@ pub(crate) struct HttpFuzzReport {
     pub stateful: Option<HttpFuzzStatefulSummary>,
     pub totals: HttpFuzzTotals,
     pub operations: Vec<HttpFuzzOperationSummary>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HttpFuzzContractMode {
+    #[default]
+    #[serde(rename = "openapi")]
+    OpenApi,
+    SourceTransport,
+}
+
+impl HttpFuzzContractMode {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenApi => "openapi",
+            Self::SourceTransport => "source_transport",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]

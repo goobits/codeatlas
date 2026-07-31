@@ -212,7 +212,7 @@ pub(super) fn annotate_report(report: &mut ScanReport, project: &ProjectConfig) 
                     .exports
                     .retain(|export| entrypoints.contains(&export.source_path));
             }
-            package::annotate(
+            analysis::annotate_package_exports(
                 report,
                 &project.root,
                 package,
@@ -222,7 +222,7 @@ pub(super) fn annotate_report(report: &mut ScanReport, project: &ProjectConfig) 
     }
     analysis::annotate_docs(report, &project.root);
     if project.config.docs.declaration_contract {
-        package::consolidate_declaration_symbols(report);
+        analysis::consolidate_declaration_symbols(report);
     }
     if project.config.docs.include_dependency_types {
         analysis::annotate_dependency_types(

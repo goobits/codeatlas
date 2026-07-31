@@ -35,6 +35,7 @@ pub(super) struct ModuleResolver {
 struct ProjectResolution {
     root: PathBuf,
     report_root: String,
+    workspace_root: Option<PathBuf>,
     aliases: AliasConfig,
     package_imports: BTreeMap<String, BTreeMap<String, String>>,
 }
@@ -87,7 +88,13 @@ impl ModuleResolver {
                 ProjectResolution {
                     root: project.root.clone(),
                     report_root: project.report_root.clone(),
-                    aliases: load_alias_config(&project.root)?,
+                    workspace_root: infer_workspace_root(&project.root, &project.report_root),
+                    aliases: load_alias_config(
+                        &project.root,
+                        modules
+                            .values()
+                            .filter(|module| module.project == project.id),
+                    )?,
                     package_imports: load_package_imports(
                         &project.root,
                         modules
@@ -117,6 +124,9 @@ impl ModuleResolver {
                 if let Some(resolved) = self.resolve_workspace_absolute(specifier) {
                     return Resolution::Resolved(resolved);
                 }
+                if self.is_unscanned_workspace_absolute(module, specifier) {
+                    return Resolution::Unscanned(specifier.to_string());
+                }
             }
             if let Some(resolved) = self.resolve_relative(module, specifier) {
                 return Resolution::Resolved(resolved);
@@ -145,13 +155,14 @@ impl ModuleResolver {
             return Resolution::External(specifier.to_string());
         }
         let source_specifier = source_path_specifier(specifier);
+        if let Some(resolved) = self.resolve_sveltekit_lib(module, source_specifier) {
+            return Resolution::Resolved(resolved);
+        }
         if let Some(resolved) = self.resolve_alias(module, source_specifier) {
             return Resolution::Resolved(resolved);
         }
-        if let Some(resolved) = self.resolve_workspace_package(source_specifier) {
-            return resolved
-                .map(Resolution::Resolved)
-                .unwrap_or_else(|| Resolution::UnresolvedInternal(specifier.to_string()));
+        if let Some(resolution) = self.resolve_workspace_package(source_specifier) {
+            return resolution;
         }
         Resolution::External(specifier.to_string())
     }
@@ -164,6 +175,10 @@ impl ModuleResolver {
     ) -> Vec<Resolution> {
         match target {
             DynamicDependencyTarget::Literal(specifier) => {
+                if kind == crate::languages::typescript::parser::DynamicDependencyKind::RuntimeFile
+                {
+                    return vec![self.resolve_configured_entrypoint(module, specifier)];
+                }
                 let resolved = self.resolve(module, specifier);
                 if kind
                     == crate::languages::typescript::parser::DynamicDependencyKind::ImportScripts
@@ -194,31 +209,75 @@ impl ModuleResolver {
         project_id: &ProjectId,
         specifier: &str,
     ) -> Option<ModuleKey> {
-        let suffix = crate::paths::normalize_path(Path::new(
+        let suffixes = module_candidates(Path::new(
             source_path_specifier(specifier).trim_start_matches("./"),
-        ));
-        if suffix.is_empty() || suffix.starts_with("../") {
+        ))
+        .into_iter()
+        .map(|candidate| crate::paths::normalize_path(&candidate))
+        .filter(|suffix| !suffix.is_empty() && !suffix.starts_with("../"))
+        .collect::<BTreeSet<_>>();
+        if suffixes.is_empty() {
             return None;
         }
-        let mut matches = self
+        let matches = self
             .modules
             .iter()
             .filter(|(project, path)| {
-                project == project_id && (path == &suffix || path.ends_with(&format!("/{suffix}")))
+                project == project_id
+                    && suffixes
+                        .iter()
+                        .any(|suffix| path == suffix || path.ends_with(&format!("/{suffix}")))
             })
-            .cloned();
-        let resolved = matches.next()?;
-        matches.next().is_none().then_some(resolved)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        (matches.len() == 1)
+            .then(|| matches.into_iter().next())
+            .flatten()
     }
 
     fn resolve_relative(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
         let raw = self.relative_path(module, specifier)?;
         self.resolve_project_path(&module.project, &raw)
+            .or_else(|| self.resolve_cross_project_path(module, &raw))
+    }
+
+    fn resolve_cross_project_path(&self, module: &Module, raw: &Path) -> Option<ModuleKey> {
+        let source_project = self.projects.get(&module.project)?;
+        let absolute = crate::paths::normalize_path(&source_project.root.join(raw));
+        self.projects
+            .iter()
+            .filter(|(project_id, _)| *project_id != &module.project)
+            .filter_map(|(project_id, project)| {
+                let root = crate::paths::normalize_path(&project.root);
+                let relative = absolute.strip_prefix(&format!("{root}/"))?;
+                self.resolve_project_path(project_id, Path::new(relative))
+                    .map(|resolved| (root.len(), resolved))
+            })
+            .max_by_key(|(root_length, _)| *root_length)
+            .map(|(_, resolved)| resolved)
     }
 
     fn resolve_workspace_absolute(&self, specifier: &str) -> Option<ModuleKey> {
-        let path = source_path_specifier(specifier).trim_start_matches('/');
-        self.projects
+        let source = source_path_specifier(specifier);
+        let source_path = Path::new(source);
+        if source_path.is_absolute() {
+            if let Some(resolved) = self
+                .projects
+                .iter()
+                .filter_map(|(project_id, project)| {
+                    let relative = source_path.strip_prefix(&project.root).ok()?;
+                    self.resolve_project_path(project_id, relative)
+                        .map(|resolved| (project.root.components().count(), resolved))
+                })
+                .max_by_key(|(root_depth, _)| *root_depth)
+                .map(|(_, resolved)| resolved)
+            {
+                return Some(resolved);
+            }
+        }
+        let path = source.trim_start_matches('/');
+        let exact = self
+            .projects
             .iter()
             .filter_map(|(project_id, project)| {
                 let report_root = project.report_root.trim_matches('/');
@@ -234,7 +293,45 @@ impl ModuleResolver {
             .max_by_key(|(root_length, _, _)| *root_length)
             .and_then(|(_, project, relative)| {
                 self.resolve_project_path(project, Path::new(relative))
-            })
+            });
+        exact.or_else(|| self.resolve_workspace_report_suffix(path))
+    }
+
+    fn resolve_workspace_report_suffix(&self, path: &str) -> Option<ModuleKey> {
+        let mut matches = BTreeSet::new();
+        for (project_id, project) in &self.projects {
+            let components = project
+                .report_root
+                .trim_matches('/')
+                .split('/')
+                .filter(|component| !component.is_empty() && *component != ".")
+                .collect::<Vec<_>>();
+            for start in 0..components.len() {
+                let prefix = components[start..].join("/");
+                let Some(rest) = path.strip_prefix(&prefix) else {
+                    continue;
+                };
+                let relative = if rest.is_empty() {
+                    ""
+                } else {
+                    let Some(relative) = rest.strip_prefix('/') else {
+                        continue;
+                    };
+                    relative
+                };
+                if let Some(resolved) = self.resolve_project_path(project_id, Path::new(relative)) {
+                    matches.insert((prefix.len(), resolved));
+                }
+            }
+        }
+        let longest = matches.iter().map(|(length, _)| *length).max()?;
+        let resolved = matches
+            .into_iter()
+            .filter_map(|(length, resolved)| (length == longest).then_some(resolved))
+            .collect::<BTreeSet<_>>();
+        (resolved.len() == 1)
+            .then(|| resolved.into_iter().next())
+            .flatten()
     }
 
     fn is_unscanned_relative(&self, module: &Module, specifier: &str) -> bool {
@@ -277,8 +374,11 @@ impl ModuleResolver {
             };
             for target in targets {
                 let target = apply_alias_capture(target, capture.as_deref());
-                let raw = project.aliases.base_url.join(target);
+                let raw = PathBuf::from(target);
                 if let Some(key) = self.resolve_project_path(&module.project, &raw) {
+                    return Some(key);
+                }
+                if let Some(key) = self.resolve_cross_project_path(module, &raw) {
                     return Some(key);
                 }
             }
@@ -288,6 +388,19 @@ impl ModuleResolver {
         } else {
             self.resolve_project_path(&module.project, &project.aliases.base_url.join(specifier))
         }
+    }
+
+    fn resolve_sveltekit_lib(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
+        let suffix = if specifier == "$lib" {
+            ""
+        } else {
+            specifier.strip_prefix("$lib/")?
+        };
+        let project = self.projects.get(&module.project)?;
+        let raw = nearest_sveltekit_source_root(&project.root, &module.path)
+            .join("lib")
+            .join(suffix);
+        self.resolve_project_path(&module.project, &raw)
     }
 
     fn resolve_package_import(&self, module: &Module, specifier: &str) -> PackageImportResolution {
@@ -319,15 +432,49 @@ impl ModuleResolver {
         PackageImportResolution::NotDeclared
     }
 
-    fn resolve_workspace_package(&self, specifier: &str) -> Option<Option<ModuleKey>> {
+    fn resolve_workspace_package(&self, specifier: &str) -> Option<Resolution> {
         let (package_name, public_path) = crate::package::split_package_specifier(specifier)?;
         let package = self.packages.get(&package_name)?;
-        Some(
-            package
-                .exports
-                .get(&public_path)
-                .and_then(|source| self.resolve_project_path(&package.project, Path::new(source))),
-        )
+        let Some(source) = package.exports.get(&public_path) else {
+            return Some(if is_generated_package_export(Path::new(&public_path)) {
+                Resolution::Unscanned(specifier.to_string())
+            } else {
+                Resolution::UnresolvedInternal(specifier.to_string())
+            });
+        };
+        if let Some(resolved) = self.resolve_project_path(&package.project, Path::new(source)) {
+            return Some(Resolution::Resolved(resolved));
+        }
+        let project = self.projects.get(&package.project)?;
+        let source_path = Path::new(source);
+        if project.root.join(source_path).is_file() || is_generated_package_export(source_path) {
+            Some(Resolution::Unscanned(specifier.to_string()))
+        } else {
+            Some(Resolution::UnresolvedInternal(specifier.to_string()))
+        }
+    }
+
+    fn is_unscanned_workspace_absolute(&self, module: &Module, specifier: &str) -> bool {
+        let Some(project) = self.projects.get(&module.project) else {
+            return false;
+        };
+        let Some(workspace_root) = project.workspace_root.as_ref() else {
+            return false;
+        };
+        let source = source_path_specifier(specifier);
+        let source_path = Path::new(source);
+        if source_path.is_absolute()
+            && source_path.starts_with(workspace_root)
+            && module_candidates(source_path)
+                .into_iter()
+                .any(|candidate| candidate.is_file())
+        {
+            return true;
+        }
+        let path = Path::new(source.trim_start_matches('/'));
+        module_candidates(path)
+            .into_iter()
+            .any(|candidate| workspace_root.join(candidate).is_file())
     }
 
     fn resolve_project_path(&self, project: &ProjectId, raw: &Path) -> Option<ModuleKey> {
@@ -356,6 +503,70 @@ impl ModuleResolver {
     ) -> Option<ModuleKey> {
         self.resolve_project_entrypoint(project, path)
             .or_else(|| self.resolve_unique_project_suffix(project, path))
+    }
+
+    pub(super) fn resolve_configured_entrypoint(&self, module: &Module, path: &str) -> Resolution {
+        let source = source_path_specifier(path);
+        if is_relative_specifier(source) {
+            let resolution = self.resolve(module, source);
+            if !matches!(resolution, Resolution::UnresolvedInternal(_)) {
+                return resolution;
+            }
+        }
+        if let Some(resolved) =
+            self.resolve_project_entrypoint_or_unique_suffix(&module.project, source)
+        {
+            return Resolution::Resolved(resolved);
+        }
+        let workspace_path = format!("/{}", source.trim_start_matches('/'));
+        if let Some(resolved) = self.resolve_workspace_absolute(&workspace_path) {
+            return Resolution::Resolved(resolved);
+        }
+        if let Some(resolved) = self.resolve_unique_workspace_suffix(source) {
+            return Resolution::Resolved(resolved);
+        }
+        if self.is_unscanned_configured_entrypoint(module, source) {
+            return Resolution::Unscanned(path.to_string());
+        }
+        Resolution::UnresolvedInternal(path.to_string())
+    }
+
+    fn is_unscanned_configured_entrypoint(&self, module: &Module, source: &str) -> bool {
+        let Some(project) = self.projects.get(&module.project) else {
+            return false;
+        };
+        let source = Path::new(source);
+        let raw = if source.is_absolute() {
+            source.to_path_buf()
+        } else {
+            project.root.join(source)
+        };
+        module_candidates(&raw)
+            .into_iter()
+            .any(|candidate| candidate.is_file())
+    }
+
+    fn resolve_unique_workspace_suffix(&self, specifier: &str) -> Option<ModuleKey> {
+        let suffixes = module_candidates(Path::new(
+            source_path_specifier(specifier).trim_start_matches("./"),
+        ))
+        .into_iter()
+        .map(|candidate| crate::paths::normalize_path(&candidate))
+        .filter(|suffix| !suffix.is_empty() && !suffix.starts_with("../"))
+        .collect::<BTreeSet<_>>();
+        let matches = self
+            .modules
+            .iter()
+            .filter(|(_, path)| {
+                suffixes
+                    .iter()
+                    .any(|suffix| path == suffix || path.ends_with(&format!("/{suffix}")))
+            })
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        (matches.len() == 1)
+            .then(|| matches.into_iter().next())
+            .flatten()
     }
 
     fn resolve_pattern(&self, module: &Module, prefix: &str, suffix: &str) -> Vec<Resolution> {
@@ -427,7 +638,8 @@ impl ModuleResolver {
                 .unwrap_or_else(|| Path::new(""))
                 .to_path_buf()
         };
-        self.modules
+        let mut specifiers = self
+            .modules
             .iter()
             .filter(|(project, _)| project == &module.project)
             .filter_map(|key| {
@@ -445,7 +657,25 @@ impl ModuleResolver {
                 };
                 Some((specifier, key.clone()))
             })
-            .collect()
+            .collect::<Vec<_>>();
+        if package_absolute {
+            let workspace_root = self
+                .projects
+                .get(&module.project)
+                .and_then(|project| project.workspace_root.as_ref());
+            if let Some(workspace_root) = workspace_root {
+                specifiers.extend(self.modules.iter().filter_map(|key| {
+                    let project = self.projects.get(&key.0)?;
+                    let absolute = project.root.join(&key.1);
+                    let relative = absolute.strip_prefix(workspace_root).ok()?;
+                    let normalized = crate::paths::normalize_path(relative);
+                    (!normalized.is_empty()).then(|| (format!("/{normalized}"), key.clone()))
+                }));
+            }
+        }
+        specifiers.sort();
+        specifiers.dedup();
+        specifiers
     }
 
     fn nearest_package_directory(&self, module: &Module) -> Option<PathBuf> {
@@ -460,6 +690,40 @@ impl ModuleResolver {
         }
         None
     }
+}
+
+fn infer_workspace_root(project_root: &Path, report_root: &str) -> Option<PathBuf> {
+    if report_root.is_empty() || report_root == "." {
+        return Some(project_root.to_path_buf());
+    }
+    let depth = Path::new(report_root)
+        .components()
+        .map(|component| match component {
+            std::path::Component::Normal(_) => Some(()),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?
+        .len();
+    project_root.ancestors().nth(depth).map(Path::to_path_buf)
+}
+
+fn nearest_sveltekit_source_root(project_root: &Path, module_path: &str) -> PathBuf {
+    let path = Path::new(module_path);
+    for source_root in path.ancestors().filter(|ancestor| {
+        ancestor
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == "src")
+    }) {
+        let app_root = source_root.parent().unwrap_or_else(|| Path::new(""));
+        if ["svelte.config.js", "svelte.config.ts", "svelte.config.mjs"]
+            .iter()
+            .any(|name| project_root.join(app_root).join(name).is_file())
+        {
+            return source_root.to_path_buf();
+        }
+    }
+    PathBuf::from("src")
 }
 
 enum PackageImportResolution {
@@ -493,6 +757,16 @@ fn is_generated_source_path(path: &Path) -> bool {
             Some(".svelte-kit" | "__generated__" | "generated" | "paraglide")
         )
     })
+}
+
+fn is_generated_package_export(path: &Path) -> bool {
+    is_generated_source_path(path)
+        || path.components().any(|component| {
+            matches!(
+                component.as_os_str().to_str(),
+                Some("build" | "dist" | "pkg" | "target")
+            )
+        })
 }
 
 fn is_sveltekit_virtual(specifier: &str) -> bool {
@@ -579,7 +853,10 @@ fn is_bounded_local_pattern(prefix: &str, suffix: &str) -> bool {
         && !is_non_source_specifier(&combined)
 }
 
-fn load_alias_config(root: &Path) -> Result<AliasConfig> {
+fn load_alias_config<'a>(
+    root: &Path,
+    modules: impl Iterator<Item = &'a Module>,
+) -> Result<AliasConfig> {
     let mut config = AliasConfig::default();
     for name in ["tsconfig.json", "jsconfig.json"] {
         let path = root.join(name);
@@ -602,7 +879,7 @@ fn load_alias_config(root: &Path) -> Result<AliasConfig> {
                     .into_iter()
                     .flatten()
                     .filter_map(Value::as_str)
-                    .map(str::to_string)
+                    .map(|target| crate::paths::normalize_path(&config.base_url.join(target)))
                     .collect::<Vec<_>>();
                 if !targets.is_empty() {
                     config.paths.insert(pattern.clone(), targets);
@@ -612,7 +889,47 @@ fn load_alias_config(root: &Path) -> Result<AliasConfig> {
         break;
     }
 
+    for module in modules.filter(|module| is_alias_config_module(&module.path)) {
+        for (pattern, targets) in &module.info.reachability.configured_aliases {
+            for target in targets {
+                add_configured_alias(&mut config.paths, pattern, target);
+            }
+        }
+    }
+    for targets in config.paths.values_mut() {
+        targets.sort();
+        targets.dedup();
+    }
     Ok(config)
+}
+
+fn add_configured_alias(paths: &mut BTreeMap<String, Vec<String>>, pattern: &str, target: &str) {
+    let target = crate::paths::normalize_path(Path::new(target));
+    paths
+        .entry(pattern.to_string())
+        .or_default()
+        .push(target.clone());
+    if !pattern.contains('*') {
+        paths
+            .entry(format!("{pattern}/*"))
+            .or_default()
+            .push(format!("{target}/*"));
+    }
+}
+
+fn is_alias_config_module(path: &str) -> bool {
+    let Some(name) = Path::new(path).file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    [
+        "svelte.config.",
+        "vite.config.",
+        "vitest.config.",
+        "webpack.config.",
+        "rollup.config.",
+    ]
+    .iter()
+    .any(|prefix| name.starts_with(prefix))
 }
 
 fn load_package_imports<'a>(
