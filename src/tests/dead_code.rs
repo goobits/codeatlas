@@ -1,8 +1,8 @@
 use crate::config::ProjectConfig;
 use crate::dead_code::{DeadCodeFinding, DeadCodeFindingKind};
 use crate::domain::source_graph::{
-    AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, EdgeTarget,
-    FindingConfidence, NodeId, ProjectId, SourceContext, SourceEdge, SourceEdgeKind,
+    AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope,
+    EdgeTarget, FindingConfidence, NodeId, ProjectId, SourceContext, SourceEdge, SourceEdgeKind,
     SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceProject,
     SourceSymbol, SourceSymbolKind, SourceVisibility,
 };
@@ -47,7 +47,21 @@ fn finding<'a>(
 
 #[test]
 fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
-    let report = analyze_fixture("ecmascript");
+    let graph = source_graph_fixture("ecmascript");
+    let test_context = graph
+        .contexts
+        .values()
+        .find(|context| context.name == "ecmascript-tests")
+        .expect("conventional ECMAScript test context");
+    assert_eq!(test_context.role, ContextRole::Test);
+    assert_eq!(test_context.scope, ContextScope::Runtime);
+    let package_context = graph
+        .contexts
+        .values()
+        .find(|context| context.name == "npm-package-exports")
+        .expect("npm package export context");
+    assert_eq!(package_context.scope, ContextScope::PublicSurface);
+    let report = dead_code::analyze(&graph).expect("dead-code report");
 
     let unused_file = finding(
         &report.findings,
@@ -67,6 +81,19 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
     assert_eq!(test_only.roles, [ContextRole::Test].into_iter().collect());
     assert!(!test_only.gates);
 
+    let test_only_symbol = finding(
+        &report.findings,
+        DeadCodeFindingKind::TestOnly,
+        "src/used.ts",
+        Some("testOnly"),
+    );
+    assert_eq!(
+        test_only_symbol.roles,
+        [ContextRole::Test].into_iter().collect()
+    );
+    assert_eq!(test_only_symbol.root_contexts[0].root, "tests/used.test.ts");
+    assert!(!test_only_symbol.gates);
+
     let tooling_only = finding(
         &report.findings,
         DeadCodeFindingKind::ToolingOnly,
@@ -75,9 +102,22 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
     );
     assert_eq!(
         tooling_only.roles,
-        [ContextRole::Tooling].into_iter().collect()
+        [ContextRole::Test, ContextRole::Tooling]
+            .into_iter()
+            .collect()
     );
     assert!(!tooling_only.gates);
+    assert!(!report.findings.iter().any(|finding| {
+        matches!(
+            (
+                finding.kind,
+                finding.path.as_str(),
+                finding.symbol.as_deref()
+            ),
+            (DeadCodeFindingKind::TestOnly, "tests/used.test.ts", _)
+                | (DeadCodeFindingKind::ToolingOnly, "scripts/build.ts", _)
+        )
+    }));
 
     assert!(!report.findings.iter().any(|finding| {
         finding.kind == DeadCodeFindingKind::UnreachableFile
@@ -175,7 +215,12 @@ fn svelte_reachability_connects_script_facts_without_private_symbol_gates() {
 
 #[test]
 fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
-    let report = analyze_fixture("dynamic");
+    let graph = source_graph_fixture("dynamic");
+    let contexts = graph.contexts.values().collect::<Vec<_>>();
+    assert_eq!(contexts.len(), 1);
+    assert_eq!(contexts[0].name, "npm-package-exports");
+    assert_eq!(contexts[0].scope, ContextScope::PublicSurface);
+    let report = dead_code::analyze(&graph).expect("dead-code report");
     let boundaries = report
         .findings
         .iter()
@@ -254,6 +299,7 @@ fn unresolved_internal_edges_remain_high_confidence_gates() {
             project,
             name: "application".to_string(),
             role: ContextRole::Production,
+            scope: ContextScope::Runtime,
             roots: BTreeSet::from([entry]),
         })
         .expect("context");
@@ -334,6 +380,7 @@ fn unrelated_dynamic_imports_do_not_lower_private_symbol_confidence() {
             project,
             name: "application".to_string(),
             role: ContextRole::Production,
+            scope: ContextScope::Runtime,
             roots: BTreeSet::from([entry]),
         })
         .expect("context");
@@ -451,25 +498,19 @@ fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
     assert_eq!(unused_private.confidence, FindingConfidence::High);
     assert!(unused_private.gates);
 
-    let test_only = finding(
-        &report.findings,
-        DeadCodeFindingKind::TestOnly,
-        "tests/integration.rs",
-        None,
-    );
-    assert_eq!(test_only.roles, [ContextRole::Test].into_iter().collect());
-    for path in ["build.rs", "examples/demo.rs", "benches/bench.rs"] {
-        let tooling_only = finding(
-            &report.findings,
-            DeadCodeFindingKind::ToolingOnly,
-            path,
-            None,
-        );
-        assert_eq!(
-            tooling_only.roles,
-            [ContextRole::Tooling].into_iter().collect()
-        );
-    }
+    assert!(!report.findings.iter().any(|finding| {
+        matches!(
+            (
+                finding.kind,
+                finding.path.as_str(),
+                finding.symbol.as_deref()
+            ),
+            (DeadCodeFindingKind::TestOnly, "tests/integration.rs", _)
+                | (DeadCodeFindingKind::ToolingOnly, "build.rs", _)
+                | (DeadCodeFindingKind::ToolingOnly, "examples/demo.rs", _)
+                | (DeadCodeFindingKind::ToolingOnly, "benches/bench.rs", _)
+        )
+    }));
 
     assert!(!report.findings.iter().any(|finding| {
         finding.kind == DeadCodeFindingKind::UnreachableFile

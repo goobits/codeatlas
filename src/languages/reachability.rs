@@ -189,6 +189,7 @@ fn add_contexts(graph: &mut SourceGraph, project: &ResolvedAnalysisProject) -> R
                 project: project.id.clone(),
                 name: name.clone(),
                 role: config.role,
+                scope: config.scope,
                 roots,
             })
             .map_err(anyhow::Error::from)?;

@@ -39,6 +39,7 @@ pub(crate) struct RustAnalysisConfig {
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct AnalysisContextConfig {
     pub role: crate::domain::source_graph::ContextRole,
+    pub scope: crate::domain::source_graph::ContextScope,
     pub entrypoints: Vec<String>,
 }
 
@@ -46,6 +47,7 @@ impl Default for AnalysisContextConfig {
     fn default() -> Self {
         Self {
             role: crate::domain::source_graph::ContextRole::Production,
+            scope: crate::domain::source_graph::ContextScope::Runtime,
             entrypoints: Vec::new(),
         }
     }
@@ -77,6 +79,7 @@ impl ProjectConfig {
                         "application".to_string(),
                         AnalysisContextConfig {
                             role: crate::domain::source_graph::ContextRole::Production,
+                            scope: crate::domain::source_graph::ContextScope::Runtime,
                             entrypoints: self.config.entrypoints.clone(),
                         },
                     )])
@@ -174,7 +177,7 @@ fn validate_analysis_languages(languages: &[String], project: &str) -> Result<()
 mod tests {
     use super::AnalysisProjectConfig;
     use crate::config::CodeAtlasConfig;
-    use crate::domain::source_graph::ContextRole;
+    use crate::domain::source_graph::{ContextRole, ContextScope};
 
     #[test]
     fn config_reads_arbitrary_named_reachability_contexts() {
@@ -187,6 +190,7 @@ mod tests {
                     "contexts": {
                         "application": {
                             "role": "production",
+                            "scope": "public_surface",
                             "entrypoints": ["src/index.ts"]
                         },
                         "unit-tests": {
@@ -203,6 +207,11 @@ mod tests {
         let project = &config.projects[0];
         assert_eq!(project.id.as_deref(), Some("web"));
         assert_eq!(project.contexts["unit-tests"].role, ContextRole::Test);
+        assert_eq!(
+            project.contexts["application"].scope,
+            ContextScope::PublicSurface
+        );
+        assert_eq!(project.contexts["unit-tests"].scope, ContextScope::Runtime);
         assert_eq!(project.assume_reachable, ["src/runtime/plugins/**/*.ts"]);
 
         let round_trip =

@@ -232,9 +232,9 @@ fn expand(
 mod tests {
     use super::{create, ContextSliceRequest};
     use crate::domain::source_graph::{
-        AnalysisCompleteness, ContextId, ContextRole, EdgeTarget, NodeId, ProjectId, SourceContext,
-        SourceEdge, SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage,
-        SourceNode, SourceProject,
+        AnalysisCompleteness, ContextId, ContextRole, ContextScope, EdgeTarget, NodeId, ProjectId,
+        SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph,
+        SourceLanguage, SourceNode, SourceProject,
     };
     use std::collections::BTreeSet;
 
@@ -287,6 +287,7 @@ mod tests {
                 project,
                 name: "application".to_owned(),
                 role: ContextRole::Production,
+                scope: ContextScope::Runtime,
                 roots: BTreeSet::from([a]),
             })
             .expect("context");

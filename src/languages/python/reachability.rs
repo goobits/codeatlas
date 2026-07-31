@@ -1,9 +1,9 @@
 use super::parser;
 use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
-    AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, EdgeTarget, NodeId, ProjectId,
-    SourceBinding, SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence, SourceFile,
-    SourceGraph, SourceLanguage, SourceNode, SourceSymbol, SourceSymbolKind,
+    AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, EdgeTarget, NodeId,
+    ProjectId, SourceBinding, SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence,
+    SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceSymbol, SourceSymbolKind,
 };
 use crate::domain::{Symbol, SymbolKind, Visibility};
 use anyhow::{Context, Result};
@@ -601,6 +601,7 @@ fn add_pyproject_entrypoints(
             project: project.id.clone(),
             name: "python-project-entrypoints".to_string(),
             role: ContextRole::Production,
+            scope: ContextScope::Runtime,
             roots,
         })
         .map_err(anyhow::Error::from)

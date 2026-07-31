@@ -9,10 +9,6 @@
           "role": "production",
           "entrypoints": ["src/index.ts"]
         },
-        "unit-tests": {
-          "role": "test",
-          "entrypoints": ["tests/**/*.test.ts"]
-        },
         "build-tools": {
           "role": "tooling",
           "entrypoints": ["scripts/**/*.ts"]

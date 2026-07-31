@@ -5,8 +5,8 @@
 //! traversable edges.
 
 use crate::domain::source_graph::{
-    AnalysisCompleteness, ContextId, ContextRole, FindingConfidence, GraphDiagnostic, NodeId,
-    ProjectId, SourceGraph, SourceNode,
+    AnalysisCompleteness, ContextId, ContextRole, ContextScope, EdgeTarget, FindingConfidence,
+    GraphDiagnostic, NodeId, ProjectId, SourceEdgeKind, SourceGraph, SourceNode,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -27,18 +27,25 @@ impl Reachability {
     pub(crate) fn analyze(graph: &SourceGraph) -> Result<Self, Vec<GraphDiagnostic>> {
         graph.validate()?;
 
-        let mut adjacency = BTreeMap::<NodeId, BTreeSet<NodeId>>::new();
+        let mut runtime_adjacency = BTreeMap::<NodeId, BTreeSet<NodeId>>::new();
+        let mut public_surface_adjacency = BTreeMap::<NodeId, BTreeSet<NodeId>>::new();
         for edge in &graph.edges {
-            if let Some(target) = edge.traversable_target() {
-                adjacency
-                    .entry(edge.from.clone())
-                    .or_default()
-                    .insert(target.clone());
-            }
+            let EdgeTarget::Node(target) = &edge.to else {
+                continue;
+            };
+            let adjacency = match edge.kind {
+                SourceEdgeKind::Contains => continue,
+                SourceEdgeKind::ReExport => &mut public_surface_adjacency,
+                _ => &mut runtime_adjacency,
+            };
+            adjacency
+                .entry(edge.from.clone())
+                .or_default()
+                .insert(target.clone());
         }
         for (node_id, node) in &graph.nodes {
             if let SourceNode::Symbol(symbol) = node {
-                adjacency
+                runtime_adjacency
                     .entry(node_id.clone())
                     .or_default()
                     .insert(symbol.file.clone());
@@ -49,7 +56,14 @@ impl Reachability {
         for context in graph.contexts.values() {
             for root in &context.roots {
                 let mut visited = BTreeSet::new();
-                let mut queue = VecDeque::from([root.clone()]);
+                let mut queue = match context.scope {
+                    ContextScope::Runtime => VecDeque::from([root.clone()]),
+                    ContextScope::PublicSurface => {
+                        public_surface_roots(root, &public_surface_adjacency)
+                            .into_iter()
+                            .collect()
+                    }
+                };
 
                 while let Some(node) = queue.pop_front() {
                     if !visited.insert(node.clone()) {
@@ -74,7 +88,7 @@ impl Reachability {
                             root: root.clone(),
                         });
 
-                    if let Some(targets) = adjacency.get(&node) {
+                    if let Some(targets) = runtime_adjacency.get(&node) {
                         queue.extend(targets.iter().cloned());
                     }
                 }
@@ -95,6 +109,23 @@ impl Reachability {
     pub(crate) fn roots(&self, node: &NodeId) -> BTreeSet<ReachabilityRoot> {
         self.roots_by_node.get(node).cloned().unwrap_or_default()
     }
+}
+
+fn public_surface_roots(
+    root: &NodeId,
+    adjacency: &BTreeMap<NodeId, BTreeSet<NodeId>>,
+) -> BTreeSet<NodeId> {
+    let mut reachable = BTreeSet::new();
+    let mut queue = VecDeque::from([root.clone()]);
+    while let Some(node) = queue.pop_front() {
+        if !reachable.insert(node.clone()) {
+            continue;
+        }
+        if let Some(targets) = adjacency.get(&node) {
+            queue.extend(targets.iter().cloned());
+        }
+    }
+    reachable
 }
 
 pub(crate) fn project_confidence(graph: &SourceGraph, project: &ProjectId) -> FindingConfidence {
@@ -169,9 +200,10 @@ fn confidence_for_completeness(completeness: AnalysisCompleteness) -> FindingCon
 mod tests {
     use super::{project_confidence, Reachability};
     use crate::domain::source_graph::{
-        AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, EdgeTarget,
-        FindingConfidence, NodeId, ProjectId, SourceContext, SourceEdge, SourceEdgeKind,
-        SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceProject,
+        AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope,
+        EdgeTarget, FindingConfidence, NodeId, ProjectId, SourceContext, SourceEdge,
+        SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
+        SourceProject,
     };
     use std::collections::{BTreeSet, HashSet};
 
@@ -224,6 +256,7 @@ mod tests {
                 project,
                 name: "application".to_string(),
                 role: ContextRole::Production,
+                scope: ContextScope::Runtime,
                 roots: BTreeSet::from([entry.clone()]),
             })
             .expect("context");
@@ -241,6 +274,105 @@ mod tests {
         let roots = reachability.roots(&helper);
         assert_eq!(roots.len(), 1);
         assert_eq!(roots.iter().next().map(|root| &root.root), Some(&entry));
+    }
+
+    #[test]
+    fn public_surface_expands_only_exports_of_configured_roots() {
+        let project = ProjectId("example".to_string());
+        let entry = NodeId::file(&project, "src/index.ts");
+        let helper = NodeId::file(&project, "src/helper.ts");
+        let public_api = NodeId::symbol(&entry, "function/publicApi");
+        let helper_export = NodeId::symbol(&helper, "function/helperExport");
+        let mut graph = graph_with_project(project.clone());
+        graph
+            .add_node(
+                entry.clone(),
+                SourceNode::File(file(&project, "src/index.ts")),
+            )
+            .expect("entry");
+        graph
+            .add_node(
+                helper.clone(),
+                SourceNode::File(file(&project, "src/helper.ts")),
+            )
+            .expect("helper");
+        for (id, file, name) in [
+            (public_api.clone(), entry.clone(), "publicApi"),
+            (helper_export.clone(), helper.clone(), "helperExport"),
+        ] {
+            graph
+                .add_node(
+                    id,
+                    SourceNode::Symbol(crate::domain::source_graph::SourceSymbol {
+                        project: project.clone(),
+                        file,
+                        name: name.to_string(),
+                        symbol_kind: crate::domain::source_graph::SourceSymbolKind::Function,
+                        visibility: crate::domain::source_graph::SourceVisibility::Public,
+                        span: None,
+                    }),
+                )
+                .expect("symbol");
+        }
+        graph.edges.extend([
+            edge(
+                entry.clone(),
+                EdgeTarget::Node(public_api.clone()),
+                SourceEdgeKind::ReExport,
+            ),
+            edge(
+                entry.clone(),
+                EdgeTarget::Node(helper.clone()),
+                SourceEdgeKind::ModuleDependency,
+            ),
+            edge(
+                helper.clone(),
+                EdgeTarget::Node(helper_export.clone()),
+                SourceEdgeKind::ReExport,
+            ),
+        ]);
+        let runtime_id = ContextId::new(&project, "application");
+        graph
+            .add_context(SourceContext {
+                id: runtime_id.clone(),
+                project: project.clone(),
+                name: "application".to_string(),
+                role: ContextRole::Production,
+                scope: ContextScope::Runtime,
+                roots: BTreeSet::from([entry.clone()]),
+            })
+            .expect("runtime context");
+        let public_id = ContextId::new(&project, "package-exports");
+        graph
+            .add_context(SourceContext {
+                id: public_id.clone(),
+                project,
+                name: "package-exports".to_string(),
+                role: ContextRole::Production,
+                scope: ContextScope::PublicSurface,
+                roots: BTreeSet::from([entry.clone()]),
+            })
+            .expect("public context");
+
+        let reachability = Reachability::analyze(&graph).expect("valid graph");
+
+        assert_eq!(
+            reachability.contexts(&public_api),
+            BTreeSet::from([public_id.clone()])
+        );
+        assert!(reachability.contexts(&helper_export).is_empty());
+        assert_eq!(
+            reachability.contexts(&helper),
+            BTreeSet::from([runtime_id, public_id])
+        );
+        assert_eq!(
+            reachability
+                .roots(&public_api)
+                .iter()
+                .map(|root| root.root.clone())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([entry])
+        );
     }
 
     #[test]

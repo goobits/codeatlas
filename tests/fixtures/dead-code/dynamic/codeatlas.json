@@ -4,12 +4,7 @@
       "id": "dynamic",
       "root": ".",
       "languages": ["ts", "svelte"],
-      "contexts": {
-        "application": {
-          "role": "production",
-          "entrypoints": ["src/index.ts"]
-        }
-      }
+      "contexts": {}
     }
   ]
 }

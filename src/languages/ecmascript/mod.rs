@@ -1,9 +1,10 @@
 use super::typescript::parser;
 use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
-    AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, ProjectId, SourceBinding, SourceEdge,
-    SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
-    SourceSymbol, SourceSymbolKind, SourceVisibility,
+    AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, EdgeTarget, NodeId,
+    ProjectId, SourceBinding, SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence,
+    SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceSymbol, SourceSymbolKind,
+    SourceVisibility,
 };
 use crate::domain::{Symbol, SymbolKind};
 use anyhow::Result;
@@ -14,6 +15,9 @@ use std::path::Path;
 type ProjectSelection<'a> = (&'a ResolvedAnalysisProject, BTreeSet<SourceLanguage>);
 type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.ecmascript";
+const PACKAGE_EXPORT_CONTEXT: &str = "npm-package-exports";
+const TEST_CONTEXT: &str = "ecmascript-tests";
+const TEST_DISCOVERY_PATTERN: &str = "**/*.test.ts";
 
 mod resolver;
 
@@ -30,6 +34,9 @@ pub(crate) fn collect_projects(
     for key in keys {
         connect_module(graph, &key, &modules, &resolver)?;
     }
+    for (project, _) in projects {
+        add_discovered_contexts(graph, project, &modules)?;
+    }
     Ok(())
 }
 
@@ -41,13 +48,97 @@ struct Module {
     symbols: BTreeMap<String, BTreeSet<NodeId>>,
 }
 
+fn add_discovered_contexts(
+    graph: &mut SourceGraph,
+    project: &ResolvedAnalysisProject,
+    modules: &BTreeMap<ModuleKey, Module>,
+) -> Result<()> {
+    if !project.contexts.contains_key(PACKAGE_EXPORT_CONTEXT) {
+        let roots = crate::package::discover(&project.root)?
+            .into_iter()
+            .flat_map(|package| package.exports)
+            .filter_map(|export| {
+                modules
+                    .get(&(project.id.clone(), export.source_path))
+                    .map(|module| module.file.clone())
+            })
+            .collect::<BTreeSet<_>>();
+        add_discovered_context(
+            graph,
+            project,
+            PACKAGE_EXPORT_CONTEXT,
+            ContextRole::Production,
+            ContextScope::PublicSurface,
+            roots,
+        )?;
+    }
+
+    if !project.contexts.contains_key(TEST_CONTEXT) {
+        let roots = modules
+            .values()
+            .filter(|module| {
+                module.project == project.id && is_conventional_test_module(&module.path)
+            })
+            .map(|module| module.file.clone())
+            .collect();
+        add_discovered_context(
+            graph,
+            project,
+            TEST_CONTEXT,
+            ContextRole::Test,
+            ContextScope::Runtime,
+            roots,
+        )?;
+    }
+    Ok(())
+}
+
+fn add_discovered_context(
+    graph: &mut SourceGraph,
+    project: &ResolvedAnalysisProject,
+    name: &str,
+    role: ContextRole,
+    scope: ContextScope,
+    roots: BTreeSet<NodeId>,
+) -> Result<()> {
+    if roots.is_empty() {
+        return Ok(());
+    }
+    graph
+        .add_context(SourceContext {
+            id: ContextId::new(&project.id, name),
+            project: project.id.clone(),
+            name: name.to_string(),
+            role,
+            scope,
+            roots,
+        })
+        .map_err(anyhow::Error::from)
+}
+
+fn is_conventional_test_module(path: &str) -> bool {
+    let Some((stem, extension)) = path.rsplit_once('.') else {
+        return false;
+    };
+    matches!(
+        extension,
+        "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "svelte"
+    ) && (stem.ends_with(".test") || stem.ends_with(".spec"))
+}
+
 fn collect_project_modules(
     graph: &mut SourceGraph,
     project: &ResolvedAnalysisProject,
     languages: &BTreeSet<SourceLanguage>,
     modules: &mut BTreeMap<ModuleKey, Module>,
 ) -> Result<()> {
-    let discovery = crate::analysis::source_files::discover(project);
+    let test_discovery_patterns = if project.contexts.contains_key(TEST_CONTEXT) {
+        Vec::new()
+    } else {
+        vec![TEST_DISCOVERY_PATTERN.to_string()]
+    };
+    let discovery =
+        crate::analysis::source_files::discover_with_patterns(project, &test_discovery_patterns);
     for warning in discovery.warnings {
         graph.record_boundary(
             &project.id,
@@ -584,5 +675,20 @@ fn source_symbol_kind(kind: SymbolKind) -> SourceSymbolKind {
         SymbolKind::Trait => SourceSymbolKind::Trait,
         SymbolKind::TypeAlias => SourceSymbolKind::TypeAlias,
         SymbolKind::Decorator => SourceSymbolKind::Other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_conventional_test_module;
+
+    #[test]
+    fn conventional_test_detection_excludes_test_helpers() {
+        assert!(is_conventional_test_module("src/example.test.ts"));
+        assert!(is_conventional_test_module("tests/example.spec.js"));
+        assert!(is_conventional_test_module("src/Example.test.svelte"));
+        assert!(!is_conventional_test_module("src/__tests__/support.ts"));
+        assert!(!is_conventional_test_module("src/contest.ts"));
+        assert!(!is_conventional_test_module("src/example.test.d.ts"));
     }
 }

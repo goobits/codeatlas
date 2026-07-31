@@ -25,8 +25,14 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         .iter()
         .map(|(id, context)| (id.clone(), context.name.clone()))
         .collect::<BTreeMap<_, _>>();
+    let context_roots = graph
+        .contexts
+        .values()
+        .flat_map(|context| context.roots.iter().cloned())
+        .collect::<BTreeSet<_>>();
     let mut report = DeadCodeReport::new();
     let mut unreachable_files = BTreeSet::new();
+    let mut non_production_files = BTreeSet::new();
 
     for project in graph.projects.values() {
         let mut files_by_language = BTreeMap::new();
@@ -90,11 +96,11 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 },
             ));
         } else if !roles.contains(&ContextRole::Production) {
-            let kind = if roles.contains(&ContextRole::Test) {
-                DeadCodeFindingKind::TestOnly
-            } else {
-                DeadCodeFindingKind::ToolingOnly
-            };
+            non_production_files.insert(node_id.clone());
+            if context_roots.contains(node_id) {
+                continue;
+            }
+            let kind = context_only_kind(&roles);
             report.findings.push(finding(
                 kind,
                 FindingDetails {
@@ -122,15 +128,69 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         let SourceNode::Symbol(symbol) = node else {
             continue;
         };
-        if unreachable_files.contains(&symbol.file) {
+        if unreachable_files.contains(&symbol.file) || non_production_files.contains(&symbol.file) {
             continue;
         }
         let contexts = reachability.contexts(node_id);
-        if !contexts.is_empty() {
-            continue;
-        }
         let language = file_language(graph, &symbol.file);
         let project_confidence = symbol_confidence(graph, &symbol.project, &symbol.file);
+        let path = graph
+            .nodes
+            .get(&symbol.file)
+            .and_then(|node| match node {
+                SourceNode::File(file) => Some(file.path.clone()),
+                SourceNode::Symbol(_) => None,
+            })
+            .unwrap_or_else(|| symbol.file.0.clone());
+        if !contexts.is_empty() {
+            let roles = reachability.roles(node_id);
+            if roles.contains(&ContextRole::Production) || context_roots.contains(node_id) {
+                continue;
+            }
+            let kind = context_only_kind(&roles);
+            let confidence = if symbol.visibility == SourceVisibility::Public {
+                lower_confidence(project_confidence)
+            } else {
+                project_confidence
+            };
+            let message = match kind {
+                DeadCodeFindingKind::TestOnly => {
+                    "Only test contexts reach this symbol; removing those tests may make it removable."
+                }
+                DeadCodeFindingKind::ToolingOnly => {
+                    if roles.contains(&ContextRole::Test) {
+                        "Only tooling and test contexts reach this symbol; production code does not use it."
+                    } else {
+                        "Only tooling contexts reach this symbol; production code does not use it."
+                    }
+                }
+                _ => unreachable!(),
+            };
+            report.findings.push(finding(
+                kind,
+                FindingDetails {
+                    project: symbol.project.0.clone(),
+                    path: path.clone(),
+                    symbol: Some(symbol.name.clone()),
+                    language,
+                    contexts: context_labels(&contexts, &context_names),
+                    root_contexts: root_context_labels(
+                        &reachability.roots(node_id),
+                        &context_names,
+                        graph,
+                    ),
+                    roles,
+                    confidence,
+                    evidence: SourceEvidence {
+                        path,
+                        span: symbol.span.clone(),
+                        extractor: "codeatlas.source-graph".to_string(),
+                    },
+                    message: message.to_string(),
+                },
+            ));
+            continue;
+        }
         let (kind, confidence, message) = match symbol.visibility {
             SourceVisibility::Private | SourceVisibility::Internal => (
                 DeadCodeFindingKind::UnusedPrivateSymbol,
@@ -145,14 +205,6 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             ),
             SourceVisibility::Unknown => continue,
         };
-        let path = graph
-            .nodes
-            .get(&symbol.file)
-            .and_then(|node| match node {
-                SourceNode::File(file) => Some(file.path.clone()),
-                SourceNode::Symbol(_) => None,
-            })
-            .unwrap_or_else(|| symbol.file.0.clone());
         report.findings.push(finding(
             kind,
             FindingDetails {
@@ -285,6 +337,14 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
 
     report.canonicalize();
     Ok(report)
+}
+
+fn context_only_kind(roles: &BTreeSet<ContextRole>) -> DeadCodeFindingKind {
+    if roles.len() == 1 && roles.contains(&ContextRole::Test) {
+        DeadCodeFindingKind::TestOnly
+    } else {
+        DeadCodeFindingKind::ToolingOnly
+    }
 }
 
 struct FindingDetails {

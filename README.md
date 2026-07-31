@@ -217,7 +217,13 @@ are arbitrary.
 			"contexts": {
 				"application": {
 					"role": "production",
+					"scope": "runtime",
 					"entrypoints": ["src/index.ts", "src/App.svelte"]
+				},
+				"public-api": {
+					"role": "production",
+					"scope": "public_surface",
+					"entrypoints": ["src/public.ts"]
 				},
 				"unit-tests": {
 					"role": "test",
@@ -234,8 +240,28 @@ are arbitrary.
 }
 ```
 
+Context roles (`production`, `test`, and `tooling`) describe who uses code.
+Context scopes describe how roots are interpreted:
+
+- `runtime` is the default. It follows executed imports and references, but
+  does not count a declaration merely because a file exports it.
+- `public_surface` expands exports from the configured root files, then follows
+  their runtime dependencies. It does not turn exports of every imported module
+  into public API.
+
+JavaScript, TypeScript, and Svelte projects automatically add a production
+`npm-package-exports` public-surface context when `package.json` exposes source
+entries. Conventional `*.test.*` and `*.spec.*` files become runtime roots in
+an `ecmascript-tests` context. Files such as `__tests__/support.ts` are scanned
+and followed when imported, but are not roots merely because they live in a
+test directory. Explicit contexts remain additive and can override either
+automatic context by using its name.
+
 Each project may select `js`, `ts`, `svelte`, `py`, and `rs`. Rust projects can
-also configure `rust.all_features` or an explicit `rust.features` list.
+also configure `rust.all_features` or an explicit `rust.features` list. Cargo
+library targets use public-surface semantics; binaries, examples, benches,
+build scripts, and tests use runtime semantics. Python project entrypoints are
+runtime roots.
 
 Svelte reachability reads both module and instance scripts, preserves their
 source spans, and connects JavaScript, TypeScript, and Svelte modules through
@@ -245,11 +271,14 @@ references are not yet a complete symbol graph. They are never emitted as
 high-confidence unused-private findings.
 
 The versioned dead-code report distinguishes unreachable private code,
-test-only code, tooling-only code, unreferenced public APIs, unresolved
-internal edges, and dynamic boundaries. Only high-confidence unreachable
-files, unused private symbols, and unresolved internal imports can fail
-`dead-code --check`. Public APIs without repository consumers remain advisory
-because external consumers may exist.
+test-only files and symbols, tooling-only code, unreferenced public APIs,
+unresolved internal edges, and dynamic boundaries. A symbol in a
+production-reachable file can therefore be reported as test-only when only test
+roots reach that symbol. Context roots themselves are omitted from these
+context-only findings to avoid listing every test file and test function.
+Only high-confidence unreachable files, unused private symbols, and unresolved
+internal imports can fail `dead-code --check`. Public APIs without repository
+consumers remain advisory because external consumers may exist.
 
 The dead-code JSON contract is schema version 3. Project summaries include
 per-language file counts, and each finding includes the exact named context

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-pub(crate) const SOURCE_GRAPH_SCHEMA_VERSION: u32 = 2;
+pub(crate) const SOURCE_GRAPH_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SourceGraph {
@@ -374,6 +374,8 @@ pub(crate) struct SourceContext {
     pub project: ProjectId,
     pub name: String,
     pub role: ContextRole,
+    #[serde(default)]
+    pub scope: ContextScope,
     pub roots: BTreeSet<NodeId>,
 }
 
@@ -385,6 +387,16 @@ pub(crate) enum ContextRole {
     Tooling,
 }
 
+#[derive(
+    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ContextScope {
+    #[default]
+    Runtime,
+    PublicSurface,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct SourceEdge {
     pub from: NodeId,
@@ -393,18 +405,6 @@ pub(crate) struct SourceEdge {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bindings: Vec<SourceBinding>,
     pub evidence: SourceEvidence,
-}
-
-impl SourceEdge {
-    pub(crate) fn traversable_target(&self) -> Option<&NodeId> {
-        if self.kind == SourceEdgeKind::Contains {
-            return None;
-        }
-        match &self.to {
-            EdgeTarget::Node(target) => Some(target),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]

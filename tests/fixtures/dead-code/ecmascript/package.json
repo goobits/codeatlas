@@ -1,0 +1,8 @@
+{
+  "name": "ecmascript-fixture",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts"
+    }
+  }
+}

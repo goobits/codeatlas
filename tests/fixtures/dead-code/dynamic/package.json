@@ -1,5 +1,10 @@
 {
   "name": "dynamic-fixture",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts"
+    }
+  },
   "imports": {
     "#root": "./src/rootAlias.ts"
   }

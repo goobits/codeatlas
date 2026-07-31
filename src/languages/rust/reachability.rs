@@ -1,9 +1,10 @@
 use super::parser;
 use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
-    AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, EdgeTarget, NodeId, ProjectId,
-    SourceBinding, SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence, SourceFile,
-    SourceGraph, SourceLanguage, SourceNode, SourceSymbol, SourceSymbolKind, SourceVisibility,
+    AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, EdgeTarget, NodeId,
+    ProjectId, SourceBinding, SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence,
+    SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceSymbol, SourceSymbolKind,
+    SourceVisibility,
 };
 use crate::domain::{Symbol, SymbolKind, Visibility};
 use anyhow::{Context, Result};
@@ -519,6 +520,11 @@ fn add_cargo_contexts(
                 project: project.id.clone(),
                 name,
                 role: target.role,
+                scope: if target.library {
+                    ContextScope::PublicSurface
+                } else {
+                    ContextScope::Runtime
+                },
                 roots,
             })
             .map_err(anyhow::Error::from)?;
@@ -544,6 +550,7 @@ fn add_cargo_contexts(
                 project: project.id.clone(),
                 name,
                 role: ContextRole::Test,
+                scope: ContextScope::Runtime,
                 roots: test_roots,
             })
             .map_err(anyhow::Error::from)?;
