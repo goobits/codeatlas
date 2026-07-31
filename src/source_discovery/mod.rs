@@ -44,12 +44,16 @@ pub(crate) fn discover_with_patterns(
     let filter_patterns = patterns.clone();
     let excluded_roots = project.excluded_roots.clone();
     let no_default_ignore = project.no_default_ignore;
+    let repository_backed = root
+        .ancestors()
+        .any(|ancestor| ancestor.join(".git").exists());
     let mut builder = WalkBuilder::new(&root);
     builder
         .hidden(false)
+        .parents(repository_backed)
         .git_global(false)
         .git_exclude(false)
-        .require_git(false)
+        .require_git(repository_backed)
         .filter_entry(move |entry| {
             !excluded_roots.iter().any(|root| entry.path() == root)
                 && should_descend(
@@ -260,5 +264,50 @@ mod tests {
 
         assert!(paths.contains(&"visible.ts".to_string()));
         assert!(!paths.contains(&"ignored/unreachable.ts".to_string()));
+    }
+
+    #[test]
+    fn discovery_stops_parent_gitignore_at_the_repository_boundary() {
+        let temporary = TemporaryProject::new();
+        let repository = temporary.path().join("repository");
+        let root = repository.join("project");
+        std::fs::create_dir_all(repository.join(".git")).expect("repository marker");
+        std::fs::create_dir_all(root.join("build")).expect("selected build directory");
+        std::fs::create_dir_all(root.join("generated")).expect("ignored generated directory");
+        std::fs::write(temporary.path().join(".gitignore"), "build/\n")
+            .expect("parent gitignore fixture");
+        std::fs::write(repository.join(".gitignore"), "generated/\n")
+            .expect("repository gitignore fixture");
+        std::fs::write(
+            root.join("build/compile.ts"),
+            "export const compile = true;\n",
+        )
+        .expect("selected build fixture");
+        std::fs::write(
+            root.join("generated/unreachable.ts"),
+            "export const ignored = true;\n",
+        )
+        .expect("ignored generated fixture");
+        let project = ResolvedAnalysisProject {
+            id: ProjectId("nested-discovery".to_string()),
+            root: root.clone(),
+            report_root: ".".to_string(),
+            languages: vec!["ts".to_string()],
+            contexts: BTreeMap::new(),
+            assume_reachable: vec!["build/compile.ts".to_string()],
+            no_default_ignore: false,
+            rust: RustAnalysisConfig::default(),
+            workspace_member: false,
+            excluded_roots: Vec::new(),
+        };
+
+        let paths = discover(&project)
+            .files
+            .into_iter()
+            .map(|path| crate::paths::normalize_relative_path(&path, &root))
+            .collect::<Vec<_>>();
+
+        assert!(paths.contains(&"build/compile.ts".to_string()));
+        assert!(!paths.contains(&"generated/unreachable.ts".to_string()));
     }
 }
