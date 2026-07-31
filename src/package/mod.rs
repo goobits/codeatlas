@@ -3,6 +3,7 @@
 mod annotation;
 mod dependency;
 mod manifest;
+mod runtime;
 mod source_layout;
 
 pub(crate) use annotation::{annotate, consolidate_declaration_symbols};
@@ -11,3 +12,4 @@ pub(crate) use dependency::{
     split_specifier as split_package_specifier,
 };
 pub(crate) use manifest::{discover, discover_for_docs};
+pub(crate) use runtime::discover_entrypoints as discover_runtime_entrypoints;

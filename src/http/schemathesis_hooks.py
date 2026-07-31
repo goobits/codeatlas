@@ -133,10 +133,18 @@ class _Adapter:
             for name, header_value in headers.items()
         ):
             raise RuntimeError("CodeAtlas request adapter returned invalid headers")
+        if headers and _is_negative_component(request, "header"):
+            raise RuntimeError(
+                "CodeAtlas request adapters must preserve negatively generated headers"
+            )
         if "bodyBase64" in value and not (
             isinstance(value["bodyBase64"], str) or value["bodyBase64"] is None
         ):
             raise RuntimeError("CodeAtlas request adapter returned an invalid body override")
+        if "bodyBase64" in value and _is_negative_component(request, "body"):
+            raise RuntimeError(
+                "CodeAtlas request adapters must preserve negatively generated bodies"
+            )
         value["headers"] = headers
         return value
 
@@ -277,6 +285,12 @@ if _STATIC_HEADERS:
 
 def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
+
+
+def _is_negative_component(request: dict[str, Any], component: str) -> bool:
+    generation = request.get("generation")
+    components = generation.get("components") if isinstance(generation, dict) else None
+    return isinstance(components, dict) and components.get(component) == "negative"
 
 
 def _prepared_body(value: Any) -> bytes | None:

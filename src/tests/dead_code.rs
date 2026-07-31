@@ -217,20 +217,35 @@ fn svelte_reachability_connects_script_facts_without_private_symbol_gates() {
 fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
     let graph = source_graph_fixture("dynamic");
     let contexts = graph.contexts.values().collect::<Vec<_>>();
-    assert_eq!(contexts.len(), 1);
-    assert_eq!(contexts[0].name, "npm-package-exports");
-    assert_eq!(contexts[0].scope, ContextScope::PublicSurface);
+    assert_eq!(contexts.len(), 2);
+    let package_context = contexts
+        .iter()
+        .find(|context| context.name == "npm-package-exports")
+        .expect("package export context");
+    assert_eq!(package_context.scope, ContextScope::PublicSurface);
+    let runtime_context = contexts
+        .iter()
+        .find(|context| context.name == "npm-package-runtime")
+        .expect("package runtime context");
+    assert_eq!(runtime_context.role, ContextRole::Production);
+    assert_eq!(runtime_context.scope, ContextScope::Runtime);
+    assert_eq!(runtime_context.roots.len(), 1);
     let report = dead_code::analyze(&graph).expect("dead-code report");
     let boundaries = report
         .findings
         .iter()
         .filter(|finding| finding.kind == DeadCodeFindingKind::DynamicBoundary)
         .collect::<Vec<_>>();
-    assert_eq!(boundaries.len(), 1);
+    assert_eq!(boundaries.len(), 2);
     assert!(boundaries
         .iter()
         .all(|finding| finding.confidence != FindingConfidence::High && !finding.gates));
-    assert!(boundaries[0].message.contains("<dynamic expression>"));
+    assert!(boundaries
+        .iter()
+        .any(|finding| finding.message.contains("<dynamic expression>")));
+    assert!(boundaries
+        .iter()
+        .any(|finding| finding.message.contains("./generated.js?url&no-inline")));
     assert!(!report
         .findings
         .iter()
@@ -250,6 +265,7 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
         "src/pages/a.ts",
         "src/pages/b.ts",
         "src/rootAlias.ts",
+        "src/resource.ts",
         "src/feature/consumer.ts",
         "src/feature/nestedTarget.ts",
     ] {

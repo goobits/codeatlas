@@ -251,11 +251,13 @@ Context scopes describe how roots are interpreted:
 
 JavaScript, TypeScript, and Svelte projects automatically add a production
 `npm-package-exports` public-surface context when `package.json` exposes source
-entries. Conventional `*.test.*` and `*.spec.*` files become runtime roots in
-an `ecmascript-tests` context. Files such as `__tests__/support.ts` are scanned
-and followed when imported, but are not roots merely because they live in a
-test directory. Explicit contexts remain additive and can override either
-automatic context by using its name.
+entries. Local source paths in npm `start` and `serve` scripts also become
+production roots in an `npm-package-runtime` context. Conventional `*.test.*`
+and `*.spec.*` files become runtime roots in an `ecmascript-tests` context.
+Files such as `__tests__/support.ts` are scanned and followed when imported,
+but are not roots merely because they live in a test directory. Explicit
+contexts remain additive and can override automatic contexts by using their
+names.
 
 Each project may select `js`, `ts`, `svelte`, `py`, and `rs`. Rust projects can
 also configure `rust.all_features` or an explicit `rust.features` list. Cargo
@@ -444,8 +446,10 @@ than exposing their values in process arguments. A target may also declare a
 long-lived `request_adapter` command. CodeAtlas sends each exact serialized
 request and each observed response over the versioned
 `codeatlas.http-request-adapter/v1` JSONL protocol. Request replies supply
-header and optional base64 body overrides before transport; response
-observations let an
+header and optional base64 body overrides before transport. CodeAtlas rejects
+an override when its component's generation mode is `negative`; overrides
+exist to supply valid fixtures or credentials for the remaining components.
+Response observations let an
 application-owned adapter retain workflow credentials for linked requests.
 This keeps engine integration portable while each project reuses production
 signing or token code without depending on Schemathesis. Each run stores its

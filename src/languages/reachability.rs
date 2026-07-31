@@ -11,6 +11,7 @@ use crate::domain::source_graph::{
 use anyhow::{Context, Result};
 use globset::{GlobBuilder, GlobMatcher};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result<SourceGraph> {
     if projects.is_empty() {
@@ -106,6 +107,7 @@ fn configured_or_detected_languages(
     }
 
     let mut languages = BTreeSet::new();
+    let is_cargo_project = project.root.join("Cargo.toml").is_file();
     let walker = walkdir::WalkDir::new(&project.root).into_iter();
     for entry in walker.filter_entry(|entry| {
         entry.depth() == 0
@@ -123,30 +125,24 @@ fn configured_or_detected_languages(
         if !entry.file_type().is_file() {
             continue;
         }
-        match entry
-            .path()
-            .extension()
-            .and_then(|extension| extension.to_str())
-        {
-            Some("js" | "jsx" | "mjs" | "cjs") => {
-                languages.insert(SourceLanguage::JavaScript);
-            }
-            Some("ts" | "tsx") => {
-                languages.insert(SourceLanguage::TypeScript);
-            }
-            Some("svelte") => {
-                languages.insert(SourceLanguage::Svelte);
-            }
-            Some("py") => {
-                languages.insert(SourceLanguage::Python);
-            }
-            Some("rs") => {
-                languages.insert(SourceLanguage::Rust);
-            }
-            _ => {}
+        if let Some(language) = detected_language(entry.path(), is_cargo_project) {
+            languages.insert(language);
         }
     }
     Ok(languages)
+}
+
+fn detected_language(path: &Path, is_cargo_project: bool) -> Option<SourceLanguage> {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("js" | "jsx" | "mjs" | "cjs") => Some(SourceLanguage::JavaScript),
+        Some("ts" | "tsx") => Some(SourceLanguage::TypeScript),
+        Some("svelte") => Some(SourceLanguage::Svelte),
+        Some("py") => Some(SourceLanguage::Python),
+        // A nested Cargo package is a separate project boundary. Selecting the
+        // parent as Rust would run Cargo metadata against the wrong root.
+        Some("rs") if is_cargo_project => Some(SourceLanguage::Rust),
+        _ => None,
+    }
 }
 
 fn add_contexts(graph: &mut SourceGraph, project: &ResolvedAnalysisProject) -> Result<()> {
@@ -243,4 +239,24 @@ fn matching_files(
             _ => None,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::detected_language;
+    use crate::domain::source_graph::SourceLanguage;
+    use std::path::Path;
+
+    #[test]
+    fn automatic_rust_detection_respects_cargo_project_roots() {
+        assert_eq!(
+            detected_language(Path::new("src/index.ts"), false),
+            Some(SourceLanguage::TypeScript)
+        );
+        assert_eq!(detected_language(Path::new("rust/src/lib.rs"), false), None);
+        assert_eq!(
+            detected_language(Path::new("src/lib.rs"), true),
+            Some(SourceLanguage::Rust)
+        );
+    }
 }

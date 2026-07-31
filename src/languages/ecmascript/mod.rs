@@ -16,7 +16,9 @@ type ProjectSelection<'a> = (&'a ResolvedAnalysisProject, BTreeSet<SourceLanguag
 type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.ecmascript";
 const PACKAGE_EXPORT_CONTEXT: &str = "npm-package-exports";
+const PACKAGE_RUNTIME_CONTEXT: &str = "npm-package-runtime";
 const TEST_CONTEXT: &str = "ecmascript-tests";
+const TOOLING_CONTEXT: &str = "ecmascript-tooling";
 const TEST_DISCOVERY_PATTERN: &str = "**/*.test.ts";
 
 mod resolver;
@@ -35,7 +37,7 @@ pub(crate) fn collect_projects(
         connect_module(graph, &key, &modules, &resolver)?;
     }
     for (project, _) in projects {
-        add_discovered_contexts(graph, project, &modules)?;
+        add_discovered_contexts(graph, project, &modules, &resolver)?;
     }
     Ok(())
 }
@@ -52,6 +54,7 @@ fn add_discovered_contexts(
     graph: &mut SourceGraph,
     project: &ResolvedAnalysisProject,
     modules: &BTreeMap<ModuleKey, Module>,
+    resolver: &ModuleResolver,
 ) -> Result<()> {
     if !project.contexts.contains_key(PACKAGE_EXPORT_CONTEXT) {
         let roots = crate::package::discover(&project.root)?
@@ -73,6 +76,22 @@ fn add_discovered_contexts(
         )?;
     }
 
+    if !project.contexts.contains_key(PACKAGE_RUNTIME_CONTEXT) {
+        let roots = crate::package::discover_runtime_entrypoints(&project.root)?
+            .into_iter()
+            .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, &path))
+            .filter_map(|key| modules.get(&key).map(|module| module.file.clone()))
+            .collect();
+        add_discovered_context(
+            graph,
+            project,
+            PACKAGE_RUNTIME_CONTEXT,
+            ContextRole::Production,
+            ContextScope::Runtime,
+            roots,
+        )?;
+    }
+
     if !project.contexts.contains_key(TEST_CONTEXT) {
         let roots = modules
             .values()
@@ -86,6 +105,24 @@ fn add_discovered_contexts(
             project,
             TEST_CONTEXT,
             ContextRole::Test,
+            ContextScope::Runtime,
+            roots,
+        )?;
+    }
+
+    if !project.contexts.contains_key(TOOLING_CONTEXT) {
+        let roots = modules
+            .values()
+            .filter(|module| {
+                module.project == project.id && is_conventional_tooling_module(&module.path)
+            })
+            .map(|module| module.file.clone())
+            .collect();
+        add_discovered_context(
+            graph,
+            project,
+            TOOLING_CONTEXT,
+            ContextRole::Tooling,
             ContextScope::Runtime,
             roots,
         )?;
@@ -124,6 +161,17 @@ fn is_conventional_test_module(path: &str) -> bool {
         extension,
         "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "svelte"
     ) && (stem.ends_with(".test") || stem.ends_with(".spec"))
+}
+
+fn is_conventional_tooling_module(path: &str) -> bool {
+    if path.contains('/') {
+        return false;
+    }
+    let Some((stem, extension)) = path.rsplit_once('.') else {
+        return false;
+    };
+    matches!(extension, "js" | "mjs" | "cjs" | "ts")
+        && (stem.ends_with(".config") || stem == "gulpfile")
 }
 
 fn collect_project_modules(
@@ -680,7 +728,7 @@ fn source_symbol_kind(kind: SymbolKind) -> SourceSymbolKind {
 
 #[cfg(test)]
 mod tests {
-    use super::is_conventional_test_module;
+    use super::{is_conventional_test_module, is_conventional_tooling_module};
 
     #[test]
     fn conventional_test_detection_excludes_test_helpers() {
@@ -690,5 +738,14 @@ mod tests {
         assert!(!is_conventional_test_module("src/__tests__/support.ts"));
         assert!(!is_conventional_test_module("src/contest.ts"));
         assert!(!is_conventional_test_module("src/example.test.d.ts"));
+    }
+
+    #[test]
+    fn conventional_tooling_detection_is_limited_to_root_config_modules() {
+        assert!(is_conventional_tooling_module("vitest.config.ts"));
+        assert!(is_conventional_tooling_module("playwright.config.mjs"));
+        assert!(is_conventional_tooling_module("gulpfile.js"));
+        assert!(!is_conventional_tooling_module("src/runtime.config.ts"));
+        assert!(!is_conventional_tooling_module("vitest.config.json"));
     }
 }

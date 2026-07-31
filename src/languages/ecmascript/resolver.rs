@@ -97,11 +97,7 @@ impl ModuleResolver {
         if is_non_source_specifier(specifier) {
             return Resolution::External(specifier.to_string());
         }
-        if matches!(specifier, "." | "..")
-            || specifier.starts_with("./")
-            || specifier.starts_with("../")
-            || specifier.starts_with('/')
-        {
+        if is_relative_specifier(specifier) {
             if let Some(resolved) = self.resolve_relative(module, specifier) {
                 return Resolution::Resolved(resolved);
             }
@@ -126,10 +122,11 @@ impl ModuleResolver {
         if specifier.contains(':') {
             return Resolution::External(specifier.to_string());
         }
-        if let Some(resolved) = self.resolve_alias(module, specifier) {
+        let source_specifier = source_path_specifier(specifier);
+        if let Some(resolved) = self.resolve_alias(module, source_specifier) {
             return Resolution::Resolved(resolved);
         }
-        if let Some(resolved) = self.resolve_workspace_package(specifier) {
+        if let Some(resolved) = self.resolve_workspace_package(source_specifier) {
             return resolved
                 .map(Resolution::Resolved)
                 .unwrap_or_else(|| Resolution::UnresolvedInternal(specifier.to_string()));
@@ -157,6 +154,7 @@ impl ModuleResolver {
     }
 
     fn resolve_relative(&self, module: &Module, specifier: &str) -> Option<ModuleKey> {
+        let specifier = source_path_specifier(specifier);
         if let Some(path) = specifier.strip_prefix('/') {
             let package_root = self.nearest_package_directory(module)?;
             return self.resolve_project_path(&module.project, &package_root.join(path));
@@ -235,10 +233,29 @@ impl ModuleResolver {
         None
     }
 
+    pub(super) fn resolve_project_entrypoint(
+        &self,
+        project: &ProjectId,
+        path: &str,
+    ) -> Option<ModuleKey> {
+        self.resolve_project_path(project, Path::new(path))
+    }
+
     fn resolve_pattern(&self, module: &Module, prefix: &str, suffix: &str) -> Vec<Resolution> {
         let combined = format!("{prefix}{suffix}");
         if is_non_source_specifier(&combined) {
             return vec![Resolution::External(combined)];
+        }
+        let source_specifier = source_path_specifier(prefix);
+        if source_specifier != prefix && is_relative_specifier(source_specifier) {
+            if let Some(resolved) = self.resolve_relative(module, source_specifier) {
+                return vec![Resolution::Resolved(resolved)];
+            }
+            return if unsupported_relative_specifier(&combined) {
+                vec![Resolution::Unsupported(combined)]
+            } else {
+                vec![Resolution::UnresolvedInternal(format!("{prefix}*{suffix}"))]
+            };
         }
         if !is_bounded_local_pattern(prefix, suffix) {
             return vec![Resolution::DynamicUnknown(format!("{prefix}*{suffix}"))];
@@ -336,7 +353,10 @@ enum PackageImportResolution {
 }
 
 fn unsupported_relative_specifier(specifier: &str) -> bool {
-    let normalized = specifier.split(['?', '#']).next().unwrap_or(specifier);
+    if has_resource_query(specifier) {
+        return true;
+    }
+    let normalized = source_path_specifier(specifier);
     let Some(extension) = Path::new(normalized)
         .extension()
         .and_then(|extension| extension.to_str())
@@ -359,12 +379,15 @@ fn is_sveltekit_virtual(specifier: &str) -> bool {
             .is_some_and(|name| name == "$types")
 }
 
+fn is_relative_specifier(specifier: &str) -> bool {
+    matches!(specifier, "." | "..")
+        || specifier.starts_with("./")
+        || specifier.starts_with("../")
+        || specifier.starts_with('/')
+}
+
 fn is_non_source_specifier(specifier: &str) -> bool {
-    if specifier.ends_with("?raw") || specifier.ends_with("?url") || specifier.ends_with("?compose")
-    {
-        return true;
-    }
-    let normalized = specifier.split(['?', '#']).next().unwrap_or(specifier);
+    let normalized = source_path_specifier(specifier);
     matches!(
         Path::new(normalized)
             .extension()
@@ -398,6 +421,29 @@ fn is_non_source_specifier(specifier: &str) -> bool {
                 | "svx"
         )
     )
+}
+
+fn has_resource_query(specifier: &str) -> bool {
+    let Some((_, query)) = specifier.split_once('?') else {
+        return false;
+    };
+    query
+        .split('#')
+        .next()
+        .unwrap_or(query)
+        .split('&')
+        .filter_map(|parameter| parameter.split('=').next())
+        .any(|name| matches!(name, "compose" | "raw" | "url"))
+}
+
+fn source_path_specifier(specifier: &str) -> &str {
+    let query = specifier.find('?').unwrap_or(specifier.len());
+    let fragment = if specifier.starts_with('#') {
+        specifier.len()
+    } else {
+        specifier.find('#').unwrap_or(specifier.len())
+    };
+    &specifier[..query.min(fragment)]
 }
 
 fn is_bounded_local_pattern(prefix: &str, suffix: &str) -> bool {

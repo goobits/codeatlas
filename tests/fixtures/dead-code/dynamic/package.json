@@ -1,5 +1,8 @@
 {
   "name": "dynamic-fixture",
+  "scripts": {
+    "start": "node ./src/index.js"
+  },
   "exports": {
     ".": {
       "source": "./src/index.ts"

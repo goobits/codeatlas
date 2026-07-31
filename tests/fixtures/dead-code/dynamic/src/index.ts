@@ -5,6 +5,8 @@ import "./feature/consumer";
 import "./styles.css";
 import config from "./config.json";
 import rawAsset from "./asset.svg?raw";
+import sourceUrl from "./resource.ts?url&no-inline";
+import "./generated.js?url&no-inline";
 import "$app/environment";
 import "$env/static/public";
 import type { PageData } from "./$types";
@@ -20,10 +22,16 @@ export async function loadUnknown(specifier: string): Promise<unknown> {
   return import(specifier);
 }
 
+export async function loadCacheBusted(): Promise<unknown> {
+  return import(`./resource.js?cacheBust=${Date.now()}`);
+}
+
 void config;
 void rawAsset;
+void sourceUrl;
 void pages;
 void content;
 void (null as PageData | null);
 void loadPlugin("plugin");
 void loadUnknown("./unknown");
+void loadCacheBusted();
