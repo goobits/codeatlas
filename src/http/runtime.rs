@@ -33,7 +33,7 @@ impl OwnedHttpServer {
                     target.id, server.command.command
                 )
             })?;
-        wait_until_listening(&mut child, target)?;
+        wait_until_listening(&mut child, target, server)?;
         Ok(Self { child })
     }
 
@@ -79,7 +79,11 @@ fn run_prepare_command(
     Ok(())
 }
 
-fn wait_until_listening(child: &mut Child, target: &ResolvedHttpFuzzTarget) -> Result<()> {
+fn wait_until_listening(
+    child: &mut Child,
+    target: &ResolvedHttpFuzzTarget,
+    server: &ResolvedHttpFuzzServer,
+) -> Result<()> {
     let (host, port) = server_address(&target.base_url)?;
     let addresses = (host.as_str(), port)
         .to_socket_addrs()
@@ -88,7 +92,7 @@ fn wait_until_listening(child: &mut Child, target: &ResolvedHttpFuzzTarget) -> R
     if addresses.is_empty() {
         anyhow::bail!("HTTP target {} resolved to no addresses", target.base_url);
     }
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + Duration::from_secs(server.startup_timeout_seconds);
     loop {
         if addresses
             .iter()
@@ -107,9 +111,10 @@ fn wait_until_listening(child: &mut Child, target: &ResolvedHttpFuzzTarget) -> R
         }
         if Instant::now() >= deadline {
             anyhow::bail!(
-                "HTTP server for target {} did not accept connections at {} within 30 seconds",
+                "HTTP server for target {} did not accept connections at {} within {} seconds",
                 target.id,
-                target.base_url
+                target.base_url,
+                server.startup_timeout_seconds
             );
         }
         std::thread::sleep(Duration::from_millis(50));

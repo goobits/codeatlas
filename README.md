@@ -433,6 +433,7 @@ workflows are needed:
             "command": "node",
             "args": ["src/test-server.js"],
             "cwd": ".",
+            "startup_timeout_seconds": 90,
             "prepare": [
               {
                 "command": "node",
@@ -513,8 +514,10 @@ requires package hashes, so a fresh machine cannot silently resolve a different
 fuzzer stack. Managed provisioning requires Python 3.10 or newer; set
 `CODEATLAS_PYTHON` when `python3` is not the intended interpreter. CodeAtlas
 also asks that exact CLI to load its bundled hook before starting the optional
-foreground test server. CodeAtlas waits for owned servers to accept
-connections. Optional `server.prepare` commands run in order before the owned
+foreground test server. CodeAtlas waits 30 seconds for owned servers to accept
+connections by default. Set bounded `server.startup_timeout_seconds` (1–600)
+for production builds with slower cold starts. Optional `server.prepare`
+commands run in order before the owned
 server and inherit the target's isolated environment; use them for idempotent
 local schema migrations or fixture preparation instead of project-specific
 wrapper scripts. Schema-backed targets materialize their configured `file`,

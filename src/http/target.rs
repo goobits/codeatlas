@@ -70,6 +70,7 @@ pub(crate) struct ResolvedHttpFuzzCommand {
 pub(crate) struct ResolvedHttpFuzzServer {
     pub command: ResolvedHttpFuzzCommand,
     pub prepare: Vec<ResolvedHttpFuzzCommand>,
+    pub startup_timeout_seconds: u64,
 }
 
 impl ProjectConfig {
@@ -499,7 +500,17 @@ impl ProjectConfig {
                 )
             })
             .collect::<Result<Vec<_>>>()?;
-        Ok(ResolvedHttpFuzzServer { command, prepare })
+        let startup_timeout_seconds = server.startup_timeout_seconds.unwrap_or(30);
+        if !(1..=600).contains(&startup_timeout_seconds) {
+            anyhow::bail!(
+                "HTTP fuzz target {target_id} server `startup_timeout_seconds` must be between 1 and 600"
+            );
+        }
+        Ok(ResolvedHttpFuzzServer {
+            command,
+            prepare,
+            startup_timeout_seconds,
+        })
     }
 }
 
@@ -791,6 +802,19 @@ mod tests {
                     "request_adapter": { "command": "" }
                 }),
                 "needs a valid `command`",
+            ),
+            (
+                "invalid server startup timeout",
+                json!({
+                    "id": "public-local",
+                    "contract": "public-api",
+                    "base_url": "http://127.0.0.1:3443",
+                    "server": {
+                        "command": "node",
+                        "startup_timeout_seconds": 0
+                    }
+                }),
+                "must be between 1 and 600",
             ),
         ];
 
