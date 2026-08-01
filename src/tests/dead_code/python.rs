@@ -66,4 +66,13 @@ fn python_reflection_and_dynamic_imports_lower_certainty() {
         .iter()
         .filter(|finding| finding.kind == DeadCodeFindingKind::UnreachableFile)
         .all(|finding| { finding.confidence != FindingConfidence::High && !finding.gates }));
+    assert!(!report.findings.iter().any(|finding| {
+        matches!(
+            finding.kind,
+            DeadCodeFindingKind::UnreferencedPublic | DeadCodeFindingKind::UnusedPrivateSymbol
+        ) && matches!(
+            finding.symbol.as_deref(),
+            Some("load_plugin" | "_registered_helper")
+        )
+    }));
 }

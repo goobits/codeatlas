@@ -428,8 +428,23 @@ fn connect_explicit_exports(
 }
 
 fn connect_local_references(graph: &mut SourceGraph, module: &Module) {
+    for entrypoint in &module.info.reachability.dynamic_entrypoints {
+        connect_named_symbols(
+            graph,
+            &module.file,
+            entrypoint,
+            module,
+            SourceEdgeKind::AssumeReachable,
+        );
+    }
     for reference in &module.info.reachability.top_level_references {
-        connect_named_symbols(graph, &module.file, reference, module);
+        connect_named_symbols(
+            graph,
+            &module.file,
+            reference,
+            module,
+            SourceEdgeKind::LexicalReference,
+        );
     }
     for (owner, references) in &module.info.reachability.symbol_references {
         let Some(owners) = module.symbols.get(owner) else {
@@ -437,19 +452,31 @@ fn connect_local_references(graph: &mut SourceGraph, module: &Module) {
         };
         for owner in owners {
             for reference in references {
-                connect_named_symbols(graph, owner, reference, module);
+                connect_named_symbols(
+                    graph,
+                    owner,
+                    reference,
+                    module,
+                    SourceEdgeKind::LexicalReference,
+                );
             }
         }
     }
 }
 
-fn connect_named_symbols(graph: &mut SourceGraph, from: &NodeId, name: &str, module: &Module) {
+fn connect_named_symbols(
+    graph: &mut SourceGraph,
+    from: &NodeId,
+    name: &str,
+    module: &Module,
+    kind: SourceEdgeKind,
+) {
     if let Some(symbols) = module.symbols.get(name) {
         for symbol in symbols {
             graph.edges.insert(SourceEdge {
                 from: from.clone(),
                 to: EdgeTarget::Node(symbol.clone()),
-                kind: SourceEdgeKind::LexicalReference,
+                kind,
                 bindings: Vec::new(),
                 evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
             });
