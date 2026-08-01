@@ -19,6 +19,8 @@ pub(crate) struct ResolvedHttpContract {
     pub source_complete: bool,
     pub source_include_paths: Vec<String>,
     pub source_exclude_paths: Vec<String>,
+    pub source_include_operations: Vec<String>,
+    pub source_exclude_operations: Vec<String>,
     pub repository_root: PathBuf,
 }
 
@@ -87,6 +89,8 @@ impl ProjectConfig {
                     source_complete: false,
                     source_include_paths: Vec::new(),
                     source_exclude_paths: Vec::new(),
+                    source_include_operations: Vec::new(),
+                    source_exclude_operations: Vec::new(),
                     repository_root: self.root.clone(),
                 }]);
             }
@@ -123,6 +127,8 @@ impl ProjectConfig {
                         source_complete: false,
                         source_include_paths: Vec::new(),
                         source_exclude_paths: Vec::new(),
+                        source_include_operations: Vec::new(),
+                        source_exclude_operations: Vec::new(),
                         repository_root: self.root.clone(),
                     })
                 })
@@ -193,6 +199,8 @@ impl ProjectConfig {
                     source_complete: contract.source_complete,
                     source_include_paths: contract.source_include_paths.clone(),
                     source_exclude_paths: contract.source_exclude_paths.clone(),
+                    source_include_operations: contract.source_include_operations.clone(),
+                    source_exclude_operations: contract.source_exclude_operations.clone(),
                     repository_root: self.root.clone(),
                 })
             })

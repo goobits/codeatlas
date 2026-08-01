@@ -409,6 +409,8 @@ workflows are needed:
         "source_roots": ["src/http"],
         "source_include_paths": ["/v1/**", "/health"],
         "source_exclude_paths": ["/internal/**"],
+        "source_include_operations": ["GET /health", "POST /v1/sessions"],
+        "source_exclude_operations": ["GET /v1/internal-probe"],
         "source_complete": true
       }
     ],
@@ -458,6 +460,10 @@ may be registered dynamically; CodeAtlas will preserve that uncertainty rather
 than turn incomplete static detection into false CI failures.
 Path filters partition mixed public/internal source files without creating
 duplicate route inventories.
+Exact operation filters use canonical `METHOD /path` keys when two methods on
+the same source path belong to different contracts. Unlike path filters, these
+are exact keys rather than globs. Operation filters apply after path filters
+and may include `PAGE /path` inventory entries as well as HTTP endpoint methods.
 
 ```bash
 codeatlas http inventory . --out source-routes.json

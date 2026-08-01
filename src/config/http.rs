@@ -18,6 +18,8 @@ pub(crate) struct HttpContractConfig {
     pub source_complete: bool,
     pub source_include_paths: Vec<String>,
     pub source_exclude_paths: Vec<String>,
+    pub source_include_operations: Vec<String>,
+    pub source_exclude_operations: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -154,7 +156,9 @@ mod tests {
                 "http": {
                     "contracts": [{
                         "id": "public-api",
-                        "openapi": "openapi.json"
+                        "openapi": "openapi.json",
+                        "source_include_operations": ["GET /health"],
+                        "source_exclude_operations": ["POST /health"]
                     }],
                     "fuzz": {
                         "targets": [{
@@ -194,6 +198,9 @@ mod tests {
         .expect("HTTP fuzz config");
 
         let target = &config.http.fuzz.targets[0];
+        let contract = &config.http.contracts[0];
+        assert_eq!(contract.source_include_operations, ["GET /health"]);
+        assert_eq!(contract.source_exclude_operations, ["POST /health"]);
         assert_eq!(target.id, "public-local");
         assert_eq!(target.contract, "public-api");
         assert_eq!(target.openapi_path, "/openapi.json");
