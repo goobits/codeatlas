@@ -19,12 +19,12 @@ class FixtureHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self) -> None:
-        if not self._has_static_header():
-            self._respond(401, b'{"error":"missing_static_header"}')
-            return
         path = urlparse(self.path).path
         if path == "/openapi.yaml":
             self._respond(200, openapi, "application/yaml")
+            return
+        if not self._has_static_header():
+            self._respond(401, b'{"error":"missing_static_header"}')
             return
         if path == "/health":
             self._respond(204)
@@ -51,6 +51,10 @@ class FixtureHandler(BaseHTTPRequestHandler):
         raw_body = self.rfile.read(length)
         if parse_qs(parsed.query, keep_blank_values=True).get("wait") != ["0"]:
             self._respond(400, b'{"error":"invalid_query"}')
+            return
+        trace = self.headers.get("x-widget-trace")
+        if trace is None or not 1 <= len(trace) <= 64:
+            self._respond(400, b'{"error":"invalid_header"}')
             return
         try:
             body = json.loads(raw_body)

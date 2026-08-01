@@ -295,7 +295,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
                             fixture.join("server.py"),
                             port.to_string(),
                             &openapi,
-                            "fixture-static-token"
+                            "fixture-runtime-token"
                         ],
                         "cwd": directory.path()
                     },
@@ -330,8 +330,6 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "12",
             "--seed",
             "424242",
-            "--operation",
-            "POST /widgets/{id}",
         ])
         .env("CODEATLAS_PYTHON", &python)
         .output()
@@ -406,6 +404,18 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
     assert!(negative_query_ids.iter().any(|id| responses
         .iter()
         .any(|event| { event["id"] == *id && event["status"] == 400 })));
+    let negative_header_ids = requests
+        .iter()
+        .filter(|event| event["headerGeneration"] == "negative")
+        .filter_map(|event| event["id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        !negative_header_ids.is_empty(),
+        "Schemathesis should generate a negative header case"
+    );
+    assert!(negative_header_ids.iter().all(|id| responses
+        .iter()
+        .any(|event| { event["id"] == *id && event["status"] != 401 })));
     assert!(responses.iter().any(|event| event["adapterSeen"] == true));
     assert!(responses.iter().any(|event| event["querySeen"] == true));
     assert!(adapter_events.iter().any(|event| event["kind"] == "closed"));

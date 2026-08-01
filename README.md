@@ -550,6 +550,11 @@ generation mode is `negative`; overrides exist to supply valid fixtures or
 credentials for the remaining components.
 Response observations let an
 application-owned adapter retain workflow credentials for linked requests.
+When another header is negatively generated, an adapter may still replace a
+configured static credential header only while the request retains that exact
+placeholder value. Authentication probes remove or alter the placeholder, so
+the adapter cannot accidentally restore valid credentials and mask a missing
+authentication check.
 This keeps engine integration portable while each project reuses production
 signing or token code without depending on Schemathesis. Each run stores its
 report directory with owner-only permissions where the platform supports them.

@@ -54,9 +54,9 @@ try:
             negative_body = components.get("body") == "negative"
             negative_query = components.get("query") == "negative"
             has_body = message.get("bodyBase64") is not None
-            reply["headers"] = (
-                {} if negative_header else {"X-CodeAtlas-Adapter": "fixture-adapter"}
-            )
+            reply["headers"] = {"X-CodeAtlas-Static": "fixture-runtime-token"}
+            if not negative_header:
+                reply["headers"]["X-CodeAtlas-Adapter"] = "fixture-adapter"
             if has_body and not negative_body:
                 reply["bodyBase64"] = message["bodyBase64"]
             if not negative_query:
@@ -67,6 +67,7 @@ try:
                     "bodyOverride": has_body and not negative_body,
                     "headerGeneration": components.get("header"),
                     "headerOverride": not negative_header,
+                    "staticCredentialOverride": True,
                     "id": message_id,
                     "kind": kind,
                     "queryGeneration": components.get("query"),

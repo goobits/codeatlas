@@ -97,8 +97,15 @@ def _read_config() -> dict[str, Any]:
 
 
 class _Adapter:
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        static_headers: tuple[tuple[str, str], ...],
+    ) -> None:
         self._config = config
+        self._static_headers = {
+            name.lower(): value for name, value in static_headers
+        }
         self._lock = threading.Lock()
         self._responses: queue.Queue[str | None] = queue.Queue()
         self._process: subprocess.Popen[str] | None = None
@@ -138,9 +145,13 @@ class _Adapter:
             for name, header_value in headers.items()
         ):
             raise RuntimeError("CodeAtlas request adapter returned invalid headers")
-        if headers and _is_negative_component(request, "header"):
+        if headers and _is_negative_component(request, "header") and not all(
+            self._is_static_credential_override(request, name)
+            for name in headers
+        ):
             raise RuntimeError(
-                "CodeAtlas request adapters must preserve negatively generated headers"
+                "CodeAtlas request adapters must preserve negatively generated headers "
+                "except unchanged static credential placeholders"
             )
         if "bodyBase64" in value and not (
             isinstance(value["bodyBase64"], str) or value["bodyBase64"] is None
@@ -185,6 +196,21 @@ class _Adapter:
                 )
         value["headers"] = headers
         return value
+
+    def _is_static_credential_override(
+        self, request: dict[str, Any], name: str
+    ) -> bool:
+        expected = self._static_headers.get(name.lower())
+        request_headers = request.get("headers")
+        if expected is None or not isinstance(request_headers, dict):
+            return False
+        for request_name, request_value in request_headers.items():
+            if not isinstance(request_name, str) or request_name.lower() != name.lower():
+                continue
+            if isinstance(request_value, list) and len(request_value) == 1:
+                request_value = request_value[0]
+            return request_value == expected
+        return False
 
     def observe(self, response: dict[str, Any]) -> None:
         self._exchange(response)
@@ -265,7 +291,11 @@ _CONFIG = _read_config()
 _STATIC_HEADERS = tuple(
     (header["name"], header["value"]) for header in _CONFIG["headers"]
 )
-_ADAPTER = _Adapter(_CONFIG["adapter"]) if _CONFIG["adapter"] is not None else None
+_ADAPTER = (
+    _Adapter(_CONFIG["adapter"], _STATIC_HEADERS)
+    if _CONFIG["adapter"] is not None
+    else None
+)
 if _ADAPTER is not None:
     _ADAPTER.start()
     atexit.register(_ADAPTER.close)
