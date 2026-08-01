@@ -52,12 +52,15 @@ try:
             components = message.get("generation", {}).get("components", {})
             negative_header = components.get("header") == "negative"
             negative_body = components.get("body") == "negative"
+            negative_query = components.get("query") == "negative"
             has_body = message.get("bodyBase64") is not None
             reply["headers"] = (
                 {} if negative_header else {"X-CodeAtlas-Adapter": "fixture-adapter"}
             )
             if has_body and not negative_body:
                 reply["bodyBase64"] = message["bodyBase64"]
+            if not negative_query:
+                reply["query"] = {"wait": "0"}
             append_audit(
                 {
                     "bodyGeneration": components.get("body"),
@@ -66,6 +69,8 @@ try:
                     "headerOverride": not negative_header,
                     "id": message_id,
                     "kind": kind,
+                    "queryGeneration": components.get("query"),
+                    "queryOverride": not negative_query,
                     "staticHeader": header_value(headers, "x-codeatlas-static")
                     == "fixture-static-token",
                 }
@@ -81,6 +86,8 @@ try:
                     == "true",
                     "id": message_id,
                     "kind": kind,
+                    "querySeen": header_value(headers, "x-codeatlas-query-seen")
+                    == "true",
                     "status": message.get("status"),
                 }
             )

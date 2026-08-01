@@ -4,7 +4,7 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 
 if len(sys.argv) not in {3, 4}:
@@ -38,7 +38,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
         if not self._has_static_header():
             self._respond(401, b'{"error":"missing_static_header"}')
             return
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         prefix = "/widgets/"
         if path == "/health":
             self._method_not_allowed("GET")
@@ -47,8 +48,12 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self._respond(404, b'{"error":"not_found"}')
             return
         length = int(self.headers.get("content-length", "0"))
+        raw_body = self.rfile.read(length)
+        if parse_qs(parsed.query, keep_blank_values=True).get("wait") != ["0"]:
+            self._respond(400, b'{"error":"invalid_query"}')
+            return
         try:
-            body = json.loads(self.rfile.read(length))
+            body = json.loads(raw_body)
         except (UnicodeDecodeError, json.JSONDecodeError):
             self._respond(400, b'{"error":"invalid_json"}')
             return
@@ -93,6 +98,13 @@ class FixtureHandler(BaseHTTPRequestHandler):
         self.send_header(
             "x-codeatlas-adapter-seen",
             str(self.headers.get("x-codeatlas-adapter") == "fixture-adapter").lower(),
+        )
+        self.send_header(
+            "x-codeatlas-query-seen",
+            str(
+                parse_qs(urlparse(self.path).query, keep_blank_values=True).get("wait")
+                == ["0"]
+            ).lower(),
         )
         self.send_header("content-length", str(len(body)))
         self.end_headers()

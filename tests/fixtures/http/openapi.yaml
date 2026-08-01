@@ -18,6 +18,13 @@ paths:
           required: true
           schema:
             type: string
+        - name: wait
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - "0"
       requestBody:
         required: true
         content:

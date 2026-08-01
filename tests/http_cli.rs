@@ -327,7 +327,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "--target",
             "fixture-local",
             "--max-examples",
-            "4",
+            "12",
             "--seed",
             "424242",
             "--operation",
@@ -375,6 +375,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
     assert_eq!(requests.len(), responses.len());
     assert!(requests.iter().all(|event| event["staticHeader"] == true));
     assert!(requests.iter().any(|event| event["bodyOverride"] == true));
+    assert!(requests.iter().any(|event| event["queryOverride"] == true));
     let negative_body_ids = requests
         .iter()
         .filter(|event| event["bodyGeneration"] == "negative")
@@ -390,7 +391,23 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
     assert!(negative_body_ids.iter().any(|id| responses
         .iter()
         .any(|event| { event["id"] == *id && event["status"] == 400 })));
+    let negative_query_ids = requests
+        .iter()
+        .filter(|event| event["queryGeneration"] == "negative")
+        .filter_map(|event| event["id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        !negative_query_ids.is_empty(),
+        "Schemathesis should generate a negative query case"
+    );
+    assert!(negative_query_ids.iter().all(|id| requests
+        .iter()
+        .any(|event| { event["id"] == *id && event["queryOverride"] == false })));
+    assert!(negative_query_ids.iter().any(|id| responses
+        .iter()
+        .any(|event| { event["id"] == *id && event["status"] == 400 })));
     assert!(responses.iter().any(|event| event["adapterSeen"] == true));
+    assert!(responses.iter().any(|event| event["querySeen"] == true));
     assert!(adapter_events.iter().any(|event| event["kind"] == "closed"));
     assert!(
         TcpListener::bind(("127.0.0.1", port)).is_ok(),

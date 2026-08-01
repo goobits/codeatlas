@@ -10,6 +10,7 @@ import queue
 import subprocess
 import threading
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 import schemathesis
@@ -149,6 +150,39 @@ class _Adapter:
             raise RuntimeError(
                 "CodeAtlas request adapters must preserve negatively generated bodies"
             )
+        if "query" in value:
+            query = value["query"]
+            if not isinstance(query, dict) or not all(
+                isinstance(name, str)
+                and bool(name)
+                and not any(character in name for character in "\r\n\0")
+                and (
+                    query_value is None
+                    or (
+                        isinstance(query_value, str)
+                        and not any(
+                            character in query_value for character in "\r\n\0"
+                        )
+                    )
+                    or (
+                        isinstance(query_value, list)
+                        and bool(query_value)
+                        and all(
+                            isinstance(item, str)
+                            and not any(character in item for character in "\r\n\0")
+                            for item in query_value
+                        )
+                    )
+                )
+                for name, query_value in query.items()
+            ):
+                raise RuntimeError(
+                    "CodeAtlas request adapter returned invalid query overrides"
+                )
+            if _is_negative_component(request, "query"):
+                raise RuntimeError(
+                    "CodeAtlas request adapters must preserve negatively generated queries"
+                )
         value["headers"] = headers
         return value
 
@@ -317,6 +351,31 @@ def _prepared_body(value: Any) -> bytes | None:
     )
 
 
+def _replace_query_values(
+    url: str | None, overrides: dict[str, str | list[str] | None]
+) -> str:
+    if url is None:
+        raise RuntimeError("CodeAtlas cannot adapt a request without a URL")
+    try:
+        parsed = urlsplit(url)
+        overridden_names = set(overrides)
+        query = [
+            (name, value)
+            for name, value in parse_qsl(parsed.query, keep_blank_values=True)
+            if name not in overridden_names
+        ]
+        for name, value in overrides.items():
+            if isinstance(value, list):
+                query.extend((name, item) for item in value)
+            elif value is not None:
+                query.append((name, value))
+        return urlunsplit(parsed._replace(query=urlencode(query)))
+    except ValueError as error:
+        raise RuntimeError(
+            "CodeAtlas request adapter could not update the request query"
+        ) from error
+
+
 def _generation(case: Any) -> dict[str, Any]:
     metadata = case.meta
     if metadata is None:
@@ -360,6 +419,8 @@ class _RequestAdapterAuth(requests.auth.AuthBase):
         overrides = _ADAPTER.adapt(request)
         for name, value in overrides["headers"].items():
             prepared.headers[name] = value
+        if "query" in overrides:
+            prepared.url = _replace_query_values(prepared.url, overrides["query"])
         if "bodyBase64" in overrides:
             encoded = overrides["bodyBase64"]
             try:

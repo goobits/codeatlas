@@ -542,9 +542,12 @@ and is removed from the adapter process environment before the adapter starts.
 A target may also declare a long-lived `request_adapter` command. CodeAtlas
 sends each exact serialized request and each observed response over the versioned
 `codeatlas.http-request-adapter/v1` JSONL protocol. Request replies supply
-header and optional base64 body overrides before transport. CodeAtlas rejects
-an override when its component's generation mode is `negative`; overrides
-exist to supply valid fixtures or credentials for the remaining components.
+header, query-value, and optional base64 body overrides before transport. Query
+replies are maps whose string or string-array values replace that name's
+generated values; `null` removes the name. They cannot replace the URL's
+scheme, authority, or path. CodeAtlas rejects an override when its component's
+generation mode is `negative`; overrides exist to supply valid fixtures or
+credentials for the remaining components.
 Response observations let an
 application-owned adapter retain workflow credentials for linked requests.
 This keeps engine integration portable while each project reuses production
