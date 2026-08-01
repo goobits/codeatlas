@@ -1,7 +1,7 @@
 {
 	"name": "@goobits/codeatlas",
 	"license": "SEE LICENSE IN LICENSE",
-	"version": "0.8.2",
+	"version": "0.8.3",
 	"description": "Map source code and compile declared architecture across languages",
 	"type": "commonjs",
 	"packageManager": "pnpm@10.25.0",
