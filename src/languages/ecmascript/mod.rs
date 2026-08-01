@@ -521,7 +521,7 @@ fn connect_module_resolution(
     span: Option<crate::domain::Span>,
 ) {
     let target = match resolution {
-        Resolution::Resolved(key) => graph
+        Resolution::Resolved(key) | Resolution::ResolvedResource(key) => graph
             .nodes
             .get(&NodeId::file(&key.0, &key.1))
             .map(|_| EdgeTarget::Node(NodeId::file(&key.0, &key.1)))

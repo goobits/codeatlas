@@ -73,6 +73,20 @@ pub(crate) fn build_importers(
     )
 }
 
+pub(crate) fn collect_package_consumers(
+    report: &ScanReport,
+    usage: &mut UsageAnalysis,
+    consumer_root: &Path,
+    no_default_ignore: bool,
+) {
+    typescript::collect_package_consumers(
+        report,
+        consumer_root,
+        &mut usage.importers,
+        no_default_ignore,
+    );
+}
+
 /// Add a file-to-file dependency edge
 pub(crate) fn add_file_edge(file_edges: &mut FileEdges, from: &str, to: &str) {
     if from != to {

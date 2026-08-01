@@ -51,6 +51,9 @@ enum Command {
         /// Path to scan
         #[arg(default_value = ".")]
         path: PathBuf,
+        /// Additional source tree whose package imports count as consumers
+        #[arg(long)]
+        consumer_root: Option<PathBuf>,
     },
 
     /// Analyze source reachability and report dead-code candidates
@@ -117,6 +120,9 @@ enum Command {
         /// Path to scan
         #[arg(default_value = ".")]
         path: PathBuf,
+        /// Additional source tree whose package imports count as consumers
+        #[arg(long)]
+        consumer_root: Option<PathBuf>,
         /// Fail if any unused public exports exist
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         fail_unused: bool,
@@ -175,7 +181,10 @@ pub(crate) fn run() -> i32 {
             all,
             out,
         } => commands::run_scan(&path, format, all, out, config_path.as_deref()),
-        Command::Audit { path } => commands::run_audit(&path, config_path.as_deref()),
+        Command::Audit {
+            path,
+            consumer_root,
+        } => commands::run_audit(&path, consumer_root.as_deref(), config_path.as_deref()),
         Command::DeadCode {
             path,
             format,
@@ -211,9 +220,16 @@ pub(crate) fn run() -> i32 {
         Command::Postgres { command } => command.run(config_path.as_deref()),
         Command::Ci {
             path,
+            consumer_root,
             fail_unused,
             baseline,
-        } => commands::run_ci(&path, fail_unused, baseline, config_path.as_deref()),
+        } => commands::run_ci(
+            &path,
+            consumer_root.as_deref(),
+            fail_unused,
+            baseline,
+            config_path.as_deref(),
+        ),
         Command::Map { path, out } => commands::run_map(&path, out, config_path.as_deref()),
         Command::Docs {
             path,
@@ -260,6 +276,22 @@ mod tests {
             "--workspace",
             "--check",
             "--gates-only"
+        ])
+        .is_ok());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "audit",
+            "packages/example",
+            "--consumer-root",
+            ".",
+        ])
+        .is_ok());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "ci",
+            "packages/example",
+            "--consumer-root",
+            ".",
         ])
         .is_ok());
     }

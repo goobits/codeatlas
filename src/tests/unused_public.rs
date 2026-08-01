@@ -2,7 +2,9 @@ use crate::analysis;
 use crate::domain::ScanConfig;
 use crate::languages;
 use std::collections::HashSet;
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn fixture_root(path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -35,6 +37,50 @@ fn unused_public_typescript() {
     let unused = collect_unused_ids(&root, "ts");
     assert!(unused.contains("ts:src/lib.ts:fn#unused"));
     assert!(!unused.contains("ts:src/lib.ts:fn#used"));
+}
+
+#[test]
+fn unused_public_typescript_counts_explicit_package_consumers() {
+    let root = fixture_root("ts");
+    let config = ScanConfig {
+        include_types: true,
+        include_private: false,
+        entrypoints: None,
+        no_default_ignore: false,
+    };
+    let scanners = languages::get_scanners(Some(vec!["ts".to_string()]));
+    let mut report = languages::scan_all(&root, &config, scanners);
+    for symbol in &mut report.symbols {
+        symbol.export_paths = vec!["@fixture/codeatlas-ts".to_string()];
+    }
+    let mut importers = analysis::annotate_imports(&mut report, &root, false);
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock")
+        .as_nanos();
+    let consumer_root = std::env::temp_dir().join(format!(
+        "codeatlas-package-consumers-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&consumer_root).expect("consumer fixture directory");
+    fs::write(
+        consumer_root.join("consumer.ts"),
+        "import { unused } from '@fixture/codeatlas-ts';\nvoid unused;\n",
+    )
+    .expect("consumer fixture");
+
+    analysis::annotate_package_consumers(&mut report, &mut importers, &consumer_root, false);
+    analysis::annotate_unused_public(&mut report, &importers, false);
+
+    assert!(!report
+        .unused_public
+        .iter()
+        .any(|entry| entry.id == "ts:src/lib.ts:fn#unused"));
+    assert!(report.imports.iter().any(|usage| {
+        usage.id == "ts:src/lib.ts:fn#unused" && usage.importers == ["consumer.ts".to_string()]
+    }));
+    fs::remove_dir_all(consumer_root).expect("remove consumer fixture");
 }
 
 #[test]

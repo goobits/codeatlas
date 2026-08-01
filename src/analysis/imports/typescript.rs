@@ -1,8 +1,8 @@
 use super::{add_file_edge, add_importer, FileEdges, Importers};
-use crate::domain::Language;
+use crate::domain::{Language, ScanReport, Visibility};
 use crate::languages::ecmascript::resolver;
 use crate::languages::typescript::parser;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
 pub(crate) fn collect_importers(
@@ -136,6 +136,164 @@ pub(crate) fn collect_importers(
             }
         }
     }
+}
+
+pub(crate) fn collect_package_consumers(
+    report: &ScanReport,
+    consumer_root: &Path,
+    importers: &mut Importers,
+    no_default_ignore: bool,
+) {
+    let (symbols_by_export, package_names) = package_symbol_index(report);
+    if symbols_by_export.is_empty() {
+        return;
+    }
+
+    let walker = walkdir::WalkDir::new(consumer_root).into_iter();
+    for entry in walker.filter_entry(|entry| {
+        if entry.depth() == 0 {
+            return true;
+        }
+        let name = entry.file_name().to_string_lossy();
+        !crate::source_policy::is_ignored_dir(&name, no_default_ignore)
+    }) {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        if path.is_dir() || !is_ecmascript_source(path) {
+            continue;
+        }
+
+        let Ok(source) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        if !package_names
+            .iter()
+            .any(|name| source.contains(name.as_str()))
+        {
+            continue;
+        }
+
+        let importer = crate::paths::normalize_relative_path(path, consumer_root);
+        let Ok(info) = parser::parse_source(&source, &importer) else {
+            continue;
+        };
+        for import in &info.imports {
+            if import.namespace || import.default.is_some() {
+                mark_all_package_symbols(&symbols_by_export, &import.source, &importer, importers);
+            }
+            for name in &import.named {
+                mark_named_package_symbol(
+                    &symbols_by_export,
+                    &import.source,
+                    name,
+                    &importer,
+                    importers,
+                );
+            }
+        }
+        for re_export in &info.exports.re_exports {
+            for name in &re_export.names {
+                mark_named_package_symbol(
+                    &symbols_by_export,
+                    &re_export.source,
+                    &name.original,
+                    &importer,
+                    importers,
+                );
+            }
+        }
+        for source in &info.exports.export_all {
+            mark_all_package_symbols(&symbols_by_export, source, &importer, importers);
+        }
+        for dependency in &info.reachability.dynamic_dependencies {
+            if !matches!(
+                dependency.kind,
+                parser::DynamicDependencyKind::Import | parser::DynamicDependencyKind::Require
+            ) {
+                continue;
+            }
+            if let parser::DynamicDependencyTarget::Literal(source) = &dependency.target {
+                mark_all_package_symbols(&symbols_by_export, source, &importer, importers);
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct PackagePathSymbols {
+    all: BTreeSet<String>,
+    by_name: HashMap<String, BTreeSet<String>>,
+}
+
+fn package_symbol_index(
+    report: &ScanReport,
+) -> (HashMap<String, PackagePathSymbols>, BTreeSet<String>) {
+    let mut symbols_by_export = HashMap::<String, PackagePathSymbols>::new();
+    let mut package_names = BTreeSet::new();
+    for symbol in &report.symbols {
+        if symbol.visibility != Visibility::Public {
+            continue;
+        }
+        for export_path in &symbol.export_paths {
+            let Some((package_name, _)) = crate::package::split_package_specifier(export_path)
+            else {
+                continue;
+            };
+            package_names.insert(package_name);
+            let symbols = symbols_by_export.entry(export_path.clone()).or_default();
+            symbols.all.insert(symbol.id.clone());
+            symbols
+                .by_name
+                .entry(symbol.name.clone())
+                .or_default()
+                .insert(symbol.id.clone());
+        }
+    }
+    (symbols_by_export, package_names)
+}
+
+fn mark_named_package_symbol(
+    symbols_by_export: &HashMap<String, PackagePathSymbols>,
+    source: &str,
+    name: &str,
+    importer: &str,
+    importers: &mut Importers,
+) {
+    let Some(symbols) = symbols_by_export.get(source) else {
+        return;
+    };
+    let ids = symbols
+        .by_name
+        .get(name)
+        .filter(|ids| !ids.is_empty())
+        .unwrap_or(&symbols.all);
+    for id in ids {
+        add_importer(importers, id, importer);
+    }
+}
+
+fn mark_all_package_symbols(
+    symbols_by_export: &HashMap<String, PackagePathSymbols>,
+    source: &str,
+    importer: &str,
+    importers: &mut Importers,
+) {
+    let Some(symbols) = symbols_by_export.get(source) else {
+        return;
+    };
+    for id in &symbols.all {
+        add_importer(importers, id, importer);
+    }
+}
+
+fn is_ecmascript_source(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs")
+    )
 }
 
 struct ModuleInfo {

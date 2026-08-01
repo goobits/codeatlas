@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone)]
 pub(super) enum Resolution {
     Resolved(ModuleKey),
+    ResolvedResource(ModuleKey),
     External(String),
     UnresolvedInternal(String),
     Unscanned(String),
@@ -116,6 +117,9 @@ impl ModuleResolver {
         if is_sveltekit_virtual(specifier) {
             return Resolution::External(specifier.to_string());
         }
+        if has_resource_query(specifier) {
+            return self.resolve_resource(module, specifier);
+        }
         if is_non_source_specifier(specifier) {
             return Resolution::External(specifier.to_string());
         }
@@ -165,6 +169,13 @@ impl ModuleResolver {
             return resolution;
         }
         Resolution::External(specifier.to_string())
+    }
+
+    fn resolve_resource(&self, module: &Module, specifier: &str) -> Resolution {
+        match self.resolve(module, source_path_specifier(specifier)) {
+            Resolution::Resolved(key) => Resolution::ResolvedResource(key),
+            _ => Resolution::External(specifier.to_string()),
+        }
     }
 
     pub(super) fn resolve_dynamic(
@@ -734,9 +745,6 @@ enum PackageImportResolution {
 }
 
 fn unsupported_relative_specifier(specifier: &str) -> bool {
-    if has_resource_query(specifier) {
-        return true;
-    }
     let normalized = source_path_specifier(specifier);
     let Some(extension) = Path::new(normalized)
         .extension()

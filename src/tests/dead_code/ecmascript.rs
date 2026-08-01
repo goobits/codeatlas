@@ -319,16 +319,13 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
         .iter()
         .filter(|finding| finding.kind == DeadCodeFindingKind::DynamicBoundary)
         .collect::<Vec<_>>();
-    assert_eq!(boundaries.len(), 2);
+    assert_eq!(boundaries.len(), 1);
     assert!(boundaries
         .iter()
         .all(|finding| finding.confidence != FindingConfidence::High && !finding.gates));
     assert!(boundaries
         .iter()
         .any(|finding| finding.message.contains("<dynamic expression>")));
-    assert!(boundaries
-        .iter()
-        .any(|finding| finding.message.contains("./generated.js?url&no-inline")));
     assert!(!report
         .findings
         .iter()
@@ -356,4 +353,21 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
             finding.kind == DeadCodeFindingKind::UnreachableFile && finding.path == path
         }));
     }
+
+    let index = NodeId::file(&ProjectId("dynamic".to_string()), "src/index.ts");
+    let resource = NodeId::file(&ProjectId("dynamic".to_string()), "src/resource.ts");
+    assert!(graph.edges.iter().any(|edge| {
+        edge.from == index
+            && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.to == EdgeTarget::Node(resource.clone())
+    }));
+    assert!(!graph.edges.iter().any(|edge| {
+        matches!(
+            graph.nodes.get(match &edge.to {
+                EdgeTarget::Node(target) => target,
+                _ => return false,
+            }),
+            Some(SourceNode::Symbol(symbol)) if symbol.file == resource
+        ) && edge.kind == SourceEdgeKind::Import
+    }));
 }

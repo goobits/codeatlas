@@ -10,6 +10,7 @@ claiming certainty when the source graph is incomplete.
 ```bash
 npx @goobits/codeatlas scan .
 npx @goobits/codeatlas audit .
+npx @goobits/codeatlas audit packages/example --consumer-root .
 npx @goobits/codeatlas dead-code . --format json
 npx @goobits/codeatlas dead-code packages --workspace --format json
 npx @goobits/codeatlas context . --target src/main.rs
@@ -36,7 +37,7 @@ a positive integer to allow more parallel build work.
 | Command        | Purpose                                                                                |
 | -------------- | -------------------------------------------------------------------------------------- |
 | `scan`         | Show the public surface as a tree, Mermaid, or versioned JSON report                   |
-| `audit`        | Report public exports with no detected repository consumers                            |
+| `audit`        | Report public exports with no detected local or explicitly scanned package consumers    |
 | `dead-code`    | Classify source reachability, context-only code, and uncertain boundaries              |
 | `context`      | Return a bounded source graph slice for exact files or symbols                         |
 | `architecture` | Compile declarations, query provider approvals, observe bindings, and evaluate conformance |
@@ -48,6 +49,14 @@ a positive integer to allow more parallel build work.
 | `postgres`     | Discover, lint, replay, prepare, inventory, and diff PostgreSQL contracts               |
 
 Run `codeatlas <command> --help` for command-specific options.
+
+`audit --consumer-root <path>` and `ci --consumer-root <path>` count static
+JavaScript and TypeScript imports, re-exports, and literal dynamic imports of
+the scanned package from an additional source tree. The scan is opt-in so a
+package-local audit stays bounded; candidate files are filtered by the package
+name before parsing. Namespace, default, and dynamically imported package
+modules are handled conservatively because the exact member used may be
+runtime-dependent.
 
 An explicit command is required. Repository-wide scan settings belong in
 `codeatlas.json`; the former top-level flag interface has been removed.
@@ -314,7 +323,10 @@ rather than false missing-file gates. Standard `svelte-package` `src/lib` to
 `dist` layouts map generated exports back to maintained source. Static worker,
 worklet, and `importScripts`
 dependencies are followed;
-non-source asset URLs remain outside the source graph. Svelte component symbols
+static Vite `?raw`, `?url`, and `?compose` imports of scanned ECMAScript source
+retain a file dependency without treating that file's exported symbols as
+executed. Resource imports of unscanned or non-source assets remain outside the
+source graph without lowering analysis completeness. Svelte component symbols
 remain conservative because markup-level
 references are not yet a complete symbol graph. They are never emitted as
 high-confidence unused-private findings.

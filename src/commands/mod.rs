@@ -51,18 +51,31 @@ fn scan(
     Ok(0)
 }
 
-pub(crate) fn run_audit(path: &Path, config_path: Option<&Path>) -> i32 {
-    exit_code(audit(path, config_path))
+pub(crate) fn run_audit(
+    path: &Path,
+    consumer_root: Option<&Path>,
+    config_path: Option<&Path>,
+) -> i32 {
+    exit_code(audit(path, consumer_root, config_path))
 }
 
-fn audit(path: &Path, config_path: Option<&Path>) -> Result<i32> {
+fn audit(path: &Path, consumer_root: Option<&Path>, config_path: Option<&Path>) -> Result<i32> {
+    validate_consumer_root(consumer_root)?;
     let project = load_project(path, config_path)?;
     let config = build_scan_config(&project, false, None)?;
     let mut report = scan_project(&project, &config)?;
-    let importers =
-        analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
-    analysis::annotate_unused_public(&mut report, &importers, project.config.no_default_ignore);
     annotate_report(&mut report, &project)?;
+    let mut importers =
+        analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
+    if let Some(consumer_root) = consumer_root {
+        analysis::annotate_package_consumers(
+            &mut report,
+            &mut importers,
+            consumer_root,
+            project.config.no_default_ignore,
+        );
+    }
+    analysis::annotate_unused_public(&mut report, &importers, project.config.no_default_ignore);
 
     println!("{}", outputs::audit::render(&report));
     Ok(if report.unused_public.is_empty() {
@@ -74,32 +87,43 @@ fn audit(path: &Path, config_path: Option<&Path>) -> Result<i32> {
 
 pub(crate) fn run_ci(
     path: &Path,
+    consumer_root: Option<&Path>,
     fail_unused: bool,
     baseline: Option<PathBuf>,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(ci(path, fail_unused, baseline, config_path))
+    exit_code(ci(path, consumer_root, fail_unused, baseline, config_path))
 }
 
 fn ci(
     path: &Path,
+    consumer_root: Option<&Path>,
     fail_unused: bool,
     baseline: Option<PathBuf>,
     config_path: Option<&Path>,
 ) -> Result<i32> {
+    validate_consumer_root(consumer_root)?;
     let project = load_project(path, config_path)?;
     let config = build_scan_config(&project, false, None)?;
     let mut report = scan_project(&project, &config)?;
+    annotate_report(&mut report, &project)?;
 
     if fail_unused {
-        let importers = analysis::annotate_imports(
+        let mut importers = analysis::annotate_imports(
             &mut report,
             &project.root,
             project.config.no_default_ignore,
         );
+        if let Some(consumer_root) = consumer_root {
+            analysis::annotate_package_consumers(
+                &mut report,
+                &mut importers,
+                consumer_root,
+                project.config.no_default_ignore,
+            );
+        }
         analysis::annotate_unused_public(&mut report, &importers, project.config.no_default_ignore);
     }
-    annotate_report(&mut report, &project)?;
 
     if let Some(baseline_path) = baseline {
         let json = outputs::json::render(&report)?;
@@ -276,4 +300,13 @@ fn write_report(content: String, out: Option<PathBuf>, format: OutputFormat) -> 
     };
     let out_path = out.map(|directory| directory.join(filename));
     output::write_text_or_print(&content, out_path.as_deref(), "Report")
+}
+
+fn validate_consumer_root(consumer_root: Option<&Path>) -> Result<()> {
+    if let Some(path) = consumer_root {
+        if !path.is_dir() {
+            anyhow::bail!("Consumer root is not a directory: {}", path.display());
+        }
+    }
+    Ok(())
 }
