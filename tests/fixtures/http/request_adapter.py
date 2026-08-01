@@ -52,14 +52,11 @@ try:
             components = message.get("generation", {}).get("components", {})
             negative_header = components.get("header") == "negative"
             negative_body = components.get("body") == "negative"
+            negative_query = components.get("query") == "negative"
             has_body = message.get("bodyBase64") is not None
-            reply["headers"] = (
-                {}
-                if negative_header
-                else {
-                    "X-CodeAtlas-Adapter": "fixture-adapter",
-                }
-            )
+            reply["headers"] = {"X-CodeAtlas-Static": "fixture-runtime-token"}
+            if not negative_header:
+                reply["headers"]["X-CodeAtlas-Adapter"] = "fixture-adapter"
             if {
                 "in": "cookie",
                 "name": "session",
@@ -73,15 +70,21 @@ try:
                 ]
             if has_body and not negative_body:
                 reply["bodyBase64"] = message["bodyBase64"]
+            if not negative_query:
+                reply["query"] = {"wait": "0"}
             append_audit(
                 {
                     "bodyGeneration": components.get("body"),
                     "bodyOverride": has_body and not negative_body,
                     "headerGeneration": components.get("header"),
                     "headerOverride": not negative_header,
+                    "staticCredentialOverride": True,
                     "id": message_id,
                     "kind": kind,
+                    "probe": message.get("probe"),
                     "sessionAuthentication": bool(reply.get("authentication")),
+                    "queryGeneration": components.get("query"),
+                    "queryOverride": not negative_query,
                     "staticHeader": header_value(headers, "x-codeatlas-static")
                     == "fixture-static-token",
                 }
@@ -97,6 +100,11 @@ try:
                     == "true",
                     "id": message_id,
                     "kind": kind,
+                    "probe": message.get("probe"),
+                    "querySeen": header_value(headers, "x-codeatlas-query-seen")
+                    == "true",
+                    "staticSeen": header_value(headers, "x-codeatlas-static-seen")
+                    == "true",
                     "status": message.get("status"),
                 }
             )

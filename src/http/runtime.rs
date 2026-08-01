@@ -45,7 +45,12 @@ impl OwnedHttpServer {
             )
         })?;
         let process_group_id = child.id();
-        if let Err(error) = wait_until_listening(&mut child, target, &addresses) {
+        if let Err(error) = wait_until_listening(
+            &mut child,
+            target,
+            &addresses,
+            server.startup_timeout_seconds,
+        ) {
             request_graceful_stop(&mut child, process_group_id);
             force_stop_process_group(process_group_id);
             let _ = child.kill();
@@ -124,8 +129,9 @@ fn wait_until_listening(
     child: &mut Child,
     target: &ResolvedHttpFuzzTarget,
     addresses: &[SocketAddr],
+    startup_timeout_seconds: u64,
 ) -> Result<()> {
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + Duration::from_secs(startup_timeout_seconds);
     loop {
         if is_listening(addresses) {
             return Ok(());
@@ -141,9 +147,10 @@ fn wait_until_listening(
         }
         if Instant::now() >= deadline {
             anyhow::bail!(
-                "HTTP server for target {} did not accept connections at {} within 30 seconds",
+                "HTTP server for target {} did not accept connections at {} within {} seconds",
                 target.id,
-                target.base_url
+                target.base_url,
+                startup_timeout_seconds
             );
         }
         std::thread::sleep(Duration::from_millis(50));

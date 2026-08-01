@@ -21,6 +21,20 @@ paths:
           required: true
           schema:
             type: string
+        - name: wait
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - "0"
+        - name: X-Widget-Trace
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
       requestBody:
         required: true
         content:

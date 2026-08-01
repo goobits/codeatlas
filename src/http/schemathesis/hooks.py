@@ -107,8 +107,15 @@ def _read_config() -> dict[str, Any]:
 
 
 class _Adapter:
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        static_headers: tuple[tuple[str, str], ...],
+    ) -> None:
         self._config = config
+        self._static_headers = {
+            name.lower(): value for name, value in static_headers
+        }
         self._lock = threading.Lock()
         self._responses: queue.Queue[str | None] = queue.Queue()
         self._process: subprocess.Popen[str] | None = None
@@ -148,9 +155,20 @@ class _Adapter:
             for name, header_value in headers.items()
         ):
             raise RuntimeError("CodeAtlas request adapter returned invalid headers")
-        if headers and _is_negative_component(request, "header"):
+        if any(
+            _is_security_parameter_override(request, "header", name)
+            for name in headers
+        ):
             raise RuntimeError(
-                "CodeAtlas request adapters must preserve negatively generated headers"
+                "CodeAtlas request adapters must return declared credentials as authentication"
+            )
+        if headers and _is_negative_component(request, "header") and not all(
+            self._is_static_credential_override(request, name)
+            for name in headers
+        ):
+            raise RuntimeError(
+                "CodeAtlas request adapters must preserve negatively generated headers "
+                "except unchanged static credential placeholders"
             )
         if "bodyBase64" in value and not (
             isinstance(value["bodyBase64"], str) or value["bodyBase64"] is None
@@ -181,9 +199,64 @@ class _Adapter:
             raise RuntimeError(
                 "CodeAtlas request adapter returned invalid authentication parameters"
             )
+        if "query" in value:
+            query = value["query"]
+            if not isinstance(query, dict) or not all(
+                isinstance(name, str)
+                and bool(name)
+                and not any(character in name for character in "\r\n\0")
+                and (
+                    query_value is None
+                    or (
+                        isinstance(query_value, str)
+                        and not any(
+                            character in query_value for character in "\r\n\0"
+                        )
+                    )
+                    or (
+                        isinstance(query_value, list)
+                        and bool(query_value)
+                        and all(
+                            isinstance(item, str)
+                            and not any(character in item for character in "\r\n\0")
+                            for item in query_value
+                        )
+                    )
+                )
+                for name, query_value in query.items()
+            ):
+                raise RuntimeError(
+                    "CodeAtlas request adapter returned invalid query overrides"
+                )
+            if _is_negative_component(request, "query"):
+                raise RuntimeError(
+                    "CodeAtlas request adapters must preserve negatively generated queries"
+                )
+            if any(
+                _is_security_parameter_override(request, "query", name)
+                for name in query
+            ):
+                raise RuntimeError(
+                    "CodeAtlas request adapters must return declared credentials as authentication"
+                )
         value["headers"] = headers
         value["authentication"] = authentication
         return value
+
+    def _is_static_credential_override(
+        self, request: dict[str, Any], name: str
+    ) -> bool:
+        expected = self._static_headers.get(name.lower())
+        request_headers = request.get("headers")
+        if expected is None or not isinstance(request_headers, dict):
+            return False
+        for request_name, request_value in request_headers.items():
+            if not isinstance(request_name, str) or request_name.lower() != name.lower():
+                continue
+            if isinstance(request_value, list) and len(request_value) == 1:
+                request_value = request_value[0]
+            return request_value == expected
+        return False
 
     def observe(self, response: dict[str, Any]) -> None:
         self._exchange(response)
@@ -264,7 +337,11 @@ _CONFIG = _read_config()
 _STATIC_HEADERS = tuple(
     (header["name"], header["value"]) for header in _CONFIG["headers"]
 )
-_ADAPTER = _Adapter(_CONFIG["adapter"]) if _CONFIG["adapter"] is not None else None
+_ADAPTER = (
+    _Adapter(_CONFIG["adapter"], _STATIC_HEADERS)
+    if _CONFIG["adapter"] is not None
+    else None
+)
 if _ADAPTER is not None:
     _ADAPTER.start()
     atexit.register(_ADAPTER.close)
@@ -314,14 +391,19 @@ def _send_auth_probe(
     kwargs = build_retry_transport_kwargs(
         context._transport_kwargs, security_parameters
     )
-    # The adapter supplied the successful request's credentials. Reusing it
-    # here would silently turn these probes back into authenticated requests.
-    kwargs.pop("auth", None)
+    # Preserve ordinary fixture adaptation and rotating static credentials, but
+    # never reapply the declared credentials that this probe removed or changed.
+    kwargs["auth"] = _RequestAdapterAuth(
+        probe,
+        apply_authentication=False,
+        probe="authentication",
+    )
     if case.operation.app is not None:
         kwargs.setdefault("app", case.operation.app)
     context._record_case(parent_id=case.id, case=probe)
     probe_response = case.operation.schema.transport.send(probe, **kwargs)
     context._record_response(case_id=probe.id, response=probe_response)
+    _observe_response(probe, probe_response, probe="authentication")
     if probe_response.status_code in {401, 403, 404}:
         return
 
@@ -393,6 +475,31 @@ def _is_negative_component(request: dict[str, Any], component: str) -> bool:
     generation = request.get("generation")
     components = generation.get("components") if isinstance(generation, dict) else None
     return isinstance(components, dict) and components.get(component) == "negative"
+
+
+def _is_security_parameter_override(
+    request: dict[str, Any], location: str, name: str
+) -> bool:
+    parameters = request.get("securityParameters")
+    if not isinstance(parameters, list):
+        return False
+    if location == "header" and name.lower() == "cookie":
+        return any(
+            isinstance(parameter, dict) and parameter.get("in") == "cookie"
+            for parameter in parameters
+        )
+    match_name = name.lower() if location == "header" else name
+    return any(
+        isinstance(parameter, dict)
+        and parameter.get("in") == location
+        and (
+            str(parameter.get("name", "")).lower()
+            if location == "header"
+            else parameter.get("name")
+        )
+        == match_name
+        for parameter in parameters
+    )
 
 
 def _prepared_body(value: Any) -> bytes | None:
@@ -468,6 +575,31 @@ def _apply_authentication(
             )
 
 
+def _replace_query_values(
+    url: str | None, overrides: dict[str, str | list[str] | None]
+) -> str:
+    if url is None:
+        raise RuntimeError("CodeAtlas cannot adapt a request without a URL")
+    try:
+        parsed = urlsplit(url)
+        overridden_names = set(overrides)
+        query = [
+            (name, value)
+            for name, value in parse_qsl(parsed.query, keep_blank_values=True)
+            if name not in overridden_names
+        ]
+        for name, value in overrides.items():
+            if isinstance(value, list):
+                query.extend((name, item) for item in value)
+            elif value is not None:
+                query.append((name, value))
+        return urlunsplit(parsed._replace(query=urlencode(query)))
+    except ValueError as error:
+        raise RuntimeError(
+            "CodeAtlas request adapter could not update the request query"
+        ) from error
+
+
 def _generation(case: Any) -> dict[str, Any]:
     metadata = case.meta
     if metadata is None:
@@ -489,13 +621,21 @@ def _generation(case: Any) -> dict[str, Any]:
 
 
 class _RequestAdapterAuth(requests.auth.AuthBase):
-    def __init__(self, case: Any) -> None:
+    def __init__(
+        self,
+        case: Any,
+        *,
+        apply_authentication: bool = True,
+        probe: str | None = None,
+    ) -> None:
         self._id = case.id
         self._operation = case.operation.label
         self._media_type = case.media_type
         self._generation = _generation(case)
         self._prior_auth = getattr(case, "_auth", None)
         self._security_parameters = _public_security_parameters(case)
+        self._apply_authentication = apply_authentication
+        self._probe = probe
 
     def __call__(self, prepared: requests.PreparedRequest) -> requests.PreparedRequest:
         if self._prior_auth is not None:
@@ -517,9 +657,13 @@ class _RequestAdapterAuth(requests.auth.AuthBase):
             "generation": self._generation,
             "securityParameters": self._security_parameters,
         }
+        if self._probe is not None:
+            request["probe"] = self._probe
         overrides = _ADAPTER.adapt(request)
         for name, value in overrides["headers"].items():
             prepared.headers[name] = value
+        if "query" in overrides:
+            prepared.url = _replace_query_values(prepared.url, overrides["query"])
         if "bodyBase64" in overrides:
             encoded = overrides["bodyBase64"]
             try:
@@ -534,11 +678,12 @@ class _RequestAdapterAuth(requests.auth.AuthBase):
                 ) from error
             prepared.headers.pop("Content-Length", None)
             prepared.prepare_content_length(prepared.body)
-        _apply_authentication(
-            prepared,
-            overrides["authentication"],
-            self._security_parameters,
-        )
+        if self._apply_authentication:
+            _apply_authentication(
+                prepared,
+                overrides["authentication"],
+                self._security_parameters,
+            )
         return prepared
 
 
@@ -550,16 +695,21 @@ def before_call(_context: Any, case: Any, kwargs: dict[str, Any]) -> None:
 
 @schemathesis.hook
 def after_call(_context: Any, case: Any, response: Any) -> None:
+    _observe_response(case, response)
+
+
+def _observe_response(case: Any, response: Any, *, probe: str | None = None) -> None:
     if _ADAPTER is None:
         return
-    _ADAPTER.observe(
-        {
-            "apiVersion": API_VERSION,
-            "kind": "response",
-            "id": case.id,
-            "operation": case.operation.label,
-            "status": response.status_code,
-            "headers": dict(response.headers),
-            "bodyBase64": base64.b64encode(response.content).decode("ascii"),
-        }
-    )
+    message = {
+        "apiVersion": API_VERSION,
+        "kind": "response",
+        "id": case.id,
+        "operation": case.operation.label,
+        "status": response.status_code,
+        "headers": dict(response.headers),
+        "bodyBase64": base64.b64encode(response.content).decode("ascii"),
+    }
+    if probe is not None:
+        message["probe"] = probe
+    _ADAPTER.observe(message)

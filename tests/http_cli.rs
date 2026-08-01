@@ -270,14 +270,14 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             fixture.join("server.py"),
             port.to_string(),
             &openapi,
-            "fixture-static-token"
+            "fixture-runtime-token"
         ])
     } else {
         json!([
             fixture.join("server.py"),
             port.to_string(),
             &openapi,
-            "fixture-static-token"
+            "fixture-runtime-token"
         ])
     };
     let config_path = directory.path().join("codeatlas.json");
@@ -338,11 +338,9 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "--target",
             "fixture-local",
             "--max-examples",
-            "4",
+            "12",
             "--seed",
             "424242",
-            "--operation",
-            "POST /widgets/{id}",
         ])
         .env("CODEATLAS_PYTHON", &python)
         .output()
@@ -384,12 +382,39 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         .collect::<Vec<_>>();
     assert!(!requests.is_empty(), "adapter should receive requests");
     assert_eq!(requests.len(), responses.len());
+    let primary_requests = requests
+        .iter()
+        .copied()
+        .filter(|event| event["probe"].is_null())
+        .collect::<Vec<_>>();
+    let primary_responses = responses
+        .iter()
+        .copied()
+        .filter(|event| event["probe"].is_null())
+        .collect::<Vec<_>>();
+    let authentication_probe_responses = responses
+        .iter()
+        .copied()
+        .filter(|event| event["probe"] == "authentication")
+        .collect::<Vec<_>>();
     assert!(requests.iter().all(|event| event["staticHeader"] == true));
-    assert!(requests.iter().any(|event| event["bodyOverride"] == true));
-    assert!(requests
+    assert!(primary_requests
+        .iter()
+        .any(|event| event["bodyOverride"] == true));
+    assert!(primary_requests
         .iter()
         .any(|event| event["sessionAuthentication"] == true));
-    let negative_body_ids = requests
+    assert!(primary_requests
+        .iter()
+        .any(|event| event["queryOverride"] == true));
+    assert!(
+        !authentication_probe_responses.is_empty(),
+        "adapter should observe authentication probe responses: {adapter_events:#?}"
+    );
+    assert!(authentication_probe_responses.iter().all(|event| {
+        event["staticSeen"] == true && matches!(event["status"].as_u64(), Some(401 | 403 | 404))
+    }));
+    let negative_body_ids = primary_requests
         .iter()
         .filter(|event| event["bodyGeneration"] == "negative")
         .filter_map(|event| event["id"].as_str())
@@ -398,13 +423,45 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         !negative_body_ids.is_empty(),
         "Schemathesis should generate a negative body case"
     );
-    assert!(negative_body_ids.iter().all(|id| requests
+    assert!(negative_body_ids.iter().all(|id| primary_requests
         .iter()
         .any(|event| { event["id"] == *id && event["bodyOverride"] == false })));
-    assert!(negative_body_ids.iter().any(|id| responses
+    assert!(negative_body_ids.iter().any(|id| primary_responses
         .iter()
         .any(|event| { event["id"] == *id && event["status"] == 400 })));
-    assert!(responses.iter().any(|event| event["adapterSeen"] == true));
+    let negative_query_ids = primary_requests
+        .iter()
+        .filter(|event| event["queryGeneration"] == "negative")
+        .filter_map(|event| event["id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        !negative_query_ids.is_empty(),
+        "Schemathesis should generate a negative query case"
+    );
+    assert!(negative_query_ids.iter().all(|id| primary_requests
+        .iter()
+        .any(|event| { event["id"] == *id && event["queryOverride"] == false })));
+    assert!(negative_query_ids.iter().any(|id| primary_responses
+        .iter()
+        .any(|event| { event["id"] == *id && event["status"] == 400 })));
+    let negative_header_ids = primary_requests
+        .iter()
+        .filter(|event| event["headerGeneration"] == "negative")
+        .filter_map(|event| event["id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        !negative_header_ids.is_empty(),
+        "Schemathesis should generate a negative header case"
+    );
+    assert!(negative_header_ids.iter().all(|id| primary_responses
+        .iter()
+        .any(|event| { event["id"] == *id && event["status"] != 401 })));
+    assert!(primary_responses
+        .iter()
+        .any(|event| event["adapterSeen"] == true));
+    assert!(primary_responses
+        .iter()
+        .any(|event| event["querySeen"] == true));
     assert!(adapter_events.iter().any(|event| event["kind"] == "closed"));
     assert!(
         TcpListener::bind(("127.0.0.1", port)).is_ok(),

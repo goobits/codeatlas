@@ -435,6 +435,7 @@ workflows are needed:
             "command": "node",
             "args": ["src/test-server.js"],
             "cwd": ".",
+            "startup_timeout_seconds": 90,
             "prepare": [
               {
                 "command": "node",
@@ -519,9 +520,11 @@ requires package hashes, so a fresh machine cannot silently resolve a different
 fuzzer stack. Managed provisioning requires Python 3.10 or newer; set
 `CODEATLAS_PYTHON` when `python3` is not the intended interpreter. CodeAtlas
 also asks that exact CLI to load its bundled hook before starting the optional
-foreground test server. CodeAtlas waits for owned servers to accept
-connections. Optional `server.prepare` commands run in order before the owned
-server and inherit the target's isolated environment; use them for idempotent
+foreground test server. CodeAtlas waits 30 seconds for owned servers to accept
+connections by default. Set bounded `server.startup_timeout_seconds` (1–600)
+for managed targets with slower cold starts. Optional `server.prepare` commands
+run in order before the owned server and inherit the target's isolated
+environment; use them for idempotent
 local schema migrations or fixture preparation instead of project-specific
 wrapper scripts. Schema-backed targets materialize their configured `file`,
 `command`, `url`, or `target` provider into the private run directory, so the
@@ -549,14 +552,21 @@ A target may also declare a long-lived `request_adapter` command. CodeAtlas
 sends each exact serialized request and each observed response over the versioned
 `codeatlas.http-request-adapter/v2` JSONL protocol. Request messages include
 the operation's active `securityParameters`. Replies may supply matching
-`authentication` parameters independently from ordinary header and optional
-base64 body overrides. CodeAtlas rejects undeclared authentication and rejects
-ordinary overrides when their component's generation mode is `negative`;
-overrides exist to supply valid fixtures or credentials for the remaining
-components. Authentication rejection is probed separately without invoking the
-adapter, so dynamic sessions do not mask missing or invalid credentials.
-Response observations let an
-application-owned adapter retain workflow credentials for linked requests.
+`authentication` parameters independently from ordinary header, query-value,
+and optional base64 body overrides. Query replies are maps whose string or
+string-array values replace that name's generated values; `null` removes the
+name. They cannot replace the URL's scheme, authority, or path. CodeAtlas
+rejects undeclared authentication, prevents ordinary overrides from replacing
+declared security parameters, and rejects ordinary overrides when their
+component's generation mode is `negative`; overrides exist to supply valid
+fixtures or credentials for the remaining components. When another header is
+negatively generated, an adapter may still replace a configured static
+credential header only while the request retains that exact placeholder value.
+Authentication probes are marked in adapter messages and retain ordinary
+fixture adaptation while never applying the adapter's dynamic authentication,
+so sessions and credentials do not mask missing or invalid authentication.
+Response observations let an application-owned adapter retain workflow
+credentials for linked requests.
 Coverage-phase scenarios that Schemathesis identifies as valid are normalized
 to positive generation before adapter safety checks and coverage accounting,
 including valid multipart objects whose raw engine mode is negative.

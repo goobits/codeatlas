@@ -123,6 +123,7 @@ pub(crate) struct HttpFuzzServerConfig {
     pub args: Vec<String>,
     pub cwd: Option<PathBuf>,
     pub prepare: Vec<HttpFuzzCommandConfig>,
+    pub startup_timeout_seconds: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -175,6 +176,7 @@ mod tests {
                             "server": {
                                 "command": "node",
                                 "args": ["src/test-server.js"],
+                                "startup_timeout_seconds": 90,
                                 "prepare": [{
                                     "command": "node",
                                     "args": ["src/prepare-test-server.js"]
@@ -211,6 +213,13 @@ mod tests {
         assert_eq!(
             target.server.as_ref().map(|server| server.command.as_str()),
             Some("node")
+        );
+        assert_eq!(
+            target
+                .server
+                .as_ref()
+                .and_then(|server| server.startup_timeout_seconds),
+            Some(90)
         );
         assert_eq!(
             target
