@@ -1,10 +1,15 @@
 mod analysis;
 mod http;
+mod postgres;
 
 pub(crate) use analysis::{AnalysisContextConfig, AnalysisProjectConfig, ResolvedAnalysisProject};
 pub(crate) use http::{
     HttpConfig, HttpFuzzCommandConfig, HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig,
     HttpFuzzServerConfig, HttpOpenApiProviderConfig, HttpOpenApiSourceConfig,
+};
+pub(crate) use postgres::{
+    PostgresConfig, PostgresContractConfig, PostgresLintConfig, PostgresMigrationSourceConfig,
+    PostgresPsqlMetaCommandMode, PostgresTransactionMode,
 };
 
 use anyhow::{Context, Result};
@@ -24,6 +29,7 @@ pub(crate) struct CodeAtlasConfig {
     pub projects: Vec<AnalysisProjectConfig>,
     pub docs: DocsConfig,
     pub http: HttpConfig,
+    pub postgres: PostgresConfig,
 }
 
 impl Default for CodeAtlasConfig {
@@ -39,6 +45,7 @@ impl Default for CodeAtlasConfig {
             projects: Vec::new(),
             docs: DocsConfig::default(),
             http: HttpConfig::default(),
+            postgres: PostgresConfig::default(),
         }
     }
 }
@@ -167,6 +174,7 @@ mod tests {
         assert!(!config.include_private);
         assert!(!config.docs.declaration_contract);
         assert!(!config.docs.require_descriptions);
+        assert!(config.postgres.contracts.is_empty());
     }
 
     #[test]

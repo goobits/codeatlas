@@ -1,0 +1,19 @@
+{
+	"root": ".",
+	"package_exports": false,
+	"postgres": {
+		"contracts": [
+			{
+				"id": "fixture-postgres",
+				"migration_sources": [
+					{
+						"path": "migrations",
+						"transaction": "always",
+						"psql_meta_commands": "strip"
+					}
+				],
+				"source_complete": true
+			}
+		]
+	}
+}

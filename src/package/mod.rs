@@ -8,8 +8,8 @@ mod source_layout;
 mod workspace;
 
 pub(crate) use dependency::{
-    is_local as is_local_dependency, resolve as resolve_dependency,
-    split_specifier as split_package_specifier,
+    declares_any as declares_any_dependency, is_local as is_local_dependency,
+    resolve as resolve_dependency, split_specifier as split_package_specifier,
 };
 pub(crate) use entrypoints::discover_bundled_entrypoints;
 pub(crate) use entrypoints::discover_entrypoints as discover_runtime_entrypoints;

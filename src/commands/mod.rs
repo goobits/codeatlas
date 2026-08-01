@@ -5,6 +5,7 @@ pub(crate) mod diff;
 pub(crate) mod docs;
 pub(crate) mod http;
 mod output;
+pub(crate) mod postgres;
 
 use crate::config::ProjectConfig;
 use crate::domain::{ScanConfig, ScanReport};

@@ -13,6 +13,7 @@ mod languages;
 mod outputs;
 mod package;
 mod paths;
+mod postgres;
 mod source_discovery;
 mod source_policy;
 

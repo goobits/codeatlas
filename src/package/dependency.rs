@@ -69,6 +69,29 @@ pub(crate) fn is_local(importer_root: &Path, dependency: &ResolvedDependency) ->
     Ok(false)
 }
 
+pub(crate) fn declares_any(root: &Path, package_names: &[&str]) -> bool {
+    let Ok(source) = std::fs::read_to_string(root.join("package.json")) else {
+        return false;
+    };
+    let Ok(manifest) = serde_json::from_str::<Value>(&source) else {
+        return false;
+    };
+    [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    ]
+    .into_iter()
+    .filter_map(|section| manifest.get(section)?.as_object())
+    .flat_map(|dependencies| dependencies.keys())
+    .any(|dependency| {
+        package_names
+            .iter()
+            .any(|package_name| dependency == package_name)
+    })
+}
+
 pub(crate) fn split_specifier(specifier: &str) -> Option<(String, String)> {
     if specifier.starts_with('.')
         || specifier.starts_with('#')
@@ -97,7 +120,8 @@ pub(crate) fn split_specifier(specifier: &str) -> Option<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::split_specifier;
+    use super::{declares_any, split_specifier};
+    use std::path::Path;
 
     #[test]
     fn splits_scoped_and_unscoped_package_specifiers() {
@@ -115,5 +139,12 @@ mod tests {
         );
         assert_eq!(split_specifier("./local.ts"), None);
         assert_eq!(split_specifier("node:path"), None);
+    }
+
+    #[test]
+    fn detects_declared_packages_without_interpreting_versions() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert!(declares_any(root, &["squawk-cli"]));
+        assert!(!declares_any(root, &["not-a-real-codeatlas-dependency"]));
     }
 }

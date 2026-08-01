@@ -7,9 +7,11 @@ use std::path::PathBuf;
 
 use architecture::ArchitectureCommand;
 use http::HttpCommand;
+use postgres::PostgresCommand;
 
 mod architecture;
 mod http;
+mod postgres;
 
 #[derive(Parser)]
 #[command(name = "codeatlas")]
@@ -102,6 +104,12 @@ enum Command {
     Http {
         #[command(subcommand)]
         command: HttpCommand,
+    },
+
+    /// Inventory and check PostgreSQL contracts
+    Postgres {
+        #[command(subcommand)]
+        command: PostgresCommand,
     },
 
     /// CI mode: exit non-zero if issues found
@@ -200,6 +208,7 @@ pub(crate) fn run() -> i32 {
         ),
         Command::Architecture { command } => command.run(),
         Command::Http { command } => command.run(config_path.as_deref()),
+        Command::Postgres { command } => command.run(config_path.as_deref()),
         Command::Ci {
             path,
             fail_unused,
