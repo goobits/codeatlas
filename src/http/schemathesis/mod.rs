@@ -51,8 +51,7 @@ const CHECKS: &[&str] = &[
     "unsupported_method",
     "codeatlas_auth_rejection",
 ];
-const SOURCE_TRANSPORT_CHECKS: &[&str] =
-    &["codeatlas_no_internal_server_error", "unsupported_method"];
+const SOURCE_TRANSPORT_CHECKS: &[&str] = &["not_a_server_error", "unsupported_method"];
 const STATEFUL_CHECKS: &[&str] = &["use_after_free", "ensure_resource_availability"];
 static INTERRUPTED: AtomicBool = AtomicBool::new(false);
 static INTERRUPT_HANDLER: OnceLock<std::result::Result<(), String>> = OnceLock::new();
@@ -660,6 +659,7 @@ mod tests {
             checks(HttpFuzzContractMode::SourceTransport, false),
             SOURCE_TRANSPORT_CHECKS.join(",")
         );
+        assert!(SOURCE_TRANSPORT_CHECKS.contains(&"not_a_server_error"));
     }
 
     #[test]

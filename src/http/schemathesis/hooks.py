@@ -268,14 +268,6 @@ def codeatlas_negative_data_rejection(
     return _schemathesis_negative_data_rejection(context, response, case)
 
 
-@schemathesis.check
-def codeatlas_no_internal_server_error(
-    _context: Any, response: Any, _case: Any
-) -> bool:
-    """Reject unhandled HTTP 500 responses without treating intentional 5xx states as crashes."""
-    return response.status_code != 500
-
-
 class _CodeAtlasAuthProvider:
     def get(self, _case: Any, _context: Any) -> tuple[tuple[str, str], ...]:
         return _STATIC_HEADERS

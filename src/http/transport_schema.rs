@@ -179,20 +179,36 @@ mod tests {
         let source = HttpSourceInventory {
             completeness: HttpSourceCompleteness::Complete,
             reason: "fixture".to_string(),
-            operations: vec![HttpSourceOperation {
-                key: "POST /widgets/{id}".to_string(),
-                method: "POST".to_string(),
-                path: "/widgets/{id}".to_string(),
-                kind: HttpSourceOperationKind::Endpoint,
-                schema_missing: true,
-                path_pattern: None,
-                detector: "fixture".to_string(),
-                confidence: HttpConfidence::High,
-                evidence: HttpSourceEvidence {
-                    path: "src/server.ts".to_string(),
-                    line: 1,
+            operations: vec![
+                HttpSourceOperation {
+                    key: "POST /widgets/{id}".to_string(),
+                    method: "POST".to_string(),
+                    path: "/widgets/{id}".to_string(),
+                    kind: HttpSourceOperationKind::Endpoint,
+                    schema_missing: true,
+                    path_pattern: None,
+                    detector: "fixture".to_string(),
+                    confidence: HttpConfidence::High,
+                    evidence: HttpSourceEvidence {
+                        path: "src/server.ts".to_string(),
+                        line: 1,
+                    },
                 },
-            }],
+                HttpSourceOperation {
+                    key: "PAGE /dashboard".to_string(),
+                    method: "PAGE".to_string(),
+                    path: "/dashboard".to_string(),
+                    kind: HttpSourceOperationKind::Page,
+                    schema_missing: false,
+                    path_pattern: Some("/dashboard".to_string()),
+                    detector: "fixture".to_string(),
+                    confidence: HttpConfidence::High,
+                    evidence: HttpSourceEvidence {
+                        path: "src/routes/dashboard/+page.svelte".to_string(),
+                        line: 1,
+                    },
+                },
+            ],
             skipped_files: Vec::new(),
         };
 
@@ -210,6 +226,10 @@ mod tests {
         assert!(
             document.get("components").is_none(),
             "source transport contracts must not invent domain schemas or authentication"
+        );
+        assert!(
+            document["paths"].get("/dashboard").is_none(),
+            "page inventory must not widen the configured HTTP fuzz surface"
         );
     }
 }

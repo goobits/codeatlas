@@ -139,7 +139,7 @@ pub(super) fn summarize_reader(
                     .observed_statuses
                     .entry(status.to_string())
                     .or_default() += 1;
-                if is_reported_server_error(contract_mode, status) {
+                if is_reported_server_error(status) {
                     stats.server_errors += 1;
                 }
             }
@@ -198,8 +198,8 @@ pub(super) fn summarize_reader(
     })
 }
 
-pub(super) fn is_reported_server_error(contract_mode: HttpFuzzContractMode, status: u64) -> bool {
-    status == 500 || (contract_mode == HttpFuzzContractMode::OpenApi && status >= 500)
+pub(super) fn is_reported_server_error(status: u64) -> bool {
+    (500..600).contains(&status)
 }
 
 fn phase_name(value: Option<&Value>) -> Option<&str> {

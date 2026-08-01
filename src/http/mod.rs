@@ -14,7 +14,7 @@ mod transport_schema;
 use self::target::ResolvedHttpContract;
 use anyhow::Result;
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use model::HttpContractInventory;
+use model::{HttpContractInventory, HttpSourceOperationKind};
 use std::collections::BTreeSet;
 
 pub(crate) use conformance::check;
@@ -52,12 +52,12 @@ pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInvent
             "source_exclude_paths",
         )?;
         source.operations.retain(|operation| {
-            include
-                .as_ref()
-                .is_none_or(|patterns| patterns.is_match(&operation.path))
-                && exclude
-                    .as_ref()
-                    .is_none_or(|patterns| !patterns.is_match(&operation.path))
+            source_operation_matches_path_filters(
+                operation.kind,
+                &operation.path,
+                include.as_ref(),
+                exclude.as_ref(),
+            )
         });
         let schema_operations = openapi
             .as_ref()
@@ -91,6 +91,19 @@ pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInvent
     }
     inventories.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(HttpInventoryReport::new(inventories))
+}
+
+fn source_operation_matches_path_filters(
+    kind: HttpSourceOperationKind,
+    path: &str,
+    include: Option<&GlobSet>,
+    exclude: Option<&GlobSet>,
+) -> bool {
+    if kind == HttpSourceOperationKind::Page {
+        return true;
+    }
+    include.is_none_or(|patterns| patterns.is_match(path))
+        && exclude.is_none_or(|patterns| !patterns.is_match(path))
 }
 
 pub(crate) fn fuzz_contract(
@@ -139,7 +152,8 @@ fn compile_patterns(
 
 #[cfg(test)]
 mod tests {
-    use super::compile_patterns;
+    use super::{compile_patterns, source_operation_matches_path_filters};
+    use crate::http::model::HttpSourceOperationKind;
 
     #[test]
     fn source_path_filters_support_exact_and_recursive_contract_boundaries() {
@@ -153,5 +167,31 @@ mod tests {
         assert!(patterns.is_match("/health"));
         assert!(patterns.is_match("/v1/sessions"));
         assert!(!patterns.is_match("/internal/accounts"));
+    }
+
+    #[test]
+    fn source_path_filters_scope_endpoints_without_hiding_page_inventory() {
+        let include = compile_patterns(&["/api/**".to_string()], "public", "source_include_paths")
+            .expect("patterns")
+            .expect("compiled patterns");
+
+        assert!(source_operation_matches_path_filters(
+            HttpSourceOperationKind::Endpoint,
+            "/api/health",
+            Some(&include),
+            None,
+        ));
+        assert!(!source_operation_matches_path_filters(
+            HttpSourceOperationKind::Endpoint,
+            "/internal/health",
+            Some(&include),
+            None,
+        ));
+        assert!(source_operation_matches_path_filters(
+            HttpSourceOperationKind::Page,
+            "/dashboard",
+            Some(&include),
+            None,
+        ));
     }
 }

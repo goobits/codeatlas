@@ -17,16 +17,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 struct TestReportDirectory(PathBuf);
 
 #[test]
-fn source_transport_reports_unhandled_500_without_misclassifying_readiness_503() {
-    assert!(is_reported_server_error(
-        HttpFuzzContractMode::SourceTransport,
-        500
-    ));
-    assert!(!is_reported_server_error(
-        HttpFuzzContractMode::SourceTransport,
-        503
-    ));
-    assert!(is_reported_server_error(HttpFuzzContractMode::OpenApi, 503));
+fn reports_every_fuzz_response_in_the_server_error_range() {
+    assert!(!is_reported_server_error(499));
+    assert!(is_reported_server_error(500));
+    assert!(is_reported_server_error(503));
+    assert!(is_reported_server_error(599));
+    assert!(!is_reported_server_error(600));
 }
 
 impl TestReportDirectory {
