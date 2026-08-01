@@ -168,6 +168,20 @@ fn target_provider_starts_fetches_and_stops_its_server() {
     let python = configured_python();
     let config_path = directory.path().join("codeatlas.json");
     let report_path = directory.path().join("report.json");
+    let child_pid_path = directory.path().join("server-child.pid");
+    let server_script = if cfg!(unix) {
+        fixture.join("server_wrapper.py")
+    } else {
+        fixture.join("server.py")
+    };
+    let mut server_args = vec![
+        server_script,
+        PathBuf::from(port.to_string()),
+        openapi.clone(),
+    ];
+    if cfg!(unix) {
+        server_args.push(child_pid_path.clone());
+    }
     let config = json!({
         "root": ".",
         "package_exports": false,
@@ -189,11 +203,7 @@ fn target_provider_starts_fetches_and_stops_its_server() {
                     "openapi_path": "/openapi.yaml",
                     "server": {
                         "command": python,
-                        "args": [
-                            fixture.join("server.py"),
-                            port.to_string(),
-                            &openapi
-                        ],
+                        "args": server_args,
                         "cwd": directory.path()
                     }
                 }]
@@ -239,6 +249,12 @@ fn target_provider_starts_fetches_and_stops_its_server() {
         "GET /health"
     );
     assert_eq!(report["findings"], json!([]));
+    if cfg!(unix) {
+        assert!(
+            child_pid_path.is_file(),
+            "owned HTTP target should exercise a wrapper and descendant server"
+        );
+    }
     assert!(
         TcpListener::bind(("127.0.0.1", port)).is_ok(),
         "owned HTTP target should release its port after the check"

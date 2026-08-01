@@ -1,6 +1,8 @@
 use super::target::{ResolvedHttpFuzzCommand, ResolvedHttpFuzzServer, ResolvedHttpFuzzTarget};
 use anyhow::{Context, Result};
 use std::net::{TcpStream, ToSocketAddrs};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use url::{Host, Url};
@@ -22,17 +24,18 @@ impl OwnedHttpServer {
         for (index, command) in server.prepare.iter().enumerate() {
             run_prepare_command(command, target, index + 1)?;
         }
-        let mut child = Command::new(&server.command.command)
+        let mut command = Command::new(&server.command.command);
+        command
             .args(&server.command.args)
             .current_dir(&server.command.cwd)
-            .envs(&target.environment)
-            .spawn()
-            .with_context(|| {
-                format!(
-                    "Could not start HTTP server for target {} with command {:?}",
-                    target.id, server.command.command
-                )
-            })?;
+            .envs(&target.environment);
+        configure_server_process(&mut command);
+        let mut child = command.spawn().with_context(|| {
+            format!(
+                "Could not start HTTP server for target {} with command {:?}",
+                target.id, server.command.command
+            )
+        })?;
         wait_until_listening(&mut child, target)?;
         Ok(Self { child })
     }
@@ -49,7 +52,7 @@ impl OwnedHttpServer {
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        let _ = self.child.kill();
+        force_stop(&mut self.child);
         let _ = self.child.wait();
     }
 }
@@ -142,20 +145,46 @@ impl Drop for OwnedHttpServer {
 
 #[cfg(unix)]
 fn request_graceful_stop(child: &mut Child) {
-    let status = Command::new("kill")
-        .args(["-TERM", &child.id().to_string()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    if !status.is_ok_and(|status| status.success()) {
+    if !signal_process_group(child, "-TERM") {
         let _ = child.kill();
     }
+}
+
+#[cfg(unix)]
+fn force_stop(child: &mut Child) {
+    if !signal_process_group(child, "-KILL") {
+        let _ = child.kill();
+    }
+}
+
+#[cfg(unix)]
+fn signal_process_group(child: &Child, signal: &str) -> bool {
+    let group = format!("-{}", child.id());
+    Command::new("kill")
+        .args([signal, "--", &group])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+#[cfg(unix)]
+fn configure_server_process(command: &mut Command) {
+    command.process_group(0);
 }
 
 #[cfg(not(unix))]
 fn request_graceful_stop(child: &mut Child) {
     let _ = child.kill();
 }
+
+#[cfg(not(unix))]
+fn force_stop(child: &mut Child) {
+    let _ = child.kill();
+}
+
+#[cfg(not(unix))]
+fn configure_server_process(_command: &mut Command) {}
 
 #[cfg(test)]
 mod tests {
