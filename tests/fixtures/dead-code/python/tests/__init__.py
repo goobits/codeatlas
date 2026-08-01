@@ -1,0 +1,1 @@
+"""Fixture test package initializer."""

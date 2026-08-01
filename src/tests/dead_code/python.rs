@@ -66,7 +66,24 @@ fn python_reachability_handles_src_layouts_relative_imports_and_context_roles() 
                     | "src/fixture/star_consumer.py"
                     | "src/namespace_pkg/part.py"
                     | "src/fixture/cli.py"
+                    | "tests/__init__.py"
             )
+    }));
+    assert!(!report.findings.iter().any(|finding| {
+        matches!(
+            finding.kind,
+            DeadCodeFindingKind::UnreferencedPublic | DeadCodeFindingKind::UnusedPrivateSymbol
+        ) && matches!(
+            finding.symbol.as_deref(),
+            Some(
+                "nested_value"
+                    | "alias_value"
+                    | "cli_alias_value"
+                    | "_PRIVATE_TOKEN"
+                    | "_LocalClient"
+                    | "_scoped_values"
+            )
+        )
     }));
 }
 

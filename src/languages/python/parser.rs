@@ -20,10 +20,19 @@ pub(crate) struct PythonImport {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PythonReachabilityFacts {
     pub top_level_references: BTreeSet<String>,
+    pub top_level_qualified_references: BTreeSet<String>,
     pub symbol_references: BTreeMap<String, BTreeSet<String>>,
+    pub symbol_qualified_references: BTreeMap<String, BTreeSet<String>>,
+    pub scoped_imports: Vec<PythonScopedImport>,
     pub dynamic_dependencies: Vec<PythonDynamicDependency>,
     pub dynamic_entrypoints: BTreeSet<String>,
     pub uncertainties: Vec<PythonUncertainty>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PythonScopedImport {
+    pub owner: String,
+    pub import: PythonImport,
 }
 
 #[derive(Debug, Clone)]
@@ -360,9 +369,15 @@ fn merge_symbol_collector(
 ) {
     facts
         .symbol_references
-        .entry(owner)
+        .entry(owner.clone())
         .or_default()
         .extend(collector.names);
+    facts
+        .symbol_qualified_references
+        .entry(owner)
+        .or_default()
+        .extend(collector.qualified_names);
+    facts.scoped_imports.extend(collector.scoped_imports);
     facts
         .dynamic_dependencies
         .extend(collector.dynamic_dependencies);
@@ -375,6 +390,10 @@ fn merge_top_level_collector(
 ) {
     facts.top_level_references.extend(collector.names);
     facts
+        .top_level_qualified_references
+        .extend(collector.qualified_names);
+    facts.scoped_imports.extend(collector.scoped_imports);
+    facts
         .dynamic_dependencies
         .extend(collector.dynamic_dependencies);
     facts.uncertainties.extend(collector.uncertainties);
@@ -383,6 +402,8 @@ fn merge_top_level_collector(
 struct ReferenceCollector<'a> {
     owner: Option<String>,
     names: BTreeSet<String>,
+    qualified_names: BTreeSet<String>,
+    scoped_imports: Vec<PythonScopedImport>,
     dynamic_dependencies: Vec<PythonDynamicDependency>,
     uncertainties: Vec<PythonUncertainty>,
     source: &'a str,
@@ -394,6 +415,8 @@ impl<'a> ReferenceCollector<'a> {
         Self {
             owner,
             names: BTreeSet::new(),
+            qualified_names: BTreeSet::new(),
+            scoped_imports: Vec::new(),
             dynamic_dependencies: Vec::new(),
             uncertainties: Vec::new(),
             source,
@@ -459,6 +482,16 @@ impl Visitor for ReferenceCollector<'_> {
         self.generic_visit_expr_call(node);
     }
 
+    fn visit_expr_attribute(&mut self, node: ast::ExprAttribute) {
+        if matches!(node.ctx, ast::ExprContext::Load) {
+            if let Some(parent) = qualified_expr_name(&node.value) {
+                let name = format!("{parent}.{}", node.attr.as_str());
+                self.qualified_names.insert(name);
+            }
+        }
+        self.generic_visit_expr_attribute(node);
+    }
+
     fn visit_stmt_assign(&mut self, node: ast::StmtAssign) {
         if self.owner.is_none()
             && node
@@ -472,6 +505,22 @@ impl Visitor for ReferenceCollector<'_> {
             );
         }
         self.generic_visit_stmt_assign(node);
+    }
+
+    fn visit_stmt_import(&mut self, node: ast::StmtImport) {
+        if let (Some(owner), Some(import)) = (self.owner.clone(), python_import(&node)) {
+            self.scoped_imports
+                .push(PythonScopedImport { owner, import });
+        }
+    }
+
+    fn visit_stmt_import_from(&mut self, node: ast::StmtImportFrom) {
+        if let Some(owner) = self.owner.clone() {
+            self.scoped_imports.push(PythonScopedImport {
+                owner,
+                import: python_import_from(&node),
+            });
+        }
     }
 }
 
@@ -712,54 +761,61 @@ fn collect_exports_and_imports(suite: &[ast::Stmt]) -> (Option<Vec<String>>, Vec
                 }
             }
             ast::Stmt::Import(import) => {
-                let mut modules = Vec::new();
-                let mut aliases = Vec::new();
-                for name in &import.names {
-                    let module = name.name.as_str().to_string();
-                    modules.push(module);
-                    aliases.push(name.asname.as_ref().map(|alias| alias.as_str().to_string()));
-                }
-                if !modules.is_empty() {
-                    imports.push(PythonImport {
-                        module: String::new(),
-                        names: modules,
-                        is_star: false,
-                        level: 0,
-                        aliases,
-                    });
+                if let Some(import) = python_import(import) {
+                    imports.push(import);
                 }
             }
             ast::Stmt::ImportFrom(import) => {
-                let module = import
-                    .module
-                    .as_ref()
-                    .map(|m| m.as_str().to_string())
-                    .unwrap_or_default();
-                let mut names = Vec::new();
-                let mut is_star = false;
-                let mut aliases = Vec::new();
-                for name in &import.names {
-                    let imported = name.name.as_str().to_string();
-                    if imported == "*" {
-                        is_star = true;
-                    } else {
-                        names.push(imported);
-                    }
-                    aliases.push(name.asname.as_ref().map(|alias| alias.as_str().to_string()));
-                }
-                imports.push(PythonImport {
-                    module,
-                    names,
-                    is_star,
-                    level: import.level.map(|level| level.to_usize()).unwrap_or(0),
-                    aliases,
-                });
+                imports.push(python_import_from(import));
             }
             _ => {}
         }
     }
 
     (exports, imports)
+}
+
+fn python_import(import: &ast::StmtImport) -> Option<PythonImport> {
+    let mut modules = Vec::new();
+    let mut aliases = Vec::new();
+    for name in &import.names {
+        modules.push(name.name.as_str().to_string());
+        aliases.push(name.asname.as_ref().map(|alias| alias.as_str().to_string()));
+    }
+    (!modules.is_empty()).then_some(PythonImport {
+        module: String::new(),
+        names: modules,
+        is_star: false,
+        level: 0,
+        aliases,
+    })
+}
+
+fn python_import_from(import: &ast::StmtImportFrom) -> PythonImport {
+    let module = import
+        .module
+        .as_ref()
+        .map(|module| module.as_str().to_string())
+        .unwrap_or_default();
+    let mut names = Vec::new();
+    let mut is_star = false;
+    let mut aliases = Vec::new();
+    for name in &import.names {
+        let imported = name.name.as_str().to_string();
+        if imported == "*" {
+            is_star = true;
+        } else {
+            names.push(imported);
+            aliases.push(name.asname.as_ref().map(|alias| alias.as_str().to_string()));
+        }
+    }
+    PythonImport {
+        module,
+        names,
+        is_star,
+        level: import.level.map(|level| level.to_usize()).unwrap_or(0),
+        aliases,
+    }
 }
 
 fn extract_string_list(expr: &ast::Expr) -> Option<Vec<String>> {

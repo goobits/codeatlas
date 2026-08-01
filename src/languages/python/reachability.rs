@@ -121,12 +121,13 @@ fn collect_project_modules(
                 continue;
             }
         };
-        let names = module_names(&path, source_roots);
+        let mut names = module_names(&path, source_roots);
         let canonical_name = names
             .iter()
             .min_by_key(|name| (name.split('.').count(), name.len()))
             .cloned()
             .unwrap_or_else(|| module_name_from_relative_path(&path));
+        names.insert(canonical_name.clone());
         let symbols = add_symbols(graph, project, &path, &file, &info.symbols)?;
         modules.insert(
             (project.id.clone(), path.clone()),
@@ -200,11 +201,14 @@ fn connect_module(
     connect_explicit_exports(graph, module, modules, resolver);
 
     for import in &module.info.imports {
-        if import.module.is_empty() {
-            connect_plain_import(graph, module, import, resolver);
+        if import.module.is_empty() && import.level == 0 {
+            connect_plain_import(graph, module, import, modules, resolver);
         } else {
             connect_from_import(graph, module, import, modules, resolver);
         }
+    }
+    for scoped_import in &module.info.reachability.scoped_imports {
+        connect_scoped_import(graph, module, scoped_import, modules, resolver);
     }
 
     for dependency in &module.info.reachability.dynamic_dependencies {
@@ -254,13 +258,12 @@ fn connect_plain_import(
     graph: &mut SourceGraph,
     module: &Module,
     import: &parser::PythonImport,
+    modules: &BTreeMap<ModuleKey, Module>,
     resolver: &PythonResolver,
 ) {
     for (index, imported_module) in import.names.iter().enumerate() {
-        let alias = import
-            .aliases
-            .get(index)
-            .and_then(Option::as_deref)
+        let explicit_alias = import.aliases.get(index).and_then(Option::as_deref);
+        let alias = explicit_alias
             .unwrap_or_else(|| imported_module.split('.').next().unwrap_or(imported_module));
         let resolution = resolver.resolve_absolute(&module.project, imported_module);
         connect_resolution(
@@ -274,6 +277,20 @@ fn connect_plain_import(
         let Some(target) = resolution.node() else {
             continue;
         };
+        if let Some(target_module) = resolution.key().cloned() {
+            connect_qualified_module_references(
+                graph,
+                module,
+                QualifiedImport {
+                    target_module: &target_module,
+                    prefix: explicit_alias.unwrap_or(imported_module),
+                    imported: imported_module,
+                    local: alias,
+                    owner: None,
+                },
+                modules,
+            );
+        }
         for source in reference_sources(module, alias) {
             graph.edges.insert(SourceEdge {
                 from: source,
@@ -344,6 +361,7 @@ fn connect_from_import(
             .key()
             .map(|target| exported_symbol(target, imported, modules))
             .unwrap_or_default();
+        let mut child_module = None;
         if targets.is_empty() {
             let child_name = if base_name.is_empty() {
                 imported.clone()
@@ -362,10 +380,181 @@ fn connect_from_import(
                     SourceEdgeKind::ModuleDependency,
                     Vec::new(),
                 );
+                child_module = child_resolution.key().cloned();
                 targets.insert(target);
             }
         }
+        if let Some(target_module) = child_module {
+            connect_qualified_module_references(
+                graph,
+                module,
+                QualifiedImport {
+                    target_module: &target_module,
+                    prefix: local,
+                    imported,
+                    local,
+                    owner: None,
+                },
+                modules,
+            );
+        }
         for source in reference_sources(module, local) {
+            for target in &targets {
+                graph.edges.insert(SourceEdge {
+                    from: source.clone(),
+                    to: EdgeTarget::Node(target.clone()),
+                    kind: SourceEdgeKind::Import,
+                    bindings: vec![SourceBinding {
+                        imported: imported.clone(),
+                        local: local.to_string(),
+                        exported: None,
+                        namespace: false,
+                        type_only: false,
+                    }],
+                    evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
+                });
+            }
+        }
+    }
+}
+
+fn connect_scoped_import(
+    graph: &mut SourceGraph,
+    module: &Module,
+    scoped: &parser::PythonScopedImport,
+    modules: &BTreeMap<ModuleKey, Module>,
+    resolver: &PythonResolver,
+) {
+    let Some(execution_sources) = module.symbols.get(&scoped.owner) else {
+        return;
+    };
+    let import = &scoped.import;
+    if import.module.is_empty() && import.level == 0 {
+        for (index, imported_module) in import.names.iter().enumerate() {
+            let explicit_alias = import.aliases.get(index).and_then(Option::as_deref);
+            let local = explicit_alias
+                .unwrap_or_else(|| imported_module.split('.').next().unwrap_or(imported_module));
+            let resolution = resolver.resolve_absolute(&module.project, imported_module);
+            for source in execution_sources {
+                connect_resolution_from(
+                    graph,
+                    module,
+                    source,
+                    imported_module,
+                    &resolution,
+                    SourceEdgeKind::ModuleDependency,
+                    Vec::new(),
+                );
+            }
+            if let Some(target_module) = resolution.key() {
+                connect_qualified_module_references(
+                    graph,
+                    module,
+                    QualifiedImport {
+                        target_module,
+                        prefix: explicit_alias.unwrap_or(imported_module),
+                        imported: imported_module,
+                        local,
+                        owner: Some(&scoped.owner),
+                    },
+                    modules,
+                );
+            }
+        }
+        return;
+    }
+
+    let base_name = resolve_relative_module(module, import.level, &import.module);
+    let base_resolution = resolver.resolve_absolute(&module.project, &base_name);
+    if !matches!(base_resolution, Resolution::Namespace) {
+        for source in execution_sources {
+            connect_resolution_from(
+                graph,
+                module,
+                source,
+                &base_name,
+                &base_resolution,
+                SourceEdgeKind::ModuleDependency,
+                Vec::new(),
+            );
+        }
+    }
+
+    if import.is_star {
+        let Some(target) = base_resolution.key() else {
+            return;
+        };
+        for source in execution_sources {
+            for symbol in exported_symbols(target, modules, resolver, &mut BTreeSet::new()) {
+                graph.edges.insert(SourceEdge {
+                    from: source.clone(),
+                    to: EdgeTarget::Node(symbol),
+                    kind: SourceEdgeKind::Import,
+                    bindings: Vec::new(),
+                    evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
+                });
+            }
+        }
+        return;
+    }
+
+    let references = module
+        .info
+        .reachability
+        .symbol_references
+        .get(&scoped.owner);
+    for (index, imported) in import.names.iter().enumerate() {
+        let local = import
+            .aliases
+            .get(index)
+            .and_then(Option::as_deref)
+            .unwrap_or(imported);
+        let mut targets = base_resolution
+            .key()
+            .map(|target| exported_symbol(target, imported, modules))
+            .unwrap_or_default();
+        let mut child_module = None;
+        if targets.is_empty() {
+            let child_name = if base_name.is_empty() {
+                imported.clone()
+            } else {
+                format!("{base_name}.{imported}")
+            };
+            let child_resolution = resolver.resolve_absolute(&module.project, &child_name);
+            if let Some(target) = child_resolution.node() {
+                for source in execution_sources {
+                    connect_resolution_from(
+                        graph,
+                        module,
+                        source,
+                        &child_name,
+                        &child_resolution,
+                        SourceEdgeKind::ModuleDependency,
+                        Vec::new(),
+                    );
+                }
+                child_module = child_resolution.key().cloned();
+                targets.insert(target);
+            }
+        }
+        if let Some(target_module) = child_module {
+            connect_qualified_module_references(
+                graph,
+                module,
+                QualifiedImport {
+                    target_module: &target_module,
+                    prefix: local,
+                    imported,
+                    local,
+                    owner: Some(&scoped.owner),
+                },
+                modules,
+            );
+        }
+        if !references.is_some_and(|references| references.contains(local)) {
+            continue;
+        }
+        for source in execution_sources {
             for target in &targets {
                 graph.edges.insert(SourceEdge {
                     from: source.clone(),
@@ -551,6 +740,90 @@ fn reference_sources(module: &Module, local: &str) -> BTreeSet<NodeId> {
         }
     }
     sources
+}
+
+struct QualifiedImport<'a> {
+    target_module: &'a ModuleKey,
+    prefix: &'a str,
+    imported: &'a str,
+    local: &'a str,
+    owner: Option<&'a str>,
+}
+
+fn connect_qualified_module_references(
+    graph: &mut SourceGraph,
+    module: &Module,
+    import: QualifiedImport<'_>,
+    modules: &BTreeMap<ModuleKey, Module>,
+) {
+    for (source, members) in qualified_reference_sources(module, import.prefix, import.owner) {
+        for member in members {
+            for target in exported_symbol(import.target_module, &member, modules) {
+                graph.edges.insert(SourceEdge {
+                    from: source.clone(),
+                    to: EdgeTarget::Node(target),
+                    kind: SourceEdgeKind::Import,
+                    bindings: vec![SourceBinding {
+                        imported: import.imported.to_string(),
+                        local: import.local.to_string(),
+                        exported: Some(member.clone()),
+                        namespace: true,
+                        type_only: false,
+                    }],
+                    evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
+                });
+            }
+        }
+    }
+}
+
+fn qualified_reference_sources(
+    module: &Module,
+    prefix: &str,
+    owner: Option<&str>,
+) -> BTreeMap<NodeId, BTreeSet<String>> {
+    let mut sources = BTreeMap::new();
+    if owner.is_none() {
+        collect_qualified_members(
+            &mut sources,
+            &module.file,
+            prefix,
+            &module.info.reachability.top_level_qualified_references,
+        );
+    }
+    for (reference_owner, references) in &module.info.reachability.symbol_qualified_references {
+        if owner.is_some_and(|owner| owner != reference_owner) {
+            continue;
+        }
+        let Some(symbols) = module.symbols.get(reference_owner) else {
+            continue;
+        };
+        for symbol in symbols {
+            collect_qualified_members(&mut sources, symbol, prefix, references);
+        }
+    }
+    sources
+}
+
+fn collect_qualified_members(
+    sources: &mut BTreeMap<NodeId, BTreeSet<String>>,
+    source: &NodeId,
+    prefix: &str,
+    references: &BTreeSet<String>,
+) {
+    let prefix = format!("{prefix}.");
+    for reference in references {
+        let Some(member) = reference
+            .strip_prefix(&prefix)
+            .and_then(|rest| rest.split('.').next())
+        else {
+            continue;
+        };
+        sources
+            .entry(source.clone())
+            .or_default()
+            .insert(member.to_string());
+    }
 }
 
 fn exported_symbol(
@@ -862,9 +1135,29 @@ fn connect_resolution(
     kind: SourceEdgeKind,
     bindings: Vec<SourceBinding>,
 ) {
+    connect_resolution_from(
+        graph,
+        module,
+        &module.file,
+        specifier,
+        resolution,
+        kind,
+        bindings,
+    );
+}
+
+fn connect_resolution_from(
+    graph: &mut SourceGraph,
+    module: &Module,
+    source: &NodeId,
+    specifier: &str,
+    resolution: &Resolution,
+    kind: SourceEdgeKind,
+    bindings: Vec<SourceBinding>,
+) {
     let target = resolution_target(resolution.clone(), specifier);
     graph.edges.insert(SourceEdge {
-        from: module.file.clone(),
+        from: source.clone(),
         to: target,
         kind,
         bindings,
@@ -873,7 +1166,7 @@ fn connect_resolution(
     if let Resolution::UnresolvedInternal(value) = resolution {
         graph.record_boundary(
             &module.project,
-            Some(module.file.clone()),
+            Some(source.clone()),
             BoundaryKind::UnresolvedInternal,
             AnalysisCompleteness::Partial,
             format!(
