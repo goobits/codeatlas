@@ -2,6 +2,7 @@ use super::{exit_code, load_project, output};
 use crate::{dead_code, languages, outputs};
 use anyhow::Result;
 use clap::ValueEnum;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
@@ -41,7 +42,13 @@ fn analyze(
         project.analysis_projects()?
     };
     let graph = languages::reachability::build_source_graph(&projects)?;
-    let report = dead_code::analyze(&graph)?;
+    let required = projects
+        .iter()
+        .filter(|project| project.require_complete)
+        .map(|project| project.id.0.clone())
+        .collect::<BTreeSet<_>>();
+    let mut report = dead_code::analyze(&graph)?;
+    report.apply_completeness_requirements(&required);
     let rendered = match format {
         DeadCodeFormat::Text => outputs::dead_code::render_text(&report),
         DeadCodeFormat::Json => outputs::dead_code::render_json(&report)?,
@@ -49,7 +56,7 @@ fn analyze(
 
     output::write_text_or_print(&rendered, out, "Dead-code report")?;
 
-    Ok(if check && report.gate_count() > 0 {
+    Ok(if check && report.check_failure_count() > 0 {
         1
     } else {
         0

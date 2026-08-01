@@ -1,10 +1,10 @@
 use crate::domain::source_graph::{
-    AnalysisCompleteness, ContextRole, FindingConfidence, SourceEvidence, SourceLanguage,
+    AnalysisCompleteness, ContextRole, FindingConfidence, NodeId, SourceEvidence, SourceLanguage,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(crate) const DEAD_CODE_SCHEMA_VERSION: u32 = 3;
+pub(crate) const DEAD_CODE_SCHEMA_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DeadCodeReport {
@@ -33,12 +33,31 @@ impl DeadCodeReport {
                 .then_with(|| left.path.cmp(&right.path))
                 .then_with(|| left.kind.cmp(&right.kind))
                 .then_with(|| left.symbol.cmp(&right.symbol))
-                .then_with(|| left.message.cmp(&right.message))
+                .then_with(|| left.id.cmp(&right.id))
         });
     }
 
     pub(crate) fn gate_count(&self) -> usize {
         self.findings.iter().filter(|finding| finding.gates).count()
+    }
+
+    pub(crate) fn apply_completeness_requirements(&mut self, required: &BTreeSet<String>) {
+        for project in &mut self.projects {
+            project.require_complete = required.contains(&project.project);
+        }
+    }
+
+    pub(crate) fn completeness_gate_count(&self) -> usize {
+        self.projects
+            .iter()
+            .filter(|project| {
+                project.require_complete && project.completeness != AnalysisCompleteness::Complete
+            })
+            .count()
+    }
+
+    pub(crate) fn check_failure_count(&self) -> usize {
+        self.gate_count() + self.completeness_gate_count()
     }
 }
 
@@ -47,6 +66,7 @@ pub(crate) struct DeadCodeProjectSummary {
     pub project: String,
     pub root: String,
     pub completeness: AnalysisCompleteness,
+    pub require_complete: bool,
     pub files: usize,
     pub files_by_language: BTreeMap<SourceLanguage, usize>,
     pub symbols: usize,
@@ -54,8 +74,11 @@ pub(crate) struct DeadCodeProjectSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DeadCodeFinding {
+    pub id: String,
     pub kind: DeadCodeFindingKind,
     pub project: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<NodeId>,
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,

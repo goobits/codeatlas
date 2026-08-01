@@ -595,6 +595,7 @@ mod tests {
             root: root.clone(),
             config,
             config_dir: root,
+            config_path: None,
         }
     }
 

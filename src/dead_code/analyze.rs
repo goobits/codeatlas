@@ -7,6 +7,7 @@ use crate::domain::source_graph::{
     BoundaryKind, ContextRole, EdgeTarget, FindingConfidence, NodeId, SourceEvidence, SourceGraph,
     SourceLanguage, SourceNode, SourceVisibility,
 };
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
@@ -48,6 +49,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             project: project.id.0.clone(),
             root: project.root.clone(),
             completeness: project.completeness,
+            require_complete: false,
             files: graph
                 .nodes
                 .values()
@@ -87,6 +89,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 DeadCodeFindingKind::UnreachableFile,
                 FindingDetails {
                     project: file.project.0.clone(),
+                    node_id: Some(node_id.clone()),
                     path: file.path.clone(),
                     symbol: None,
                     language: Some(file.language),
@@ -104,6 +107,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     } else {
                         "No configured context reaches this file.".to_string()
                     },
+                    identity_detail: None,
                 },
             ));
         } else if !roles.contains(&ContextRole::Production) {
@@ -116,6 +120,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 kind,
                 FindingDetails {
                     project: file.project.0.clone(),
+                    node_id: Some(node_id.clone()),
                     path: file.path.clone(),
                     symbol: None,
                     language: Some(file.language),
@@ -133,6 +138,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     } else {
                         "This file is reachable only from non-production contexts.".to_string()
                     },
+                    identity_detail: None,
                 },
             ));
         }
@@ -192,6 +198,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 kind,
                 FindingDetails {
                     project: symbol.project.0.clone(),
+                    node_id: Some(node_id.clone()),
                     path: path.clone(),
                     symbol: Some(symbol.name.clone()),
                     language,
@@ -209,6 +216,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                         extractor: "codeatlas.source-graph".to_string(),
                     },
                     message,
+                    identity_detail: None,
                 },
             ));
             continue;
@@ -236,6 +244,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             kind,
             FindingDetails {
                 project: symbol.project.0.clone(),
+                node_id: Some(node_id.clone()),
                 path: path.clone(),
                 symbol: Some(symbol.name.clone()),
                 language,
@@ -253,6 +262,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     extractor: "codeatlas.source-graph".to_string(),
                 },
                 message,
+                identity_detail: None,
             },
         ));
     }
@@ -289,6 +299,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             kind,
             FindingDetails {
                 project: project.0.clone(),
+                node_id: Some(edge.from.clone()),
                 path: edge.evidence.path.clone(),
                 symbol: None,
                 language: file_language(graph, &edge.from),
@@ -307,6 +318,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     }
                     _ => format!("Unresolved source boundary {value:?} prevents certainty."),
                 },
+                identity_detail: Some(value.clone()),
             },
         ));
     }
@@ -332,6 +344,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             kind,
             FindingDetails {
                 project: boundary.project.0.clone(),
+                node_id: boundary.node.clone(),
                 path: boundary.evidence.path.clone(),
                 symbol: None,
                 language: boundary
@@ -358,6 +371,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 confidence,
                 evidence: boundary.evidence.clone(),
                 message: boundary.message.clone(),
+                identity_detail: Some(boundary.message.clone()),
             },
         ));
     }
@@ -417,6 +431,7 @@ fn public_dependency_nodes(graph: &SourceGraph) -> BTreeSet<NodeId> {
 
 struct FindingDetails {
     project: String,
+    node_id: Option<NodeId>,
     path: String,
     symbol: Option<String>,
     language: Option<SourceLanguage>,
@@ -426,12 +441,16 @@ struct FindingDetails {
     confidence: FindingConfidence,
     evidence: SourceEvidence,
     message: String,
+    identity_detail: Option<String>,
 }
 
 fn finding(kind: DeadCodeFindingKind, details: FindingDetails) -> DeadCodeFinding {
+    let id = stable_finding_id(kind, &details);
     DeadCodeFinding {
+        id,
         kind,
         project: details.project,
+        node_id: details.node_id,
         path: details.path,
         symbol: details.symbol,
         language: details.language,
@@ -443,6 +462,37 @@ fn finding(kind: DeadCodeFindingKind, details: FindingDetails) -> DeadCodeFindin
         message: details.message,
         gates: kind.gates_at(details.confidence),
     }
+}
+
+fn stable_finding_id(kind: DeadCodeFindingKind, details: &FindingDetails) -> String {
+    let mut digest = Sha256::new();
+    digest.update(b"atlas.codeatlas.dev/dead-code-finding/v1\0");
+    for value in [
+        kind.as_str(),
+        details.project.as_str(),
+        details
+            .node_id
+            .as_ref()
+            .map(|node| node.0.as_str())
+            .unwrap_or(""),
+        details.path.as_str(),
+        details.symbol.as_deref().unwrap_or(""),
+        details.evidence.extractor.as_str(),
+        details.identity_detail.as_deref().unwrap_or(""),
+    ] {
+        digest.update((value.len() as u64).to_le_bytes());
+        digest.update(value.as_bytes());
+    }
+    match &details.evidence.span {
+        Some(span) => {
+            digest.update([1]);
+            for position in [span.start_line, span.start_col, span.end_line, span.end_col] {
+                digest.update(position.to_le_bytes());
+            }
+        }
+        None => digest.update([0]),
+    }
+    format!("dead-code/{}/{:x}", kind.as_str(), digest.finalize())
 }
 
 fn root_context_labels(

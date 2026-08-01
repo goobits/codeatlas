@@ -13,6 +13,7 @@ pub(crate) struct AnalysisProjectConfig {
     pub languages: Vec<String>,
     pub contexts: BTreeMap<String, AnalysisContextConfig>,
     pub assume_reachable: Vec<String>,
+    pub require_complete: bool,
     pub rust: RustAnalysisConfig,
 }
 
@@ -24,19 +25,20 @@ impl Default for AnalysisProjectConfig {
             languages: Vec::new(),
             contexts: BTreeMap::new(),
             assume_reachable: Vec::new(),
+            require_complete: false,
             rust: RustAnalysisConfig::default(),
         }
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct RustAnalysisConfig {
     pub all_features: bool,
     pub features: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct AnalysisContextConfig {
     pub role: crate::domain::source_graph::ContextRole,
@@ -62,6 +64,7 @@ pub(crate) struct ResolvedAnalysisProject {
     pub languages: Vec<String>,
     pub contexts: BTreeMap<String, AnalysisContextConfig>,
     pub assume_reachable: Vec<String>,
+    pub require_complete: bool,
     pub no_default_ignore: bool,
     pub rust: RustAnalysisConfig,
     pub workspace_member: bool,
@@ -77,6 +80,7 @@ impl ProjectConfig {
                 languages: self.config.languages.clone(),
                 contexts: self.default_analysis_contexts(),
                 assume_reachable: Vec::new(),
+                require_complete: false,
                 rust: RustAnalysisConfig::default(),
             }]
         } else {
@@ -124,7 +128,7 @@ impl ProjectConfig {
                     );
                 }
             }
-            resolved.push(ResolvedAnalysisProject {
+            let mut resolved_project = ResolvedAnalysisProject {
                 id: crate::domain::source_graph::ProjectId(id),
                 report_root: {
                     let relative = crate::paths::normalize_relative_path(&root, &self.config_dir);
@@ -138,11 +142,14 @@ impl ProjectConfig {
                 languages: project.languages,
                 contexts: project.contexts,
                 assume_reachable: project.assume_reachable,
+                require_complete: project.require_complete,
                 no_default_ignore: self.config.no_default_ignore,
                 rust: project.rust,
                 workspace_member: false,
                 excluded_roots: Vec::new(),
-            });
+            };
+            self.merge_local_analysis_settings(&mut resolved_project)?;
+            resolved.push(resolved_project);
         }
         self.add_http_contexts(&mut resolved)?;
         add_nested_project_boundaries(&mut resolved);
@@ -168,6 +175,7 @@ impl ProjectConfig {
                     languages: self.config.languages.clone(),
                     contexts: self.default_analysis_contexts(),
                     assume_reachable: Vec::new(),
+                    require_complete: false,
                     no_default_ignore: self.config.no_default_ignore,
                     rust: RustAnalysisConfig::default(),
                     workspace_member: true,
@@ -183,32 +191,13 @@ impl ProjectConfig {
                 languages: Vec::new(),
                 contexts: BTreeMap::new(),
                 assume_reachable: Vec::new(),
+                require_complete: false,
                 no_default_ignore: self.config.no_default_ignore,
                 rust: RustAnalysisConfig::default(),
                 workspace_member: true,
                 excluded_roots: Vec::new(),
             };
-            let member_config_path = project.root.join("codeatlas.json");
-            if member_config_path.is_file() {
-                let member_config = ProjectConfig::load(&project.root, Some(&member_config_path))
-                    .with_context(|| {
-                    format!(
-                        "Could not load workspace member config {}",
-                        member_config_path.display()
-                    )
-                })?;
-                if let Some(configured) = member_config
-                    .analysis_projects()?
-                    .into_iter()
-                    .find(|configured| configured.root == project.root)
-                {
-                    project.languages = configured.languages;
-                    project.contexts = configured.contexts;
-                    project.assume_reachable = configured.assume_reachable;
-                    project.no_default_ignore |= configured.no_default_ignore;
-                    project.rust = configured.rust;
-                }
-            }
+            self.merge_local_analysis_settings(&mut project)?;
             resolved.push(project);
         }
         self.add_http_contexts(&mut resolved)?;
@@ -229,6 +218,43 @@ impl ProjectConfig {
                 },
             )])
         }
+    }
+
+    fn merge_local_analysis_settings(&self, project: &mut ResolvedAnalysisProject) -> Result<()> {
+        if project.root == self.root || !project.root.starts_with(&self.root) {
+            return Ok(());
+        }
+        let config_path = project.root.join("codeatlas.json");
+        if !config_path.is_file() {
+            return Ok(());
+        }
+        let config_path = config_path.canonicalize().with_context(|| {
+            format!(
+                "Could not resolve analysis project config {}",
+                config_path.display()
+            )
+        })?;
+        if self.config_path.as_ref() == Some(&config_path) {
+            return Ok(());
+        }
+        let local = ProjectConfig::load(&project.root, Some(&config_path)).with_context(|| {
+            format!(
+                "Could not load analysis project config {}",
+                config_path.display()
+            )
+        })?;
+        let owned = local
+            .analysis_projects()?
+            .into_iter()
+            .find(|configured| configured.root == project.root)
+            .with_context(|| {
+                format!(
+                    "Analysis project config {} does not configure its own root {}",
+                    config_path.display(),
+                    project.root.display()
+                )
+            })?;
+        merge_analysis_settings(project, owned, &config_path)
     }
 
     fn add_http_contexts(&self, projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
@@ -294,6 +320,59 @@ impl ProjectConfig {
             .map(|source| source.canonicalize().unwrap_or(source))
             .collect()
     }
+}
+
+fn merge_analysis_settings(
+    project: &mut ResolvedAnalysisProject,
+    owned: ResolvedAnalysisProject,
+    config_path: &Path,
+) -> Result<()> {
+    if !project.languages.is_empty() && !owned.languages.is_empty() {
+        let aggregate = project.languages.iter().collect::<BTreeSet<_>>();
+        let local = owned.languages.iter().collect::<BTreeSet<_>>();
+        if aggregate != local {
+            anyhow::bail!(
+                "Analysis languages for {} conflict with package-owned config {}",
+                project.id.0,
+                config_path.display()
+            );
+        }
+    } else if !owned.languages.is_empty() {
+        project.languages = owned.languages;
+    }
+
+    for (name, context) in owned.contexts {
+        if let Some(aggregate) = project.contexts.get(&name) {
+            if aggregate != &context {
+                anyhow::bail!(
+                    "Analysis context {name:?} for {} conflicts with package-owned config {}",
+                    project.id.0,
+                    config_path.display()
+                );
+            }
+        } else {
+            project.contexts.insert(name, context);
+        }
+    }
+
+    project.assume_reachable.extend(owned.assume_reachable);
+    project.assume_reachable.sort();
+    project.assume_reachable.dedup();
+    project.require_complete |= owned.require_complete;
+    project.no_default_ignore |= owned.no_default_ignore;
+
+    let default_rust = RustAnalysisConfig::default();
+    if project.rust != default_rust && owned.rust != default_rust && project.rust != owned.rust {
+        anyhow::bail!(
+            "Rust analysis settings for {} conflict with package-owned config {}",
+            project.id.0,
+            config_path.display()
+        );
+    }
+    if project.rust == default_rust {
+        project.rust = owned.rust;
+    }
+    Ok(())
 }
 
 fn add_inferred_context(
@@ -363,11 +442,15 @@ fn derive_project_id(root: &Path, index: usize) -> String {
 }
 
 fn validate_analysis_languages(languages: &[String], project: &str) -> Result<()> {
+    let mut selected = BTreeSet::new();
     for language in languages {
         if !matches!(language.as_str(), "js" | "ts" | "svelte" | "py" | "rs") {
             anyhow::bail!(
                 "Unsupported reachability language {language:?} in {project}. Supported: js, ts, svelte, py, rs"
             );
+        }
+        if !selected.insert(language) {
+            anyhow::bail!("Duplicate reachability language {language:?} in {project}");
         }
     }
     Ok(())

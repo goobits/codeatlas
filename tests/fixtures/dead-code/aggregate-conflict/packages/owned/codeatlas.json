@@ -1,0 +1,9 @@
+{
+  "projects": [
+    {
+      "id": "package-owned",
+      "root": ".",
+      "languages": ["py"]
+    }
+  ]
+}

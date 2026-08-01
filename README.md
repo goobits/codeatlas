@@ -215,6 +215,7 @@ are arbitrary.
 			"id": "web",
 			"root": ".",
 			"languages": ["js", "ts", "svelte"],
+			"require_complete": true,
 			"contexts": {
 				"application": {
 					"role": "production",
@@ -282,6 +283,12 @@ local project from each member's `codeatlas.json`. When the workspace root is
 also a package, its non-member source is scanned as one non-overlapping root
 project; member roots remain excluded from it. Packages can therefore own their
 exceptional roots without duplicating one workspace-wide configuration.
+Explicit aggregate projects follow the same ownership rule: when a nested
+project root contains `codeatlas.json`, CodeAtlas inherits that root's
+languages, contexts, assumptions, Rust settings, ignore policy, and
+completeness requirement. The aggregate may add distinct contexts and assumed
+roots, but conflicting copies fail configuration so package-owned analysis does
+not silently drift.
 Local source commands used by configured HTTP fuzz servers and request adapters
 become test roots; source commands used to generate OpenAPI contracts become
 tooling roots.
@@ -330,10 +337,17 @@ context-only findings to avoid listing every test file and test function.
 Only high-confidence unreachable files, unused private symbols, and unresolved
 internal imports can fail `dead-code --check`. Public APIs without repository
 consumers remain advisory because external consumers may exist.
+Set `require_complete` on a project only after its supported source and dynamic
+boundaries are fully modeled. Report-only runs continue to preserve honest
+partial or unsupported evidence; `dead-code --check` additionally fails closed
+when any project carrying that requirement is not complete.
 
-The dead-code JSON contract is schema version 3. Project summaries include
-per-language file counts, and each finding includes the exact named context
-roots that support its classification. Scan, architecture, context, and
+The dead-code JSON contract is schema version 4. Project summaries include
+per-language file counts and the explicit completeness requirement. Each
+finding includes a deterministic `id`, its exact `node_id` when one exists, and
+the named context roots that support its classification. Finding IDs are stable
+for the same structural source evidence and can drive bounded follow-up audits;
+`node_id` can be passed directly to `context`. Scan, architecture, context, and
 dead-code reports remain separate versioned contracts rather than one
 all-purpose report.
 

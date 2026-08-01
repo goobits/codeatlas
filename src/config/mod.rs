@@ -89,6 +89,7 @@ pub(crate) struct ProjectConfig {
     pub root: PathBuf,
     pub config: CodeAtlasConfig,
     pub config_dir: PathBuf,
+    pub(crate) config_path: Option<PathBuf>,
 }
 
 impl ProjectConfig {
@@ -99,12 +100,15 @@ impl ProjectConfig {
                 .then(|| path.join("codeatlas.json"))
         });
 
-        let (config, config_dir) = if let Some(config_path) = discovered {
+        let (config, config_dir, config_path) = if let Some(config_path) = discovered {
             let absolute = if config_path.is_absolute() {
                 config_path
             } else {
                 std::env::current_dir()?.join(config_path)
             };
+            let absolute = absolute.canonicalize().with_context(|| {
+                format!("CodeAtlas config does not exist: {}", absolute.display())
+            })?;
             let source = std::fs::read_to_string(&absolute)
                 .with_context(|| format!("Could not read {}", absolute.display()))?;
             let config = serde_json::from_str(&source)
@@ -113,9 +117,9 @@ impl ProjectConfig {
                 .parent()
                 .map(Path::to_path_buf)
                 .unwrap_or_else(|| PathBuf::from("."));
-            (config, config_dir)
+            (config, config_dir, Some(absolute))
         } else {
-            (CodeAtlasConfig::default(), std::env::current_dir()?)
+            (CodeAtlasConfig::default(), std::env::current_dir()?, None)
         };
 
         let root = config
@@ -131,6 +135,7 @@ impl ProjectConfig {
             root,
             config,
             config_dir,
+            config_path,
         };
         if !project.config.projects.is_empty() {
             project.analysis_projects()?;
