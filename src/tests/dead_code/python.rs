@@ -52,6 +52,10 @@ fn python_reachability_handles_src_layouts_relative_imports_and_context_roles() 
                     | "src/fixture/cli.py"
             )
     }));
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
+            && finding.path == "src/http/schemathesis/hooks.py"
+    }));
 }
 
 #[test]

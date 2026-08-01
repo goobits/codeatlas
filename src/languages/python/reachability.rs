@@ -630,30 +630,30 @@ impl Resolution {
 
 struct PythonResolver {
     modules_by_name: BTreeMap<String, BTreeSet<ModuleKey>>,
-    local_roots: BTreeMap<ProjectId, BTreeSet<String>>,
+    owned_roots: BTreeMap<ProjectId, BTreeSet<String>>,
 }
 
 impl PythonResolver {
     fn new(modules: &BTreeMap<ModuleKey, Module>) -> Self {
         let mut modules_by_name = BTreeMap::<String, BTreeSet<ModuleKey>>::new();
-        let mut local_roots = BTreeMap::<ProjectId, BTreeSet<String>>::new();
+        let mut owned_roots = BTreeMap::<ProjectId, BTreeSet<String>>::new();
         for (key, module) in modules {
             for name in &module.names {
                 modules_by_name
                     .entry(name.clone())
                     .or_default()
                     .insert(key.clone());
-                if let Some(root) = name.split('.').next() {
-                    local_roots
+                if !name.contains('.') {
+                    owned_roots
                         .entry(module.project.clone())
                         .or_default()
-                        .insert(root.to_string());
+                        .insert(name.clone());
                 }
             }
         }
         Self {
             modules_by_name,
-            local_roots,
+            owned_roots,
         }
     }
 
@@ -676,7 +676,7 @@ impl PythonResolver {
         }
         let root = name.split('.').next().unwrap_or(name);
         if self
-            .local_roots
+            .owned_roots
             .get(project)
             .is_some_and(|roots| roots.contains(root))
         {
