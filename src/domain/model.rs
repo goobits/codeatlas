@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
+pub(crate) const SCAN_SCHEMA_VERSION: u32 = 2;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ScanReport {
-    #[serde(default = "default_schema_version")]
     pub schema_version: u32,
-    #[serde(default = "default_tool_version")]
     pub tool_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<PackageInfo>,
@@ -23,8 +23,8 @@ pub(crate) struct ScanReport {
 impl Default for ScanReport {
     fn default() -> Self {
         Self {
-            schema_version: default_schema_version(),
-            tool_version: default_tool_version(),
+            schema_version: SCAN_SCHEMA_VERSION,
+            tool_version: env!("CARGO_PKG_VERSION").to_string(),
             package: None,
             stats: ScanStats::default(),
             symbols: Vec::new(),
@@ -34,14 +34,6 @@ impl Default for ScanReport {
             file_edges: Vec::new(),
         }
     }
-}
-
-fn default_schema_version() -> u32 {
-    2
-}
-
-fn default_tool_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

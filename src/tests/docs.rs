@@ -690,7 +690,7 @@ fn internal_interface_members_follow_include_private() {
 }
 
 #[test]
-fn legacy_json_reports_deserialize_with_schema_defaults() {
+fn scan_reports_require_an_explicit_schema_contract() {
     let legacy = r#"{
         "stats":{"files_scanned":1,"files_skipped":0,"symbols_found":1,"routes_found":0},
         "symbols":[{
@@ -709,13 +709,7 @@ fn legacy_json_reports_deserialize_with_schema_defaults() {
         "imports":[],
         "unused_public":[]
     }"#;
-    let report: crate::domain::ScanReport =
-        serde_json::from_str(legacy).expect("legacy report should remain readable");
-
-    assert_eq!(report.schema_version, 2);
-    assert!(!report.tool_version.is_empty());
-    assert!(report.symbols[0].docs.is_none());
-    assert!(report.symbols[0].export_paths.is_empty());
+    assert!(serde_json::from_str::<crate::domain::ScanReport>(legacy).is_err());
 }
 
 #[test]

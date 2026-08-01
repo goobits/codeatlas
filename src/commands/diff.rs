@@ -1,8 +1,8 @@
 use super::{annotate_report, build_scan_config, exit_code, load_project, scan_project};
-use crate::domain::{ScanReport, Symbol};
-use anyhow::{Context, Result};
+use crate::domain::{ScanReport, Symbol, SCAN_SCHEMA_VERSION};
+use anyhow::{bail, Context, Result};
 use colored::Colorize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 pub(crate) fn run(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> i32 {
@@ -14,32 +14,61 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
         .with_context(|| format!("Could not read {}", baseline_path.display()))?;
     let baseline: ScanReport = serde_json::from_str(&baseline_content)
         .with_context(|| format!("Invalid baseline JSON at {}", baseline_path.display()))?;
+    validate_schema_version(&baseline)?;
 
     let project = load_project(path, config_path)?;
     let config = build_scan_config(&project, false, None)?;
     let mut current = scan_project(&project, &config)?;
     annotate_report(&mut current, &project)?;
 
-    let baseline_symbols = symbols_by_stable_key(&baseline);
-    let current_symbols = symbols_by_stable_key(&current);
+    let baseline_symbols =
+        symbols_by_stable_key(&baseline).context("Invalid baseline public API")?;
+    let current_symbols = symbols_by_stable_key(&current).context("Invalid current public API")?;
     let added = current_symbols
         .iter()
         .filter(|(key, _)| !baseline_symbols.contains_key(*key))
-        .map(|(_, symbol)| *symbol)
+        .map(|(key, symbol)| (key.as_str(), *symbol))
         .collect::<Vec<_>>();
     let removed = baseline_symbols
         .iter()
         .filter(|(key, _)| !current_symbols.contains_key(*key))
-        .map(|(_, symbol)| *symbol)
+        .map(|(key, symbol)| (key.as_str(), *symbol))
         .collect::<Vec<_>>();
     let changed = current_symbols
         .iter()
         .filter_map(|(key, symbol)| {
             let previous = baseline_symbols.get(key)?;
-            classify_change(previous, symbol).map(|severity| (*previous, *symbol, severity))
+            binding_changed(previous, symbol).then_some((key.as_str(), *previous, *symbol))
         })
         .collect::<Vec<_>>();
 
+    print_diff(
+        &baseline_symbols,
+        &current_symbols,
+        &added,
+        &removed,
+        &changed,
+    )
+}
+
+fn validate_schema_version(baseline: &ScanReport) -> Result<()> {
+    if baseline.schema_version != SCAN_SCHEMA_VERSION {
+        bail!(
+            "Unsupported CodeAtlas scan baseline schema version {}; expected {}",
+            baseline.schema_version,
+            SCAN_SCHEMA_VERSION
+        );
+    }
+    Ok(())
+}
+
+fn print_diff(
+    baseline_symbols: &BTreeMap<String, &Symbol>,
+    current_symbols: &BTreeMap<String, &Symbol>,
+    added: &[(&str, &Symbol)],
+    removed: &[(&str, &Symbol)],
+    changed: &[(&str, &Symbol, &Symbol)],
+) -> Result<i32> {
     println!("\n{}", " CodeAtlas Diff ".on_blue().white().bold());
     println!("{}\n", "================".blue());
 
@@ -56,8 +85,8 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
             "+".green().bold(),
             added.len()
         );
-        for symbol in &added {
-            println!("  {} {}", "+".green(), display_key(symbol).yellow());
+        for (key, _) in added {
+            println!("  {} {}", "+".green(), key.yellow());
         }
         println!();
     }
@@ -68,8 +97,8 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
             "-".red().bold(),
             removed.len()
         );
-        for symbol in &removed {
-            println!("  {} {}", "-".red(), display_key(symbol).yellow());
+        for (key, _) in removed {
+            println!("  {} {}", "-".red(), key.yellow());
         }
         println!();
     }
@@ -80,41 +109,18 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
             "~".yellow().bold(),
             changed.len()
         );
-        for (previous, current, severity) in &changed {
-            let label = match severity {
-                ChangeSeverity::Additive => "ADDITIVE".green(),
-                ChangeSeverity::Breaking => "BREAKING".red(),
-            };
-            println!(
-                "  {} {} {}",
-                "~".yellow(),
-                label,
-                display_key(current).yellow()
-            );
+        for (key, previous, current) in changed {
+            println!("  {} {} {}", "~".yellow(), "BREAKING".red(), key.yellow());
             if previous.signature != current.signature {
                 println!("    - {}", previous.signature.red());
                 println!("    + {}", current.signature.green());
-            }
-            if previous.export_paths != current.export_paths {
-                println!(
-                    "    exports: {:?} -> {:?}",
-                    previous.export_paths, current.export_paths
-                );
             }
         }
         println!();
     }
 
-    let breaking_changes = removed.len()
-        + changed
-            .iter()
-            .filter(|(_, _, severity)| *severity == ChangeSeverity::Breaking)
-            .count();
-    let additive_changes = added.len()
-        + changed
-            .iter()
-            .filter(|(_, _, severity)| *severity == ChangeSeverity::Additive)
-            .count();
+    let breaking_changes = removed.len() + changed.len();
+    let additive_changes = added.len();
 
     println!("{}", "-".repeat(50).dimmed());
     println!("\n{}", "Summary:".white().bold());
@@ -125,81 +131,65 @@ fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Res
     Ok(i32::from(breaking_changes > 0))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ChangeSeverity {
-    Additive,
-    Breaking,
-}
-
-fn symbols_by_stable_key(report: &ScanReport) -> BTreeMap<String, &Symbol> {
-    fn collect<'a>(symbols: &'a [Symbol], output: &mut BTreeMap<String, &'a Symbol>) {
+fn symbols_by_stable_key(report: &ScanReport) -> Result<BTreeMap<String, &Symbol>> {
+    fn collect<'a>(symbols: &'a [Symbol], output: &mut BTreeMap<String, &'a Symbol>) -> Result<()> {
         for symbol in symbols {
-            output.insert(stable_key(symbol), symbol);
-            collect(&symbol.children, output);
+            for key in stable_keys(symbol) {
+                if let Some(existing) = output.insert(key.clone(), symbol) {
+                    bail!(
+                        "Public API identity {key:?} is shared by {:?} and {:?}",
+                        existing.id,
+                        symbol.id
+                    );
+                }
+            }
+            collect(&symbol.children, output)?;
         }
+        Ok(())
     }
 
     let mut symbols = BTreeMap::new();
-    collect(&report.symbols, &mut symbols);
-    symbols
+    collect(&report.symbols, &mut symbols)?;
+    Ok(symbols)
 }
 
-fn stable_key(symbol: &Symbol) -> String {
+fn stable_keys(symbol: &Symbol) -> Vec<String> {
     let qualified_name = symbol
         .id
         .split_once('#')
         .map_or(symbol.name.as_str(), |(_, name)| name);
-    format!(
-        "{}::{:?}#{}",
-        symbol.package.as_deref().unwrap_or("public-api"),
-        symbol.kind,
-        qualified_name
-    )
-}
-
-fn display_key(symbol: &Symbol) -> String {
+    let package = symbol.package.as_deref().unwrap_or("public-api");
     if symbol.export_paths.is_empty() {
-        stable_key(symbol)
+        vec![format!(
+            "{package}::{:?}#{qualified_name} (source: {})",
+            symbol.kind, symbol.file_path
+        )]
     } else {
-        format!(
-            "{} ({})",
-            stable_key(symbol),
-            symbol.export_paths.join(", ")
-        )
+        let mut export_paths = symbol.export_paths.iter().collect::<Vec<_>>();
+        export_paths.sort();
+        export_paths.dedup();
+        export_paths
+            .into_iter()
+            .map(|export_path| {
+                format!(
+                    "{package}::{:?}#{qualified_name} (export: {export_path})",
+                    symbol.kind
+                )
+            })
+            .collect()
     }
 }
 
-fn classify_change(previous: &Symbol, current: &Symbol) -> Option<ChangeSeverity> {
-    if previous.signature == current.signature
-        && previous.kind == current.kind
-        && previous.visibility == current.visibility
-        && previous.export_paths == current.export_paths
-    {
-        return None;
-    }
-
-    let previous_exports = previous.export_paths.iter().collect::<BTreeSet<_>>();
-    let current_exports = current.export_paths.iter().collect::<BTreeSet<_>>();
-    let removed_export = previous_exports
-        .difference(&current_exports)
-        .next()
-        .is_some();
-    let breaking = previous.signature != current.signature
+fn binding_changed(previous: &Symbol, current: &Symbol) -> bool {
+    previous.signature != current.signature
         || previous.kind != current.kind
         || previous.visibility != current.visibility
-        || removed_export;
-
-    Some(if breaking {
-        ChangeSeverity::Breaking
-    } else {
-        ChangeSeverity::Additive
-    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_change, stable_key, ChangeSeverity};
-    use crate::domain::{Language, Symbol, SymbolKind, Visibility};
+    use super::{binding_changed, stable_keys, symbols_by_stable_key, validate_schema_version};
+    use crate::domain::{Language, ScanReport, Symbol, SymbolKind, Visibility};
 
     fn symbol(file: &str, signature: &str, exports: &[&str]) -> Symbol {
         Symbol {
@@ -222,12 +212,12 @@ mod tests {
     #[test]
     fn stable_identity_ignores_source_file_moves() {
         assert_eq!(
-            stable_key(&symbol(
+            stable_keys(&symbol(
                 "src/old.ts",
                 "interface PublicAPI",
                 &["@example/sdk"]
             )),
-            stable_key(&symbol(
+            stable_keys(&symbol(
                 "dist/index.d.ts",
                 "interface PublicAPI",
                 &["@example/sdk"]
@@ -236,20 +226,63 @@ mod tests {
     }
 
     #[test]
-    fn export_additions_are_additive_and_removals_are_breaking() {
-        let root = symbol("src/index.ts", "interface PublicAPI", &["@example/sdk"]);
-        let expanded = symbol(
+    fn distinct_export_bindings_never_overwrite_each_other() {
+        let report = ScanReport {
+            symbols: vec![
+                symbol("src/a.ts", "interface PublicAPI", &["@example/sdk/a"]),
+                symbol("src/b.ts", "interface PublicAPI", &["@example/sdk/b"]),
+            ],
+            ..ScanReport::default()
+        };
+
+        let symbols = symbols_by_stable_key(&report).expect("distinct public bindings");
+        assert_eq!(symbols.len(), 2);
+    }
+
+    #[test]
+    fn signature_changes_break_an_existing_public_binding() {
+        let previous = symbol("src/index.ts", "interface PublicAPI", &["@example/sdk"]);
+        let current = symbol(
+            "dist/index.d.ts",
+            "interface PublicAPI { ready: boolean }",
+            &["@example/sdk"],
+        );
+
+        assert!(binding_changed(&previous, &current));
+    }
+
+    #[test]
+    fn rejects_baselines_from_other_scan_schemas() {
+        let mut baseline = ScanReport::default();
+        baseline.schema_version -= 1;
+
+        let error = validate_schema_version(&baseline).expect_err("unsupported scan schema");
+        assert!(error.to_string().contains("expected 2"));
+    }
+
+    #[test]
+    fn export_additions_and_removals_change_the_public_binding_inventory() {
+        fn binding_keys(symbol: Symbol) -> std::collections::BTreeSet<String> {
+            symbols_by_stable_key(&ScanReport {
+                symbols: vec![symbol],
+                ..ScanReport::default()
+            })
+            .expect("unambiguous public bindings")
+            .into_keys()
+            .collect()
+        }
+
+        let root = binding_keys(symbol(
+            "src/index.ts",
+            "interface PublicAPI",
+            &["@example/sdk"],
+        ));
+        let expanded = binding_keys(symbol(
             "src/index.ts",
             "interface PublicAPI",
             &["@example/sdk", "@example/sdk/api"],
-        );
-        assert_eq!(
-            classify_change(&root, &expanded),
-            Some(ChangeSeverity::Additive)
-        );
-        assert_eq!(
-            classify_change(&expanded, &root),
-            Some(ChangeSeverity::Breaking)
-        );
+        ));
+        assert_eq!(expanded.difference(&root).count(), 1);
+        assert_eq!(root.difference(&expanded).count(), 0);
     }
 }
