@@ -1,0 +1,16 @@
+{
+  "projects": [
+    {
+      "id": "package-owned",
+      "root": ".",
+      "languages": ["ts"],
+      "contexts": {
+        "package-tool": {
+          "role": "tooling",
+          "entrypoints": ["tools/generate.ts"]
+        }
+      },
+      "assume_reachable": ["src/localPlugin.ts"]
+    }
+  ]
+}

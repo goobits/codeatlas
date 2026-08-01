@@ -318,7 +318,7 @@ fn exported_http_methods(source: &str) -> impl Iterator<Item = regex::Match<'_>>
     static EXPORT: OnceLock<Regex> = OnceLock::new();
     let export = EXPORT.get_or_init(|| {
 		Regex::new(
-			r#"(?m)\bexport\s+(?:async\s+function|const|let|var)\s+(GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH)\b"#,
+			r#"(?m)\bexport\s+(?:(?:async\s+)?function|const|let|var)\s+(GET|PUT|POST|DELETE|OPTIONS|HEAD|PATCH)\b"#,
 		)
 		.expect("filesystem HTTP method detector")
 	});
@@ -389,7 +389,13 @@ app.get("/health", handler)
         detect_file(
             Path::new("/repo/src/routes/(api)/users/[id]/+server.ts"),
             Path::new("/repo"),
-            "export async function GET() {}\nexport const DELETE = handler\n",
+            "export function GET() {}\nexport async function POST() {}\nexport const DELETE = handler\n",
+            &mut operations,
+        );
+        detect_file(
+            Path::new("/repo/src/routes/api/release/routes/+server.ts"),
+            Path::new("/repo"),
+            "export async function POST() {}\n",
             &mut operations,
         );
         let keys = operations
@@ -397,7 +403,9 @@ app.get("/health", handler)
             .map(|operation| operation.key.as_str())
             .collect::<Vec<_>>();
         assert!(keys.contains(&"GET /users/{id}"));
+        assert!(keys.contains(&"POST /users/{id}"));
         assert!(keys.contains(&"DELETE /users/{id}"));
+        assert!(keys.contains(&"POST /api/release/routes"));
     }
 
     #[test]

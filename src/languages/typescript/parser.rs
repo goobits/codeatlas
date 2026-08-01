@@ -134,11 +134,13 @@ fn syntax_for_path(path: &Path) -> Syntax {
     match path.extension().and_then(|extension| extension.to_str()) {
         Some("js" | "mjs" | "cjs") => Syntax::Es(EsConfig {
             decorators: true,
+            import_attributes: true,
             ..Default::default()
         }),
         Some("jsx") => Syntax::Es(EsConfig {
             jsx: true,
             decorators: true,
+            import_attributes: true,
             ..Default::default()
         }),
         Some("tsx") => Syntax::Typescript(TsConfig {
@@ -262,6 +264,7 @@ export default {
         let info = parse_source(
             r#"
 import path from "node:path"
+import metadata from "./metadata.json" with { type: "json" }
 
 const shared = path.resolve(__dirname, "./src/shared")
 
@@ -286,6 +289,7 @@ export default {
             info.reachability.configured_aliases["@shared"],
             ["./src/shared".to_string()].into_iter().collect()
         );
+        assert_eq!(info.imports[1].source, "./metadata.json");
     }
 
     #[test]
@@ -315,7 +319,8 @@ export function createCanvasShimAlias(workspaceRoot) {
     fn static_file_readers_track_source_dependencies() {
         let info = parse_source(
             r#"
-const source = read("packages/example/src/runtime.js")
+const sourceDirectory = "packages/example/src"
+const source = read(`${sourceDirectory}/runtime.js`)
 const generated = read(outputPath)
 "#,
             "scripts/build.mjs",
@@ -340,6 +345,59 @@ const generated = read(outputPath)
             .any(|dependency| {
                 dependency.kind == DynamicDependencyKind::RuntimeFile
                     && matches!(dependency.target, DynamicDependencyTarget::Unknown)
+            }));
+    }
+
+    #[test]
+    fn static_url_bindings_track_dynamic_imports() {
+        let info = parse_source(
+            r#"
+const workerUrl = new URL("./worker.ts", import.meta.url)
+const worker = await import(workerUrl.href)
+"#,
+            "scripts/run.mjs",
+        )
+        .expect("module info");
+
+        assert!(info
+            .reachability
+            .dynamic_dependencies
+            .iter()
+            .any(|dependency| {
+                dependency.kind == DynamicDependencyKind::Import
+                    && dependency.target
+                        == DynamicDependencyTarget::Literal("./worker.ts".to_string())
+            }));
+        assert!(!info
+            .reachability
+            .dynamic_dependencies
+            .iter()
+            .any(|dependency| {
+                dependency.kind == DynamicDependencyKind::Import
+                    && matches!(dependency.target, DynamicDependencyTarget::Unknown)
+            }));
+    }
+
+    #[test]
+    fn local_reader_helpers_do_not_create_source_dependencies() {
+        let info = parse_source(
+            r#"
+const routePath = "src/routes/example"
+const read = (name) => readFile(`${routePath}/${name}`, "utf8")
+const source = read("+page.svelte")
+"#,
+            "tests/page-boundary.test.ts",
+        )
+        .expect("module info");
+
+        assert!(!info
+            .reachability
+            .dynamic_dependencies
+            .iter()
+            .any(|dependency| {
+                dependency.kind == DynamicDependencyKind::RuntimeFile
+                    && dependency.target
+                        == DynamicDependencyTarget::Literal("+page.svelte".to_string())
             }));
     }
 }

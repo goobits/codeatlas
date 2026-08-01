@@ -32,12 +32,16 @@ pub(crate) fn discover(request: SourceDiscoveryRequest<'_>) -> SourceDiscovery {
     let filter_patterns = patterns.clone();
     let excluded_roots = request.excluded_roots.to_vec();
     let no_default_ignore = request.no_default_ignore;
+    let is_git_repository = root
+        .ancestors()
+        .any(|ancestor| ancestor.join(".git").exists());
     let mut builder = WalkBuilder::new(&root);
     builder
         .hidden(false)
+        .parents(is_git_repository)
         .git_global(false)
         .git_exclude(false)
-        .require_git(false)
+        .require_git(is_git_repository)
         .filter_entry(move |entry| {
             !excluded_roots.iter().any(|root| entry.path() == root)
                 && should_descend(
@@ -237,5 +241,45 @@ mod tests {
 
         assert!(paths.contains(&"visible.ts".to_string()));
         assert!(!paths.contains(&"ignored/unreachable.ts".to_string()));
+    }
+
+    #[test]
+    fn discovery_stops_parent_gitignore_rules_at_the_nearest_repository() {
+        let temporary = TemporaryProject::new();
+        let repository = temporary.path().join("nested-repository");
+        let project_root = repository.join("project");
+        std::fs::create_dir_all(repository.join(".git")).expect("nested repository marker");
+        std::fs::create_dir_all(project_root.join("build/scripts"))
+            .expect("explicit build source directory");
+        std::fs::create_dir_all(project_root.join("private"))
+            .expect("repository-ignored source directory");
+        std::fs::write(temporary.path().join(".gitignore"), "build/\n")
+            .expect("outer gitignore fixture");
+        std::fs::write(repository.join(".gitignore"), "project/private/\n")
+            .expect("repository gitignore fixture");
+        std::fs::write(
+            project_root.join("build/scripts/compile.ts"),
+            "export const compile = true;\n",
+        )
+        .expect("explicit build source");
+        std::fs::write(
+            project_root.join("private/hidden.ts"),
+            "export const hidden = true;\n",
+        )
+        .expect("repository-ignored source");
+        let patterns = vec!["build/scripts/compile.ts".to_string()];
+        let paths = discover(SourceDiscoveryRequest {
+            root: &project_root,
+            patterns: &patterns,
+            excluded_roots: &[],
+            no_default_ignore: false,
+        })
+        .files
+        .into_iter()
+        .map(|path| crate::paths::normalize_relative_path(&path, &project_root))
+        .collect::<Vec<_>>();
+
+        assert!(paths.contains(&"build/scripts/compile.ts".to_string()));
+        assert!(!paths.contains(&"private/hidden.ts".to_string()));
     }
 }

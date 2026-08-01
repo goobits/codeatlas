@@ -1,9 +1,11 @@
 use super::{DynamicDependency, DynamicDependencyKind, DynamicDependencyTarget};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use swc_core::common::{sync::Lrc, SourceMap};
 use swc_core::ecma::ast::*;
 use swc_core::ecma::visit::{Visit, VisitWith};
+
+const MAX_STATIC_DEPENDENCY_TARGETS: usize = 128;
 
 pub(super) fn collect(module: &Module, source_map: Lrc<SourceMap>) -> Vec<DynamicDependency> {
     let mut static_bindings = StaticDependencyBindingCollector::default();
@@ -12,6 +14,7 @@ pub(super) fn collect(module: &Module, source_map: Lrc<SourceMap>) -> Vec<Dynami
         source_map,
         dependencies: Vec::new(),
         static_bindings: static_bindings.unique(),
+        local_bindings: module.body.iter().flat_map(super::declared_names).collect(),
     };
     module.visit_with(&mut dynamic);
     dynamic.dependencies
@@ -21,6 +24,7 @@ struct DynamicDependencyCollector {
     source_map: Lrc<SourceMap>,
     dependencies: Vec<DynamicDependency>,
     static_bindings: BTreeMap<String, Vec<DynamicDependencyTarget>>,
+    local_bindings: BTreeSet<String>,
 }
 
 #[derive(Default)]
@@ -35,15 +39,27 @@ impl StaticDependencyBindingCollector {
             .filter_map(|(name, targets)| targets.map(|targets| (name, targets)))
             .collect()
     }
+
+    fn unique_bindings(&self) -> BTreeMap<String, Vec<DynamicDependencyTarget>> {
+        self.bindings
+            .iter()
+            .filter_map(|(name, targets)| {
+                targets
+                    .as_ref()
+                    .map(|targets| (name.clone(), targets.clone()))
+            })
+            .collect()
+    }
 }
 
 impl Visit for StaticDependencyBindingCollector {
     fn visit_var_declarator(&mut self, declaration: &VarDeclarator) {
         if let Pat::Ident(identifier) = &declaration.name {
+            let bindings = self.unique_bindings();
             let targets = declaration
                 .init
                 .as_deref()
-                .and_then(static_dependency_targets);
+                .and_then(|expression| static_dependency_targets(expression, &bindings));
             self.bindings
                 .entry(identifier.id.sym.to_string())
                 .and_modify(|existing| *existing = None)
@@ -66,7 +82,7 @@ impl Visit for DynamicDependencyCollector {
             Callee::Expr(expression) if matches!(&**expression, Expr::Ident(identifier) if identifier.sym == *"importScripts") => {
                 Some(DynamicDependencyKind::ImportScripts)
             }
-            Callee::Expr(expression) if is_static_file_reader(expression) => {
+            Callee::Expr(expression) if is_static_file_reader(expression, &self.local_bindings) => {
                 Some(DynamicDependencyKind::RuntimeFile)
             }
             _ => None,
@@ -152,13 +168,15 @@ fn runtime_path_targets_source_module(target: &DynamicDependencyTarget) -> bool 
     )
 }
 
-fn is_static_file_reader(expression: &Expr) -> bool {
+fn is_static_file_reader(expression: &Expr, local_bindings: &BTreeSet<String>) -> bool {
     fn is_reader(name: &str) -> bool {
         matches!(name, "load" | "read" | "readFile" | "readFileSync")
     }
 
     match expression {
-        Expr::Ident(identifier) => is_reader(identifier.sym.as_ref()),
+        Expr::Ident(identifier) => {
+            is_reader(identifier.sym.as_ref()) && !local_bindings.contains(identifier.sym.as_ref())
+        }
         Expr::Member(member) => match &member.prop {
             MemberProp::Ident(identifier) => is_reader(identifier.sym.as_ref()),
             MemberProp::Computed(computed) => {
@@ -225,18 +243,30 @@ fn dependency_targets(
                 .map(|quasi| quasi.raw.to_string())
                 .collect(),
         )],
-        Expr::Tpl(template) => vec![DynamicDependencyTarget::Pattern {
-            prefix: template
-                .quasis
-                .first()
-                .map(|quasi| quasi.raw.to_string())
-                .unwrap_or_default(),
-            suffix: template
-                .quasis
-                .last()
-                .map(|quasi| quasi.raw.to_string())
-                .unwrap_or_default(),
-        }],
+        Expr::Tpl(template) => static_template_targets(template, kind, static_bindings)
+            .unwrap_or_else(|| {
+                vec![DynamicDependencyTarget::Pattern {
+                    prefix: template
+                        .quasis
+                        .first()
+                        .map(|quasi| quasi.raw.to_string())
+                        .unwrap_or_default(),
+                    suffix: template
+                        .quasis
+                        .last()
+                        .map(|quasi| quasi.raw.to_string())
+                        .unwrap_or_default(),
+                }]
+            }),
+        Expr::Member(member) if is_href_member(member) => {
+            dependency_targets(&member.obj, kind, static_bindings)
+        }
+        Expr::New(expression) if is_import_meta_relative_url(expression) => expression
+            .args
+            .as_deref()
+            .and_then(|arguments| arguments.first())
+            .map(|argument| dependency_targets(&argument.expr, kind, static_bindings))
+            .unwrap_or_else(|| vec![DynamicDependencyTarget::Unknown]),
         Expr::Array(array) if kind == DynamicDependencyKind::ImportMetaGlob => {
             let targets = array
                 .elems
@@ -261,12 +291,74 @@ fn dependency_targets(
     }
 }
 
-fn static_dependency_targets(expression: &Expr) -> Option<Vec<DynamicDependencyTarget>> {
+fn static_template_targets(
+    template: &Tpl,
+    kind: DynamicDependencyKind,
+    static_bindings: &BTreeMap<String, Vec<DynamicDependencyTarget>>,
+) -> Option<Vec<DynamicDependencyTarget>> {
+    let first = template.quasis.first()?.raw.to_string();
+    let mut values = vec![first];
+    for (index, expression) in template.exprs.iter().enumerate() {
+        let replacements = dependency_targets(expression, kind, static_bindings)
+            .into_iter()
+            .map(|target| match target {
+                DynamicDependencyTarget::Literal(value) => Some(value),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()?;
+        if replacements.is_empty()
+            || values.len().saturating_mul(replacements.len()) > MAX_STATIC_DEPENDENCY_TARGETS
+        {
+            return None;
+        }
+        let suffix = template.quasis.get(index + 1)?.raw.to_string();
+        let mut expanded = Vec::with_capacity(values.len() * replacements.len());
+        for prefix in &values {
+            for replacement in &replacements {
+                expanded.push(format!("{prefix}{replacement}{suffix}"));
+            }
+        }
+        values = expanded;
+    }
+    Some(
+        values
+            .into_iter()
+            .map(DynamicDependencyTarget::Literal)
+            .collect(),
+    )
+}
+
+fn is_href_member(member: &MemberExpr) -> bool {
+    match &member.prop {
+        MemberProp::Ident(identifier) => identifier.sym == *"href",
+        MemberProp::Computed(computed) => {
+            matches!(&*computed.expr, Expr::Lit(Lit::Str(value)) if value.value == *"href")
+        }
+        MemberProp::PrivateName(_) => false,
+    }
+}
+
+fn is_import_meta_relative_url(expression: &NewExpr) -> bool {
+    matches!(&*expression.callee, Expr::Ident(identifier) if identifier.sym == *"URL")
+        && expression
+            .args
+            .as_deref()
+            .and_then(|arguments| arguments.get(1))
+            .is_some_and(|argument| is_import_meta_url(&argument.expr))
+}
+
+fn static_dependency_targets(
+    expression: &Expr,
+    static_bindings: &BTreeMap<String, Vec<DynamicDependencyTarget>>,
+) -> Option<Vec<DynamicDependencyTarget>> {
     let targets = dependency_targets(
         expression,
         DynamicDependencyKind::RuntimeUrl,
-        &BTreeMap::new(),
+        static_bindings,
     );
+    if targets.is_empty() {
+        return None;
+    }
     targets
         .iter()
         .all(|target| !matches!(target, DynamicDependencyTarget::Unknown))

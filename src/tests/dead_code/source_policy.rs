@@ -299,10 +299,34 @@ fn unrelated_dynamic_imports_do_not_lower_private_symbol_confidence() {
 #[test]
 fn dead_code_json_is_canonical_and_schema_versioned() {
     let report = analyze_fixture("ecmascript");
+    let repeated = analyze_fixture("ecmascript");
+    assert_eq!(
+        report
+            .findings
+            .iter()
+            .map(|finding| &finding.id)
+            .collect::<Vec<_>>(),
+        repeated
+            .findings
+            .iter()
+            .map(|finding| &finding.id)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        report
+            .findings
+            .iter()
+            .map(|finding| &finding.id)
+            .collect::<BTreeSet<_>>()
+            .len(),
+        report.findings.len()
+    );
     let first = outputs::dead_code::render_json(&report).expect("first JSON");
     let second = outputs::dead_code::render_json(&report).expect("second JSON");
     assert_eq!(first, second);
-    assert!(first.contains("\"schema_version\": 3"));
+    assert!(first.contains("\"schema_version\": 4"));
+    assert!(first.contains("\"id\": \"dead-code/"));
+    assert!(first.contains("\"node_id\": \""));
     assert!(first.contains("\"root_contexts\""));
     assert!(first.ends_with('\n'));
 }

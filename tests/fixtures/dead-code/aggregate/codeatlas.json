@@ -1,0 +1,10 @@
+{
+  "projects": [
+    {
+      "id": "aggregate-owned",
+      "root": "packages/owned",
+      "require_complete": true,
+      "assume_reachable": ["src/aggregatePlugin.ts"]
+    }
+  ]
+}

@@ -313,7 +313,10 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
     assert_eq!(runtime_context.role, ContextRole::Production);
     assert_eq!(runtime_context.scope, ContextScope::Runtime);
     assert_eq!(runtime_context.roots.len(), 1);
-    let report = dead_code::analyze(&graph).expect("dead-code report");
+    let mut report = dead_code::analyze(&graph).expect("dead-code report");
+    report.apply_completeness_requirements(&BTreeSet::from(["dynamic".to_string()]));
+    assert!(report.projects[0].require_complete);
+    assert_eq!(report.completeness_gate_count(), 1);
     let boundaries = report
         .findings
         .iter()
@@ -339,6 +342,14 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
     );
     assert_ne!(candidate.confidence, FindingConfidence::High);
     assert!(!candidate.gates);
+    assert_eq!(
+        candidate.node_id,
+        Some(NodeId::file(
+            &ProjectId("dynamic".to_string()),
+            "src/unreachable.ts"
+        ))
+    );
+    assert!(candidate.id.starts_with("dead-code/unreachable_file/"));
     for path in [
         "src/component.svelte",
         "src/plugins/plugin.ts",

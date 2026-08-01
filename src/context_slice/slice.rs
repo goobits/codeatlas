@@ -1,6 +1,6 @@
 use super::model::{ContextSliceReport, TargetResolution, CONTEXT_SLICE_SCHEMA_VERSION};
-use crate::domain::source_graph::{EdgeTarget, NodeId, SourceGraph, SourceNode};
-use anyhow::Result;
+use crate::domain::source_graph::{EdgeTarget, NodeId, ProjectId, SourceGraph, SourceNode};
+use anyhow::{Context, Result};
 use std::collections::{BTreeSet, VecDeque};
 
 const MAX_DEPTH: usize = 16;
@@ -80,7 +80,7 @@ pub(crate) fn create(
                 return false;
             }
             match &edge.to {
-                EdgeTarget::Node(target) => included.contains(target),
+                EdgeTarget::Node(target) => target != &edge.from && included.contains(target),
                 _ => true,
             }
         })
@@ -145,20 +145,33 @@ fn validate_request(request: &ContextSliceRequest) -> Result<()> {
 
 fn resolve_target(graph: &SourceGraph, query: &str) -> Result<TargetResolution> {
     let query = query.trim();
-    let normalized = query.strip_prefix("./").unwrap_or(query).replace('\\', "/");
-    let mut nodes = BTreeSet::new();
     if let Some((id, _)) = graph.nodes.iter().find(|(id, _)| id.0 == query) {
-        nodes.insert(id.clone());
+        return Ok(TargetResolution {
+            query: query.to_owned(),
+            nodes: vec![id.clone()],
+        });
     }
-    if let Some((path, symbol_name)) = normalized.split_once('#') {
-        let files = graph
-            .nodes
-            .iter()
-            .filter_map(|(id, node)| match node {
-                SourceNode::File(file) if file.path == path => Some(id),
-                _ => None,
-            })
-            .collect::<BTreeSet<_>>();
+    let normalized = normalize_query(query);
+    let (project, selector) = match normalized.split_once("::") {
+        Some((project, selector)) => {
+            let project = graph
+                .projects
+                .keys()
+                .find(|candidate| candidate.0 == project)
+                .cloned()
+                .with_context(|| {
+                    format!("context target {query:?} names unknown project {project:?}")
+                })?;
+            (Some(project), selector)
+        }
+        None => (None, normalized.as_str()),
+    };
+    let (path, symbol_name) = selector
+        .split_once('#')
+        .map_or((selector, None), |(path, symbol)| (path, Some(symbol)));
+    let files = resolve_files(graph, project.as_ref(), path, query)?;
+    let mut nodes = BTreeSet::new();
+    if let Some(symbol_name) = symbol_name {
         for (id, node) in &graph.nodes {
             if let SourceNode::Symbol(symbol) = node {
                 if files.contains(&symbol.file) && symbol.name == symbol_name {
@@ -167,20 +180,82 @@ fn resolve_target(graph: &SourceGraph, query: &str) -> Result<TargetResolution> 
             }
         }
     } else {
-        nodes.extend(graph.nodes.iter().filter_map(|(id, node)| match node {
-            SourceNode::File(file) if file.path == normalized => Some(id.clone()),
-            _ => None,
-        }));
+        nodes.extend(files);
     }
     if nodes.is_empty() {
         anyhow::bail!(
-            "context target {query:?} did not match an exact node ID, source path, or path#symbol"
+            "context target {query:?} did not match an exact node ID, project::path, repository path, source path, or symbol selector"
         );
     }
     Ok(TargetResolution {
         query: query.to_owned(),
         nodes: nodes.into_iter().collect(),
     })
+}
+
+fn normalize_query(query: &str) -> String {
+    query.strip_prefix("./").unwrap_or(query).replace('\\', "/")
+}
+
+fn resolve_files(
+    graph: &SourceGraph,
+    project: Option<&ProjectId>,
+    path: &str,
+    query: &str,
+) -> Result<BTreeSet<NodeId>> {
+    let matches = |repository_relative: bool| {
+        graph
+            .nodes
+            .iter()
+            .filter_map(|(id, node)| match node {
+                SourceNode::File(file)
+                    if project.is_none_or(|project| &file.project == project)
+                        && if repository_relative {
+                            graph.projects.get(&file.project).is_some_and(|project| {
+                                repository_path(&project.root, &file.path) == path
+                            })
+                        } else {
+                            file.path == path
+                        } =>
+                {
+                    Some(id.clone())
+                }
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>()
+    };
+    if project.is_some() {
+        return Ok(matches(false));
+    }
+    let repository_matches = matches(true);
+    if !repository_matches.is_empty() {
+        return Ok(repository_matches);
+    }
+    let project_matches = matches(false);
+    let projects = project_matches
+        .iter()
+        .filter_map(|id| graph.nodes.get(id).map(SourceNode::project))
+        .collect::<BTreeSet<_>>();
+    if projects.len() > 1 {
+        anyhow::bail!(
+            "context target {query:?} is ambiguous across projects {}; qualify it as project::path",
+            projects
+                .iter()
+                .map(|project| project.0.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    Ok(project_matches)
+}
+
+fn repository_path(project_root: &str, file_path: &str) -> String {
+    let root = project_root.trim_matches('/');
+    if root.is_empty() || root == "." {
+        file_path.to_string()
+    } else {
+        format!("{root}/{file_path}")
+    }
 }
 
 fn expand(
@@ -281,6 +356,17 @@ mod tests {
                 },
             });
         }
+        graph.edges.insert(SourceEdge {
+            from: b.clone(),
+            to: EdgeTarget::Node(b),
+            kind: SourceEdgeKind::LexicalReference,
+            bindings: Vec::new(),
+            evidence: SourceEvidence {
+                path: "src/b.ts".to_owned(),
+                span: None,
+                extractor: "test".to_owned(),
+            },
+        });
         graph
             .add_context(SourceContext {
                 id: ContextId::new(&project, "application"),
@@ -328,5 +414,52 @@ mod tests {
         .expect("slice");
         assert_eq!(report.nodes.len(), 2);
         assert!(report.truncated);
+    }
+
+    #[test]
+    fn resolves_project_qualified_and_repository_relative_targets_in_one_batch() {
+        let mut graph = graph();
+        let project = ProjectId("other".to_owned());
+        let file = NodeId::file(&project, "src/b.ts");
+        graph
+            .add_project(SourceProject {
+                id: project.clone(),
+                root: "packages/other".to_owned(),
+                languages: BTreeSet::from([SourceLanguage::TypeScript]),
+                completeness: AnalysisCompleteness::Complete,
+            })
+            .expect("other project");
+        graph
+            .add_node(
+                file.clone(),
+                SourceNode::File(SourceFile {
+                    project,
+                    path: "src/b.ts".to_owned(),
+                    language: SourceLanguage::TypeScript,
+                }),
+            )
+            .expect("other file");
+
+        let report = create(
+            &graph,
+            &ContextSliceRequest {
+                targets: vec![
+                    "example::src/b.ts".to_owned(),
+                    "packages/other/src/b.ts".to_owned(),
+                ],
+                depth: 0,
+                max_nodes: 10,
+            },
+        )
+        .expect("batched project-aware slice");
+        assert_eq!(report.schema_version, 2);
+        assert_eq!(report.targets.len(), 2);
+        assert_eq!(report.targets[0].nodes.len(), 1);
+        assert_eq!(report.targets[1].nodes, [file]);
+        assert_eq!(report.nodes.len(), 2);
+        assert!(report
+            .edges
+            .iter()
+            .all(|edge| !matches!(&edge.to, EdgeTarget::Node(target) if target == &edge.from)));
     }
 }

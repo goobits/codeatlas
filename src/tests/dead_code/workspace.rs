@@ -1,6 +1,42 @@
 use super::*;
 
 #[test]
+fn aggregate_projects_inherit_package_owned_analysis_settings() {
+    let root = fixture_root("aggregate");
+    let project = ProjectConfig::load(&root, None).expect("aggregate configuration");
+    let projects = project.analysis_projects().expect("aggregate projects");
+    assert_eq!(projects.len(), 1);
+
+    let owned = &projects[0];
+    assert_eq!(owned.id.0, "aggregate-owned");
+    assert_eq!(owned.languages, ["ts"]);
+    assert_eq!(owned.contexts["package-tool"].role, ContextRole::Tooling);
+    assert_eq!(
+        owned.assume_reachable,
+        ["src/aggregatePlugin.ts", "src/localPlugin.ts"]
+    );
+    assert!(owned.require_complete);
+
+    let graph = languages::reachability::build_source_graph(&projects).expect("aggregate graph");
+    assert!(graph.contexts.values().any(|context| {
+        context.project == ProjectId("aggregate-owned".to_string())
+            && context.name == "package-tool"
+    }));
+}
+
+#[test]
+fn aggregate_projects_reject_stale_package_owned_duplicates() {
+    let root = fixture_root("aggregate-conflict");
+    let error = ProjectConfig::load(&root, None)
+        .expect_err("conflicting aggregate settings should fail")
+        .to_string();
+    assert!(
+        error.contains("conflict with package-owned config"),
+        "{error}"
+    );
+}
+
+#[test]
 fn workspace_reachability_discovers_members_resolves_packages_and_preserves_ownership() {
     let root = fixture_root("workspace");
     let project = ProjectConfig::load(&root, None).expect("workspace configuration");

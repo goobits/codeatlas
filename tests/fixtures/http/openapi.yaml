@@ -2,14 +2,41 @@ openapi: 3.1.0
 info:
   title: HTTP fixture
   version: 1.0.0
+security:
+  - sessionCookie: []
 paths:
   /health:
     get:
+      security: []
       operationId: health
       responses:
         "204":
           description: Ready
   /widgets/{id}:
+    get:
+      operationId: getWidget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+      responses:
+        "200":
+          description: Widget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+        "400":
+          description: Invalid widget request
     post:
       operationId: updateWidget
       parameters:
@@ -18,6 +45,20 @@ paths:
           required: true
           schema:
             type: string
+        - name: wait
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - "0"
+        - name: X-Widget-Trace
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
       requestBody:
         required: true
         content:
@@ -31,9 +72,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Widget"
+          links:
+            readWidget:
+              operationId: getWidget
+              parameters:
+                id: $response.body#/id
         "400":
           description: Invalid widget request
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
   schemas:
     WidgetUpdate:
       type: object

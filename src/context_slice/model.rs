@@ -4,7 +4,7 @@ use crate::domain::source_graph::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const CONTEXT_SLICE_SCHEMA_VERSION: u32 = 1;
+pub(crate) const CONTEXT_SLICE_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct TargetResolution {

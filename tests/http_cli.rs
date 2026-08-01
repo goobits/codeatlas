@@ -146,6 +146,20 @@ fn target_provider_starts_fetches_and_stops_its_server() {
     let python = configured_python();
     let config_path = directory.path().join("codeatlas.json");
     let report_path = directory.path().join("report.json");
+    let child_pid_path = directory.path().join("server-child.pid");
+    let server_script = if cfg!(unix) {
+        fixture.join("server_wrapper.py")
+    } else {
+        fixture.join("server.py")
+    };
+    let mut server_args = vec![
+        server_script,
+        PathBuf::from(port.to_string()),
+        openapi.clone(),
+    ];
+    if cfg!(unix) {
+        server_args.push(child_pid_path.clone());
+    }
     let config = json!({
         "root": ".",
         "package_exports": false,
@@ -167,11 +181,7 @@ fn target_provider_starts_fetches_and_stops_its_server() {
                     "openapi_path": "/openapi.yaml",
                     "server": {
                         "command": python,
-                        "args": [
-                            fixture.join("server.py"),
-                            port.to_string(),
-                            &openapi
-                        ],
+                        "args": server_args,
                         "cwd": directory.path()
                     }
                 }]
@@ -217,6 +227,12 @@ fn target_provider_starts_fetches_and_stops_its_server() {
         "GET /health"
     );
     assert_eq!(report["findings"], json!([]));
+    if cfg!(unix) {
+        assert!(
+            child_pid_path.is_file(),
+            "owned HTTP target should exercise a wrapper and descendant server"
+        );
+    }
     assert!(
         TcpListener::bind(("127.0.0.1", port)).is_ok(),
         "owned HTTP target should release its port after the check"
@@ -244,6 +260,22 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
 
     let port = available_port();
     let python = configured_python();
+    let server_args = if cfg!(unix) {
+        json!([
+            fixture.join("managed_server.py"),
+            fixture.join("server.py"),
+            port.to_string(),
+            &openapi,
+            "fixture-runtime-token"
+        ])
+    } else {
+        json!([
+            fixture.join("server.py"),
+            port.to_string(),
+            &openapi,
+            "fixture-runtime-token"
+        ])
+    };
     let config_path = directory.path().join("codeatlas.json");
     let config = json!({
         "root": ".",
@@ -270,17 +302,12 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
                     }],
                     "report_dir": "reports",
                     "server": {
-                        "command": python,
-                        "args": [
-                            fixture.join("server.py"),
-                            port.to_string(),
-                            &openapi,
-                            "fixture-static-token"
-                        ],
+                        "command": &python,
+                        "args": server_args,
                         "cwd": directory.path()
                     },
                     "request_adapter": {
-                        "command": python,
+                        "command": &python,
                         "args": [fixture.join("request_adapter.py"), &adapter_log],
                         "cwd": directory.path()
                     }
@@ -307,11 +334,9 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "--target",
             "fixture-local",
             "--max-examples",
-            "4",
+            "12",
             "--seed",
             "424242",
-            "--operation",
-            "POST /widgets/{id}",
         ])
         .env("CODEATLAS_PYTHON", &python)
         .output()
@@ -328,7 +353,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         &fs::read(reports.join("summary.json")).expect("fuzz summary should be written"),
     )
     .expect("fuzz summary should be JSON");
-    assert_eq!(summary["apiVersion"], "codeatlas.http-fuzz/v1");
+    assert_eq!(summary["apiVersion"], "codeatlas.http-fuzz/v2");
     assert_eq!(summary["targetId"], "fixture-local");
     assert_eq!(summary["contractId"], "fixture-api");
 
@@ -353,9 +378,45 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         .collect::<Vec<_>>();
     assert!(!requests.is_empty(), "adapter should receive requests");
     assert_eq!(requests.len(), responses.len());
+    let primary_requests = requests
+        .iter()
+        .copied()
+        .filter(|event| event["probe"].is_null())
+        .collect::<Vec<_>>();
+    let primary_responses = responses
+        .iter()
+        .copied()
+        .filter(|event| event["probe"].is_null())
+        .collect::<Vec<_>>();
+    let authentication_probe_responses = responses
+        .iter()
+        .copied()
+        .filter(|event| event["probe"] == "authentication")
+        .collect::<Vec<_>>();
     assert!(requests.iter().all(|event| event["staticHeader"] == true));
-    assert!(requests.iter().any(|event| event["bodyOverride"] == true));
-    let negative_body_ids = requests
+    assert!(primary_requests
+        .iter()
+        .any(|event| event["bodyOverride"] == true));
+    assert!(primary_requests
+        .iter()
+        .any(|event| event["sessionAuthentication"] == true));
+    assert!(primary_requests
+        .iter()
+        .any(|event| event["queryOverride"] == true));
+    assert!(
+        !authentication_probe_responses.is_empty(),
+        "adapter should observe authentication probe responses: {adapter_events:#?}"
+    );
+    assert!(authentication_probe_responses.iter().all(|event| {
+        event["staticSeen"] == true && matches!(event["status"].as_u64(), Some(401 | 403 | 404))
+    }));
+    assert!(
+        primary_requests.iter().all(|event| {
+            event["operation"] != "POST /widgets/{id}" || event["method"] != "GET"
+        }),
+        "unsupported-method probes must not call a real sibling operation"
+    );
+    let negative_body_ids = primary_requests
         .iter()
         .filter(|event| event["bodyGeneration"] == "negative")
         .filter_map(|event| event["id"].as_str())
@@ -364,18 +425,146 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         !negative_body_ids.is_empty(),
         "Schemathesis should generate a negative body case"
     );
-    assert!(negative_body_ids.iter().all(|id| requests
+    assert!(negative_body_ids.iter().all(|id| primary_requests
         .iter()
         .any(|event| { event["id"] == *id && event["bodyOverride"] == false })));
-    assert!(negative_body_ids.iter().any(|id| responses
+    assert!(negative_body_ids.iter().any(|id| primary_responses
         .iter()
         .any(|event| { event["id"] == *id && event["status"] == 400 })));
-    assert!(responses.iter().any(|event| event["adapterSeen"] == true));
+    let negative_query_requests = primary_requests
+        .iter()
+        .filter(|event| event["queryGeneration"] == "negative")
+        .collect::<Vec<_>>();
+    assert!(
+        !negative_query_requests.is_empty(),
+        "Schemathesis should generate a negative query case"
+    );
+    assert!(negative_query_requests
+        .iter()
+        .any(|event| event["queryOverride"] == true));
+    assert!(negative_query_requests
+        .iter()
+        .any(|event| event["queryOverride"] == false));
+    assert!(negative_query_requests.iter().all(|event| {
+        let parameters = event["negativeQueryParameters"].as_array().map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str())
+                .collect::<Vec<_>>()
+        });
+        event["queryOverride"] == parameters.is_some_and(|names| !names.contains(&"wait"))
+    }));
+    assert!(negative_query_requests.iter().any(|event| primary_responses
+        .iter()
+        .any(|response| { response["id"] == event["id"] && response["status"] == 400 })));
+    let negative_header_ids = primary_requests
+        .iter()
+        .filter(|event| event["headerGeneration"] == "negative")
+        .filter_map(|event| event["id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        !negative_header_ids.is_empty(),
+        "Schemathesis should generate a negative header case"
+    );
+    assert!(negative_header_ids.iter().all(|id| primary_responses
+        .iter()
+        .any(|event| { event["id"] == *id && event["status"] != 401 })));
+    assert!(primary_responses
+        .iter()
+        .any(|event| event["adapterSeen"] == true));
+    assert!(primary_responses
+        .iter()
+        .any(|event| event["querySeen"] == true));
     assert!(adapter_events.iter().any(|event| event["kind"] == "closed"));
     assert!(
         TcpListener::bind(("127.0.0.1", port)).is_ok(),
         "managed fuzzer server should release its port"
     );
+
+    let stateful_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+        .args([
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "http",
+            "fuzz",
+            directory
+                .path()
+                .to_str()
+                .expect("fixture root should be UTF-8"),
+            "--target",
+            "fixture-local",
+            "--profile",
+            "stateful",
+            "--max-examples",
+            "12",
+            "--seed",
+            "424242",
+        ])
+        .env("CODEATLAS_PYTHON", &python)
+        .output()
+        .expect("CodeAtlas managed stateful smoke should start");
+    assert!(
+        stateful_output.status.success(),
+        "CodeAtlas managed stateful smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&stateful_output.stdout),
+        String::from_utf8_lossy(&stateful_output.stderr)
+    );
+
+    let stateful_summary: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            directory
+                .path()
+                .join("reports/fixture-local/stateful/summary.json"),
+        )
+        .expect("stateful summary should be written"),
+    )
+    .expect("stateful summary should be JSON");
+    assert_eq!(stateful_summary["stateful"]["linksSelected"], 1);
+    assert_eq!(stateful_summary["stateful"]["linksCovered"], 1);
+    assert!(
+        TcpListener::bind(("127.0.0.1", port)).is_ok(),
+        "managed stateful server should release its port"
+    );
+
+    let focused_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+        .args([
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "http",
+            "fuzz",
+            directory
+                .path()
+                .to_str()
+                .expect("fixture root should be UTF-8"),
+            "--target",
+            "fixture-local",
+            "--max-examples",
+            "4",
+            "--seed",
+            "424242",
+            "--operation",
+            "POST /widgets/{id}",
+        ])
+        .env("CODEATLAS_PYTHON", &python)
+        .output()
+        .expect("CodeAtlas focused HTTP fuzz smoke should start");
+    assert!(
+        focused_output.status.success(),
+        "CodeAtlas focused HTTP fuzz smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&focused_output.stdout),
+        String::from_utf8_lossy(&focused_output.stderr)
+    );
+    let report_directories = fs::read_dir(&reports)
+        .expect("focused report directory should be written")
+        .map(|entry| entry.expect("focused report directory entry").path())
+        .filter(|path| path.is_dir())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("post-widgets-id-"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(report_directories.len(), 1);
 }
 
 fn configured_python() -> String {

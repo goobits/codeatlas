@@ -2,11 +2,14 @@ use super::{
     evidence::{RedactionPolicy, REDACTED},
     junit::render,
     sanitize_events, set_private_dir,
-    summary::{is_reported_server_error, summarize_reader},
+    summary::{
+        is_reported_server_error, summarize_reader, summarize_reader_with_expected_non_success,
+    },
     EVENTS_FILENAME, JUNIT_FILENAME,
 };
 use crate::http::model::{HttpFuzzContractMode, HttpFuzzPositiveCoverage};
 use serde_json::json;
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Cursor;
 #[cfg(unix)]
@@ -193,6 +196,56 @@ fn summarizes_positive_negative_and_authentication_only_coverage() {
     );
     assert_eq!(report.operations[2].cases, 3);
     assert_eq!(report.operations[2].positive_cases, 1);
+}
+
+#[test]
+fn normalizes_valid_coverage_scenarios_as_positive_cases() {
+    let report = summarize_reader(
+        Cursor::new(
+            r#"{"Initialize":{"seed":7}}
+{"ScenarioFinished":{"phase":"Coverage","status":"success","is_final":false,"recorder":{"label":"POST /imports","cases":{"valid":{"value":{"method":"POST","path":"/imports","meta":{"generation":{"mode":"negative"},"phase":{"data":{"scenario":"valid_object","parameter_location":"body"}}}},"is_transition_applied":false}},"checks":{"valid":[{"status":"success"}]},"interactions":{"valid":{"response":{"status_code":200}}}}}}
+"#,
+        ),
+        "local",
+        "fixture-api",
+        HttpFuzzContractMode::OpenApi,
+        "standard",
+    )
+    .expect("valid coverage scenario should summarize");
+
+    assert_eq!(report.totals.positive_cases, 1);
+    assert_eq!(report.totals.positive_successes, 1);
+    assert_eq!(report.totals.negative_cases, 0);
+    assert_eq!(
+        report.operations[0].positive_coverage,
+        HttpFuzzPositiveCoverage::SuccessObserved
+    );
+}
+
+#[test]
+fn summarizes_declared_non_success_operation_coverage() {
+    let report = summarize_reader_with_expected_non_success(
+        Cursor::new(
+            r#"{"Initialize":{"seed":7}}
+{"ScenarioFinished":{"phase":"Coverage","status":"success","is_final":false,"recorder":{"label":"GET /hidden","cases":{"positive":{"value":{"method":"GET","path":"/hidden","meta":{"generation":{"mode":"positive"}}},"is_transition_applied":false}},"checks":{"positive":[{"status":"success"}]},"interactions":{"positive":{"response":{"status_code":404}}}}}}
+"#,
+        ),
+        "local",
+        "fixture-api",
+        HttpFuzzContractMode::OpenApi,
+        "standard",
+        &BTreeSet::from(["GET /hidden".to_string()]),
+    )
+    .expect("declared non-success operation should summarize");
+
+    assert_eq!(report.api_version, "codeatlas.http-fuzz/v2");
+    assert_eq!(report.totals.success_observed_operations, 0);
+    assert_eq!(report.totals.expected_non_success_operations, 1);
+    assert_eq!(report.totals.operations_without_success, 0);
+    assert_eq!(
+        report.operations[0].positive_coverage,
+        HttpFuzzPositiveCoverage::ExpectedNonSuccessObserved
+    );
 }
 
 #[test]

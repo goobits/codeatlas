@@ -111,6 +111,9 @@ impl ProjectConfig {
             } else {
                 std::env::current_dir()?.join(config_path)
             };
+            let absolute = absolute.canonicalize().with_context(|| {
+                format!("CodeAtlas config does not exist: {}", absolute.display())
+            })?;
             let source = std::fs::read_to_string(&absolute)
                 .with_context(|| format!("Could not read {}", absolute.display()))?;
             let config = serde_json::from_str(&source)

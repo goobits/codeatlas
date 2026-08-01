@@ -1,0 +1,9 @@
+{
+  "projects": [
+    {
+      "id": "aggregate-owned",
+      "root": "packages/owned",
+      "languages": ["ts"]
+    }
+  ]
+}

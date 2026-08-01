@@ -9,7 +9,7 @@ pub(super) fn detect(
     source: &str,
     output: &mut Vec<HttpSourceOperation>,
 ) {
-    let routes = route_paths(path);
+    let routes = route_paths(path, repository_root);
     if is_server(path) {
         for method in exported_http_methods(source) {
             for route in &routes {
@@ -56,13 +56,40 @@ fn is_page(path: &Path) -> bool {
         })
 }
 
-fn route_paths(path: &Path) -> Vec<String> {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    let Some((_, after)) = normalized.rsplit_once("/routes/") else {
+fn route_paths(path: &Path, repository_root: &Path) -> Vec<String> {
+    let normalized_path = path.to_string_lossy().replace('\\', "/");
+    let normalized_root = repository_root.to_string_lossy().replace('\\', "/");
+    let root = normalized_root.trim_end_matches('/');
+    let relative = if root.is_empty() {
+        normalized_path.trim_start_matches('/')
+    } else if normalized_path == root {
+        ""
+    } else {
+        normalized_path
+            .strip_prefix(root)
+            .and_then(|suffix| suffix.strip_prefix('/'))
+            .unwrap_or_else(|| normalized_path.trim_start_matches('/'))
+    };
+    let components = relative
+        .split('/')
+        .filter(|component| !component.is_empty())
+        .collect::<Vec<_>>();
+    let route_start = components
+        .windows(2)
+        .position(|pair| pair == ["src", "routes"])
+        .map(|index| index + 2)
+        .or_else(|| {
+            components
+                .iter()
+                .position(|component| *component == "routes")
+                .map(|index| index + 1)
+        });
+    let Some(route_start) = route_start else {
         return vec!["/".to_string()];
     };
-    let segments = after
-        .split('/')
+    let segments = components[route_start..]
+        .iter()
+        .copied()
         .take_while(|segment| !segment.starts_with('+'))
         .collect::<Vec<_>>();
     let mut routes = vec![String::new()];

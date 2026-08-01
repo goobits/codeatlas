@@ -90,10 +90,40 @@ fn dead_code_check_only_fails_when_gating_is_requested() {
         &fs::read(&checked_report_path).expect("checked dead-code report should be written"),
     )
     .expect("dead-code report should be JSON");
-    assert_eq!(report["schema_version"], 3);
+    assert_eq!(report["schema_version"], 4);
     assert!(report["findings"]
         .as_array()
         .expect("findings should be an array")
         .iter()
         .any(|finding| finding["path"] == "src/unreachable.ts" && finding["gates"] == true));
+}
+
+#[test]
+fn dead_code_check_fails_closed_for_required_incomplete_projects() {
+    let output_directory = TestDirectory::create("codeatlas-cli-contract");
+    let fixture = fixture("dead-code/dynamic");
+    let report_path = output_directory.path().join("required-complete.json");
+    let output = run(&[
+        "dead-code",
+        fixture.to_str().expect("fixture path should be UTF-8"),
+        "--format",
+        "json",
+        "--out",
+        report_path.to_str().expect("report path should be UTF-8"),
+        "--check",
+    ]);
+    assert_eq!(output.status.code(), Some(1));
+
+    let report: Value = serde_json::from_slice(
+        &fs::read(&report_path).expect("required-complete report should be written"),
+    )
+    .expect("required-complete report should be JSON");
+    assert_eq!(report["schema_version"], 4);
+    assert_eq!(report["projects"][0]["require_complete"], true);
+    assert_eq!(report["projects"][0]["completeness"], "partial");
+    assert!(report["findings"]
+        .as_array()
+        .expect("findings should be an array")
+        .iter()
+        .all(|finding| finding["gates"] == false));
 }

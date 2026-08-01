@@ -12,10 +12,15 @@ pub(crate) fn render_text(report: &DeadCodeReport) -> String {
     let mut output = String::from("CodeAtlas dead-code report\n\n");
     for project in &report.projects {
         output.push_str(&format!(
-            "Project {} ({})\n  completeness: {}\n  files: {}\n  symbols: {}\n\n",
+            "Project {} ({})\n  completeness: {}{}\n  files: {}\n  symbols: {}\n\n",
             project.project,
             project.root,
             completeness_name(project.completeness),
+            if project.require_complete {
+                " [required]"
+            } else {
+                ""
+            },
             project.files,
             project.symbols
         ));
@@ -23,9 +28,7 @@ pub(crate) fn render_text(report: &DeadCodeReport) -> String {
 
     if report.findings.is_empty() {
         output.push_str("No findings.\n");
-        return output;
     }
-
     for finding in &report.findings {
         let symbol = finding
             .symbol
@@ -59,13 +62,19 @@ pub(crate) fn render_text(report: &DeadCodeReport) -> String {
         };
         let gate = if finding.gates { " [gate]" } else { "" };
         output.push_str(&format!(
-            "{} {}{} ({}, confidence: {}){}\n  {}\n  contexts: {}; roots: {}; roles: {}\n",
+            "{} {}{} ({}, confidence: {}){}\n  id: {}\n  node: {}\n  {}\n  contexts: {}; roots: {}; roles: {}\n",
             finding.kind.as_str(),
             finding.path,
             symbol,
             finding.project,
             confidence_name(finding.confidence),
             gate,
+            finding.id,
+            finding
+                .node_id
+                .as_ref()
+                .map(|node| node.0.as_str())
+                .unwrap_or("none"),
             finding.message,
             contexts,
             roots,
@@ -73,9 +82,10 @@ pub(crate) fn render_text(report: &DeadCodeReport) -> String {
         ));
     }
     output.push_str(&format!(
-        "\n{} finding(s), {} gating.\n",
+        "\n{} finding(s), {} finding gate(s), {} completeness gate(s).\n",
         report.findings.len(),
-        report.gate_count()
+        report.gate_count(),
+        report.completeness_gate_count()
     ));
     output
 }

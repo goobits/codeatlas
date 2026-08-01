@@ -226,6 +226,7 @@ are arbitrary.
 			"id": "web",
 			"root": ".",
 			"languages": ["js", "ts", "svelte"],
+			"require_complete": true,
 			"contexts": {
 				"application": {
 					"role": "production",
@@ -293,6 +294,12 @@ local project from each member's `codeatlas.json`. When the workspace root is
 also a package, its non-member source is scanned as one non-overlapping root
 project; member roots remain excluded from it. Packages can therefore own their
 exceptional roots without duplicating one workspace-wide configuration.
+Explicit aggregate projects follow the same ownership rule: when a nested
+project root contains `codeatlas.json`, CodeAtlas inherits that root's
+languages, contexts, assumptions, Rust settings, ignore policy, and
+completeness requirement. The aggregate may add distinct contexts and assumed
+roots, but conflicting copies fail configuration so package-owned analysis does
+not silently drift.
 Local source commands used by configured HTTP fuzz servers and request adapters
 become test roots; source commands used to generate OpenAPI contracts become
 tooling roots.
@@ -349,28 +356,37 @@ context-only findings to avoid listing every test file and test function.
 Only high-confidence unreachable files, unused private symbols, and unresolved
 internal imports can fail `dead-code --check`. Public APIs without repository
 consumers remain advisory because external consumers may exist.
+Set `require_complete` on a project only after its supported source and dynamic
+boundaries are fully modeled. Report-only runs continue to preserve honest
+partial or unsupported evidence; `dead-code --check` additionally fails closed
+when any project carrying that requirement is not complete.
 
-The dead-code JSON contract is schema version 3. Project summaries include
-per-language file counts, and each finding includes one exact, deterministic
-supporting root for every context that reaches it. This keeps provenance useful
-and workspace analysis bounded even when thousands of tests share helpers.
-Scan, architecture, context, and dead-code reports remain separate versioned
-contracts rather than one all-purpose report.
+The dead-code JSON contract is schema version 4. Project summaries include
+per-language file counts and the explicit completeness requirement. Each
+finding includes a deterministic `id`, its exact `node_id` when one exists, and
+the named context roots that support its classification. Finding IDs are stable
+for the same structural source evidence and can drive bounded follow-up audits;
+`node_id` can be passed directly to `context`. Scan, architecture, context, and
+dead-code reports remain separate versioned contracts rather than one
+all-purpose report.
 
 Use `context` to retrieve only the nearby source facts needed for a task:
 
 ```bash
 codeatlas context . \
-  --target src/architecture/compiler.rs \
-  --target src/architecture/compiler.rs#compile \
+  --target core::src/architecture/compiler.rs#compile \
+  --target packages/web/src/routes.ts \
   --depth 2 \
   --max-nodes 128 \
   --out .codeatlas/context.json
 ```
 
-Targets are exact source graph node IDs, repository-relative paths, or
-`path#symbol` selectors. The result includes dependencies, dependents,
-visibility, evidence, analysis boundaries, and an explicit truncation status.
+Targets are exact source graph node IDs, `project::path` selectors,
+repository-relative paths, or `path#symbol` selectors. Repeat `--target` to
+resolve a batch into one bounded slice. Ambiguous project-relative paths fail
+with a qualification hint, and exact reflexive edges are omitted as graph
+noise. The schema-v2 result includes dependencies, dependents, visibility,
+evidence, analysis boundaries, and an explicit truncation status.
 The source context graph remains separate from the declared architecture graph
 because the two graphs have different authority and semantics.
 
@@ -538,6 +554,8 @@ workflows are needed:
         "source_roots": ["src/http"],
         "source_include_paths": ["/v1/**", "/health"],
         "source_exclude_paths": ["/internal/**"],
+        "source_include_operations": ["GET /health", "POST /v1/sessions"],
+        "source_exclude_operations": ["GET /v1/internal-probe"],
         "source_complete": true
       }
     ],
@@ -547,6 +565,10 @@ workflows are needed:
           "id": "public-local",
           "contract": "public-api",
           "base_url": "http://127.0.0.1:3443",
+          "operations": [
+            "GET /health",
+            "POST /widgets/{id}"
+          ],
           "environment": {
             "NODE_ENV": "test",
             "PORT": "3443"
@@ -562,6 +584,7 @@ workflows are needed:
             "command": "node",
             "args": ["src/test-server.js"],
             "cwd": ".",
+            "startup_timeout_seconds": 90,
             "prepare": [
               {
                 "command": "node",
@@ -587,6 +610,10 @@ may be registered dynamically; CodeAtlas will preserve that uncertainty rather
 than turn incomplete static detection into false CI failures.
 Path filters partition mixed public/internal source files without creating
 duplicate route inventories.
+Exact operation filters use canonical `METHOD /path` keys when two methods on
+the same source path belong to different contracts. Unlike path filters, these
+are exact keys rather than globs. Operation filters apply after path filters
+and may include `PAGE /path` inventory entries as well as HTTP endpoint methods.
 
 ```bash
 codeatlas http inventory . --out source-routes.json
@@ -618,14 +645,16 @@ fetcher over standard input rather than exposed in process arguments.
 
 Without OpenAPI, `http check` emits one non-gating schema-missing warning while
 retaining the source inventory. `http fuzz` automatically turns discovered
-endpoints into a temporary source-transport contract. It exercises path
+endpoints into a temporary source-transport contract after the target declares
+a non-empty `operations` allowlist. It exercises path
 serialization, arbitrary request bodies, unsupported methods, and server-error
 handling without pretending that CodeAtlas inferred domain fields, query
 parameters, authentication rules, or response schemas. Source-transport
-reports are labeled `contractMode: "source_transport"`; aggregate positive
-coverage gates and the stateful profile remain exclusive to explicit OpenAPI
-contracts. `http baseline`, `http diff`, and baseline comparison also require
-schema-backed contracts.
+reports are labeled `contractMode: "source_transport"`; the stateful profile
+remains exclusive to explicit OpenAPI contracts. Curated source-transport
+operations receive the same retained-evidence and positive-coverage gates as
+curated OpenAPI operations. `http baseline`, `http diff`, and baseline
+comparison also require schema-backed contracts.
 
 With OpenAPI, `http check` also reports malformed path parameters, undefined security
 schemes, missing success/error responses, missing request/response schemas,
@@ -642,9 +671,11 @@ requires package hashes, so a fresh machine cannot silently resolve a different
 fuzzer stack. Managed provisioning requires Python 3.10 or newer; set
 `CODEATLAS_PYTHON` when `python3` is not the intended interpreter. CodeAtlas
 also asks that exact CLI to load its bundled hook before starting the optional
-foreground test server. CodeAtlas waits for owned servers to accept
-connections. Optional `server.prepare` commands run in order before the owned
-server and inherit the target's isolated environment; use them for idempotent
+foreground test server. CodeAtlas waits 30 seconds for owned servers to accept
+connections by default. Set bounded `server.startup_timeout_seconds` (1–600)
+for managed targets with slower cold starts. Optional `server.prepare` commands
+run in order before the owned server and inherit the target's isolated
+environment; use them for idempotent
 local schema migrations or fixture preparation instead of project-specific
 wrapper scripts. Schema-backed targets materialize their configured `file`,
 `command`, `url`, or `target` provider into the private run directory, so the
@@ -662,43 +693,73 @@ every selected link. Run `standard` and `stateful` to cover both isolated
 request behavior and declared resource workflows. `--max-examples` provides a
 focused local override. Every run prints its exact random seed; pass it back
 through `--seed` to reproduce the generated sequence.
-`--operation "METHOD /path"` narrows a local debugging run without exposing
-Schemathesis-specific filters. Header values can be literal test values or come
-from the target environment with `value_env`; do not commit real secrets.
+The target-owned `operations` list is the authoritative fuzz boundary.
+`--operation "METHOD /path"` can only narrow that list for local debugging; it
+cannot expand it. CodeAtlas validates every configured operation against the
+selected contract, requires retained evidence for each selection, and keeps
+all real sibling methods visible so an unsupported-method probe never calls a
+different real operation. Focused reports are retained in distinct,
+operation-specific directories beneath the selected profile, so one targeted
+run does not erase evidence from another. Header values can be literal test
+values or come from the target environment with `value_env`; do not commit real
+secrets.
 CodeAtlas injects these headers through its private Schemathesis hook rather
 than exposing their values in process arguments. Hook configuration lives in a
 unique owner-only file for the run, is removed when its owner exits normally,
 and is removed from the adapter process environment before the adapter starts.
 A target may also declare a long-lived `request_adapter` command. CodeAtlas
 sends each exact serialized request and each observed response over the versioned
-`codeatlas.http-request-adapter/v1` JSONL protocol. Request replies supply
-header and optional base64 body overrides before transport. CodeAtlas rejects
-an override when its component's generation mode is `negative`; overrides
-exist to supply valid fixtures or credentials for the remaining components.
-Response observations let an
-application-owned adapter retain workflow credentials for linked requests.
+`codeatlas.http-request-adapter/v2` JSONL protocol. Request messages include
+the operation's active `securityParameters`. Replies may supply matching
+`authentication` parameters independently from ordinary header, query-value,
+and optional base64 body overrides. Query replies are maps whose string or
+string-array values replace that name's generated values; `null` removes the
+name. They cannot replace the URL's scheme, authority, or path. CodeAtlas
+rejects undeclared authentication, prevents ordinary overrides from replacing
+declared security parameters, and rejects an override of the exact negatively
+generated parameter. When the engine identifies that exact query parameter,
+an adapter may still replace other query values so long polls and other valid
+fixtures stay deterministic. Overrides exist to supply valid fixtures or
+credentials for the remaining components. When another header is negatively
+generated, an adapter may still replace a configured static
+credential header only while the request retains that exact placeholder value.
+Authentication probes are marked in adapter messages and retain ordinary
+fixture adaptation while never applying the adapter's dynamic authentication,
+so sessions and credentials do not mask missing or invalid authentication.
+Response observations let an application-owned adapter retain workflow
+credentials for linked requests.
+Coverage-phase scenarios that Schemathesis identifies as valid are normalized
+to positive generation before adapter safety checks and coverage accounting,
+including valid multipart objects whose raw engine mode is negative.
+After the first exchange, adapters have 15 seconds to answer each message;
+startup receives 90 seconds so an adapter may initialize local fixtures.
 This keeps engine integration portable while each project reuses production
 signing or token code without depending on Schemathesis. Each run stores its
 report directory with owner-only permissions where the platform supports them.
 An interrupted run stops its managed processes and discards raw exchange
 evidence; the next run also clears any owned files left by an abnormal exit.
 It retains sanitized NDJSON, a compact evidence-safe JUnit report, and a compact
-versioned `codeatlas.http-fuzz/v1` summary; request and response bodies,
+versioned `codeatlas.http-fuzz/v2` summary; request and response bodies,
 sensitive headers, and URL queries are removed from retained evidence. The
-summary separates positive successes, negative rejections, server errors,
-operations whose positive cases only reached authentication rejection, and
-stateful link/scenario coverage. Projects retain only their domain-owned
+summary separates positive successes, declared non-success operations, negative
+rejections, server errors, operations whose positive cases only reached
+authentication rejection, and stateful link/scenario coverage. An operation
+whose OpenAPI contract has no 2xx, 3xx, or `default` response satisfies the
+coverage gate when a positive case reaches its declared client-error response;
+privacy-preserving and deny-only endpoints therefore do not weaken the success
+budget. Projects retain only their domain-owned
 runtime fixture, optional explicit OpenAPI contract and Links, adapter, and
 target configuration.
 
-For complete standard and thorough runs, `positive_coverage` turns that evidence
-into a regression gate without copying an operation allowlist. Set
+For complete standard and thorough runs—and focused runs backed by a configured
+target allowlist—`positive_coverage` turns that evidence into a regression
+gate. Set
 `max_operations_without_success` to the current reviewed floor and ratchet it
 down as contract examples and local fixtures improve; a newly uncovered
 operation or a lost positive path then fails locally. Keep
 `max_authentication_rejection_only_operations` at zero when the target supplies
-working test credentials. Focused `--operation` runs and the additive stateful
-profile do not apply the aggregate budget. CodeAtlas's authentication probe
+working test credentials. Uncurated one-off OpenAPI `--operation` runs and the
+additive stateful profile do not apply the aggregate budget. CodeAtlas's authentication probe
 accepts 401, 403, and privacy-preserving 404 rejections.
 
 This command covers HTTP operations exposed by the selected OpenAPI contract or
