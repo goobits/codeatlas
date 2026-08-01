@@ -5,8 +5,9 @@
 //! traversable edges.
 
 use crate::domain::source_graph::{
-    AnalysisCompleteness, ContextId, ContextRole, ContextScope, EdgeTarget, FindingConfidence,
-    GraphDiagnostic, NodeId, ProjectId, SourceEdgeKind, SourceGraph, SourceNode,
+    AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, EdgeTarget,
+    FindingConfidence, GraphDiagnostic, NodeId, ProjectId, SourceEdgeKind, SourceGraph,
+    SourceLanguage, SourceNode,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -14,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 pub(crate) struct Reachability {
     contexts_by_node: BTreeMap<NodeId, BTreeSet<ContextId>>,
     roles_by_node: BTreeMap<NodeId, BTreeSet<ContextRole>>,
-    roots_by_node: BTreeMap<NodeId, BTreeSet<ReachabilityRoot>>,
+    witness_roots_by_node: BTreeMap<NodeId, BTreeSet<ReachabilityRoot>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -54,43 +55,45 @@ impl Reachability {
 
         let mut result = Self::default();
         for context in graph.contexts.values() {
-            for root in &context.roots {
-                let mut visited = BTreeSet::new();
-                let mut queue = match context.scope {
-                    ContextScope::Runtime => VecDeque::from([root.clone()]),
-                    ContextScope::PublicSurface => {
+            let roots = context.roots.iter().cloned().collect::<Vec<_>>();
+            let mut queue = VecDeque::<(NodeId, usize)>::new();
+            for (root_index, root) in roots.iter().enumerate() {
+                match context.scope {
+                    ContextScope::Runtime => queue.push_back((root.clone(), root_index)),
+                    ContextScope::PublicSurface => queue.extend(
                         public_surface_roots(root, &public_surface_adjacency)
                             .into_iter()
-                            .collect()
-                    }
-                };
+                            .map(|node| (node, root_index)),
+                    ),
+                }
+            }
 
-                while let Some(node) = queue.pop_front() {
-                    if !visited.insert(node.clone()) {
-                        continue;
-                    }
-                    result
-                        .contexts_by_node
-                        .entry(node.clone())
-                        .or_default()
-                        .insert(context.id.clone());
-                    result
-                        .roles_by_node
-                        .entry(node.clone())
-                        .or_default()
-                        .insert(context.role);
-                    result
-                        .roots_by_node
-                        .entry(node.clone())
-                        .or_default()
-                        .insert(ReachabilityRoot {
-                            context: context.id.clone(),
-                            root: root.clone(),
-                        });
+            let mut visited = BTreeSet::new();
+            while let Some((node, root_index)) = queue.pop_front() {
+                if !visited.insert(node.clone()) {
+                    continue;
+                }
+                result
+                    .contexts_by_node
+                    .entry(node.clone())
+                    .or_default()
+                    .insert(context.id.clone());
+                result
+                    .roles_by_node
+                    .entry(node.clone())
+                    .or_default()
+                    .insert(context.role);
+                result
+                    .witness_roots_by_node
+                    .entry(node.clone())
+                    .or_default()
+                    .insert(ReachabilityRoot {
+                        context: context.id.clone(),
+                        root: roots[root_index].clone(),
+                    });
 
-                    if let Some(targets) = runtime_adjacency.get(&node) {
-                        queue.extend(targets.iter().cloned());
-                    }
+                if let Some(targets) = runtime_adjacency.get(&node) {
+                    queue.extend(targets.iter().cloned().map(|target| (target, root_index)));
                 }
             }
         }
@@ -107,7 +110,10 @@ impl Reachability {
     }
 
     pub(crate) fn roots(&self, node: &NodeId) -> BTreeSet<ReachabilityRoot> {
-        self.roots_by_node.get(node).cloned().unwrap_or_default()
+        self.witness_roots_by_node
+            .get(node)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
@@ -147,10 +153,76 @@ pub(crate) fn project_confidence(graph: &SourceGraph, project: &ProjectId) -> Fi
     )
 }
 
+pub(crate) fn file_confidence(
+    graph: &SourceGraph,
+    project: &ProjectId,
+    file: &NodeId,
+) -> FindingConfidence {
+    let language = node_language(graph, file);
+    localized_confidence(graph, project, |boundary| {
+        boundary.node.as_ref().is_some_and(|node| {
+            node == file
+                || matches!(
+                    graph.nodes.get(node),
+                    Some(SourceNode::Symbol(symbol)) if &symbol.file == file
+                )
+                || (matches!(
+                    boundary.kind,
+                    BoundaryKind::DynamicImport | BoundaryKind::Reflection
+                ) && same_runtime_family(node_language(graph, node), language))
+        })
+    })
+}
+
 pub(crate) fn symbol_confidence(
     graph: &SourceGraph,
     project: &ProjectId,
     file: &NodeId,
+    symbol: &NodeId,
+) -> FindingConfidence {
+    let language = node_language(graph, file);
+    localized_confidence(graph, project, |boundary| {
+        boundary.node.as_ref().is_some_and(|node| {
+            node == symbol
+                || (boundary.kind == BoundaryKind::Reflection
+                    && same_runtime_family(node_language(graph, node), language))
+                || (node == file
+                    && matches!(
+                        boundary.kind,
+                        BoundaryKind::MacroExpansion
+                            | BoundaryKind::ConditionalCompilation
+                            | BoundaryKind::UnsupportedSyntax
+                    ))
+        })
+    })
+}
+
+fn node_language(graph: &SourceGraph, node: &NodeId) -> Option<SourceLanguage> {
+    match graph.nodes.get(node) {
+        Some(SourceNode::File(file)) => Some(file.language),
+        Some(SourceNode::Symbol(symbol)) => match graph.nodes.get(&symbol.file) {
+            Some(SourceNode::File(file)) => Some(file.language),
+            _ => None,
+        },
+        None => None,
+    }
+}
+
+fn same_runtime_family(left: Option<SourceLanguage>, right: Option<SourceLanguage>) -> bool {
+    match (left, right) {
+        (
+            Some(SourceLanguage::JavaScript | SourceLanguage::TypeScript | SourceLanguage::Svelte),
+            Some(SourceLanguage::JavaScript | SourceLanguage::TypeScript | SourceLanguage::Svelte),
+        ) => true,
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
+}
+
+fn localized_confidence(
+    graph: &SourceGraph,
+    project: &ProjectId,
+    boundary_applies: impl Fn(&crate::domain::source_graph::AnalysisBoundary) -> bool,
 ) -> FindingConfidence {
     let Some(source_project) = graph.projects.get(project) else {
         return FindingConfidence::Low;
@@ -172,15 +244,7 @@ pub(crate) fn symbol_confidence(
         AnalysisCompleteness::Complete
     };
     for boundary in project_boundaries {
-        let applies = boundary.node.is_none()
-            || boundary.kind == crate::domain::source_graph::BoundaryKind::Reflection
-            || (boundary.node.as_ref() == Some(file)
-                && matches!(
-                    boundary.kind,
-                    crate::domain::source_graph::BoundaryKind::MacroExpansion
-                        | crate::domain::source_graph::BoundaryKind::ConditionalCompilation
-                        | crate::domain::source_graph::BoundaryKind::UnsupportedSyntax
-                ));
+        let applies = boundary.node.is_none() || boundary_applies(boundary);
         if applies {
             completeness = completeness.worst(boundary.effect);
         }
@@ -198,12 +262,12 @@ fn confidence_for_completeness(completeness: AnalysisCompleteness) -> FindingCon
 
 #[cfg(test)]
 mod tests {
-    use super::{project_confidence, Reachability};
+    use super::{file_confidence, project_confidence, symbol_confidence, Reachability};
     use crate::domain::source_graph::{
         AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope,
         EdgeTarget, FindingConfidence, NodeId, ProjectId, SourceContext, SourceEdge,
         SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
-        SourceProject,
+        SourceProject, SourceSymbol, SourceSymbolKind, SourceVisibility,
     };
     use std::collections::{BTreeSet, HashSet};
 
@@ -376,6 +440,61 @@ mod tests {
     }
 
     #[test]
+    fn multi_root_contexts_keep_one_deterministic_witness_per_node() {
+        let project = ProjectId("example".to_string());
+        let first = NodeId::file(&project, "tests/first.test.ts");
+        let second = NodeId::file(&project, "tests/second.test.ts");
+        let helper = NodeId::file(&project, "src/test-helper.ts");
+        let mut graph = graph_with_project(project.clone());
+        for (id, path) in [
+            (first.clone(), "tests/first.test.ts"),
+            (second.clone(), "tests/second.test.ts"),
+            (helper.clone(), "src/test-helper.ts"),
+        ] {
+            graph
+                .add_node(id, SourceNode::File(file(&project, path)))
+                .expect("file");
+        }
+        graph.edges.extend([
+            edge(
+                first.clone(),
+                EdgeTarget::Node(helper.clone()),
+                SourceEdgeKind::ModuleDependency,
+            ),
+            edge(
+                second.clone(),
+                EdgeTarget::Node(helper.clone()),
+                SourceEdgeKind::ModuleDependency,
+            ),
+        ]);
+        let context_id = ContextId::new(&project, "tests");
+        graph
+            .add_context(SourceContext {
+                id: context_id.clone(),
+                project,
+                name: "tests".to_string(),
+                role: ContextRole::Test,
+                scope: ContextScope::Runtime,
+                roots: BTreeSet::from([first.clone(), second]),
+            })
+            .expect("test context");
+
+        let reachability = Reachability::analyze(&graph).expect("valid graph");
+
+        assert_eq!(
+            reachability.contexts(&helper),
+            BTreeSet::from([context_id.clone()])
+        );
+        assert_eq!(
+            reachability.roots(&helper),
+            BTreeSet::from([super::ReachabilityRoot {
+                context: context_id,
+                root: first,
+            }])
+        );
+    }
+
+    #[test]
     fn project_boundaries_lower_finding_confidence() {
         let project = ProjectId("example".to_string());
         let mut graph = graph_with_project(project.clone());
@@ -395,6 +514,69 @@ mod tests {
         assert_eq!(
             project_confidence(&graph, &project),
             FindingConfidence::Medium
+        );
+    }
+
+    #[test]
+    fn runtime_boundaries_do_not_cross_language_families() {
+        let project = ProjectId("polyglot".to_string());
+        let python = NodeId::file(&project, "hooks.py");
+        let rust = NodeId::file(&project, "src/main.rs");
+        let symbol = NodeId::symbol(&rust, "function/unused");
+        let mut graph = graph_with_project(project.clone());
+        graph
+            .add_node(
+                python.clone(),
+                SourceNode::File(SourceFile {
+                    project: project.clone(),
+                    path: "hooks.py".to_string(),
+                    language: SourceLanguage::Python,
+                }),
+            )
+            .expect("Python file");
+        graph
+            .add_node(
+                rust.clone(),
+                SourceNode::File(SourceFile {
+                    project: project.clone(),
+                    path: "src/main.rs".to_string(),
+                    language: SourceLanguage::Rust,
+                }),
+            )
+            .expect("Rust file");
+        graph
+            .add_node(
+                symbol.clone(),
+                SourceNode::Symbol(SourceSymbol {
+                    project: project.clone(),
+                    file: rust.clone(),
+                    name: "unused".to_string(),
+                    symbol_kind: SourceSymbolKind::Function,
+                    visibility: SourceVisibility::Private,
+                    span: None,
+                }),
+            )
+            .expect("Rust symbol");
+        graph.boundaries.insert(AnalysisBoundary {
+            project: project.clone(),
+            node: Some(python.clone()),
+            kind: BoundaryKind::Reflection,
+            effect: AnalysisCompleteness::Partial,
+            message: "Python reflection".to_string(),
+            evidence: SourceEvidence::new("hooks.py", None, "test"),
+        });
+
+        assert_eq!(
+            file_confidence(&graph, &project, &python),
+            FindingConfidence::Medium
+        );
+        assert_eq!(
+            file_confidence(&graph, &project, &rust),
+            FindingConfidence::High
+        );
+        assert_eq!(
+            symbol_confidence(&graph, &project, &rust, &symbol),
+            FindingConfidence::High
         );
     }
 

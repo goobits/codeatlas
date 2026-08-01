@@ -4,8 +4,8 @@ use quote::ToTokens;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use syn::{
-    spanned::Spanned, visit::Visit, Attribute, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct,
-    ItemTrait, ItemType, Visibility as SynVis,
+    parse::Parser, spanned::Spanned, visit::Visit, Attribute, ItemConst, ItemEnum, ItemFn,
+    ItemImpl, ItemStruct, ItemTrait, ItemType, Visibility as SynVis,
 };
 
 #[derive(Debug, Clone)]
@@ -22,6 +22,7 @@ pub(crate) struct ModuleDeclaration {
     pub name: String,
     pub path_override: Option<String>,
     pub inline: bool,
+    pub test_only: bool,
     pub span: Span,
     pub visibility: RustVisibility,
 }
@@ -43,6 +44,8 @@ impl RustVisibility {
 pub(crate) struct RustReachabilityFacts {
     pub top_level_paths: BTreeSet<Vec<String>>,
     pub symbol_paths: BTreeMap<String, BTreeSet<Vec<String>>>,
+    pub top_level_method_calls: BTreeSet<String>,
+    pub symbol_method_calls: BTreeMap<String, BTreeSet<String>>,
     pub embedded_sources: Vec<RustEmbeddedSource>,
     pub uncertainties: Vec<RustUncertainty>,
     pub test_symbols: BTreeSet<String>,
@@ -119,6 +122,7 @@ pub(crate) fn parse_module_info(
                 name: item_mod.ident.to_string(),
                 path_override: path_override(&item_mod.attrs),
                 inline: item_mod.content.is_some(),
+                test_only: has_exact_cfg_test(&item_mod.attrs),
                 span: span(item_mod.ident.span()),
                 visibility: rust_visibility(&item_mod.vis),
             });
@@ -176,36 +180,105 @@ fn rust_visibility(visibility: &SynVis) -> RustVisibility {
 fn collect_reachability(file: &syn::File) -> RustReachabilityFacts {
     let mut facts = RustReachabilityFacts::default();
     for item in &file.items {
-        let (owner, attrs) = item_owner_and_attrs(item);
-        if let Some(owner) = owner {
-            let owner_for_attributes = owner.clone();
-            let mut collector = ReferenceCollector::new(Some(owner.clone()));
-            collector.visit_item(item);
-            facts
-                .symbol_paths
-                .entry(owner)
-                .or_default()
-                .extend(collector.paths);
-            facts.embedded_sources.extend(collector.embedded_sources);
-            facts.uncertainties.extend(collector.uncertainties);
-            collect_attribute_uncertainties(
-                attrs,
-                Some(owner_for_attributes),
-                &mut facts.uncertainties,
-            );
-        } else {
-            let mut collector = ReferenceCollector::new(None);
-            collector.visit_item(item);
-            facts.top_level_paths.extend(collector.paths);
-            facts.embedded_sources.extend(collector.embedded_sources);
-            facts.uncertainties.extend(collector.uncertainties);
-            collect_attribute_uncertainties(attrs, None, &mut facts.uncertainties);
-        }
+        collect_item_reachability(item, &mut facts);
     }
     let mut tests = TestSymbolVisitor::default();
     tests.visit_file(file);
     facts.test_symbols = tests.symbols;
     facts
+}
+
+fn collect_item_reachability(item: &syn::Item, facts: &mut RustReachabilityFacts) {
+    match item {
+        syn::Item::Impl(item_impl) => collect_impl_reachability(item_impl, facts),
+        syn::Item::Mod(module) if module.content.is_some() => {
+            collect_attribute_uncertainties(&module.attrs, None, &mut facts.uncertainties);
+            for item in &module.content.as_ref().expect("checked inline module").1 {
+                collect_item_reachability(item, facts);
+            }
+        }
+        _ => {
+            let (owner, attrs) = item_owner_and_attrs(item);
+            collect_owned_references(facts, owner, attrs, |collector| {
+                collector.visit_item(item);
+            });
+        }
+    }
+}
+
+fn collect_impl_reachability(item: &ItemImpl, facts: &mut RustReachabilityFacts) {
+    let type_owner = impl_owner(item);
+    let mut header = ReferenceCollector::new(type_owner.clone());
+    header.visit_generics(&item.generics);
+    header.visit_type(&item.self_ty);
+    if let Some((_, trait_path, _)) = &item.trait_ {
+        header.visit_path(trait_path);
+    }
+    merge_reference_facts(facts, type_owner.clone(), header);
+    collect_attribute_uncertainties(&item.attrs, type_owner.clone(), &mut facts.uncertainties);
+
+    for impl_item in &item.items {
+        let (owner, attributes): (Option<String>, &[Attribute]) = match impl_item {
+            syn::ImplItem::Const(item) => (
+                qualified_member_owner(type_owner.as_deref(), &item.ident.to_string()),
+                item.attrs.as_slice(),
+            ),
+            syn::ImplItem::Fn(item) => (
+                qualified_member_owner(type_owner.as_deref(), &item.sig.ident.to_string()),
+                item.attrs.as_slice(),
+            ),
+            syn::ImplItem::Type(item) => (
+                qualified_member_owner(type_owner.as_deref(), &item.ident.to_string()),
+                item.attrs.as_slice(),
+            ),
+            syn::ImplItem::Macro(item) => (type_owner.clone(), item.attrs.as_slice()),
+            syn::ImplItem::Verbatim(_) => (type_owner.clone(), &[]),
+            _ => (type_owner.clone(), &[]),
+        };
+        collect_owned_references(facts, owner, attributes, |collector| {
+            collector.visit_impl_item(impl_item);
+        });
+    }
+}
+
+fn qualified_member_owner(type_owner: Option<&str>, member: &str) -> Option<String> {
+    Some(type_owner.map_or_else(|| member.to_string(), |owner| format!("{owner}.{member}")))
+}
+
+fn collect_owned_references(
+    facts: &mut RustReachabilityFacts,
+    owner: Option<String>,
+    attributes: &[Attribute],
+    visit: impl FnOnce(&mut ReferenceCollector),
+) {
+    let mut collector = ReferenceCollector::new(owner.clone());
+    visit(&mut collector);
+    merge_reference_facts(facts, owner.clone(), collector);
+    collect_attribute_uncertainties(attributes, owner, &mut facts.uncertainties);
+}
+
+fn merge_reference_facts(
+    facts: &mut RustReachabilityFacts,
+    owner: Option<String>,
+    collector: ReferenceCollector,
+) {
+    if let Some(owner) = owner {
+        facts
+            .symbol_paths
+            .entry(owner.clone())
+            .or_default()
+            .extend(collector.paths);
+        facts
+            .symbol_method_calls
+            .entry(owner)
+            .or_default()
+            .extend(collector.method_calls);
+    } else {
+        facts.top_level_paths.extend(collector.paths);
+        facts.top_level_method_calls.extend(collector.method_calls);
+    }
+    facts.embedded_sources.extend(collector.embedded_sources);
+    facts.uncertainties.extend(collector.uncertainties);
 }
 
 #[derive(Default)]
@@ -262,6 +335,7 @@ fn impl_owner(item: &ItemImpl) -> Option<String> {
 struct ReferenceCollector {
     owner: Option<String>,
     paths: BTreeSet<Vec<String>>,
+    method_calls: BTreeSet<String>,
     embedded_sources: Vec<RustEmbeddedSource>,
     uncertainties: Vec<RustUncertainty>,
 }
@@ -271,6 +345,7 @@ impl ReferenceCollector {
         Self {
             owner,
             paths: BTreeSet::new(),
+            method_calls: BTreeSet::new(),
             embedded_sources: Vec::new(),
             uncertainties: Vec::new(),
         }
@@ -278,6 +353,11 @@ impl ReferenceCollector {
 }
 
 impl<'ast> Visit<'ast> for ReferenceCollector {
+    fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
+        self.method_calls.insert(call.method.to_string());
+        syn::visit::visit_expr_method_call(self, call);
+    }
+
     fn visit_attribute(&mut self, attribute: &'ast Attribute) {
         if attribute.path().is_ident("serde") {
             let _ = attribute.parse_nested_meta(|meta| {
@@ -320,7 +400,31 @@ impl<'ast> Visit<'ast> for ReferenceCollector {
             .last()
             .map(|segment| segment.ident.to_string())
             .unwrap_or_default();
-        if matches!(name.as_str(), "include_str" | "include_bytes") {
+        let expressions =
+            syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated
+                .parse2(item.tokens.clone());
+        if let Ok(expressions) = expressions {
+            for expression in &expressions {
+                self.visit_expr(expression);
+            }
+        }
+        if is_tauri_macro(item, "generate_handler") {
+            let parser = syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated;
+            match parser.parse2(item.tokens.clone()) {
+                Ok(paths) => self.paths.extend(paths.into_iter().map(|path| {
+                    path.segments
+                        .into_iter()
+                        .map(|segment| segment.ident.to_string())
+                        .collect()
+                })),
+                Err(_) => self.uncertainties.push(RustUncertainty {
+                    owner: self.owner.clone(),
+                    kind: RustUncertaintyKind::MacroExpansion,
+                    expression: item.to_token_stream().to_string(),
+                    span: span(item.span()),
+                }),
+            }
+        } else if matches!(name.as_str(), "include_str" | "include_bytes") {
             match syn::parse2::<syn::LitStr>(item.tokens.clone()) {
                 Ok(path) => self.embedded_sources.push(RustEmbeddedSource {
                     owner: self.owner.clone(),
@@ -334,6 +438,8 @@ impl<'ast> Visit<'ast> for ReferenceCollector {
                     span: span(item.span()),
                 }),
             }
+        } else if is_tauri_macro(item, "generate_context") {
+            // The macro embeds Tauri configuration but does not register Rust callables.
         } else if !known_macro(&name) {
             self.uncertainties.push(RustUncertainty {
                 owner: self.owner.clone(),
@@ -344,6 +450,14 @@ impl<'ast> Visit<'ast> for ReferenceCollector {
         }
         syn::visit::visit_macro(self, item);
     }
+}
+
+fn is_tauri_macro(item: &syn::Macro, name: &str) -> bool {
+    item.path
+        .segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .eq(["tauri", name].into_iter().map(str::to_string))
 }
 
 fn collect_attribute_uncertainties(
@@ -382,6 +496,8 @@ fn known_macro(name: &str) -> bool {
         "assert"
             | "assert_eq"
             | "assert_ne"
+            | "anyhow"
+            | "bail"
             | "cfg"
             | "column"
             | "concat"
@@ -389,11 +505,13 @@ fn known_macro(name: &str) -> bool {
             | "eprint"
             | "eprintln"
             | "env"
+            | "ensure"
             | "file"
             | "format"
             | "format_args"
             | "include_bytes"
             | "include_str"
+            | "json"
             | "line"
             | "matches"
             | "module_path"
@@ -403,6 +521,7 @@ fn known_macro(name: &str) -> bool {
             | "println"
             | "stringify"
             | "todo"
+            | "Token"
             | "unreachable"
             | "vec"
             | "write"
@@ -411,6 +530,21 @@ fn known_macro(name: &str) -> bool {
 }
 
 fn known_attribute(name: &str, attribute: &Attribute) -> bool {
+    if matches!(
+        name,
+        "arg"
+            | "command"
+            | "error"
+            | "from"
+            | "group"
+            | "serde"
+            | "source"
+            | "transparent"
+            | "value"
+    ) || is_tauri_attribute(attribute, "command")
+    {
+        return true;
+    }
     if matches!(
         name,
         "allow"
@@ -450,11 +584,16 @@ fn known_attribute(name: &str, attribute: &Attribute) -> bool {
                     | "Default"
                     | "Deserialize"
                     | "Eq"
+                    | "Error"
                     | "Hash"
                     | "Ord"
                     | "PartialEq"
                     | "PartialOrd"
                     | "Serialize"
+                    | "Args"
+                    | "Parser"
+                    | "Subcommand"
+                    | "ValueEnum"
             );
             Ok(())
         })
@@ -463,6 +602,15 @@ fn known_attribute(name: &str, attribute: &Attribute) -> bool {
         return false;
     }
     known
+}
+
+fn is_tauri_attribute(attribute: &Attribute, name: &str) -> bool {
+    attribute
+        .path()
+        .segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .eq(["tauri", name].into_iter().map(str::to_string))
 }
 
 fn path_override(attributes: &[Attribute]) -> Option<String> {
@@ -480,6 +628,16 @@ fn path_override(attributes: &[Attribute]) -> Option<String> {
             return None;
         };
         Some(value.value())
+    })
+}
+
+fn has_exact_cfg_test(attributes: &[Attribute]) -> bool {
+    attributes.iter().any(|attribute| {
+        let syn::Meta::List(meta) = &attribute.meta else {
+            return false;
+        };
+        attribute.path().is_ident("cfg")
+            && syn::parse2::<syn::Path>(meta.tokens.clone()).is_ok_and(|path| path.is_ident("test"))
     })
 }
 
@@ -1047,6 +1205,7 @@ fn collect_uses(
 #[cfg(test)]
 mod tests {
     use super::parse_module_info;
+    use std::collections::BTreeSet;
     use std::path::Path;
 
     #[test]
@@ -1090,5 +1249,106 @@ mod tests {
         assert!(info.reachability.embedded_sources.iter().any(|source| {
             source.owner.as_deref() == Some("HOOK") && source.path == "hooks.py"
         }));
+    }
+
+    #[test]
+    fn reachability_understands_tauri_command_registration() {
+        let source = r#"
+            #[derive(Serialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Payload {
+                value: String,
+            }
+
+            #[tauri::command]
+            fn local_command() {}
+
+            fn main() {
+                let _ = tauri::generate_handler![
+                    commands::dialog::open_file,
+                    commands::fs::read,
+                ];
+                let _ = tauri::generate_context!();
+            }
+        "#;
+        let info = parse_module_info(Path::new("src/main.rs"), Path::new("."), source)
+            .expect("Rust facts");
+        let main_paths = info
+            .reachability
+            .symbol_paths
+            .get("main")
+            .expect("main references");
+        assert!(main_paths.contains(&vec![
+            "commands".to_string(),
+            "dialog".to_string(),
+            "open_file".to_string(),
+        ]));
+        assert!(main_paths.contains(&vec![
+            "commands".to_string(),
+            "fs".to_string(),
+            "read".to_string(),
+        ]));
+        let uncertainty = info
+            .reachability
+            .uncertainties
+            .iter()
+            .map(|item| item.expression.as_str())
+            .collect::<Vec<_>>();
+        assert!(!uncertainty
+            .iter()
+            .any(|item| item.contains("generate_context")));
+        assert!(!uncertainty
+            .iter()
+            .any(|item| item.contains("generate_handler")));
+        assert!(!uncertainty
+            .iter()
+            .any(|item| item.contains("tauri :: command")));
+        assert!(!uncertainty.iter().any(|item| item.contains("serde")));
+    }
+
+    #[test]
+    fn reachability_keeps_receiver_calls_owned_by_the_calling_method() {
+        let source = r#"
+            struct Worker;
+
+            impl Worker {
+                fn run(&self) {
+                    self.finish();
+                    format!("{}", helper());
+                }
+
+                fn finish(&self) {}
+            }
+
+            fn helper() {}
+
+            #[cfg(test)]
+            mod tests {
+                struct TestHelper;
+
+                impl TestHelper {
+                    fn prepare() {}
+                }
+
+                #[test]
+                fn smoke() {
+                    TestHelper::prepare();
+                }
+            }
+        "#;
+        let info =
+            parse_module_info(Path::new("src/lib.rs"), Path::new("."), source).expect("Rust facts");
+
+        assert_eq!(
+            info.reachability.symbol_method_calls["Worker.run"],
+            BTreeSet::from(["finish".to_string()])
+        );
+        assert!(info.reachability.symbol_paths["Worker.run"].contains(&vec!["helper".to_string()]));
+        assert!(info
+            .modules
+            .iter()
+            .any(|module| module.name == "tests" && module.inline && module.test_only));
+        assert!(info.reachability.symbol_paths["smoke"]
+            .contains(&vec!["TestHelper".to_string(), "prepare".to_string()]));
     }
 }

@@ -48,6 +48,7 @@ struct Module {
     package: Option<String>,
     info: parser::RustModuleInfo,
     symbols: BTreeMap<String, BTreeSet<NodeId>>,
+    methods: BTreeMap<String, BTreeSet<NodeId>>,
 }
 
 fn collect_modules(
@@ -75,6 +76,12 @@ fn collect_modules(
     let mut pending = discovery.files.into_iter().collect::<BTreeSet<_>>();
     let mut seen = BTreeSet::new();
     while let Some(source_path) = pending.pop_first() {
+        let source_path = source_path.canonicalize().with_context(|| {
+            format!(
+                "Could not resolve Rust source path {}",
+                source_path.display()
+            )
+        })?;
         if !seen.insert(source_path.clone()) {
             continue;
         }
@@ -148,7 +155,7 @@ fn collect_modules(
                 pending.insert(child);
             }
         }
-        let symbols = add_symbols(graph, project, &path, &file, &info.symbols)?;
+        let indexes = add_symbols(graph, project, &path, &file, &info.symbols)?;
         modules.insert(
             module_key,
             Module {
@@ -159,7 +166,8 @@ fn collect_modules(
                 absolute_path: source_path,
                 file,
                 info,
-                symbols,
+                symbols: indexes.by_name,
+                methods: indexes.methods,
             },
         );
     }
@@ -172,21 +180,49 @@ fn add_symbols(
     path: &str,
     file: &NodeId,
     symbols: &[Symbol],
-) -> Result<BTreeMap<String, BTreeSet<NodeId>>> {
-    let mut by_name = BTreeMap::<String, BTreeSet<NodeId>>::new();
+) -> Result<SymbolIndexes> {
+    let mut collector = SymbolCollector {
+        graph,
+        project,
+        path,
+        file,
+        indexes: SymbolIndexes::default(),
+    };
     for symbol in symbols {
-        let id = NodeId::symbol(file, &symbol.id);
+        collector.add(file, symbol)?;
+    }
+    Ok(collector.indexes)
+}
+
+#[derive(Default)]
+struct SymbolIndexes {
+    by_name: BTreeMap<String, BTreeSet<NodeId>>,
+    methods: BTreeMap<String, BTreeSet<NodeId>>,
+}
+
+struct SymbolCollector<'a> {
+    graph: &'a mut SourceGraph,
+    project: &'a ResolvedAnalysisProject,
+    path: &'a str,
+    file: &'a NodeId,
+    indexes: SymbolIndexes,
+}
+
+impl SymbolCollector<'_> {
+    fn add(&mut self, parent: &NodeId, symbol: &Symbol) -> Result<()> {
+        let id = NodeId::symbol(self.file, &symbol.id);
         let visibility = symbol.visibility.into();
         let node = SourceSymbol {
-            project: project.id.clone(),
-            file: file.clone(),
+            project: self.project.id.clone(),
+            file: self.file.clone(),
             name: symbol.name.clone(),
             symbol_kind: source_symbol_kind(symbol.kind),
             visibility,
             span: symbol.span.clone(),
         };
-        match graph.nodes.get_mut(&id) {
-            None => graph
+        match self.graph.nodes.get_mut(&id) {
+            None => self
+                .graph
                 .add_node(id.clone(), SourceNode::Symbol(node))
                 .map_err(anyhow::Error::from)?,
             Some(SourceNode::Symbol(existing))
@@ -198,40 +234,77 @@ fn add_symbols(
                 if existing.visibility != visibility {
                     existing.visibility = SourceVisibility::Unknown;
                 }
-                graph.record_boundary(
-                    &project.id,
+                self.graph.record_boundary(
+                    &self.project.id,
                     Some(id.clone()),
                     BoundaryKind::UnsupportedSyntax,
                     AnalysisCompleteness::Partial,
                     format!(
-                        "Multiple Rust definitions share semantic symbol {}; \
-                         definition variants were merged conservatively.",
+                        "Multiple Rust definitions share semantic symbol {}; definition variants were merged conservatively.",
                         symbol.name
                     ),
-                    SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
+                    SourceEvidence::new(self.path, symbol.span.clone(), EXTRACTOR),
                 );
             }
             Some(_) => anyhow::bail!("Rust symbol ID {id} resolves to conflicting definitions"),
         }
-        graph.edges.insert(SourceEdge {
-            from: file.clone(),
+        self.graph.edges.insert(SourceEdge {
+            from: parent.clone(),
             to: EdgeTarget::Node(id.clone()),
             kind: SourceEdgeKind::Contains,
             bindings: Vec::new(),
-            evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
+            evidence: SourceEvidence::new(self.path, symbol.span.clone(), EXTRACTOR),
         });
+        if symbol.kind == SymbolKind::Method && is_trait_impl_method(&symbol.signature) {
+            self.graph.edges.insert(SourceEdge {
+                from: parent.clone(),
+                to: EdgeTarget::Node(id.clone()),
+                kind: SourceEdgeKind::LexicalReference,
+                bindings: Vec::new(),
+                evidence: SourceEvidence::new(self.path, symbol.span.clone(), EXTRACTOR),
+            });
+        }
         if symbol.visibility == Visibility::Public {
-            graph.edges.insert(SourceEdge {
-                from: file.clone(),
+            self.graph.edges.insert(SourceEdge {
+                from: self.file.clone(),
                 to: EdgeTarget::Node(id.clone()),
                 kind: SourceEdgeKind::ReExport,
                 bindings: Vec::new(),
-                evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
+                evidence: SourceEvidence::new(self.path, symbol.span.clone(), EXTRACTOR),
             });
         }
-        by_name.entry(symbol.name.clone()).or_default().insert(id);
+
+        self.indexes
+            .by_name
+            .entry(symbol.name.clone())
+            .or_default()
+            .insert(id.clone());
+        if let Some((_, qualified)) = symbol.id.split_once('#') {
+            self.indexes
+                .by_name
+                .entry(qualified.to_string())
+                .or_default()
+                .insert(id.clone());
+        }
+        if symbol.kind == SymbolKind::Method {
+            let method = symbol.name.rsplit('.').next().unwrap_or(&symbol.name);
+            self.indexes
+                .methods
+                .entry(method.to_string())
+                .or_default()
+                .insert(id.clone());
+        }
+        for child in &symbol.children {
+            self.add(&id, child)?;
+        }
+        Ok(())
     }
-    Ok(by_name)
+}
+
+fn is_trait_impl_method(signature: &str) -> bool {
+    signature
+        .split_once("::")
+        .is_some_and(|(_, method)| method.starts_with("fn "))
 }
 
 fn connect_module(
@@ -245,6 +318,9 @@ fn connect_module(
 
     for declaration in &module.info.modules {
         if declaration.inline {
+            if declaration.test_only {
+                continue;
+            }
             graph.record_boundary(
                 &module.project,
                 Some(module.file.clone()),
@@ -351,15 +427,66 @@ fn connect_references(graph: &mut SourceGraph, module: &Module, resolver: &RustR
     for path in &module.info.reachability.top_level_paths {
         connect_reference_path(graph, &module.file, path, module, resolver);
     }
-    for (owner, paths) in &module.info.reachability.symbol_paths {
-        let Some(owners) = module.symbols.get(owner) else {
-            continue;
-        };
+    for (owner_name, paths) in &module.info.reachability.symbol_paths {
+        let owners = module
+            .symbols
+            .get(owner_name)
+            .cloned()
+            .unwrap_or_else(|| BTreeSet::from([module.file.clone()]));
         for owner in owners {
             for path in paths {
-                connect_reference_path(graph, owner, path, module, resolver);
+                let path = qualify_self_path(owner_name, path);
+                connect_reference_path(graph, &owner, &path, module, resolver);
             }
         }
+    }
+    for method in &module.info.reachability.top_level_method_calls {
+        connect_method_call(graph, &module.file, method, module, resolver);
+    }
+    for (owner, methods) in &module.info.reachability.symbol_method_calls {
+        let owners = module
+            .symbols
+            .get(owner)
+            .cloned()
+            .unwrap_or_else(|| BTreeSet::from([module.file.clone()]));
+        for owner in owners {
+            for method in methods {
+                connect_method_call(graph, &owner, method, module, resolver);
+            }
+        }
+    }
+}
+
+fn qualify_self_path(owner: &str, path: &[String]) -> Vec<String> {
+    if path.first().is_some_and(|segment| segment == "Self") {
+        let type_name = owner.split_once('.').map_or(owner, |(owner, _)| owner);
+        std::iter::once(type_name.to_string())
+            .chain(path.iter().skip(1).cloned())
+            .collect()
+    } else {
+        path.to_vec()
+    }
+}
+
+fn connect_method_call(
+    graph: &mut SourceGraph,
+    from: &NodeId,
+    method: &str,
+    module: &Module,
+    resolver: &RustResolver,
+) {
+    for target in resolver
+        .methods_named(&module.project, method)
+        .into_iter()
+        .flatten()
+    {
+        graph.edges.insert(SourceEdge {
+            from: from.clone(),
+            to: EdgeTarget::Node(target.clone()),
+            kind: SourceEdgeKind::LexicalReference,
+            bindings: Vec::new(),
+            evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
+        });
     }
 }
 
@@ -370,26 +497,40 @@ fn connect_reference_path(
     module: &Module,
     resolver: &RustResolver,
 ) {
-    if path.len() == 1 {
-        if let Some(symbols) = module.symbols.get(&path[0]) {
-            for symbol in symbols {
-                graph.edges.insert(SourceEdge {
-                    from: from.clone(),
-                    to: EdgeTarget::Node(symbol.clone()),
-                    kind: SourceEdgeKind::LexicalReference,
-                    bindings: Vec::new(),
-                    evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
-                });
-            }
-            return;
+    if let Some(symbols) = path
+        .first()
+        .and_then(|name| module.symbols.get(name))
+        .cloned()
+    {
+        let resolved = resolver.with_associated(
+            ResolvedRustPath {
+                module: (module.project.clone(), module.path.clone()),
+                symbols,
+            },
+            &path[1..],
+        );
+        for symbol in resolved.symbols {
+            graph.edges.insert(SourceEdge {
+                from: from.clone(),
+                to: EdgeTarget::Node(symbol),
+                kind: SourceEdgeKind::LexicalReference,
+                bindings: Vec::new(),
+                evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
+            });
         }
+        return;
     }
     if let Some(resolved) = resolver
         .resolve_imported_reference(module, path)
         .or_else(|| resolver.resolve_symbol_path(module, path))
     {
         let targets = if resolved.symbols.is_empty() {
-            BTreeSet::from([NodeId::file(&resolved.module.0, &resolved.module.1)])
+            path.last()
+                .map(|name| resolver.symbols_named(module, &resolved.module, name))
+                .filter(|symbols| !symbols.is_empty())
+                .unwrap_or_else(|| {
+                    BTreeSet::from([NodeId::file(&resolved.module.0, &resolved.module.1)])
+                })
         } else {
             resolved.symbols
         };
@@ -811,6 +952,8 @@ struct RustResolver {
     exports: BTreeMap<(ModuleKey, String), ResolvedRustExport>,
     targets: Vec<CargoTarget>,
     workspace_libraries: BTreeMap<String, CargoTarget>,
+    methods: BTreeMap<(ProjectId, String), BTreeSet<NodeId>>,
+    associated: BTreeMap<(NodeId, String), BTreeSet<NodeId>>,
 }
 
 impl RustResolver {
@@ -841,6 +984,30 @@ impl RustResolver {
                 )
             })
             .collect();
+        let mut methods = BTreeMap::<(ProjectId, String), BTreeSet<NodeId>>::new();
+        let mut associated = BTreeMap::<(NodeId, String), BTreeSet<NodeId>>::new();
+        for module in modules.values() {
+            for (name, nodes) in &module.methods {
+                methods
+                    .entry((module.project.clone(), name.clone()))
+                    .or_default()
+                    .extend(nodes.iter().cloned());
+            }
+            for (qualified, nodes) in &module.symbols {
+                let Some((owner, member)) = qualified.split_once('.') else {
+                    continue;
+                };
+                let Some(owners) = module.symbols.get(owner) else {
+                    continue;
+                };
+                for owner in owners {
+                    associated
+                        .entry((owner.clone(), member.to_string()))
+                        .or_default()
+                        .extend(nodes.iter().cloned());
+                }
+            }
+        }
         let mut resolver = Self {
             module_paths,
             module_files,
@@ -858,6 +1025,8 @@ impl RustResolver {
                 })
                 .collect(),
             workspace_libraries,
+            methods,
+            associated,
         };
         for (key, module) in modules {
             for (name, visibilities) in &module.info.symbol_visibilities {
@@ -897,6 +1066,10 @@ impl RustResolver {
         }
         resolver.index_reexports(modules);
         resolver
+    }
+
+    fn methods_named(&self, project: &ProjectId, name: &str) -> Option<&BTreeSet<NodeId>> {
+        self.methods.get(&(project.clone(), name.to_string()))
     }
 
     fn index_reexports(&mut self, modules: &BTreeMap<ModuleKey, Module>) {
@@ -1004,6 +1177,19 @@ impl RustResolver {
                     .map(move |symbol| (name.clone(), symbol))
             })
             .collect()
+    }
+
+    fn symbols_named(
+        &self,
+        requester: &Module,
+        module: &ModuleKey,
+        name: &str,
+    ) -> BTreeSet<NodeId> {
+        self.exports
+            .get(&(module.clone(), name.to_string()))
+            .filter(|export| self.export_is_visible(requester, module, export))
+            .map(|export| export.resolved.symbols.clone())
+            .unwrap_or_default()
     }
 
     fn resolve_module_declaration(
@@ -1116,7 +1302,9 @@ impl RustResolver {
             };
             if let Some(export) = self.exports.get(&(key.clone(), symbol.clone())) {
                 if self.export_is_visible(module, &key, export) {
-                    return Some(export.resolved.clone());
+                    return Some(
+                        self.with_associated(export.resolved.clone(), &segments[split + 1..]),
+                    );
                 }
             }
         }
@@ -1139,8 +1327,11 @@ impl RustResolver {
             if !self.export_is_visible(requester, module, export) {
                 return None;
             }
-            if path.len() == 1 || !export.resolved.symbols.is_empty() {
+            if path.len() == 1 {
                 return Some(export.resolved.clone());
+            }
+            if !export.resolved.symbols.is_empty() {
+                return Some(self.with_associated(export.resolved.clone(), &path[1..]));
             }
             return self.resolve_from_module(requester, &export.resolved.module, &path[1..]);
         }
@@ -1150,6 +1341,32 @@ impl RustResolver {
             .find_map(|(path, key)| (key == module).then_some(path))?;
         let child = self.resolve_file_candidates(&module_child_base(absolute).join(first))?;
         self.resolve_from_module(requester, &child, &path[1..])
+    }
+
+    fn with_associated(
+        &self,
+        mut resolved: ResolvedRustPath,
+        members: &[String],
+    ) -> ResolvedRustPath {
+        let mut owners = resolved.symbols.clone();
+        for member in members {
+            let targets = owners
+                .iter()
+                .flat_map(|owner| {
+                    self.associated
+                        .get(&(owner.clone(), member.clone()))
+                        .into_iter()
+                        .flatten()
+                        .cloned()
+                })
+                .collect::<BTreeSet<_>>();
+            if targets.is_empty() {
+                break;
+            }
+            resolved.symbols.extend(targets.iter().cloned());
+            owners = targets;
+        }
+        resolved
     }
 
     fn export_is_visible(

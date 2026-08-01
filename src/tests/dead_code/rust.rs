@@ -19,9 +19,27 @@ fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
     assert!(!report.findings.iter().any(|finding| {
         matches!(
             finding.symbol.as_deref(),
-            Some("GlobVisible" | "ParentVisible" | "ScopedVisible" | "uses_scoped" | "exercise")
+            Some(
+                "GlobVisible"
+                    | "construct"
+                    | "constructor_marker"
+                    | "ParentVisible"
+                    | "ScopedVisible"
+                    | "uses_scoped"
+                    | "exercise"
+            )
         )
     }));
+    assert!(!report.findings.iter().any(|finding| {
+        finding.path == "src/internal/model.rs" && finding.symbol.as_deref() == Some("default")
+    }));
+    let test_helper = finding(
+        &report.findings,
+        DeadCodeFindingKind::TestOnly,
+        "src/internal/model.rs",
+        Some("prepare"),
+    );
+    assert_eq!(test_helper.roles, [ContextRole::Test].into_iter().collect());
     assert!(!report.findings.iter().any(|finding| {
         finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
             && matches!(
@@ -100,7 +118,7 @@ fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
 }
 
 #[test]
-fn rust_cfg_and_macro_boundaries_prevent_false_hard_gates() {
+fn rust_cfg_and_macro_boundaries_stay_scoped_to_their_owner() {
     let graph = source_graph_fixture("rust-dynamic");
     let report = dead_code::analyze(&graph).expect("dead-code report");
     let runtime_modes = graph
@@ -123,9 +141,12 @@ fn rust_cfg_and_macro_boundaries_prevent_false_hard_gates() {
         .findings
         .iter()
         .any(|finding| finding.kind == DeadCodeFindingKind::DynamicBoundary));
-    assert!(report
-        .findings
-        .iter()
-        .filter(|finding| finding.kind == DeadCodeFindingKind::UnreachableFile)
-        .all(|finding| { finding.confidence != FindingConfidence::High && !finding.gates }));
+    let unrelated_plugin = finding(
+        &report.findings,
+        DeadCodeFindingKind::UnreachableFile,
+        "src/plugin.rs",
+        None,
+    );
+    assert_eq!(unrelated_plugin.confidence, FindingConfidence::High);
+    assert!(unrelated_plugin.gates);
 }

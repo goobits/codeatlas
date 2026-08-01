@@ -2,7 +2,9 @@ use super::model::{
     DeadCodeFinding, DeadCodeFindingKind, DeadCodeProjectSummary, DeadCodeReport,
     DeadCodeRootContext,
 };
-use crate::analysis::reachability::{project_confidence, symbol_confidence, Reachability};
+use crate::analysis::reachability::{
+    file_confidence, project_confidence, symbol_confidence, Reachability,
+};
 use crate::domain::source_graph::{
     BoundaryKind, ContextRole, EdgeTarget, FindingConfidence, NodeId, SourceEvidence, SourceGraph,
     SourceLanguage, SourceNode, SourceVisibility,
@@ -70,7 +72,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         let SourceNode::File(file) = node else {
             continue;
         };
-        let base_confidence = project_confidence(graph, &file.project);
+        let base_confidence = file_confidence(graph, &file.project, node_id);
         let public_dependency = public_dependencies.contains(node_id);
         let confidence = if public_dependency {
             lower_confidence(base_confidence)
@@ -147,7 +149,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         }
         let contexts = reachability.contexts(node_id);
         let language = file_language(graph, &symbol.file);
-        let project_confidence = symbol_confidence(graph, &symbol.project, &symbol.file);
+        let project_confidence = symbol_confidence(graph, &symbol.project, &symbol.file, node_id);
         let public_dependency = public_dependencies.contains(node_id);
         let path = graph
             .nodes
