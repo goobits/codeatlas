@@ -8,7 +8,7 @@ use super::target::{
     parse_http_fuzz_operation, HttpFuzzOperation, ResolvedHttpFuzzTarget,
     ResolvedHttpOpenApiSource, REQUEST_HOOK_CONFIG_ENV, SCHEMATHESIS_HOOKS_ENV,
 };
-use super::{provider, transport_schema};
+use super::{openapi, provider, transport_schema};
 use crate::config::HttpFuzzPositiveCoverageConfig;
 use crate::http::model::{
     HttpFuzzContractMode, HttpFuzzOperationSummary, HttpFuzzTotals, HttpSourceCompleteness,
@@ -17,6 +17,7 @@ use crate::http::model::{
 use crate::http::runtime::OwnedHttpServer;
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
@@ -43,7 +44,7 @@ const STANDARD_CONFIG: &str = "\
 unexpected-methods = [\"get\", \"put\", \"post\", \"delete\", \"options\", \"patch\", \"trace\"]
 ";
 const CHECKS: &[&str] = &[
-    "not_a_server_error",
+    "codeatlas_no_internal_server_error",
     "status_code_conformance",
     "content_type_conformance",
     "response_headers_conformance",
@@ -103,9 +104,11 @@ pub(crate) fn run(
         .map(parse_http_fuzz_operation)
         .transpose()?;
     let report_dir = prepare_report_dir(target, options.profile, operation.as_ref())?;
-    let (schema, available_operations) = match contract {
+    let (schema, available_operations, expected_non_success_operations) = match contract {
         Contract::OpenApi { source, display } => {
             let (document, openapi) = provider::read_with_inventory(source, display)?;
+            let expected_non_success_operations =
+                collect_expected_non_success_operations(&document, display)?;
             let operations = openapi
                 .operations
                 .iter()
@@ -122,7 +125,7 @@ pub(crate) fn run(
                     path.display()
                 )
             })?;
-            (path, operations)
+            (path, operations, expected_non_success_operations)
         }
         Contract::SourceTransport(source) => {
             if source.completeness == HttpSourceCompleteness::Partial {
@@ -144,6 +147,7 @@ pub(crate) fn run(
             (
                 transport_schema::write(&report_dir, target, source)?,
                 operations,
+                BTreeSet::new(),
             )
         }
     };
@@ -206,13 +210,15 @@ pub(crate) fn run(
         &target.contract,
         contract.mode(),
         options.profile,
+        &expected_non_success_operations,
     ) {
         Ok(summary) => {
             let summary_path = report::write(&report_dir, &summary)?;
             println!(
-                "CodeAtlas HTTP fuzz summary: {}/{} operations observed a positive success; {} client-error-only, {} authentication-rejection-only, {} mixed-without-success, and {} without positive cases; {} negative rejections ({}).",
+                "CodeAtlas HTTP fuzz summary: {}/{} operations observed a positive success; {} expected non-success, {} client-error-only, {} authentication-rejection-only, {} mixed-without-success, and {} without positive cases; {} negative rejections ({}).",
                 summary.totals.success_observed_operations,
                 summary.totals.operations,
+                summary.totals.expected_non_success_operations,
                 summary.totals.client_error_only_operations,
                 summary.totals.authentication_rejection_only_operations,
                 summary.totals.mixed_without_success_operations,
@@ -281,6 +287,26 @@ pub(crate) fn run(
         );
     }
     Ok(code)
+}
+
+fn collect_expected_non_success_operations(
+    document: &[u8],
+    label: &str,
+) -> Result<BTreeSet<String>> {
+    let source = std::str::from_utf8(document)
+        .with_context(|| format!("OpenAPI contract at {label} is not UTF-8"))?;
+    let parsed = openapi::parse(source, label)?;
+    Ok(parsed
+        .operations
+        .into_iter()
+        .filter(|operation| {
+            !operation
+                .responses
+                .iter()
+                .any(|response| openapi::response_status_can_succeed(&response.status))
+        })
+        .map(|operation| operation.key)
+        .collect())
 }
 
 fn install_interrupt_handler() -> Result<()> {
@@ -623,11 +649,11 @@ fn schemathesis_config(stateful: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        checks, clear_owned_report_files, operation_report_component, phases,
-        positive_coverage_failures, render_schemathesis_config, schemathesis_args,
-        schemathesis_config, select_operations, selected_operation_failures, RunOptions,
-        SchemathesisFiles, CHECKS, PROVIDED_OPENAPI_FILENAME, SCHEMATHESIS_CONFIG_FILENAME,
-        SOURCE_TRANSPORT_CHECKS, STATEFUL_CONFIG,
+        checks, clear_owned_report_files, collect_expected_non_success_operations,
+        operation_report_component, phases, positive_coverage_failures, render_schemathesis_config,
+        schemathesis_args, schemathesis_config, select_operations, selected_operation_failures,
+        RunOptions, SchemathesisFiles, CHECKS, PROVIDED_OPENAPI_FILENAME,
+        SCHEMATHESIS_CONFIG_FILENAME, SOURCE_TRANSPORT_CHECKS, STATEFUL_CONFIG,
     };
     use crate::config::{HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig};
     use crate::http::model::{
@@ -636,7 +662,7 @@ mod tests {
     use crate::http::target::{
         parse_http_fuzz_operation, ResolvedHttpFuzzHeader, ResolvedHttpFuzzTarget,
     };
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -768,6 +794,8 @@ mod tests {
         assert!(stateful_checks.contains("codeatlas_auth_rejection"));
         assert!(checks(HttpFuzzContractMode::OpenApi, false).contains("codeatlas_auth_rejection"));
         assert!(CHECKS.contains(&"codeatlas_negative_data_rejection"));
+        assert!(CHECKS.contains(&"codeatlas_no_internal_server_error"));
+        assert!(!CHECKS.contains(&"not_a_server_error"));
         assert!(!CHECKS.contains(&"negative_data_rejection"));
         assert_eq!(
             checks(HttpFuzzContractMode::SourceTransport, false),
@@ -889,5 +917,25 @@ mod tests {
         assert_eq!(failures.len(), 2);
         assert!(failures[0].contains("3 operations"));
         assert!(failures[1].contains("authentication rejection"));
+    }
+
+    #[test]
+    fn infers_declared_non_success_operations() {
+        let document = br#"{
+          "openapi": "3.1.0",
+          "info": {"title": "fixture", "version": "1"},
+          "paths": {
+            "/hidden": {"get": {"responses": {"404": {"description": "hidden"}}}},
+            "/ready": {"get": {"responses": {"204": {"description": "ready"}}}},
+            "/redirect": {"get": {"responses": {"3XX": {"description": "redirect"}}}},
+            "/fallback": {"get": {"responses": {"default": {"description": "fallback"}}}}
+          }
+        }"#;
+
+        assert_eq!(
+            collect_expected_non_success_operations(document, "fixture")
+                .expect("OpenAPI should parse"),
+            BTreeSet::from(["GET /hidden".to_string()])
+        );
     }
 }

@@ -19,6 +19,8 @@ pub(crate) struct ResolvedHttpContract {
     pub source_complete: bool,
     pub source_include_paths: Vec<String>,
     pub source_exclude_paths: Vec<String>,
+    pub source_include_operations: Vec<String>,
+    pub source_exclude_operations: Vec<String>,
     pub repository_root: PathBuf,
 }
 
@@ -78,6 +80,7 @@ pub(crate) struct ResolvedHttpFuzzCommand {
 pub(crate) struct ResolvedHttpFuzzServer {
     pub command: ResolvedHttpFuzzCommand,
     pub prepare: Vec<ResolvedHttpFuzzCommand>,
+    pub startup_timeout_seconds: u64,
 }
 
 impl ProjectConfig {
@@ -95,6 +98,8 @@ impl ProjectConfig {
                     source_complete: false,
                     source_include_paths: Vec::new(),
                     source_exclude_paths: Vec::new(),
+                    source_include_operations: Vec::new(),
+                    source_exclude_operations: Vec::new(),
                     repository_root: self.root.clone(),
                 }]);
             }
@@ -131,6 +136,8 @@ impl ProjectConfig {
                         source_complete: false,
                         source_include_paths: Vec::new(),
                         source_exclude_paths: Vec::new(),
+                        source_include_operations: Vec::new(),
+                        source_exclude_operations: Vec::new(),
                         repository_root: self.root.clone(),
                     })
                 })
@@ -201,6 +208,8 @@ impl ProjectConfig {
                     source_complete: contract.source_complete,
                     source_include_paths: contract.source_include_paths.clone(),
                     source_exclude_paths: contract.source_exclude_paths.clone(),
+                    source_include_operations: contract.source_include_operations.clone(),
+                    source_exclude_operations: contract.source_exclude_operations.clone(),
                     repository_root: self.root.clone(),
                 })
             })
@@ -526,7 +535,17 @@ impl ProjectConfig {
                 )
             })
             .collect::<Result<Vec<_>>>()?;
-        Ok(ResolvedHttpFuzzServer { command, prepare })
+        let startup_timeout_seconds = server.startup_timeout_seconds.unwrap_or(30);
+        if !(1..=600).contains(&startup_timeout_seconds) {
+            anyhow::bail!(
+                "HTTP fuzz target {target_id} server `startup_timeout_seconds` must be between 1 and 600"
+            );
+        }
+        Ok(ResolvedHttpFuzzServer {
+            command,
+            prepare,
+            startup_timeout_seconds,
+        })
     }
 }
 
@@ -844,6 +863,19 @@ mod tests {
                     "request_adapter": { "command": "" }
                 }),
                 "needs a valid `command`",
+            ),
+            (
+                "invalid server startup timeout",
+                json!({
+                    "id": "public-local",
+                    "contract": "public-api",
+                    "base_url": "http://127.0.0.1:3443",
+                    "server": {
+                        "command": "node",
+                        "startup_timeout_seconds": 0
+                    }
+                }),
+                "must be between 1 and 600",
             ),
         ];
 

@@ -1,14 +1,14 @@
 use super::target::{ResolvedHttpFuzzCommand, ResolvedHttpFuzzServer, ResolvedHttpFuzzTarget};
 use anyhow::{Context, Result};
-use std::net::{TcpStream, ToSocketAddrs};
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use url::{Host, Url};
 
 pub(super) struct OwnedHttpServer {
     child: Child,
+    addresses: Vec<SocketAddr>,
+    process_group_id: u32,
 }
 
 impl OwnedHttpServer {
@@ -24,35 +24,60 @@ impl OwnedHttpServer {
         for (index, command) in server.prepare.iter().enumerate() {
             run_prepare_command(command, target, index + 1)?;
         }
+        let addresses = server_addresses(&target.base_url)?;
+        if is_listening(&addresses) {
+            anyhow::bail!(
+                "HTTP target {} is already accepting connections at {}",
+                target.id,
+                target.base_url
+            );
+        }
         let mut command = Command::new(&server.command.command);
         command
             .args(&server.command.args)
             .current_dir(&server.command.cwd)
             .envs(&target.environment);
-        configure_server_process(&mut command);
+        configure_process_group(&mut command);
         let mut child = command.spawn().with_context(|| {
             format!(
                 "Could not start HTTP server for target {} with command {:?}",
                 target.id, server.command.command
             )
         })?;
-        wait_until_listening(&mut child, target)?;
-        Ok(Self { child })
+        let process_group_id = child.id();
+        if let Err(error) = wait_until_listening(
+            &mut child,
+            target,
+            &addresses,
+            server.startup_timeout_seconds,
+        ) {
+            request_graceful_stop(&mut child, process_group_id);
+            force_stop_process_group(process_group_id);
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+        Ok(Self {
+            child,
+            addresses,
+            process_group_id,
+        })
     }
 
     fn stop(&mut self) {
-        if self.child.try_wait().ok().flatten().is_some() {
-            return;
-        }
-        request_graceful_stop(&mut self.child);
+        request_graceful_stop(&mut self.child, self.process_group_id);
         let deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < deadline {
-            if self.child.try_wait().ok().flatten().is_some() {
+            if self.child.try_wait().ok().flatten().is_some()
+                && !is_listening(&self.addresses)
+                && !process_group_is_running(self.process_group_id)
+            {
                 return;
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        force_stop(&mut self.child);
+        force_stop_process_group(self.process_group_id);
+        let _ = self.child.kill();
         let _ = self.child.wait();
     }
 }
@@ -82,21 +107,33 @@ fn run_prepare_command(
     Ok(())
 }
 
-fn wait_until_listening(child: &mut Child, target: &ResolvedHttpFuzzTarget) -> Result<()> {
-    let (host, port) = server_address(&target.base_url)?;
+fn server_addresses(url: &Url) -> Result<Vec<SocketAddr>> {
+    let (host, port) = server_address(url)?;
     let addresses = (host.as_str(), port)
         .to_socket_addrs()
-        .with_context(|| format!("Could not resolve HTTP target {}", target.base_url))?
+        .with_context(|| format!("Could not resolve HTTP target {url}"))?
         .collect::<Vec<_>>();
     if addresses.is_empty() {
-        anyhow::bail!("HTTP target {} resolved to no addresses", target.base_url);
+        anyhow::bail!("HTTP target {url} resolved to no addresses");
     }
-    let deadline = Instant::now() + Duration::from_secs(30);
+    Ok(addresses)
+}
+
+fn is_listening(addresses: &[SocketAddr]) -> bool {
+    addresses
+        .iter()
+        .any(|address| TcpStream::connect_timeout(address, Duration::from_millis(200)).is_ok())
+}
+
+fn wait_until_listening(
+    child: &mut Child,
+    target: &ResolvedHttpFuzzTarget,
+    addresses: &[SocketAddr],
+    startup_timeout_seconds: u64,
+) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(startup_timeout_seconds);
     loop {
-        if addresses
-            .iter()
-            .any(|address| TcpStream::connect_timeout(address, Duration::from_millis(200)).is_ok())
-        {
+        if is_listening(addresses) {
             return Ok(());
         }
         if let Some(status) = child
@@ -110,9 +147,10 @@ fn wait_until_listening(child: &mut Child, target: &ResolvedHttpFuzzTarget) -> R
         }
         if Instant::now() >= deadline {
             anyhow::bail!(
-                "HTTP server for target {} did not accept connections at {} within 30 seconds",
+                "HTTP server for target {} did not accept connections at {} within {} seconds",
                 target.id,
-                target.base_url
+                target.base_url,
+                startup_timeout_seconds
             );
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -144,47 +182,53 @@ impl Drop for OwnedHttpServer {
 }
 
 #[cfg(unix)]
-fn request_graceful_stop(child: &mut Child) {
-    if !signal_process_group(child, "-TERM") {
-        let _ = child.kill();
-    }
-}
-
-#[cfg(unix)]
-fn force_stop(child: &mut Child) {
-    if !signal_process_group(child, "-KILL") {
-        let _ = child.kill();
-    }
-}
-
-#[cfg(unix)]
-fn signal_process_group(child: &Child, signal: &str) -> bool {
-    let group = format!("-{}", child.id());
-    Command::new("kill")
-        .args([signal, "--", &group])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
-}
-
-#[cfg(unix)]
-fn configure_server_process(command: &mut Command) {
+fn configure_process_group(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
     command.process_group(0);
 }
 
 #[cfg(not(unix))]
-fn request_graceful_stop(child: &mut Child) {
-    let _ = child.kill();
+fn configure_process_group(_command: &mut Command) {}
+
+#[cfg(unix)]
+fn signal_process_group(process_group_id: u32, signal: &str) -> bool {
+    let status = Command::new("kill")
+        .args([signal, "--", &format!("-{process_group_id}")])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    status.is_ok_and(|status| status.success())
+}
+
+#[cfg(unix)]
+fn request_graceful_stop(child: &mut Child, process_group_id: u32) {
+    if !signal_process_group(process_group_id, "-TERM") {
+        let _ = child.kill();
+    }
 }
 
 #[cfg(not(unix))]
-fn force_stop(child: &mut Child) {
+fn request_graceful_stop(child: &mut Child, _process_group_id: u32) {
     let _ = child.kill();
 }
 
+#[cfg(unix)]
+fn force_stop_process_group(process_group_id: u32) {
+    let _ = signal_process_group(process_group_id, "-KILL");
+}
+
 #[cfg(not(unix))]
-fn configure_server_process(_command: &mut Command) {}
+fn force_stop_process_group(_process_group_id: u32) {}
+
+#[cfg(unix)]
+fn process_group_is_running(process_group_id: u32) -> bool {
+    signal_process_group(process_group_id, "-0")
+}
+
+#[cfg(not(unix))]
+fn process_group_is_running(_process_group_id: u32) -> bool {
+    false
+}
 
 #[cfg(test)]
 mod tests {

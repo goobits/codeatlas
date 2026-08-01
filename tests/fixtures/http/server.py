@@ -4,7 +4,7 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 
 if len(sys.argv) not in {3, 4}:
@@ -19,17 +19,33 @@ class FixtureHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self) -> None:
-        if not self._has_static_header():
-            self._respond(401, b'{"error":"missing_static_header"}')
-            return
         path = urlparse(self.path).path
         if path == "/openapi.yaml":
             self._respond(200, openapi, "application/yaml")
+            return
+        if not self._has_static_header():
+            self._respond(401, b'{"error":"missing_static_header"}')
             return
         if path == "/health":
             self._respond(204)
             return
         if path.startswith("/widgets/"):
+            if self.headers.get("cookie") != "session=fixture-session":
+                self._respond(401, b'{"error":"invalid_session"}')
+                return
+            parsed = urlparse(self.path)
+            limit = parse_qs(parsed.query, keep_blank_values=True).get("limit")
+            if limit is None or len(limit) != 1:
+                self._respond(400, b'{"error":"invalid_query"}')
+                return
+            try:
+                parsed_limit = int(limit[0])
+            except ValueError:
+                self._respond(400, b'{"error":"invalid_query"}')
+                return
+            if not 1 <= parsed_limit <= 10:
+                self._respond(400, b'{"error":"invalid_query"}')
+                return
             response = json.dumps(
                 {"id": unquote(path[len("/widgets/") :]), "name": "fixture"},
                 separators=(",", ":"),
@@ -42,7 +58,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
         if not self._has_static_header():
             self._respond(401, b'{"error":"missing_static_header"}')
             return
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         prefix = "/widgets/"
         if path == "/health":
             self._method_not_allowed("GET")
@@ -50,9 +67,26 @@ class FixtureHandler(BaseHTTPRequestHandler):
         if not path.startswith(prefix):
             self._respond(404, b'{"error":"not_found"}')
             return
+        if self.headers.get("cookie") != "session=fixture-session":
+            self._respond(401, b'{"error":"invalid_session"}')
+            return
+        if not path.endswith("/"):
+            location = f"{path}/"
+            if parsed.query:
+                location = f"{location}?{parsed.query}"
+            self._redirect(location)
+            return
         length = int(self.headers.get("content-length", "0"))
+        raw_body = self.rfile.read(length)
+        if parse_qs(parsed.query, keep_blank_values=True).get("wait") != ["0"]:
+            self._respond(400, b'{"error":"invalid_query"}')
+            return
+        trace = self.headers.get("x-widget-trace")
+        if trace is None or not 1 <= len(trace) <= 64:
+            self._respond(400, b'{"error":"invalid_header"}')
+            return
         try:
-            body = json.loads(self.rfile.read(length))
+            body = json.loads(raw_body)
         except (UnicodeDecodeError, json.JSONDecodeError):
             self._respond(400, b'{"error":"invalid_json"}')
             return
@@ -104,6 +138,17 @@ class FixtureHandler(BaseHTTPRequestHandler):
             "x-codeatlas-adapter-seen",
             str(self.headers.get("x-codeatlas-adapter") == "fixture-adapter").lower(),
         )
+        self.send_header(
+            "x-codeatlas-query-seen",
+            str(
+                parse_qs(urlparse(self.path).query, keep_blank_values=True).get("wait")
+                == ["0"]
+            ).lower(),
+        )
+        self.send_header(
+            "x-codeatlas-static-seen",
+            str(self._has_static_header()).lower(),
+        )
         self.send_header("content-length", str(len(body)))
         self.end_headers()
         if body:
@@ -127,6 +172,15 @@ class FixtureHandler(BaseHTTPRequestHandler):
             "x-codeatlas-adapter-seen",
             str(self.headers.get("x-codeatlas-adapter") == "fixture-adapter").lower(),
         )
+        self.send_header("content-length", "0")
+        self.end_headers()
+
+    def _redirect(self, location: str) -> None:
+        length = int(self.headers.get("content-length", "0"))
+        if length:
+            self.rfile.read(length)
+        self.send_response(307)
+        self.send_header("location", location)
         self.send_header("content-length", "0")
         self.end_headers()
 

@@ -18,6 +18,8 @@ pub(crate) struct HttpContractConfig {
     pub source_complete: bool,
     pub source_include_paths: Vec<String>,
     pub source_exclude_paths: Vec<String>,
+    pub source_include_operations: Vec<String>,
+    pub source_exclude_operations: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -123,6 +125,7 @@ pub(crate) struct HttpFuzzServerConfig {
     pub args: Vec<String>,
     pub cwd: Option<PathBuf>,
     pub prepare: Vec<HttpFuzzCommandConfig>,
+    pub startup_timeout_seconds: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -156,7 +159,9 @@ mod tests {
                 "http": {
                     "contracts": [{
                         "id": "public-api",
-                        "openapi": "openapi.json"
+                        "openapi": "openapi.json",
+                        "source_include_operations": ["GET /health"],
+                        "source_exclude_operations": ["POST /health"]
                     }],
                     "fuzz": {
                         "targets": [{
@@ -173,6 +178,7 @@ mod tests {
                             "server": {
                                 "command": "node",
                                 "args": ["src/test-server.js"],
+                                "startup_timeout_seconds": 90,
                                 "prepare": [{
                                     "command": "node",
                                     "args": ["src/prepare-test-server.js"]
@@ -200,6 +206,9 @@ mod tests {
         .expect("HTTP fuzz config");
 
         let target = &config.http.fuzz.targets[0];
+        let contract = &config.http.contracts[0];
+        assert_eq!(contract.source_include_operations, ["GET /health"]);
+        assert_eq!(contract.source_exclude_operations, ["POST /health"]);
         assert_eq!(target.id, "public-local");
         assert_eq!(target.contract, "public-api");
         assert_eq!(target.openapi_path, "/openapi.json");
@@ -210,6 +219,13 @@ mod tests {
         assert_eq!(
             target.server.as_ref().map(|server| server.command.as_str()),
             Some("node")
+        );
+        assert_eq!(
+            target
+                .server
+                .as_ref()
+                .and_then(|server| server.startup_timeout_seconds),
+            Some(90)
         );
         assert_eq!(
             target

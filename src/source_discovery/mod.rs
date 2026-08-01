@@ -44,16 +44,16 @@ pub(crate) fn discover_with_patterns(
     let filter_patterns = patterns.clone();
     let excluded_roots = project.excluded_roots.clone();
     let no_default_ignore = project.no_default_ignore;
-    let repository_backed = root
+    let is_git_repository = root
         .ancestors()
         .any(|ancestor| ancestor.join(".git").exists());
     let mut builder = WalkBuilder::new(&root);
     builder
         .hidden(false)
-        .parents(repository_backed)
+        .parents(is_git_repository)
         .git_global(false)
         .git_exclude(false)
-        .require_git(repository_backed)
+        .require_git(is_git_repository)
         .filter_entry(move |entry| {
             !excluded_roots.iter().any(|root| entry.path() == root)
                 && should_descend(
@@ -268,34 +268,36 @@ mod tests {
     }
 
     #[test]
-    fn discovery_stops_parent_gitignore_at_the_repository_boundary() {
+    fn discovery_stops_parent_gitignore_rules_at_the_nearest_repository() {
         let temporary = TemporaryProject::new();
-        let repository = temporary.path().join("repository");
-        let root = repository.join("project");
-        std::fs::create_dir_all(repository.join(".git")).expect("repository marker");
-        std::fs::create_dir_all(root.join("build")).expect("selected build directory");
-        std::fs::create_dir_all(root.join("generated")).expect("ignored generated directory");
+        let repository = temporary.path().join("nested-repository");
+        let project_root = repository.join("project");
+        std::fs::create_dir_all(repository.join(".git")).expect("nested repository marker");
+        std::fs::create_dir_all(project_root.join("build/scripts"))
+            .expect("explicit build source directory");
+        std::fs::create_dir_all(project_root.join("private"))
+            .expect("repository-ignored source directory");
         std::fs::write(temporary.path().join(".gitignore"), "build/\n")
-            .expect("parent gitignore fixture");
-        std::fs::write(repository.join(".gitignore"), "generated/\n")
+            .expect("outer gitignore fixture");
+        std::fs::write(repository.join(".gitignore"), "project/private/\n")
             .expect("repository gitignore fixture");
         std::fs::write(
-            root.join("build/compile.ts"),
+            project_root.join("build/scripts/compile.ts"),
             "export const compile = true;\n",
         )
-        .expect("selected build fixture");
+        .expect("explicit build source");
         std::fs::write(
-            root.join("generated/unreachable.ts"),
-            "export const ignored = true;\n",
+            project_root.join("private/hidden.ts"),
+            "export const hidden = true;\n",
         )
-        .expect("ignored generated fixture");
+        .expect("repository-ignored source");
         let project = ResolvedAnalysisProject {
-            id: ProjectId("nested-discovery".to_string()),
-            root: root.clone(),
+            id: ProjectId("nested-repository".to_string()),
+            root: project_root.clone(),
             report_root: ".".to_string(),
             languages: vec!["ts".to_string()],
             contexts: BTreeMap::new(),
-            assume_reachable: vec!["build/compile.ts".to_string()],
+            assume_reachable: vec!["build/scripts/compile.ts".to_string()],
             require_complete: false,
             no_default_ignore: false,
             rust: RustAnalysisConfig::default(),
@@ -306,10 +308,10 @@ mod tests {
         let paths = discover(&project)
             .files
             .into_iter()
-            .map(|path| crate::paths::normalize_relative_path(&path, &root))
+            .map(|path| crate::paths::normalize_relative_path(&path, &project_root))
             .collect::<Vec<_>>();
 
-        assert!(paths.contains(&"build/compile.ts".to_string()));
-        assert!(!paths.contains(&"generated/unreachable.ts".to_string()));
+        assert!(paths.contains(&"build/scripts/compile.ts".to_string()));
+        assert!(!paths.contains(&"private/hidden.ts".to_string()));
     }
 }
