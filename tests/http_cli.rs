@@ -359,7 +359,20 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let reports = directory.path().join("reports/fixture-local/standard");
+    let profile_reports = directory.path().join("reports/fixture-local/standard");
+    let report_directories = fs::read_dir(&profile_reports)
+        .expect("focused report directory should be written")
+        .map(|entry| entry.expect("focused report directory entry").path())
+        .collect::<Vec<_>>();
+    assert_eq!(report_directories.len(), 1);
+    let reports = &report_directories[0];
+    assert!(
+        reports
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("post-widgets-id-")),
+        "focused reports should retain an operation-specific directory"
+    );
     let summary: serde_json::Value = serde_json::from_slice(
         &fs::read(reports.join("summary.json")).expect("fuzz summary should be written"),
     )

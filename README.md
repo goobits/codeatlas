@@ -533,8 +533,11 @@ request behavior and declared resource workflows. `--max-examples` provides a
 focused local override. Every run prints its exact random seed; pass it back
 through `--seed` to reproduce the generated sequence.
 `--operation "METHOD /path"` narrows a local debugging run without exposing
-Schemathesis-specific filters. Header values can be literal test values or come
-from the target environment with `value_env`; do not commit real secrets.
+Schemathesis-specific filters. Focused reports are retained in distinct,
+operation-specific directories beneath the selected profile, so one targeted
+run does not erase evidence from another. Header values can be literal test
+values or come from the target environment with `value_env`; do not commit real
+secrets.
 CodeAtlas injects these headers through its private Schemathesis hook rather
 than exposing their values in process arguments. Hook configuration lives in a
 unique owner-only file for the run, is removed when its owner exits normally,

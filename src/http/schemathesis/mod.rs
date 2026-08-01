@@ -15,6 +15,7 @@ use crate::http::model::{
 };
 use crate::http::runtime::OwnedHttpServer;
 use anyhow::{Context, Result};
+use sha2::{Digest, Sha256};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
@@ -97,7 +98,8 @@ pub(crate) fn run(
         );
     }
     let schemathesis = ensure_schemathesis(options.schemathesis)?;
-    let report_dir = prepare_report_dir(target, options.profile)?;
+    let operation = options.operation.map(parse_operation).transpose()?;
+    let report_dir = prepare_report_dir(target, options.profile, operation.as_ref())?;
     let schema = match contract {
         Contract::OpenApi { source, display } => {
             let document = provider::read(source, display)?;
@@ -128,7 +130,6 @@ pub(crate) fn run(
     request_adapter::validate(&schemathesis, &hooks)?;
     let config_path = prepare_schemathesis_config(&report_dir, options.stateful, &hooks.hook_path)?;
     let seed = options.seed.unwrap_or_else(generate_seed);
-    let operation = options.operation.map(parse_operation).transpose()?;
     let args = schemathesis_args(
         target,
         contract.mode(),
@@ -441,12 +442,39 @@ fn generate_seed() -> u128 {
     timestamp ^ (u128::from(std::process::id()) << 96)
 }
 
-fn prepare_report_dir(target: &ResolvedHttpFuzzTarget, profile: &str) -> Result<PathBuf> {
+fn operation_report_component(operation: &OperationFilter) -> String {
+    let mut slug = operation
+        .name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    while slug.contains("--") {
+        slug = slug.replace("--", "-");
+    }
+    let slug = slug.trim_matches('-').chars().take(72).collect::<String>();
+    let digest = format!("{:x}", Sha256::digest(operation.name.as_bytes()));
+    format!("{slug}-{}", &digest[..12])
+}
+
+fn prepare_report_dir(
+    target: &ResolvedHttpFuzzTarget,
+    profile: &str,
+    operation: Option<&OperationFilter>,
+) -> Result<PathBuf> {
     let root = target
         .report_root
         .clone()
         .unwrap_or_else(|| cache_base().join("codeatlas").join("reports").join("http"));
-    let report_dir = root.join(&target.id).join(profile);
+    let mut report_dir = root.join(&target.id).join(profile);
+    if let Some(operation) = operation {
+        report_dir = report_dir.join(operation_report_component(operation));
+    }
     std::fs::create_dir_all(&report_dir).with_context(|| {
         format!(
             "Could not create CodeAtlas HTTP fuzz report directory {}",
@@ -527,10 +555,10 @@ fn schemathesis_config(stateful: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        checks, clear_owned_report_files, parse_operation, phases, positive_coverage_failures,
-        render_schemathesis_config, schemathesis_args, schemathesis_config, RunOptions,
-        SchemathesisFiles, CHECKS, PROVIDED_OPENAPI_FILENAME, SCHEMATHESIS_CONFIG_FILENAME,
-        SOURCE_TRANSPORT_CHECKS, STATEFUL_CONFIG,
+        checks, clear_owned_report_files, operation_report_component, parse_operation, phases,
+        positive_coverage_failures, render_schemathesis_config, schemathesis_args,
+        schemathesis_config, RunOptions, SchemathesisFiles, CHECKS, PROVIDED_OPENAPI_FILENAME,
+        SCHEMATHESIS_CONFIG_FILENAME, SOURCE_TRANSPORT_CHECKS, STATEFUL_CONFIG,
     };
     use crate::config::{HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig};
     use crate::http::model::{HttpFuzzContractMode, HttpFuzzTotals};
@@ -676,6 +704,13 @@ mod tests {
     fn operation_filters_require_an_exact_method_and_absolute_path() {
         let filter = parse_operation("post /widgets/{id}").expect("valid filter");
         assert_eq!(filter.name, "POST /widgets/{id}");
+        let component = operation_report_component(&filter);
+        assert!(component.starts_with("post-widgets-id-"));
+        assert_eq!(component.len(), "post-widgets-id-".len() + 12);
+        assert_ne!(
+            component,
+            operation_report_component(&parse_operation("GET /widgets/{id}").expect("filter"))
+        );
         assert!(parse_operation("POST").is_err());
         assert!(parse_operation("POST widgets").is_err());
         assert!(parse_operation("POST /widget path").is_err());
