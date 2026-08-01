@@ -51,6 +51,16 @@ pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInvent
             &contract.id,
             "source_exclude_paths",
         )?;
+        let include_operations = compile_operation_keys(
+            &contract.source_include_operations,
+            &contract.id,
+            "source_include_operations",
+        )?;
+        let exclude_operations = compile_operation_keys(
+            &contract.source_exclude_operations,
+            &contract.id,
+            "source_exclude_operations",
+        )?;
         source.operations.retain(|operation| {
             include
                 .as_ref()
@@ -58,6 +68,12 @@ pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInvent
                 && exclude
                     .as_ref()
                     .is_none_or(|patterns| !patterns.is_match(&operation.path))
+                && include_operations
+                    .as_ref()
+                    .is_none_or(|keys| keys.contains(&operation.key))
+                && exclude_operations
+                    .as_ref()
+                    .is_none_or(|keys| !keys.contains(&operation.key))
         });
         let schema_operations = openapi
             .as_ref()
@@ -137,9 +153,47 @@ fn compile_patterns(
     Ok(Some(builder.build()?))
 }
 
+fn compile_operation_keys(
+    operations: &[String],
+    contract_id: &str,
+    field: &str,
+) -> Result<Option<BTreeSet<String>>> {
+    if operations.is_empty() {
+        return Ok(None);
+    }
+
+    let mut keys = BTreeSet::new();
+    for operation in operations {
+        let Some((method, path)) = operation.split_once(' ') else {
+            anyhow::bail!(
+                "Invalid HTTP contract {contract_id} {field} operation {operation:?}; expected canonical `METHOD /path`"
+            );
+        };
+        if !matches!(
+            method,
+            "GET" | "PUT" | "POST" | "DELETE" | "OPTIONS" | "HEAD" | "PATCH" | "TRACE" | "PAGE"
+        ) {
+            anyhow::bail!(
+                "Invalid HTTP contract {contract_id} {field} operation {operation:?}; unsupported method {method:?}"
+            );
+        }
+        let canonical = openapi::operation_key(method, path);
+        if operation != &canonical {
+            anyhow::bail!(
+                "Invalid HTTP contract {contract_id} {field} operation {operation:?}; expected canonical {canonical:?}"
+            );
+        }
+        if !keys.insert(canonical) {
+            anyhow::bail!("Duplicate HTTP contract {contract_id} {field} operation {operation:?}");
+        }
+    }
+
+    Ok(Some(keys))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::compile_patterns;
+    use super::{compile_operation_keys, compile_patterns};
 
     #[test]
     fn source_path_filters_support_exact_and_recursive_contract_boundaries() {
@@ -153,5 +207,27 @@ mod tests {
         assert!(patterns.is_match("/health"));
         assert!(patterns.is_match("/v1/sessions"));
         assert!(!patterns.is_match("/internal/accounts"));
+    }
+
+    #[test]
+    fn source_operation_filters_are_exact_and_canonical() {
+        let operations = compile_operation_keys(
+            &["GET /health".to_string(), "POST /sessions/{id}".to_string()],
+            "public",
+            "source_include_operations",
+        )
+        .expect("operations")
+        .expect("compiled operations");
+        assert!(operations.contains("GET /health"));
+        assert!(operations.contains("POST /sessions/{id}"));
+        assert!(!operations.contains("DELETE /sessions/{id}"));
+
+        let error = compile_operation_keys(
+            &["get /health/".to_string()],
+            "public",
+            "source_include_operations",
+        )
+        .expect_err("non-canonical operation should fail");
+        assert!(error.to_string().contains("unsupported method \"get\""));
     }
 }

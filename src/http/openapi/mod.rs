@@ -18,6 +18,11 @@ pub(super) struct LoadedOpenApi {
     pub(super) diagnostics: Vec<HttpContractDiagnostic>,
 }
 
+pub(super) fn response_status_can_succeed(status: &str) -> bool {
+    let normalized = status.trim().to_ascii_uppercase();
+    normalized == "DEFAULT" || matches!(normalized.as_bytes().first(), Some(b'2' | b'3'))
+}
+
 pub(super) fn parse(source: &str, label: &str) -> Result<LoadedOpenApi> {
     let document: Value = serde_yaml::from_str(source)
         .with_context(|| format!("Invalid JSON or YAML OpenAPI contract at {label}"))?;
@@ -187,7 +192,42 @@ pub(super) fn normalize_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::parse;
+    use super::{parse, response_status_can_succeed};
+    use crate::http::model::HttpFindingSeverity;
+
+    #[test]
+    fn recognizes_successful_and_fallback_response_statuses() {
+        assert!(response_status_can_succeed("200"));
+        assert!(response_status_can_succeed("3XX"));
+        assert!(response_status_can_succeed("default"));
+        assert!(!response_status_can_succeed("404"));
+    }
+
+    #[test]
+    fn deny_only_operations_are_advisory_not_invalid() {
+        let document = parse(
+            r#"{
+              "openapi": "3.1.0",
+              "paths": {
+                "/hidden": {
+                  "get": {
+                    "operationId": "hideResource",
+                    "responses": {"404": {"description": "hidden"}}
+                  }
+                }
+              }
+            }"#,
+            "fixture.json",
+        )
+        .expect("OpenAPI document");
+        let diagnostic = document
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "operation.success_response_missing")
+            .expect("deny-only operation should remain visible");
+
+        assert_eq!(diagnostic.severity, HttpFindingSeverity::Warning);
+    }
 
     #[test]
     fn parses_openapi_30_yaml_and_resolves_schema_references() {

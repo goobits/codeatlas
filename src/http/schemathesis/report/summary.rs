@@ -7,6 +7,33 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::BufRead;
 
+const POSITIVE_COVERAGE_SCENARIOS: &[&str] = &[
+    "const_value",
+    "default_positive_test",
+    "default_value",
+    "enum_value",
+    "enum_value_items_array",
+    "example_value",
+    "maximum_items_array",
+    "maximum_length_string",
+    "maximum_value",
+    "minimum_items_array",
+    "minimum_length_string",
+    "minimum_value",
+    "near_boundary_items_array",
+    "near_boundary_length_string",
+    "near_boundary_number",
+    "null_value",
+    "object_additional_property",
+    "object_only_required",
+    "object_required_and_optional",
+    "valid_array",
+    "valid_boolean",
+    "valid_number",
+    "valid_object",
+    "valid_string",
+];
+
 #[derive(Default)]
 struct OperationStats {
     cases: u64,
@@ -27,12 +54,31 @@ struct StatefulStats {
     covered_links: BTreeSet<String>,
 }
 
+#[cfg(test)]
 pub(super) fn summarize_reader(
     reader: impl BufRead,
     target_id: &str,
     contract_id: &str,
     contract_mode: HttpFuzzContractMode,
     profile: &str,
+) -> Result<HttpFuzzReport> {
+    summarize_reader_with_expected_non_success(
+        reader,
+        target_id,
+        contract_id,
+        contract_mode,
+        profile,
+        &BTreeSet::new(),
+    )
+}
+
+pub(super) fn summarize_reader_with_expected_non_success(
+    reader: impl BufRead,
+    target_id: &str,
+    contract_id: &str,
+    contract_mode: HttpFuzzContractMode,
+    profile: &str,
+    expected_non_success_operations: &BTreeSet<String>,
 ) -> Result<HttpFuzzReport> {
     let mut seed = None;
     let mut operations = BTreeMap::<String, OperationStats>::new();
@@ -163,10 +209,7 @@ pub(super) fn summarize_reader(
             if has_parent && !(is_stateful && transition_applied) {
                 continue;
             }
-            match case
-                .pointer("/value/meta/generation/mode")
-                .and_then(Value::as_str)
-            {
+            match case_generation_mode(case) {
                 Some("positive") => record_positive(stats, status),
                 Some("negative") => record_negative(stats, status),
                 _ => {}
@@ -176,7 +219,10 @@ pub(super) fn summarize_reader(
 
     let operations = operations
         .into_iter()
-        .map(|(operation, stats)| operation_summary(operation, stats))
+        .map(|(operation, stats)| {
+            let expected_non_success = expected_non_success_operations.contains(&operation);
+            operation_summary(operation, stats, expected_non_success)
+        })
         .collect::<Vec<_>>();
     let totals = totals(&operations);
     let stateful = stateful.map(|mut stats| {
@@ -196,6 +242,17 @@ pub(super) fn summarize_reader(
         totals,
         operations,
     })
+}
+
+fn case_generation_mode(case: &Value) -> Option<&str> {
+    let scenario = case
+        .pointer("/value/meta/phase/data/scenario")
+        .and_then(Value::as_str);
+    if scenario.is_some_and(|value| POSITIVE_COVERAGE_SCENARIOS.contains(&value)) {
+        return Some("positive");
+    }
+    case.pointer("/value/meta/generation/mode")
+        .and_then(Value::as_str)
 }
 
 pub(super) fn is_reported_server_error(contract_mode: HttpFuzzContractMode, status: u64) -> bool {
@@ -243,11 +300,17 @@ fn record_negative(stats: &mut OperationStats, status: Option<u64>) {
     }
 }
 
-fn operation_summary(operation: String, stats: OperationStats) -> HttpFuzzOperationSummary {
+fn operation_summary(
+    operation: String,
+    stats: OperationStats,
+    expected_non_success: bool,
+) -> HttpFuzzOperationSummary {
     let positive_coverage = if stats.positive_successes > 0 {
         HttpFuzzPositiveCoverage::SuccessObserved
     } else if stats.positive_cases == 0 {
         HttpFuzzPositiveCoverage::NoPositiveCases
+    } else if expected_non_success && stats.positive_client_errors > 0 {
+        HttpFuzzPositiveCoverage::ExpectedNonSuccessObserved
     } else if stats.positive_auth_rejections == stats.positive_cases {
         HttpFuzzPositiveCoverage::AuthenticationRejectionOnly
     } else if stats.positive_client_errors == stats.positive_cases {
@@ -289,6 +352,9 @@ fn totals(operations: &[HttpFuzzOperationSummary]) -> HttpFuzzTotals {
         match operation.positive_coverage {
             HttpFuzzPositiveCoverage::SuccessObserved => {
                 totals.success_observed_operations += 1;
+            }
+            HttpFuzzPositiveCoverage::ExpectedNonSuccessObserved => {
+                totals.expected_non_success_operations += 1;
             }
             HttpFuzzPositiveCoverage::AuthenticationRejectionOnly => {
                 totals.authentication_rejection_only_operations += 1;

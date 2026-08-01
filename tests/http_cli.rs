@@ -264,6 +264,22 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
 
     let port = available_port();
     let python = configured_python();
+    let server_args = if cfg!(unix) {
+        json!([
+            fixture.join("managed_server.py"),
+            fixture.join("server.py"),
+            port.to_string(),
+            &openapi,
+            "fixture-runtime-token"
+        ])
+    } else {
+        json!([
+            fixture.join("server.py"),
+            port.to_string(),
+            &openapi,
+            "fixture-runtime-token"
+        ])
+    };
     let config_path = directory.path().join("codeatlas.json");
     let config = json!({
         "root": ".",
@@ -290,17 +306,12 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
                     }],
                     "report_dir": "reports",
                     "server": {
-                        "command": python,
-                        "args": [
-                            fixture.join("server.py"),
-                            port.to_string(),
-                            &openapi,
-                            "fixture-runtime-token"
-                        ],
+                        "command": &python,
+                        "args": server_args,
                         "cwd": directory.path()
                     },
                     "request_adapter": {
-                        "command": python,
+                        "command": &python,
                         "args": [fixture.join("request_adapter.py"), &adapter_log],
                         "cwd": directory.path()
                     }
@@ -346,7 +357,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         &fs::read(reports.join("summary.json")).expect("fuzz summary should be written"),
     )
     .expect("fuzz summary should be JSON");
-    assert_eq!(summary["apiVersion"], "codeatlas.http-fuzz/v1");
+    assert_eq!(summary["apiVersion"], "codeatlas.http-fuzz/v2");
     assert_eq!(summary["targetId"], "fixture-local");
     assert_eq!(summary["contractId"], "fixture-api");
 
@@ -371,10 +382,39 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         .collect::<Vec<_>>();
     assert!(!requests.is_empty(), "adapter should receive requests");
     assert_eq!(requests.len(), responses.len());
+    let primary_requests = requests
+        .iter()
+        .copied()
+        .filter(|event| event["probe"].is_null())
+        .collect::<Vec<_>>();
+    let primary_responses = responses
+        .iter()
+        .copied()
+        .filter(|event| event["probe"].is_null())
+        .collect::<Vec<_>>();
+    let authentication_probe_responses = responses
+        .iter()
+        .copied()
+        .filter(|event| event["probe"] == "authentication")
+        .collect::<Vec<_>>();
     assert!(requests.iter().all(|event| event["staticHeader"] == true));
-    assert!(requests.iter().any(|event| event["bodyOverride"] == true));
-    assert!(requests.iter().any(|event| event["queryOverride"] == true));
-    let negative_body_ids = requests
+    assert!(primary_requests
+        .iter()
+        .any(|event| event["bodyOverride"] == true));
+    assert!(primary_requests
+        .iter()
+        .any(|event| event["sessionAuthentication"] == true));
+    assert!(primary_requests
+        .iter()
+        .any(|event| event["queryOverride"] == true));
+    assert!(
+        !authentication_probe_responses.is_empty(),
+        "adapter should observe authentication probe responses: {adapter_events:#?}"
+    );
+    assert!(authentication_probe_responses.iter().all(|event| {
+        event["staticSeen"] == true && matches!(event["status"].as_u64(), Some(401 | 403 | 404))
+    }));
+    let negative_body_ids = primary_requests
         .iter()
         .filter(|event| event["bodyGeneration"] == "negative")
         .filter_map(|event| event["id"].as_str())
@@ -383,13 +423,13 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         !negative_body_ids.is_empty(),
         "Schemathesis should generate a negative body case"
     );
-    assert!(negative_body_ids.iter().all(|id| requests
+    assert!(negative_body_ids.iter().all(|id| primary_requests
         .iter()
         .any(|event| { event["id"] == *id && event["bodyOverride"] == false })));
-    assert!(negative_body_ids.iter().any(|id| responses
+    assert!(negative_body_ids.iter().any(|id| primary_responses
         .iter()
         .any(|event| { event["id"] == *id && event["status"] == 400 })));
-    let negative_query_requests = requests
+    let negative_query_requests = primary_requests
         .iter()
         .filter(|event| event["queryGeneration"] == "negative")
         .collect::<Vec<_>>();
@@ -412,10 +452,10 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         });
         event["queryOverride"] == parameters.is_some_and(|names| !names.contains(&"wait"))
     }));
-    assert!(negative_query_requests.iter().any(|event| responses
+    assert!(negative_query_requests.iter().any(|event| primary_responses
         .iter()
         .any(|response| { response["id"] == event["id"] && response["status"] == 400 })));
-    let negative_header_ids = requests
+    let negative_header_ids = primary_requests
         .iter()
         .filter(|event| event["headerGeneration"] == "negative")
         .filter_map(|event| event["id"].as_str())
@@ -424,11 +464,15 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         !negative_header_ids.is_empty(),
         "Schemathesis should generate a negative header case"
     );
-    assert!(negative_header_ids.iter().all(|id| responses
+    assert!(negative_header_ids.iter().all(|id| primary_responses
         .iter()
         .any(|event| { event["id"] == *id && event["status"] != 401 })));
-    assert!(responses.iter().any(|event| event["adapterSeen"] == true));
-    assert!(responses.iter().any(|event| event["querySeen"] == true));
+    assert!(primary_responses
+        .iter()
+        .any(|event| event["adapterSeen"] == true));
+    assert!(primary_responses
+        .iter()
+        .any(|event| event["querySeen"] == true));
     assert!(adapter_events.iter().any(|event| event["kind"] == "closed"));
     assert!(
         TcpListener::bind(("127.0.0.1", port)).is_ok(),

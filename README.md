@@ -409,6 +409,8 @@ workflows are needed:
         "source_roots": ["src/http"],
         "source_include_paths": ["/v1/**", "/health"],
         "source_exclude_paths": ["/internal/**"],
+        "source_include_operations": ["GET /health", "POST /v1/sessions"],
+        "source_exclude_operations": ["GET /v1/internal-probe"],
         "source_complete": true
       }
     ],
@@ -459,6 +461,10 @@ may be registered dynamically; CodeAtlas will preserve that uncertainty rather
 than turn incomplete static detection into false CI failures.
 Path filters partition mixed public/internal source files without creating
 duplicate route inventories.
+Exact operation filters use canonical `METHOD /path` keys when two methods on
+the same source path belong to different contracts. Unlike path filters, these
+are exact keys rather than globs. Operation filters apply after path filters
+and may include `PAGE /path` inventory entries as well as HTTP endpoint methods.
 
 ```bash
 codeatlas http inventory . --out source-routes.json
@@ -516,9 +522,9 @@ fuzzer stack. Managed provisioning requires Python 3.10 or newer; set
 also asks that exact CLI to load its bundled hook before starting the optional
 foreground test server. CodeAtlas waits 30 seconds for owned servers to accept
 connections by default. Set bounded `server.startup_timeout_seconds` (1–600)
-for production builds with slower cold starts. Optional `server.prepare`
-commands run in order before the owned
-server and inherit the target's isolated environment; use them for idempotent
+for managed targets with slower cold starts. Optional `server.prepare` commands
+run in order before the owned server and inherit the target's isolated
+environment; use them for idempotent
 local schema migrations or fixture preparation instead of project-specific
 wrapper scripts. Schema-backed targets materialize their configured `file`,
 `command`, `url`, or `target` provider into the private run directory, so the
@@ -544,33 +550,45 @@ unique owner-only file for the run, is removed when its owner exits normally,
 and is removed from the adapter process environment before the adapter starts.
 A target may also declare a long-lived `request_adapter` command. CodeAtlas
 sends each exact serialized request and each observed response over the versioned
-`codeatlas.http-request-adapter/v1` JSONL protocol. Request replies supply
-header, query-value, and optional base64 body overrides before transport. Query
-replies are maps whose string or string-array values replace that name's
-generated values; `null` removes the name. They cannot replace the URL's
-scheme, authority, or path. CodeAtlas rejects an override of a negatively
-generated parameter. When the engine identifies the exact negative query
-parameter, an adapter may still replace other query values so long polls and
-other valid fixtures stay deterministic. Overrides exist to supply valid
-fixtures or credentials for the remaining components.
-Response observations let an
-application-owned adapter retain workflow credentials for linked requests.
-When another header is negatively generated, an adapter may still replace a
-configured static credential header only while the request retains that exact
-placeholder value. Authentication probes remove or alter the placeholder, so
-the adapter cannot accidentally restore valid credentials and mask a missing
-authentication check.
+`codeatlas.http-request-adapter/v2` JSONL protocol. Request messages include
+the operation's active `securityParameters`. Replies may supply matching
+`authentication` parameters independently from ordinary header, query-value,
+and optional base64 body overrides. Query replies are maps whose string or
+string-array values replace that name's generated values; `null` removes the
+name. They cannot replace the URL's scheme, authority, or path. CodeAtlas
+rejects undeclared authentication, prevents ordinary overrides from replacing
+declared security parameters, and rejects an override of the exact negatively
+generated parameter. When the engine identifies that exact query parameter,
+an adapter may still replace other query values so long polls and other valid
+fixtures stay deterministic. Overrides exist to supply valid fixtures or
+credentials for the remaining components. When another header is negatively
+generated, an adapter may still replace a configured static
+credential header only while the request retains that exact placeholder value.
+Authentication probes are marked in adapter messages and retain ordinary
+fixture adaptation while never applying the adapter's dynamic authentication,
+so sessions and credentials do not mask missing or invalid authentication.
+Response observations let an application-owned adapter retain workflow
+credentials for linked requests.
+Coverage-phase scenarios that Schemathesis identifies as valid are normalized
+to positive generation before adapter safety checks and coverage accounting,
+including valid multipart objects whose raw engine mode is negative.
+After the first exchange, adapters have 15 seconds to answer each message;
+startup receives 90 seconds so an adapter may initialize local fixtures.
 This keeps engine integration portable while each project reuses production
 signing or token code without depending on Schemathesis. Each run stores its
 report directory with owner-only permissions where the platform supports them.
 An interrupted run stops its managed processes and discards raw exchange
 evidence; the next run also clears any owned files left by an abnormal exit.
 It retains sanitized NDJSON, a compact evidence-safe JUnit report, and a compact
-versioned `codeatlas.http-fuzz/v1` summary; request and response bodies,
+versioned `codeatlas.http-fuzz/v2` summary; request and response bodies,
 sensitive headers, and URL queries are removed from retained evidence. The
-summary separates positive successes, negative rejections, server errors,
-operations whose positive cases only reached authentication rejection, and
-stateful link/scenario coverage. Projects retain only their domain-owned
+summary separates positive successes, declared non-success operations, negative
+rejections, server errors, operations whose positive cases only reached
+authentication rejection, and stateful link/scenario coverage. An operation
+whose OpenAPI contract has no 2xx, 3xx, or `default` response satisfies the
+coverage gate when a positive case reaches its declared client-error response;
+privacy-preserving and deny-only endpoints therefore do not weaken the success
+budget. Projects retain only their domain-owned
 runtime fixture, optional explicit OpenAPI contract and Links, adapter, and
 target configuration.
 

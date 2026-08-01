@@ -30,6 +30,9 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self._respond(204)
             return
         if path.startswith("/widgets/"):
+            if self.headers.get("cookie") != "session=fixture-session":
+                self._respond(401, b'{"error":"invalid_session"}')
+                return
             parsed = urlparse(self.path)
             limit = parse_qs(parsed.query, keep_blank_values=True).get("limit")
             if limit is None or len(limit) != 1:
@@ -63,6 +66,15 @@ class FixtureHandler(BaseHTTPRequestHandler):
             return
         if not path.startswith(prefix):
             self._respond(404, b'{"error":"not_found"}')
+            return
+        if self.headers.get("cookie") != "session=fixture-session":
+            self._respond(401, b'{"error":"invalid_session"}')
+            return
+        if not path.endswith("/"):
+            location = f"{path}/"
+            if parsed.query:
+                location = f"{location}?{parsed.query}"
+            self._redirect(location)
             return
         length = int(self.headers.get("content-length", "0"))
         raw_body = self.rfile.read(length)
@@ -127,6 +139,10 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 == ["0"]
             ).lower(),
         )
+        self.send_header(
+            "x-codeatlas-static-seen",
+            str(self._has_static_header()).lower(),
+        )
         self.send_header("content-length", str(len(body)))
         self.end_headers()
         if body:
@@ -150,6 +166,15 @@ class FixtureHandler(BaseHTTPRequestHandler):
             "x-codeatlas-adapter-seen",
             str(self.headers.get("x-codeatlas-adapter") == "fixture-adapter").lower(),
         )
+        self.send_header("content-length", "0")
+        self.end_headers()
+
+    def _redirect(self, location: str) -> None:
+        length = int(self.headers.get("content-length", "0"))
+        if length:
+            self.rfile.read(length)
+        self.send_response(307)
+        self.send_header("location", location)
         self.send_header("content-length", "0")
         self.end_headers()
 

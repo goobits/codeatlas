@@ -4,8 +4,8 @@ pub(crate) const HTTP_API_VERSION: &str = "codeatlas.http/v2";
 pub(crate) const HTTP_SCHEMA_VERSION: u32 = 2;
 pub(crate) const HTTP_BASELINE_API_VERSION: &str = "codeatlas.http-baseline/v1";
 pub(crate) const HTTP_BASELINE_SCHEMA_VERSION: u32 = 1;
-pub(crate) const HTTP_FUZZ_API_VERSION: &str = "codeatlas.http-fuzz/v1";
-pub(crate) const HTTP_FUZZ_SCHEMA_VERSION: u32 = 1;
+pub(crate) const HTTP_FUZZ_API_VERSION: &str = "codeatlas.http-fuzz/v2";
+pub(crate) const HTTP_FUZZ_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -349,6 +349,7 @@ pub(crate) struct HttpFuzzStatefulSummary {
 pub(crate) struct HttpFuzzTotals {
     pub operations: u64,
     pub success_observed_operations: u64,
+    pub expected_non_success_operations: u64,
     pub operations_without_success: u64,
     pub client_error_only_operations: u64,
     pub mixed_without_success_operations: u64,
@@ -386,6 +387,7 @@ pub(crate) struct HttpFuzzOperationSummary {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HttpFuzzPositiveCoverage {
     SuccessObserved,
+    ExpectedNonSuccessObserved,
     AuthenticationRejectionOnly,
     ClientErrorOnly,
     NoPositiveCases,

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-API_VERSION = "codeatlas.http-request-adapter/v1"
+API_VERSION = "codeatlas.http-request-adapter/v2"
 
 if len(sys.argv) != 2:
     raise SystemExit("usage: request_adapter.py AUDIT_LOG")
@@ -64,6 +64,17 @@ try:
             reply["headers"] = {"X-CodeAtlas-Static": "fixture-runtime-token"}
             if not negative_header:
                 reply["headers"]["X-CodeAtlas-Adapter"] = "fixture-adapter"
+            if {
+                "in": "cookie",
+                "name": "session",
+            } in message.get("securityParameters", []):
+                reply["authentication"] = [
+                    {
+                        "in": "cookie",
+                        "name": "session",
+                        "value": "fixture-session",
+                    }
+                ]
             if has_body and not negative_body:
                 reply["bodyBase64"] = message["bodyBase64"]
             if not preserve_wait:
@@ -78,6 +89,8 @@ try:
                     "id": message_id,
                     "kind": kind,
                     "negativeQueryParameters": negative_query_parameters,
+                    "probe": message.get("probe"),
+                    "sessionAuthentication": bool(reply.get("authentication")),
                     "queryGeneration": components.get("query"),
                     "queryOverride": not preserve_wait,
                     "staticHeader": header_value(headers, "x-codeatlas-static")
@@ -95,7 +108,10 @@ try:
                     == "true",
                     "id": message_id,
                     "kind": kind,
+                    "probe": message.get("probe"),
                     "querySeen": header_value(headers, "x-codeatlas-query-seen")
+                    == "true",
+                    "staticSeen": header_value(headers, "x-codeatlas-static-seen")
                     == "true",
                     "status": message.get("status"),
                 }

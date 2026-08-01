@@ -1,4 +1,7 @@
-use super::schema::{is_schema_annotation, resolve_object, resolve_schema};
+use super::{
+    response_status_can_succeed,
+    schema::{is_schema_annotation, resolve_object, resolve_schema},
+};
 use crate::http::model::{HttpContractDiagnostic, HttpFindingSeverity, HttpOperation};
 use anyhow::{Context, Result};
 use serde_json::{Map, Value};
@@ -87,15 +90,15 @@ pub(super) fn inspect_operation(
     if !parsed
         .responses
         .iter()
-        .any(|response| matches!(response.status.as_bytes().first(), Some(b'2' | b'3')))
+        .any(|response| response_status_can_succeed(&response.status))
     {
         push_diagnostic(
             &mut diagnostics,
-            HttpFindingSeverity::Error,
+            HttpFindingSeverity::Warning,
             "operation.success_response_missing",
             &parsed.key,
             "responses",
-            "Operation does not declare a 2xx or 3xx response.",
+            "Operation declares no 2xx, 3xx, or default response; only explicit non-success outcomes can satisfy runtime coverage.",
         );
     }
     let accepts_input = parsed.request_body.is_some()

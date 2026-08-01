@@ -2,9 +2,12 @@ openapi: 3.1.0
 info:
   title: HTTP fixture
   version: 1.0.0
+security:
+  - sessionCookie: []
 paths:
   /health:
     get:
+      security: []
       operationId: health
       responses:
         "204":
@@ -77,6 +80,11 @@ paths:
         "400":
           description: Invalid widget request
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
   schemas:
     WidgetUpdate:
       type: object
