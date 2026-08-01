@@ -472,12 +472,19 @@ def _generation(case: Any) -> dict[str, Any]:
     metadata = case.meta
     if metadata is None:
         return {"mode": "unknown", "components": {}}
+    components = {
+        location.value: component.mode.value
+        for location, component in metadata.components.items()
+    }
+    phase_data = metadata.phase.data
+    scenario = _enum_value(getattr(phase_data, "scenario", None))
+    location = _enum_value(getattr(phase_data, "parameter_location", None))
+    is_positive_coverage = scenario in POSITIVE_COVERAGE_SCENARIOS
+    if is_positive_coverage and isinstance(location, str):
+        components[location] = "positive"
     return {
-        "mode": metadata.generation.mode.value,
-        "components": {
-            location.value: component.mode.value
-            for location, component in metadata.components.items()
-        },
+        "mode": "positive" if is_positive_coverage else metadata.generation.mode.value,
+        "components": components,
     }
 
 

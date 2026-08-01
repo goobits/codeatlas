@@ -7,6 +7,33 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::BufRead;
 
+const POSITIVE_COVERAGE_SCENARIOS: &[&str] = &[
+    "const_value",
+    "default_positive_test",
+    "default_value",
+    "enum_value",
+    "enum_value_items_array",
+    "example_value",
+    "maximum_items_array",
+    "maximum_length_string",
+    "maximum_value",
+    "minimum_items_array",
+    "minimum_length_string",
+    "minimum_value",
+    "near_boundary_items_array",
+    "near_boundary_length_string",
+    "near_boundary_number",
+    "null_value",
+    "object_additional_property",
+    "object_only_required",
+    "object_required_and_optional",
+    "valid_array",
+    "valid_boolean",
+    "valid_number",
+    "valid_object",
+    "valid_string",
+];
+
 #[derive(Default)]
 struct OperationStats {
     cases: u64,
@@ -163,10 +190,7 @@ pub(super) fn summarize_reader(
             if has_parent && !(is_stateful && transition_applied) {
                 continue;
             }
-            match case
-                .pointer("/value/meta/generation/mode")
-                .and_then(Value::as_str)
-            {
+            match case_generation_mode(case) {
                 Some("positive") => record_positive(stats, status),
                 Some("negative") => record_negative(stats, status),
                 _ => {}
@@ -196,6 +220,17 @@ pub(super) fn summarize_reader(
         totals,
         operations,
     })
+}
+
+fn case_generation_mode(case: &Value) -> Option<&str> {
+    let scenario = case
+        .pointer("/value/meta/phase/data/scenario")
+        .and_then(Value::as_str);
+    if scenario.is_some_and(|value| POSITIVE_COVERAGE_SCENARIOS.contains(&value)) {
+        return Some("positive");
+    }
+    case.pointer("/value/meta/generation/mode")
+        .and_then(Value::as_str)
 }
 
 pub(super) fn is_reported_server_error(contract_mode: HttpFuzzContractMode, status: u64) -> bool {

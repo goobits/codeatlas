@@ -200,6 +200,30 @@ fn summarizes_positive_negative_and_authentication_only_coverage() {
 }
 
 #[test]
+fn normalizes_valid_coverage_scenarios_as_positive_cases() {
+    let report = summarize_reader(
+        Cursor::new(
+            r#"{"Initialize":{"seed":7}}
+{"ScenarioFinished":{"phase":"Coverage","status":"success","is_final":false,"recorder":{"label":"POST /imports","cases":{"valid":{"value":{"method":"POST","path":"/imports","meta":{"generation":{"mode":"negative"},"phase":{"data":{"scenario":"valid_object","parameter_location":"body"}}}},"is_transition_applied":false}},"checks":{"valid":[{"status":"success"}]},"interactions":{"valid":{"response":{"status_code":200}}}}}}
+"#,
+        ),
+        "local",
+        "fixture-api",
+        HttpFuzzContractMode::OpenApi,
+        "standard",
+    )
+    .expect("valid coverage scenario should summarize");
+
+    assert_eq!(report.totals.positive_cases, 1);
+    assert_eq!(report.totals.positive_successes, 1);
+    assert_eq!(report.totals.negative_cases, 0);
+    assert_eq!(
+        report.operations[0].positive_coverage,
+        HttpFuzzPositiveCoverage::SuccessObserved
+    );
+}
+
+#[test]
 fn summarizes_stateful_cases_by_operation_and_declared_link() {
     let report = summarize_reader(
         Cursor::new(

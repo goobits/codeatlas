@@ -557,6 +557,9 @@ components. Authentication rejection is probed separately without invoking the
 adapter, so dynamic sessions do not mask missing or invalid credentials.
 Response observations let an
 application-owned adapter retain workflow credentials for linked requests.
+Coverage-phase scenarios that Schemathesis identifies as valid are normalized
+to positive generation before adapter safety checks and coverage accounting,
+including valid multipart objects whose raw engine mode is negative.
 After the first exchange, adapters have 15 seconds to answer each message;
 startup receives 90 seconds so an adapter may initialize local fixtures.
 This keeps engine integration portable while each project reuses production
