@@ -65,6 +65,9 @@ enum Command {
         /// Exit non-zero for high-confidence gating findings
         #[arg(long)]
         check: bool,
+        /// Render only findings that can fail the dead-code gate
+        #[arg(long)]
+        gates_only: bool,
         /// Discover package projects from the nearest pnpm workspace
         #[arg(long)]
         workspace: bool,
@@ -170,12 +173,14 @@ pub(crate) fn run() -> i32 {
             format,
             out,
             check,
+            gates_only,
             workspace,
         } => commands::dead_code::run(
             &path,
             format,
             out.as_deref(),
             check,
+            gates_only,
             workspace,
             config_path.as_deref(),
         ),
@@ -239,7 +244,15 @@ mod tests {
             "openapi.json"
         ])
         .is_ok());
-        assert!(Cli::try_parse_from(["codeatlas", "dead-code", "packages", "--workspace"]).is_ok());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "dead-code",
+            "packages",
+            "--workspace",
+            "--check",
+            "--gates-only"
+        ])
+        .is_ok());
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use super::{parser, resolver};
-use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
+use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol, Visibility};
 use std::path::Path;
 
 struct ModuleInfo {
@@ -165,7 +165,10 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
             }
         }
 
-        allowed.insert(file.clone(), current_allowed);
+        allowed
+            .entry(file.clone())
+            .or_default()
+            .extend(current_allowed);
     }
 
     for (file, info) in modules {
@@ -174,6 +177,10 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 .symbols
                 .into_iter()
                 .filter(|sym| names.contains(&sym.name))
+                .map(|mut symbol| {
+                    symbol.visibility = Visibility::Public;
+                    symbol
+                })
                 .collect();
 
             crate::languages::apply_symbol_filters(&mut symbols, config);

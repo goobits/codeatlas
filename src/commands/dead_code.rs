@@ -17,10 +17,19 @@ pub(crate) fn run(
     format: DeadCodeFormat,
     out: Option<&Path>,
     check: bool,
+    gates_only: bool,
     workspace: bool,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(analyze(path, format, out, check, workspace, config_path))
+    exit_code(analyze(
+        path,
+        format,
+        out,
+        check,
+        gates_only,
+        workspace,
+        config_path,
+    ))
 }
 
 fn analyze(
@@ -28,6 +37,7 @@ fn analyze(
     format: DeadCodeFormat,
     out: Option<&Path>,
     check: bool,
+    gates_only: bool,
     workspace: bool,
     config_path: Option<&Path>,
 ) -> Result<i32> {
@@ -42,9 +52,15 @@ fn analyze(
     };
     let graph = languages::reachability::build_source_graph(&projects)?;
     let report = dead_code::analyze(&graph)?;
+    let displayed_report = gates_only.then(|| {
+        let mut displayed = report.clone();
+        displayed.findings.retain(|finding| finding.gates);
+        displayed
+    });
+    let displayed_report = displayed_report.as_ref().unwrap_or(&report);
     let rendered = match format {
-        DeadCodeFormat::Text => outputs::dead_code::render_text(&report),
-        DeadCodeFormat::Json => outputs::dead_code::render_json(&report)?,
+        DeadCodeFormat::Text => outputs::dead_code::render_text(displayed_report),
+        DeadCodeFormat::Json => outputs::dead_code::render_json(displayed_report)?,
     };
 
     output::write_text_or_print(&rendered, out, "Dead-code report")?;

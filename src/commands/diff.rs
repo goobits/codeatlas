@@ -209,6 +209,34 @@ mod tests {
         }
     }
 
+    fn class_with_property(signature: Option<&str>) -> Symbol {
+        let mut class = symbol("src/api.py", "class Client", &["example"]);
+        class.id = "py:src/api.py:class#Client".to_string();
+        class.name = "Client".to_string();
+        class.kind = SymbolKind::Class;
+        class.language = Language::Python;
+        class.package = Some("example-dist".to_string());
+        class.children = signature
+            .map(|signature| Symbol {
+                id: "py:src/api.py:property#Client.endpoint".to_string(),
+                name: "endpoint".to_string(),
+                kind: SymbolKind::Property,
+                visibility: Visibility::Public,
+                language: Language::Python,
+                file_path: "src/api.py".to_string(),
+                span: None,
+                signature: signature.to_string(),
+                docs: None,
+                export_paths: vec!["example".to_string()],
+                referenced: false,
+                package: Some("example-dist".to_string()),
+                children: Vec::new(),
+            })
+            .into_iter()
+            .collect();
+        class
+    }
+
     #[test]
     fn stable_identity_ignores_source_file_moves() {
         assert_eq!(
@@ -249,6 +277,35 @@ mod tests {
         );
 
         assert!(binding_changed(&previous, &current));
+    }
+
+    #[test]
+    fn child_property_changes_and_removals_are_breaking_bindings() {
+        let previous = ScanReport {
+            symbols: vec![class_with_property(Some("endpoint: str"))],
+            ..ScanReport::default()
+        };
+        let changed = ScanReport {
+            symbols: vec![class_with_property(Some("endpoint: bytes"))],
+            ..ScanReport::default()
+        };
+        let removed = ScanReport {
+            symbols: vec![class_with_property(None)],
+            ..ScanReport::default()
+        };
+        let previous = symbols_by_stable_key(&previous).expect("previous bindings");
+        let changed = symbols_by_stable_key(&changed).expect("changed bindings");
+        let removed = symbols_by_stable_key(&removed).expect("removed bindings");
+        let property_key = previous
+            .keys()
+            .find(|key| key.contains("Property#Client.endpoint"))
+            .expect("property binding");
+
+        assert!(binding_changed(
+            previous[property_key],
+            changed[property_key]
+        ));
+        assert!(!removed.contains_key(property_key));
     }
 
     #[test]
