@@ -290,7 +290,9 @@ Each project may select `js`, `ts`, `svelte`, `py`, and `rs`. Rust projects can
 also configure `rust.all_features` or an explicit `rust.features` list. Cargo
 library targets use public-surface semantics; binaries, examples, benches,
 build scripts, and tests use runtime semantics. Python project entrypoints are
-runtime roots. Rust reachability honors `pub(crate)`, `pub(super)`, and
+runtime roots. Python decorators that may register or replace a declaration
+conservatively retain that symbol and its dependencies while recording the
+dynamic boundary. Rust reachability honors `pub(crate)`, `pub(super)`, and
 `pub(in path)` scope instead of treating restricted exports as public, follows
 explicitly declared modules, and connects literal `include_str!` and
 `include_bytes!` source dependencies.
@@ -332,10 +334,11 @@ internal imports can fail `dead-code --check`. Public APIs without repository
 consumers remain advisory because external consumers may exist.
 
 The dead-code JSON contract is schema version 3. Project summaries include
-per-language file counts, and each finding includes the exact named context
-roots that support its classification. Scan, architecture, context, and
-dead-code reports remain separate versioned contracts rather than one
-all-purpose report.
+per-language file counts, and each finding includes one exact, deterministic
+supporting root for every context that reaches it. This keeps provenance useful
+and workspace analysis bounded even when thousands of tests share helpers.
+Scan, architecture, context, and dead-code reports remain separate versioned
+contracts rather than one all-purpose report.
 
 Use `context` to retrieve only the nearby source facts needed for a task:
 
@@ -368,14 +371,15 @@ Fail CI when the committed reference is missing or stale:
 codeatlas docs --config codeatlas.json --check
 ```
 
-`diff` identifies symbols by package, kind, and exported qualified name rather
-than source file. Additions are reported without failing; removals, signature
-changes, and removed export paths exit non-zero as breaking changes.
+`diff` identifies each public binding by package, export path, kind, and
+qualified name rather than declaration file. Non-package scans use the source
+path as the public namespace. Additions are reported without failing;
+removals and signature changes exit non-zero as breaking changes.
 
 The JSON report contains `schema_version`, `tool_version`, package metadata,
 public export paths, source signatures, structured documentation, imports, and
-unused-public findings. New report fields are additive and older baselines
-remain readable.
+unused-public findings. Baselines must use the current report schema; CodeAtlas
+does not carry legacy baseline readers.
 
 ## HTTP Contracts
 
@@ -391,6 +395,9 @@ Genuinely dynamic dispatch can declare the otherwise unknowable transport
 shape next to its implementation with `@codeatlas-http GET /items/{id}`; use
 this narrow escape hatch only when static route detection cannot recover the
 path.
+Configured `source_include_paths` and `source_exclude_paths` bound API endpoint
+contracts; page records remain complete so route and navigation tooling can
+reuse the same inventory without duplicating filesystem discovery.
 
 Add one or more OpenAPI 3.0 or 3.1 documents when exact request/response
 contracts, conformance comparison, baselines, schema fuzzing, or stateful
@@ -523,8 +530,9 @@ service does not also need to expose a schema route. They run one standard
 policy for negative-data rejection, response conformance, missing
 authentication, unsupported methods, and unhandled server errors.
 Source-transport targets run the narrower assertions that their static evidence
-can support: known operations must not crash and unsupported methods must be
-rejected.
+can support: known operations must not return any 5xx response and unsupported
+methods must be rejected. Readiness probes run before fuzz cases, so lifecycle
+statuses do not weaken the response-safety check.
 `standard` generates 75 examples per operation and `thorough` generates 750.
 The additive `stateful` profile runs 25 scenarios against explicit OpenAPI
 Links, rejects speculative link inference, and fails when it does not traverse
