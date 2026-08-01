@@ -49,17 +49,24 @@ try:
                 name.lower(): value
                 for name, value in message.get("headers", {}).items()
             }
-            components = message.get("generation", {}).get("components", {})
+            generation = message.get("generation", {})
+            components = generation.get("components", {})
+            negative_parameters = generation.get("negativeParameters", {})
+            negative_query_parameters = negative_parameters.get("query")
             negative_header = components.get("header") == "negative"
             negative_body = components.get("body") == "negative"
             negative_query = components.get("query") == "negative"
+            preserve_wait = negative_query and (
+                not isinstance(negative_query_parameters, list)
+                or "wait" in negative_query_parameters
+            )
             has_body = message.get("bodyBase64") is not None
             reply["headers"] = {"X-CodeAtlas-Static": "fixture-runtime-token"}
             if not negative_header:
                 reply["headers"]["X-CodeAtlas-Adapter"] = "fixture-adapter"
             if has_body and not negative_body:
                 reply["bodyBase64"] = message["bodyBase64"]
-            if not negative_query:
+            if not preserve_wait:
                 reply["query"] = {"wait": "0"}
             append_audit(
                 {
@@ -70,8 +77,9 @@ try:
                     "staticCredentialOverride": True,
                     "id": message_id,
                     "kind": kind,
+                    "negativeQueryParameters": negative_query_parameters,
                     "queryGeneration": components.get("query"),
-                    "queryOverride": not negative_query,
+                    "queryOverride": not preserve_wait,
                     "staticHeader": header_value(headers, "x-codeatlas-static")
                     == "fixture-static-token",
                 }

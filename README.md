@@ -548,9 +548,11 @@ sends each exact serialized request and each observed response over the versione
 header, query-value, and optional base64 body overrides before transport. Query
 replies are maps whose string or string-array values replace that name's
 generated values; `null` removes the name. They cannot replace the URL's
-scheme, authority, or path. CodeAtlas rejects an override when its component's
-generation mode is `negative`; overrides exist to supply valid fixtures or
-credentials for the remaining components.
+scheme, authority, or path. CodeAtlas rejects an override of a negatively
+generated parameter. When the engine identifies the exact negative query
+parameter, an adapter may still replace other query values so long polls and
+other valid fixtures stay deterministic. Overrides exist to supply valid
+fixtures or credentials for the remaining components.
 Response observations let an
 application-owned adapter retain workflow credentials for linked requests.
 When another header is negatively generated, an adapter may still replace a

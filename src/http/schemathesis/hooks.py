@@ -191,9 +191,11 @@ class _Adapter:
                 raise RuntimeError(
                     "CodeAtlas request adapter returned invalid query overrides"
                 )
-            if _is_negative_component(request, "query"):
+            if _is_negative_component(request, "query") and not _preserves_negative_query(
+                request, query
+            ):
                 raise RuntimeError(
-                    "CodeAtlas request adapters must preserve negatively generated queries"
+                    "CodeAtlas request adapters must preserve negatively generated query parameters"
                 )
         value["headers"] = headers
         return value
@@ -422,6 +424,24 @@ def _is_negative_component(request: dict[str, Any], component: str) -> bool:
     return isinstance(components, dict) and components.get(component) == "negative"
 
 
+def _preserves_negative_query(
+    request: dict[str, Any], overrides: dict[str, Any]
+) -> bool:
+    generation = request.get("generation")
+    parameters = (
+        generation.get("negativeParameters")
+        if isinstance(generation, dict)
+        else None
+    )
+    query_parameters = parameters.get("query") if isinstance(parameters, dict) else None
+    return (
+        isinstance(query_parameters, list)
+        and bool(query_parameters)
+        and all(isinstance(name, str) and name for name in query_parameters)
+        and not set(query_parameters).intersection(overrides)
+    )
+
+
 def _prepared_body(value: Any) -> bytes | None:
     if value is None:
         return None
@@ -462,13 +482,29 @@ def _replace_query_values(
 def _generation(case: Any) -> dict[str, Any]:
     metadata = case.meta
     if metadata is None:
-        return {"mode": "unknown", "components": {}}
+        return {"mode": "unknown", "components": {}, "negativeParameters": {}}
+    phase_data = metadata.phase.data
+    location = _enum_value(getattr(phase_data, "parameter_location", None))
+    parameter = getattr(phase_data, "parameter", None)
+    negative_parameters: dict[str, list[str]] = {}
+    if isinstance(location, str) and isinstance(parameter, str) and parameter:
+        component = next(
+            (
+                value
+                for key, value in metadata.components.items()
+                if _enum_value(key) == location
+            ),
+            None,
+        )
+        if _enum_value(getattr(component, "mode", None)) == "negative":
+            negative_parameters[location] = [parameter]
     return {
         "mode": metadata.generation.mode.value,
         "components": {
             location.value: component.mode.value
             for location, component in metadata.components.items()
         },
+        "negativeParameters": negative_parameters,
     }
 
 

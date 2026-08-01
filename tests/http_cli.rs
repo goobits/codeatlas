@@ -389,21 +389,32 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
     assert!(negative_body_ids.iter().any(|id| responses
         .iter()
         .any(|event| { event["id"] == *id && event["status"] == 400 })));
-    let negative_query_ids = requests
+    let negative_query_requests = requests
         .iter()
         .filter(|event| event["queryGeneration"] == "negative")
-        .filter_map(|event| event["id"].as_str())
         .collect::<Vec<_>>();
     assert!(
-        !negative_query_ids.is_empty(),
+        !negative_query_requests.is_empty(),
         "Schemathesis should generate a negative query case"
     );
-    assert!(negative_query_ids.iter().all(|id| requests
+    assert!(negative_query_requests
         .iter()
-        .any(|event| { event["id"] == *id && event["queryOverride"] == false })));
-    assert!(negative_query_ids.iter().any(|id| responses
+        .any(|event| event["queryOverride"] == true));
+    assert!(negative_query_requests
         .iter()
-        .any(|event| { event["id"] == *id && event["status"] == 400 })));
+        .any(|event| event["queryOverride"] == false));
+    assert!(negative_query_requests.iter().all(|event| {
+        let parameters = event["negativeQueryParameters"].as_array().map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str())
+                .collect::<Vec<_>>()
+        });
+        event["queryOverride"] == parameters.is_some_and(|names| !names.contains(&"wait"))
+    }));
+    assert!(negative_query_requests.iter().any(|event| responses
+        .iter()
+        .any(|response| { response["id"] == event["id"] && response["status"] == 400 })));
     let negative_header_ids = requests
         .iter()
         .filter(|event| event["headerGeneration"] == "negative")
