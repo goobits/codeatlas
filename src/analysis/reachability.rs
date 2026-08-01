@@ -181,6 +181,30 @@ pub(crate) fn symbol_confidence(
     symbol: &NodeId,
 ) -> FindingConfidence {
     let language = node_language(graph, file);
+    if language == Some(SourceLanguage::Rust) {
+        let rust_completeness = graph
+            .boundaries
+            .iter()
+            .filter(|boundary| {
+                &boundary.project == project
+                    && matches!(
+                        boundary.kind,
+                        BoundaryKind::MacroExpansion
+                            | BoundaryKind::ConditionalCompilation
+                            | BoundaryKind::UnsupportedSyntax
+                    )
+                    && boundary
+                        .node
+                        .as_ref()
+                        .is_none_or(|node| node_language(graph, node) == Some(SourceLanguage::Rust))
+            })
+            .fold(AnalysisCompleteness::Complete, |completeness, boundary| {
+                completeness.worst(boundary.effect)
+            });
+        if rust_completeness != AnalysisCompleteness::Complete {
+            return confidence_for_completeness(rust_completeness);
+        }
+    }
     localized_confidence(graph, project, |boundary| {
         boundary.node.as_ref().is_some_and(|node| {
             node == symbol

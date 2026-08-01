@@ -71,6 +71,10 @@ impl Visit for StaticDependencyBindingCollector {
 
 impl Visit for DynamicDependencyCollector {
     fn visit_call_expr(&mut self, call: &CallExpr) {
+        if matches!(&call.callee, Callee::Expr(expression) if is_static_existence_probe(expression))
+        {
+            return;
+        }
         let kind = match &call.callee {
             Callee::Import(_) => Some(DynamicDependencyKind::Import),
             Callee::Expr(expression) if matches!(&**expression, Expr::Ident(identifier) if identifier.sym == *"require") => {
@@ -181,6 +185,20 @@ fn is_static_file_reader(expression: &Expr, local_bindings: &BTreeSet<String>) -
             MemberProp::Ident(identifier) => is_reader(identifier.sym.as_ref()),
             MemberProp::Computed(computed) => {
                 matches!(&*computed.expr, Expr::Lit(Lit::Str(value)) if is_reader(value.value.as_ref()))
+            }
+            MemberProp::PrivateName(_) => false,
+        },
+        _ => false,
+    }
+}
+
+fn is_static_existence_probe(expression: &Expr) -> bool {
+    match expression {
+        Expr::Ident(identifier) => identifier.sym == *"existsSync",
+        Expr::Member(member) => match &member.prop {
+            MemberProp::Ident(identifier) => identifier.sym == *"existsSync",
+            MemberProp::Computed(computed) => {
+                matches!(&*computed.expr, Expr::Lit(Lit::Str(value)) if value.value == *"existsSync")
             }
             MemberProp::PrivateName(_) => false,
         },

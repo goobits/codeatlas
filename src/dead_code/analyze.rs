@@ -6,8 +6,8 @@ use crate::analysis::reachability::{
     file_confidence, project_confidence, symbol_confidence, Reachability,
 };
 use crate::domain::source_graph::{
-    BoundaryKind, ContextRole, EdgeTarget, FindingConfidence, NodeId, SourceEvidence, SourceGraph,
-    SourceLanguage, SourceNode, SourceVisibility,
+    BoundaryKind, ContextRole, EdgeTarget, FindingConfidence, NodeId, SourceEdgeKind,
+    SourceEvidence, SourceGraph, SourceLanguage, SourceNode, SourceVisibility,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
@@ -271,30 +271,36 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
 
     let mut represented_boundaries = HashSet::new();
     for edge in &graph.edges {
-        let (kind, value, confidence) = match &edge.to {
-            EdgeTarget::UnresolvedInternal(value) => (
-                DeadCodeFindingKind::UnresolvedInternalEdge,
+        let Some(project) = project_for_node(graph, &edge.from) else {
+            continue;
+        };
+        let (kind, value, confidence) = match (&edge.kind, &edge.to) {
+            (SourceEdgeKind::WorkspaceSourceBypass, EdgeTarget::Node(target)) => (
+                DeadCodeFindingKind::WorkspaceSourceBypass,
+                &target.0,
+                FindingConfidence::High,
+            ),
+            (_, EdgeTarget::UnexportedWorkspace(value)) => (
+                DeadCodeFindingKind::UnexportedWorkspaceImport,
                 value,
                 FindingConfidence::High,
             ),
-            EdgeTarget::DynamicUnknown(value) => (
-                DeadCodeFindingKind::DynamicBoundary,
+            (_, EdgeTarget::UnresolvedInternal(value)) => (
+                DeadCodeFindingKind::UnresolvedInternalEdge,
                 value,
-                project_for_node(graph, &edge.from)
-                    .map(|project| project_confidence(graph, project))
-                    .unwrap_or(FindingConfidence::Low),
+                unresolved_internal_confidence(graph, project, Some(&edge.from)),
             ),
-            EdgeTarget::Unsupported(value) => (
+            (_, EdgeTarget::DynamicUnknown(value)) => (
                 DeadCodeFindingKind::DynamicBoundary,
                 value,
-                project_for_node(graph, &edge.from)
-                    .map(|project| project_confidence(graph, project))
-                    .unwrap_or(FindingConfidence::Low),
+                project_confidence(graph, project),
+            ),
+            (_, EdgeTarget::Unsupported(value)) => (
+                DeadCodeFindingKind::DynamicBoundary,
+                value,
+                project_confidence(graph, project),
             ),
             _ => continue,
-        };
-        let Some(project) = project_for_node(graph, &edge.from) else {
-            continue;
         };
         represented_boundaries.insert((project.clone(), edge.from.clone(), kind));
         report.findings.push(finding(
@@ -315,6 +321,12 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 confidence,
                 evidence: edge.evidence.clone(),
                 message: match kind {
+                    DeadCodeFindingKind::UnexportedWorkspaceImport => {
+                        format!("Workspace import {value:?} is not declared by the target package exports.")
+                    }
+                    DeadCodeFindingKind::WorkspaceSourceBypass => {
+                        format!("Workspace source import bypasses the target package exports and resolves to {value}.")
+                    }
                     DeadCodeFindingKind::UnresolvedInternalEdge => {
                         format!("Could not resolve internal source edge {value:?}.")
                     }
@@ -338,7 +350,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             continue;
         }
         let confidence = if kind == DeadCodeFindingKind::UnresolvedInternalEdge {
-            FindingConfidence::High
+            unresolved_internal_confidence(graph, &boundary.project, boundary.node.as_ref())
         } else {
             project_confidence(graph, &boundary.project)
         };
@@ -548,6 +560,28 @@ fn file_language(graph: &SourceGraph, node: &NodeId) -> Option<SourceLanguage> {
         Some(SourceNode::File(file)) => Some(file.language),
         Some(SourceNode::Symbol(symbol)) => file_language(graph, &symbol.file),
         None => None,
+    }
+}
+
+fn unresolved_internal_confidence(
+    graph: &SourceGraph,
+    project: &crate::domain::source_graph::ProjectId,
+    node: Option<&NodeId>,
+) -> FindingConfidence {
+    let project_level_confidence = project_confidence(graph, project);
+    let rust_source = node
+        .and_then(|source| file_language(graph, source))
+        .map(|language| language == SourceLanguage::Rust)
+        .unwrap_or_else(|| {
+            graph.projects.get(project).is_some_and(|source_project| {
+                source_project.languages.len() == 1
+                    && source_project.languages.contains(&SourceLanguage::Rust)
+            })
+        });
+    if rust_source && project_level_confidence != FindingConfidence::High {
+        project_level_confidence
+    } else {
+        FindingConfidence::High
     }
 }
 

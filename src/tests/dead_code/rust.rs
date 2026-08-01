@@ -154,3 +154,101 @@ fn rust_cfg_and_macro_boundaries_stay_scoped_to_their_owner() {
     assert_eq!(unrelated_plugin.confidence, FindingConfidence::High);
     assert!(unrelated_plugin.gates);
 }
+
+#[test]
+fn partial_rust_analysis_does_not_emit_false_hard_gates() {
+    let project = ProjectId("partial-rust".to_string());
+    let entry = NodeId::file(&project, "src/lib.rs");
+    let conditional = NodeId::file(&project, "src/platform.rs");
+    let unused = NodeId::symbol(&entry, "function/unused");
+    let mut graph = SourceGraph::new();
+    graph
+        .add_project(SourceProject {
+            id: project.clone(),
+            root: ".".to_string(),
+            languages: BTreeSet::from([SourceLanguage::Rust]),
+            completeness: AnalysisCompleteness::Complete,
+        })
+        .expect("project");
+    for (node_id, path) in [
+        (entry.clone(), "src/lib.rs"),
+        (conditional.clone(), "src/platform.rs"),
+    ] {
+        graph
+            .add_node(
+                node_id,
+                SourceNode::File(SourceFile {
+                    project: project.clone(),
+                    path: path.to_string(),
+                    language: SourceLanguage::Rust,
+                }),
+            )
+            .expect("file");
+    }
+    graph
+        .add_node(
+            unused.clone(),
+            SourceNode::Symbol(SourceSymbol {
+                project: project.clone(),
+                file: entry.clone(),
+                name: "unused".to_string(),
+                symbol_kind: SourceSymbolKind::Function,
+                visibility: SourceVisibility::Private,
+                span: None,
+            }),
+        )
+        .expect("symbol");
+    graph.edges.insert(SourceEdge {
+        from: entry.clone(),
+        to: EdgeTarget::Node(unused),
+        kind: SourceEdgeKind::Contains,
+        bindings: Vec::new(),
+        evidence: SourceEvidence {
+            path: "src/lib.rs".to_string(),
+            span: None,
+            extractor: "test".to_string(),
+        },
+    });
+    graph.edges.insert(SourceEdge {
+        from: entry.clone(),
+        to: EdgeTarget::UnresolvedInternal("crate::platform_api".to_string()),
+        kind: SourceEdgeKind::LexicalReference,
+        bindings: Vec::new(),
+        evidence: SourceEvidence {
+            path: "src/lib.rs".to_string(),
+            span: None,
+            extractor: "test".to_string(),
+        },
+    });
+    graph.record_boundary(
+        &project,
+        Some(conditional),
+        BoundaryKind::ConditionalCompilation,
+        AnalysisCompleteness::Partial,
+        "platform-specific implementation",
+        SourceEvidence {
+            path: "src/platform.rs".to_string(),
+            span: None,
+            extractor: "test".to_string(),
+        },
+    );
+    graph
+        .add_context(SourceContext {
+            id: ContextId::new(&project, "application"),
+            project,
+            name: "application".to_string(),
+            role: ContextRole::Production,
+            scope: ContextScope::Runtime,
+            roots: BTreeSet::from([entry]),
+        })
+        .expect("context");
+
+    let report = dead_code::analyze(&graph).expect("dead-code report");
+    for finding in report.findings.iter().filter(|finding| {
+        finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
+            || finding.symbol.as_deref() == Some("unused")
+    }) {
+        assert_eq!(finding.confidence, FindingConfidence::Medium);
+        assert!(!finding.gates);
+    }
+}

@@ -90,9 +90,17 @@ pub(crate) fn run_ci(
     consumer_root: Option<&Path>,
     fail_unused: bool,
     baseline: Option<PathBuf>,
+    workspace: bool,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(ci(path, consumer_root, fail_unused, baseline, config_path))
+    exit_code(ci(
+        path,
+        consumer_root,
+        fail_unused,
+        baseline,
+        workspace,
+        config_path,
+    ))
 }
 
 fn ci(
@@ -100,45 +108,30 @@ fn ci(
     consumer_root: Option<&Path>,
     fail_unused: bool,
     baseline: Option<PathBuf>,
+    workspace: bool,
     config_path: Option<&Path>,
 ) -> Result<i32> {
     validate_consumer_root(consumer_root)?;
-    let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, false, None)?;
-    let mut report = scan_project(&project, &config)?;
-    annotate_report(&mut report, &project)?;
-
-    if fail_unused {
-        let mut importers = analysis::annotate_imports(
-            &mut report,
-            &project.root,
-            project.config.no_default_ignore,
-        );
-        if let Some(consumer_root) = consumer_root {
-            analysis::annotate_package_consumers(
-                &mut report,
-                &mut importers,
-                consumer_root,
-                project.config.no_default_ignore,
-            );
-        }
-        analysis::annotate_unused_public(&mut report, &importers, project.config.no_default_ignore);
-    }
+    let scan = diff::create_baseline(path, workspace, fail_unused, consumer_root, config_path)?;
 
     if let Some(baseline_path) = baseline {
-        let json = outputs::json::render(&report)?;
+        let json = diff::render_baseline(&scan.baseline)?;
         output::write_file(&baseline_path, &json)?;
         eprintln!("Baseline written to {}", baseline_path.display());
     }
 
-    let issue_count = report.unused_public.len();
+    let issue_count = scan.unused_public.len();
     if issue_count == 0 {
-        println!("No issues found. {} public symbols.", report.symbols.len());
+        println!(
+            "No issues found. {} public API symbols across {} package(s).",
+            scan.baseline.symbol_count(),
+            scan.baseline.packages.len()
+        );
         Ok(0)
     } else {
         println!("{} unused public export(s) found.", issue_count);
-        for unused in &report.unused_public {
-            println!("  - {}", unused.id);
+        for unused in &scan.unused_public {
+            println!("  - {unused}");
         }
         println!("\nRun 'codeatlas audit' for fix suggestions.");
         Ok(1)

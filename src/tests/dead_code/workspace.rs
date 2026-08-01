@@ -84,12 +84,12 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     }));
     assert!(graph.edges.iter().any(|edge| {
         edge.from == a_entry
-            && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.kind == SourceEdgeKind::WorkspaceSourceBypass
             && edge.to == EdgeTarget::Node(b_absolute.clone())
     }));
     assert!(graph.edges.iter().any(|edge| {
         edge.from == root_docs
-            && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.kind == SourceEdgeKind::WorkspaceSourceBypass
             && edge.to == EdgeTarget::Node(b_absolute.clone())
     }));
     assert!(graph.edges.iter().any(|edge| {
@@ -99,13 +99,13 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     }));
     assert!(graph.edges.iter().any(|edge| {
         edge.from == a_entry
-            && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.kind == SourceEdgeKind::WorkspaceSourceBypass
             && edge.to == EdgeTarget::Node(b_alias.clone())
     }));
     let glob_edges = graph
         .edges
         .iter()
-        .filter(|edge| edge.kind == SourceEdgeKind::GlobImport)
+        .filter(|edge| edge.kind == SourceEdgeKind::WorkspaceSourceBypass)
         .collect::<Vec<_>>();
     assert!(
         glob_edges.iter().any(|edge| {
@@ -115,8 +115,12 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     );
     assert!(graph.edges.iter().any(|edge| {
         edge.from == a_entry
-            && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.kind == SourceEdgeKind::WorkspaceSourceBypass
             && edge.to == EdgeTarget::Node(b_shared.clone())
+    }));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.from == a_entry
+            && edge.to == EdgeTarget::UnexportedWorkspace("@fixture/b/private".to_string())
     }));
     let alias_factory_edges = graph
         .edges
@@ -179,6 +183,12 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
         .contains(&NodeId::file(&package_b, "src/hooks.server.ts")));
 
     let report = dead_code::analyze(&graph).expect("workspace dead-code report");
+    assert!(report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnexportedWorkspaceImport && finding.gates
+    }));
+    assert!(report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::WorkspaceSourceBypass && finding.gates
+    }));
     assert!(!report.findings.iter().any(|finding| {
         finding.project == "@fixture/b"
             && finding.path == "docs/meta/demo.ts"

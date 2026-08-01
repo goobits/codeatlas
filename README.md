@@ -11,10 +11,13 @@ claiming certainty when the source graph is incomplete.
 npx @goobits/codeatlas scan .
 npx @goobits/codeatlas audit .
 npx @goobits/codeatlas audit packages/example --consumer-root .
+npx @goobits/codeatlas ci . --workspace --fail-unused false --baseline public-api.json
+npx @goobits/codeatlas diff public-api.json . --workspace --exact
 npx @goobits/codeatlas dead-code . --format json
 npx @goobits/codeatlas dead-code packages --workspace --format json
 npx @goobits/codeatlas context . --target src/main.rs
 npx @goobits/codeatlas architecture compile architecture/root.atlas.yaml --source-root .
+npx @goobits/codeatlas architecture source-check architecture/root.atlas.yaml --source-root . --repository . --check
 npx @goobits/codeatlas architecture providers architecture/root.atlas.yaml --source-root . --capability example.capability.context
 npx @goobits/codeatlas docs . --out docs/API-Reference.md
 npx @goobits/codeatlas docs . --format html --out docs/API-Reference.html
@@ -41,8 +44,8 @@ a positive integer to allow more parallel build work.
 | `dead-code`    | Classify source reachability, context-only code, and uncertain boundaries              |
 | `context`      | Return a bounded source graph slice for exact files or symbols                         |
 | `architecture` | Compile declarations, query provider approvals, observe bindings, and evaluate conformance |
-| `ci`           | Write a JSON baseline and fail on configured audit findings                            |
-| `diff`         | Compare the current public symbols with a JSON baseline                                |
+| `ci`           | Write a compact public API baseline and fail on configured audit findings              |
+| `diff`         | Compare public APIs with compatibility or exact drift policy                           |
 | `map`          | Generate a Mermaid dependency diagram                                                  |
 | `docs`         | Generate deterministic Markdown or searchable HTML from public exports and source docs |
 | `http`         | Inventory source routes, check/diff OpenAPI contracts, and run schema or transport fuzzing |
@@ -129,6 +132,27 @@ Policies are optional repeatable `--policy` inputs. They can authorize a
 temporary deviation, but they never modify the governing graph. Callers supply
 source commits and timestamps explicitly so generated evidence is
 reproducible.
+
+Check workspace imports against package exports and accepted dependency
+constraints without requiring a source commit or timestamp:
+
+```bash
+codeatlas architecture source-check \
+  architecture/root.atlas.yaml \
+  --source-root . \
+  --repository . \
+  --check \
+  --out .codeatlas/source-conformance.json
+```
+
+The source check discovers pnpm workspace ownership, resolves JavaScript,
+TypeScript, and Svelte imports, and reports three deterministic errors:
+unexported workspace package imports, direct cross-package source bypasses,
+and observed `depends_on` paths forbidden by accepted `no_path` or
+`forbids_relation` constraints. Aliases that resolve to the exact maintained
+target of a declared package export remain valid. Repository-root tooling and
+same-package implementation imports are not treated as cross-package API
+violations. The report is deterministic and VCS-neutral.
 
 ## Configuration
 
@@ -389,6 +413,41 @@ noise. The schema-v2 result includes dependencies, dependents, visibility,
 evidence, analysis boundaries, and an explicit truncation status.
 The source context graph remains separate from the declared architecture graph
 because the two graphs have different authority and semantics.
+
+## Public API Baselines
+
+Write one deterministic baseline for every public package in the nearest pnpm
+workspace:
+
+```bash
+codeatlas ci . \
+  --workspace \
+  --fail-unused false \
+  --baseline .codeatlas/baselines/public-api.json
+```
+
+Fail on additions, removals, export moves, signature changes, or visibility
+changes:
+
+```bash
+codeatlas diff \
+  .codeatlas/baselines/public-api.json \
+  . \
+  --workspace \
+  --exact
+```
+
+The `codeatlas.public-api-baseline` schema stores only sorted package export
+paths, stable symbol identities, and deterministic contract fingerprints.
+Identity is the package, export path, symbol kind, and qualified name, so
+source-file moves do not create drift and same-named exports on distinct
+subpaths cannot overwrite each other. Overloads sharing one public identity
+are retained as a sorted fingerprint set.
+
+Without `--exact`, additions are reported but only removals and contract
+changes fail. Exact mode is intended for repositories that require every API
+change to update a reviewed baseline. `diff` continues to read full scan-report
+baselines written by released CodeAtlas 0.7 versions.
 
 ## Documentation Checks
 

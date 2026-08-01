@@ -99,10 +99,29 @@ pub(super) enum ArchitectureCommand {
         #[arg(long)]
         check: bool,
     },
+
+    /// Check observed workspace imports against package exports and declared architecture
+    SourceCheck {
+        /// Root ArchitectureModule documents
+        #[arg(required = true)]
+        modules: Vec<PathBuf>,
+        /// Filesystem boundary for modules and local imports
+        #[arg(long, default_value = ".")]
+        source_root: PathBuf,
+        /// Repository and workspace to inspect
+        #[arg(long, default_value = ".")]
+        repository: PathBuf,
+        /// Write the deterministic source conformance report instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Exit non-zero for source conformance errors
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 impl ArchitectureCommand {
-    pub(super) fn run(self) -> i32 {
+    pub(super) fn run(self, config_path: Option<&std::path::Path>) -> i32 {
         match self {
             Self::Compile {
                 modules,
@@ -168,6 +187,22 @@ impl ArchitectureCommand {
                 out: out.as_deref(),
                 check,
             }),
+            Self::SourceCheck {
+                modules,
+                source_root,
+                repository,
+                out,
+                check,
+            } => commands::architecture::source_check::run(
+                &commands::architecture::source_check::Options {
+                    modules: &modules,
+                    source_root: &source_root,
+                    repository_root: &repository,
+                    config_path,
+                    out: out.as_deref(),
+                    check,
+                },
+            ),
         }
     }
 }

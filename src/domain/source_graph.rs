@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-pub(crate) const SOURCE_GRAPH_SCHEMA_VERSION: u32 = 3;
+pub(crate) const SOURCE_GRAPH_SCHEMA_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SourceGraph {
@@ -412,6 +412,7 @@ pub(crate) struct SourceEdge {
 pub(crate) enum EdgeTarget {
     Node(NodeId),
     External(String),
+    UnexportedWorkspace(String),
     UnresolvedInternal(String),
     DynamicUnknown(String),
     Unsupported(String),
@@ -427,6 +428,7 @@ pub(crate) enum SourceEdgeKind {
     DynamicImport,
     GlobImport,
     Require,
+    WorkspaceSourceBypass,
     LexicalReference,
     AssumeReachable,
 }
