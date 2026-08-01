@@ -423,6 +423,51 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         TcpListener::bind(("127.0.0.1", port)).is_ok(),
         "managed fuzzer server should release its port"
     );
+
+    let stateful_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+        .args([
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "http",
+            "fuzz",
+            directory
+                .path()
+                .to_str()
+                .expect("fixture root should be UTF-8"),
+            "--target",
+            "fixture-local",
+            "--profile",
+            "stateful",
+            "--max-examples",
+            "12",
+            "--seed",
+            "424242",
+        ])
+        .env("CODEATLAS_PYTHON", &python)
+        .output()
+        .expect("CodeAtlas managed stateful smoke should start");
+    assert!(
+        stateful_output.status.success(),
+        "CodeAtlas managed stateful smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&stateful_output.stdout),
+        String::from_utf8_lossy(&stateful_output.stderr)
+    );
+
+    let stateful_summary: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            directory
+                .path()
+                .join("reports/fixture-local/stateful/summary.json"),
+        )
+        .expect("stateful summary should be written"),
+    )
+    .expect("stateful summary should be JSON");
+    assert_eq!(stateful_summary["stateful"]["linksSelected"], 1);
+    assert_eq!(stateful_summary["stateful"]["linksCovered"], 1);
+    assert!(
+        TcpListener::bind(("127.0.0.1", port)).is_ok(),
+        "managed stateful server should release its port"
+    );
 }
 
 fn configured_python() -> String {

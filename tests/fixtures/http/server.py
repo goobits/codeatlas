@@ -30,7 +30,24 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self._respond(204)
             return
         if path.startswith("/widgets/"):
-            self._method_not_allowed("POST")
+            parsed = urlparse(self.path)
+            limit = parse_qs(parsed.query, keep_blank_values=True).get("limit")
+            if limit is None or len(limit) != 1:
+                self._respond(400, b'{"error":"invalid_query"}')
+                return
+            try:
+                parsed_limit = int(limit[0])
+            except ValueError:
+                self._respond(400, b'{"error":"invalid_query"}')
+                return
+            if not 1 <= parsed_limit <= 10:
+                self._respond(400, b'{"error":"invalid_query"}')
+                return
+            response = json.dumps(
+                {"id": unquote(path[len("/widgets/") :]), "name": "fixture"},
+                separators=(",", ":"),
+            ).encode()
+            self._respond(200, response)
             return
         self._respond(404, b'{"error":"not_found"}')
 
@@ -116,7 +133,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _allowed_method(self) -> str:
-        return "POST" if urlparse(self.path).path.startswith("/widgets/") else "GET"
+        return "GET, POST" if urlparse(self.path).path.startswith("/widgets/") else "GET"
 
     def _has_static_header(self) -> bool:
         return required_static_header is None or (

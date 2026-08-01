@@ -10,6 +10,30 @@ paths:
         "204":
           description: Ready
   /widgets/{id}:
+    get:
+      operationId: getWidget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+      responses:
+        "200":
+          description: Widget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+        "400":
+          description: Invalid widget request
     post:
       operationId: updateWidget
       parameters:
@@ -45,6 +69,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Widget"
+          links:
+            readWidget:
+              operationId: getWidget
+              parameters:
+                id: $response.body#/id
         "400":
           description: Invalid widget request
 components:

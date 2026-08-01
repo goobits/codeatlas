@@ -9,6 +9,7 @@ import os
 import queue
 import subprocess
 import threading
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -329,6 +330,8 @@ def codeatlas_negative_data_rejection(
         "query",
     }:
         return None
+    if _stateful_numeric_query_type_round_trip(case):
+        return None
     return _schemathesis_negative_data_rejection(context, response, case)
 
 
@@ -361,6 +364,56 @@ if _STATIC_HEADERS:
 
 def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
+
+
+def _stateful_numeric_query_type_round_trip(case: Any) -> bool:
+    """Ignore type mutations that become valid numeric strings on the wire."""
+    metadata = case.meta
+    if metadata is None or _enum_value(getattr(metadata.phase, "name", None)) != "stateful":
+        return False
+
+    phase_data = metadata.phase.data
+    if _enum_value(getattr(phase_data, "parameter_location", None)) != "query":
+        return False
+    mutations = getattr(phase_data, "mutations", ())
+    if (
+        len(mutations) != 1
+        or _enum_value(getattr(mutations[0], "operator", None)) != "change_type"
+    ):
+        return False
+
+    for component_location, component in metadata.components.items():
+        if (
+            _enum_value(component_location) != "query"
+            and _enum_value(getattr(component, "mode", None)) == "negative"
+        ):
+            return False
+
+    parameter_name = getattr(phase_data, "parameter", None)
+    query = getattr(case, "query", None)
+    operation_query = getattr(case.operation, "query", None)
+    if (
+        not isinstance(parameter_name, str)
+        or not isinstance(query, dict)
+        or operation_query is None
+    ):
+        return False
+    value = query.get(parameter_name)
+    parameter = operation_query.get(parameter_name)
+    definition = getattr(parameter, "definition", None)
+    schema = definition.get("schema") if isinstance(definition, dict) else None
+    expected = schema.get("type") if isinstance(schema, dict) else None
+    expected_types = {expected} if isinstance(expected, str) else set(expected or ())
+    if not isinstance(value, str) or not expected_types.intersection({"integer", "number"}):
+        return False
+
+    try:
+        numeric = Decimal(value)
+    except InvalidOperation:
+        return False
+    if not numeric.is_finite():
+        return False
+    return "number" in expected_types or numeric == numeric.to_integral_value()
 
 
 def _is_negative_component(request: dict[str, Any], component: str) -> bool:
