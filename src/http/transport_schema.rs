@@ -156,7 +156,7 @@ mod tests {
         HttpConfidence, HttpSourceCompleteness, HttpSourceEvidence, HttpSourceInventory,
         HttpSourceOperation, HttpSourceOperationKind,
     };
-    use crate::http::target::ResolvedHttpFuzzTarget;
+    use crate::http::target::{parse_http_fuzz_operation, ResolvedHttpFuzzTarget};
     use std::collections::BTreeMap;
 
     #[test]
@@ -172,6 +172,9 @@ mod tests {
             report_root: None,
             server: None,
             request_adapter: None,
+            operations: vec![
+                parse_http_fuzz_operation("POST /widgets/{id}").expect("selected operation")
+            ],
             positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
             suppress_health_checks: Vec::new(),
             suppress_warnings: false,
@@ -179,20 +182,24 @@ mod tests {
         let source = HttpSourceInventory {
             completeness: HttpSourceCompleteness::Complete,
             reason: "fixture".to_string(),
-            operations: vec![HttpSourceOperation {
-                key: "POST /widgets/{id}".to_string(),
-                method: "POST".to_string(),
-                path: "/widgets/{id}".to_string(),
-                kind: HttpSourceOperationKind::Endpoint,
-                schema_missing: true,
-                path_pattern: None,
-                detector: "fixture".to_string(),
-                confidence: HttpConfidence::High,
-                evidence: HttpSourceEvidence {
-                    path: "src/server.ts".to_string(),
-                    line: 1,
-                },
-            }],
+            operations: ["GET", "POST"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, method)| HttpSourceOperation {
+                    key: format!("{method} /widgets/{{id}}"),
+                    method: method.to_string(),
+                    path: "/widgets/{id}".to_string(),
+                    kind: HttpSourceOperationKind::Endpoint,
+                    schema_missing: true,
+                    path_pattern: None,
+                    detector: "fixture".to_string(),
+                    confidence: HttpConfidence::High,
+                    evidence: HttpSourceEvidence {
+                        path: "src/server.ts".to_string(),
+                        line: index as u32 + 1,
+                    },
+                })
+                .collect(),
             skipped_files: Vec::new(),
         };
 
@@ -201,6 +208,10 @@ mod tests {
         assert_eq!(
             document["paths"]["/widgets/{id}"]["post"]["parameters"][0]["name"],
             "id"
+        );
+        assert!(
+            document["paths"]["/widgets/{id}"]["get"].is_object(),
+            "unsupported-method probes need every actual sibling method even when the target selects only POST"
         );
         assert_eq!(
             document["paths"]["/widgets/{id}"]["post"]["requestBody"]["required"],

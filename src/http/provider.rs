@@ -39,8 +39,16 @@ raise SystemExit(f"Could not fetch configured OpenAPI URL: {last_error}")
 "#;
 
 pub(super) fn load(source: &ResolvedHttpOpenApiSource, label: &str) -> Result<LoadedOpenApi> {
+    read_with_inventory(source, label).map(|(_, openapi)| openapi)
+}
+
+pub(super) fn read_with_inventory(
+    source: &ResolvedHttpOpenApiSource,
+    label: &str,
+) -> Result<(Vec<u8>, LoadedOpenApi)> {
     let output = read(source, label)?;
-    parse_output(&output, label)
+    let openapi = parse_output(&output, label)?;
+    Ok((output, openapi))
 }
 
 pub(super) fn read(source: &ResolvedHttpOpenApiSource, label: &str) -> Result<Vec<u8>> {

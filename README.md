@@ -355,16 +355,19 @@ Use `context` to retrieve only the nearby source facts needed for a task:
 
 ```bash
 codeatlas context . \
-  --target src/architecture/compiler.rs \
-  --target src/architecture/compiler.rs#compile \
+  --target core::src/architecture/compiler.rs#compile \
+  --target packages/web/src/routes.ts \
   --depth 2 \
   --max-nodes 128 \
   --out .codeatlas/context.json
 ```
 
-Targets are exact source graph node IDs, repository-relative paths, or
-`path#symbol` selectors. The result includes dependencies, dependents,
-visibility, evidence, analysis boundaries, and an explicit truncation status.
+Targets are exact source graph node IDs, `project::path` selectors,
+repository-relative paths, or `path#symbol` selectors. Repeat `--target` to
+resolve a batch into one bounded slice. Ambiguous project-relative paths fail
+with a qualification hint, and exact reflexive edges are omitted as graph
+noise. The schema-v2 result includes dependencies, dependents, visibility,
+evidence, analysis boundaries, and an explicit truncation status.
 The source context graph remains separate from the declared architecture graph
 because the two graphs have different authority and semantics.
 
@@ -432,6 +435,10 @@ workflows are needed:
           "id": "public-local",
           "contract": "public-api",
           "base_url": "http://127.0.0.1:3443",
+          "operations": [
+            "GET /health",
+            "POST /widgets/{id}"
+          ],
           "environment": {
             "NODE_ENV": "test",
             "PORT": "3443"
@@ -503,14 +510,16 @@ fetcher over standard input rather than exposed in process arguments.
 
 Without OpenAPI, `http check` emits one non-gating schema-missing warning while
 retaining the source inventory. `http fuzz` automatically turns discovered
-endpoints into a temporary source-transport contract. It exercises path
+endpoints into a temporary source-transport contract after the target declares
+a non-empty `operations` allowlist. It exercises path
 serialization, arbitrary request bodies, unsupported methods, and server-error
 handling without pretending that CodeAtlas inferred domain fields, query
 parameters, authentication rules, or response schemas. Source-transport
-reports are labeled `contractMode: "source_transport"`; aggregate positive
-coverage gates and the stateful profile remain exclusive to explicit OpenAPI
-contracts. `http baseline`, `http diff`, and baseline comparison also require
-schema-backed contracts.
+reports are labeled `contractMode: "source_transport"`; the stateful profile
+remains exclusive to explicit OpenAPI contracts. Curated source-transport
+operations receive the same retained-evidence and positive-coverage gates as
+curated OpenAPI operations. `http baseline`, `http diff`, and baseline
+comparison also require schema-backed contracts.
 
 With OpenAPI, `http check` also reports malformed path parameters, undefined security
 schemes, missing success/error responses, missing request/response schemas,
@@ -546,8 +555,12 @@ every selected link. Run `standard` and `stateful` to cover both isolated
 request behavior and declared resource workflows. `--max-examples` provides a
 focused local override. Every run prints its exact random seed; pass it back
 through `--seed` to reproduce the generated sequence.
-`--operation "METHOD /path"` narrows a local debugging run without exposing
-Schemathesis-specific filters. Focused reports are retained in distinct,
+The target-owned `operations` list is the authoritative fuzz boundary.
+`--operation "METHOD /path"` can only narrow that list for local debugging; it
+cannot expand it. CodeAtlas validates every configured operation against the
+selected contract, requires retained evidence for each selection, and keeps
+all real sibling methods visible so an unsupported-method probe never calls a
+different real operation. Focused reports are retained in distinct,
 operation-specific directories beneath the selected profile, so one targeted
 run does not erase evidence from another. Header values can be literal test
 values or come from the target environment with `value_env`; do not commit real
@@ -558,7 +571,7 @@ unique owner-only file for the run, is removed when its owner exits normally,
 and is removed from the adapter process environment before the adapter starts.
 A target may also declare a long-lived `request_adapter` command. CodeAtlas
 sends each exact serialized request and each observed response over the versioned
-`codeatlas.http-request-adapter/v1` JSONL protocol. Request replies supply
+`codeatlas.http-request-adapter/v2` JSONL protocol. Request replies supply
 header and optional base64 body overrides before transport. CodeAtlas rejects
 an override when its component's generation mode is `negative`; overrides
 exist to supply valid fixtures or credentials for the remaining components.
@@ -578,14 +591,15 @@ stateful link/scenario coverage. Projects retain only their domain-owned
 runtime fixture, optional explicit OpenAPI contract and Links, adapter, and
 target configuration.
 
-For complete standard and thorough runs, `positive_coverage` turns that evidence
-into a regression gate without copying an operation allowlist. Set
+For complete standard and thorough runs—and focused runs backed by a configured
+target allowlist—`positive_coverage` turns that evidence into a regression
+gate. Set
 `max_operations_without_success` to the current reviewed floor and ratchet it
 down as contract examples and local fixtures improve; a newly uncovered
 operation or a lost positive path then fails locally. Keep
 `max_authentication_rejection_only_operations` at zero when the target supplies
-working test credentials. Focused `--operation` runs and the additive stateful
-profile do not apply the aggregate budget. CodeAtlas's authentication probe
+working test credentials. Uncurated one-off OpenAPI `--operation` runs and the
+additive stateful profile do not apply the aggregate budget. CodeAtlas's authentication probe
 accepts 401, 403, and privacy-preserving 404 rejections.
 
 This command covers HTTP operations exposed by the selected OpenAPI contract or

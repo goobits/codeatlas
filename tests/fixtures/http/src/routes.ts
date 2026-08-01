@@ -5,4 +5,9 @@ export const updateWidget = createRoute({
 	path: '/widgets/{id}',
 })
 
+export const getWidget = createRoute({
+	method: 'get',
+	path: '/widgets/{id}',
+})
+
 app.get('/health', () => new Response(null, { status: 204 }))

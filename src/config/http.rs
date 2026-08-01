@@ -67,6 +67,7 @@ pub(crate) struct HttpFuzzTargetConfig {
     pub report_dir: Option<PathBuf>,
     pub server: Option<HttpFuzzServerConfig>,
     pub request_adapter: Option<HttpFuzzCommandConfig>,
+    pub operations: Vec<String>,
     pub positive_coverage: HttpFuzzPositiveCoverageConfig,
     pub suppress_health_checks: Vec<HttpFuzzHealthCheck>,
     pub suppress_warnings: bool,
@@ -84,6 +85,7 @@ impl Default for HttpFuzzTargetConfig {
             report_dir: None,
             server: None,
             request_adapter: None,
+            operations: Vec::new(),
             positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
             suppress_health_checks: Vec::new(),
             suppress_warnings: false,
@@ -180,6 +182,10 @@ mod tests {
                                 "command": "node",
                                 "args": ["src/sign-fuzz-request.js"]
                             },
+                            "operations": [
+                                "GET /health",
+                                "POST /widgets/{id}"
+                            ],
                             "positive_coverage": {
                                 "max_operations_without_success": 3,
                                 "max_authentication_rejection_only_operations": 0
@@ -222,6 +228,7 @@ mod tests {
                 .map(String::as_str),
             Some("src/sign-fuzz-request.js")
         );
+        assert_eq!(target.operations, ["GET /health", "POST /widgets/{id}"]);
         assert_eq!(
             target.positive_coverage.max_operations_without_success,
             Some(3)

@@ -30,7 +30,11 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self._respond(204)
             return
         if path.startswith("/widgets/"):
-            self._method_not_allowed("POST")
+            response = json.dumps(
+                {"id": unquote(path[len("/widgets/") :]), "name": "fixture"},
+                separators=(",", ":"),
+            ).encode()
+            self._respond(200, response)
             return
         self._respond(404, b'{"error":"not_found"}')
 
@@ -69,6 +73,9 @@ class FixtureHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         self._method_not_allowed(self._allowed_method())
 
+    def do_HEAD(self) -> None:
+        self._method_not_allowed(self._allowed_method())
+
     def do_OPTIONS(self) -> None:
         self._method_not_allowed(self._allowed_method())
 
@@ -76,6 +83,9 @@ class FixtureHandler(BaseHTTPRequestHandler):
         self._method_not_allowed(self._allowed_method())
 
     def do_PUT(self) -> None:
+        self._method_not_allowed(self._allowed_method())
+
+    def do_TRACE(self) -> None:
         self._method_not_allowed(self._allowed_method())
 
     def log_message(self, _format: str, *_args: object) -> None:
@@ -100,7 +110,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _allowed_method(self) -> str:
-        return "POST" if urlparse(self.path).path.startswith("/widgets/") else "GET"
+        return "GET, POST" if urlparse(self.path).path.startswith("/widgets/") else "GET"
 
     def _has_static_header(self) -> bool:
         return required_static_header is None or (

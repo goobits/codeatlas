@@ -1,15 +1,16 @@
 use crate::http::private_fs;
 use crate::http::target::{
-    ResolvedHttpFuzzCommand, ResolvedHttpFuzzTarget, REQUEST_HOOK_CONFIG_ENV,
+    HttpFuzzOperation, ResolvedHttpFuzzCommand, ResolvedHttpFuzzTarget, REQUEST_HOOK_CONFIG_ENV,
 };
 use anyhow::{Context, Result};
 use serde::Serialize;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub(super) const API_VERSION: &str = "codeatlas.http-request-adapter/v1";
+pub(super) const API_VERSION: &str = "codeatlas.http-request-adapter/v2";
 const HOOK_SOURCE: &str = include_str!("hooks.py");
 static CONFIG_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -56,6 +57,7 @@ struct RequestHooksConfig<'a> {
     api_version: &'static str,
     headers: Vec<HeaderConfig<'a>>,
     adapter: Option<AdapterConfig<'a>>,
+    methods_by_path: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -82,7 +84,10 @@ impl<'a> From<&'a ResolvedHttpFuzzCommand> for AdapterConfig<'a> {
     }
 }
 
-pub(super) fn prepare(target: &ResolvedHttpFuzzTarget) -> Result<PreparedRequestHooks> {
+pub(super) fn prepare(
+    target: &ResolvedHttpFuzzTarget,
+    operations: &[HttpFuzzOperation],
+) -> Result<PreparedRequestHooks> {
     let hook_root = crate::http::environment::cache_base()
         .join("codeatlas")
         .join("hooks")
@@ -114,6 +119,7 @@ pub(super) fn prepare(target: &ResolvedHttpFuzzTarget) -> Result<PreparedRequest
             })
             .collect(),
         adapter: target.request_adapter.as_ref().map(AdapterConfig::from),
+        methods_by_path: methods_by_path(operations),
     })?;
     let config = PrivateConfig::create(&hook_root, &config)?;
     Ok(PreparedRequestHooks { hook_path, config })
@@ -124,6 +130,7 @@ pub(super) fn validate(schemathesis: &Path, hooks: &PreparedRequestHooks) -> Res
         api_version: API_VERSION,
         headers: Vec::new(),
         adapter: None,
+        methods_by_path: BTreeMap::new(),
     })?;
     let hook_root = hooks
         .hook_path
@@ -157,9 +164,27 @@ pub(super) fn validate(schemathesis: &Path, hooks: &PreparedRequestHooks) -> Res
     Ok(())
 }
 
+fn methods_by_path(operations: &[HttpFuzzOperation]) -> BTreeMap<String, Vec<String>> {
+    let mut methods = BTreeMap::<String, BTreeSet<String>>::new();
+    for operation in operations {
+        methods
+            .entry(operation.path.clone())
+            .or_default()
+            .insert(operation.method.clone());
+    }
+    methods
+        .into_iter()
+        .map(|(path, methods)| (path, methods.into_iter().collect()))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AdapterConfig, HeaderConfig, PrivateConfig, RequestHooksConfig, API_VERSION};
+    use super::{
+        methods_by_path, AdapterConfig, HeaderConfig, PrivateConfig, RequestHooksConfig,
+        API_VERSION,
+    };
+    use crate::http::target::parse_http_fuzz_operation;
 
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
@@ -178,6 +203,10 @@ mod tests {
                 args: &args,
                 cwd: "/workspace".to_string(),
             }),
+            methods_by_path: methods_by_path(&[
+                parse_http_fuzz_operation("GET /widgets/{id}").expect("GET operation"),
+                parse_http_fuzz_operation("POST /widgets/{id}").expect("POST operation"),
+            ]),
         })
         .expect("request adapter configuration");
 
@@ -186,6 +215,10 @@ mod tests {
         assert_eq!(config["headers"][0]["value"], "Bearer test-token");
         assert_eq!(config["adapter"]["command"], "node");
         assert_eq!(config["adapter"]["args"][0], "adapter.js");
+        assert_eq!(
+            config["methodsByPath"]["/widgets/{id}"],
+            serde_json::json!(["GET", "POST"])
+        );
     }
 
     #[test]

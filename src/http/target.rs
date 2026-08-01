@@ -48,9 +48,17 @@ pub(crate) struct ResolvedHttpFuzzTarget {
     pub report_root: Option<PathBuf>,
     pub server: Option<ResolvedHttpFuzzServer>,
     pub request_adapter: Option<ResolvedHttpFuzzCommand>,
+    pub operations: Vec<HttpFuzzOperation>,
     pub positive_coverage: HttpFuzzPositiveCoverageConfig,
     pub suppress_health_checks: Vec<HttpFuzzHealthCheck>,
     pub suppress_warnings: bool,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub(crate) struct HttpFuzzOperation {
+    pub name: String,
+    pub method: String,
+    pub path: String,
 }
 
 #[derive(Debug, Clone)]
@@ -361,6 +369,24 @@ impl ProjectConfig {
             &target.environment,
             &format!("HTTP fuzz target {}", target.id),
         )?;
+        let mut operation_names = BTreeSet::new();
+        let operations = target
+            .operations
+            .iter()
+            .map(|operation| {
+                let operation = parse_http_fuzz_operation(operation).with_context(|| {
+                    format!("Invalid operation in HTTP fuzz target {}", target.id)
+                })?;
+                if !operation_names.insert(operation.name.clone()) {
+                    anyhow::bail!(
+                        "HTTP fuzz target {} repeats operation {}",
+                        target.id,
+                        operation.name
+                    );
+                }
+                Ok(operation)
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         let mut headers = Vec::with_capacity(target.headers.len());
         for header in &target.headers {
@@ -431,6 +457,7 @@ impl ProjectConfig {
             report_root,
             server,
             request_adapter,
+            operations,
             positive_coverage: target.positive_coverage.clone(),
             suppress_health_checks: target.suppress_health_checks.clone(),
             suppress_warnings: target.suppress_warnings,
@@ -501,6 +528,31 @@ impl ProjectConfig {
             .collect::<Result<Vec<_>>>()?;
         Ok(ResolvedHttpFuzzServer { command, prepare })
     }
+}
+
+pub(crate) fn parse_http_fuzz_operation(value: &str) -> Result<HttpFuzzOperation> {
+    let Some((method, path)) = value.trim().split_once(' ') else {
+        anyhow::bail!("HTTP operation must use the format `METHOD /path`");
+    };
+    let method = method.to_ascii_uppercase();
+    if !matches!(
+        method.as_str(),
+        "GET" | "PUT" | "POST" | "DELETE" | "OPTIONS" | "HEAD" | "PATCH" | "TRACE"
+    ) {
+        anyhow::bail!(
+            "HTTP operation method must be GET, PUT, POST, DELETE, OPTIONS, HEAD, PATCH, or TRACE"
+        );
+    }
+    let path = path.trim();
+    if !path.starts_with('/') || path.chars().any(char::is_whitespace) || path.contains(['?', '#'])
+    {
+        anyhow::bail!("HTTP operation path must be absolute, path-only, and contain no whitespace");
+    }
+    Ok(HttpFuzzOperation {
+        name: format!("{method} {path}"),
+        method,
+        path: path.to_string(),
+    })
 }
 
 fn is_safe_id(value: &str) -> bool {

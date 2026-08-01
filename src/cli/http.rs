@@ -75,7 +75,7 @@ pub(super) enum HttpCommand {
         /// Reuse an exact random seed from a prior run
         #[arg(long)]
         seed: Option<u128>,
-        /// Test one exact operation, formatted as `METHOD /path`
+        /// Narrow the target-owned operation allowlist to one `METHOD /path`
         #[arg(long)]
         operation: Option<String>,
         /// Use an existing Schemathesis executable instead of the managed toolchain

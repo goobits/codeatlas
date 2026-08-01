@@ -9,6 +9,7 @@ import os
 import queue
 import subprocess
 import threading
+import unittest
 from typing import Any
 
 import requests
@@ -20,7 +21,7 @@ from schemathesis.specs.openapi.checks import (
 )
 
 
-API_VERSION = "codeatlas.http-request-adapter/v1"
+API_VERSION = "codeatlas.http-request-adapter/v2"
 CONFIG_ENVIRONMENT_VARIABLE = "CODEATLAS_HTTP_REQUEST_ADAPTER_CONFIG"
 RESPONSE_TIMEOUT_SECONDS = 5
 STARTUP_RESPONSE_TIMEOUT_SECONDS = 30
@@ -51,6 +52,16 @@ POSITIVE_COVERAGE_SCENARIOS = frozenset(
         "valid_object",
         "valid_string",
     }
+)
+UNSUPPORTED_METHOD_CANDIDATES = (
+    "HEAD",
+    "OPTIONS",
+    "GET",
+    "PUT",
+    "POST",
+    "PATCH",
+    "DELETE",
+    "TRACE",
 )
 
 
@@ -92,6 +103,20 @@ def _read_config() -> dict[str, Any]:
             raise RuntimeError("CodeAtlas request adapter args must be strings")
         if not isinstance(adapter.get("cwd"), str) or not adapter["cwd"]:
             raise RuntimeError("CodeAtlas request adapter cwd must be a non-empty string")
+    methods_by_path = value.get("methodsByPath")
+    if not isinstance(methods_by_path, dict) or not all(
+        isinstance(path, str)
+        and path.startswith("/")
+        and isinstance(methods, list)
+        and bool(methods)
+        and all(
+            isinstance(method, str)
+            and method in UNSUPPORTED_METHOD_CANDIDATES
+            for method in methods
+        )
+        for path, methods in methods_by_path.items()
+    ):
+        raise RuntimeError("CodeAtlas actual HTTP methods are invalid")
     return value
 
 
@@ -231,6 +256,9 @@ _CONFIG = _read_config()
 _STATIC_HEADERS = tuple(
     (header["name"], header["value"]) for header in _CONFIG["headers"]
 )
+_METHODS_BY_PATH = {
+    path: frozenset(methods) for path, methods in _CONFIG["methodsByPath"].items()
+}
 _ADAPTER = _Adapter(_CONFIG["adapter"]) if _CONFIG["adapter"] is not None else None
 if _ADAPTER is not None:
     _ADAPTER.start()
@@ -330,6 +358,35 @@ def _generation(case: Any) -> dict[str, Any]:
     }
 
 
+def _coverage_scenario(case: Any) -> Any:
+    metadata = case.meta
+    phase_data = metadata.phase.data if metadata is not None else None
+    return _enum_value(getattr(phase_data, "scenario", None))
+
+
+def _operation_path(case: Any) -> str | None:
+    label = getattr(case.operation, "label", None)
+    if not isinstance(label, str) or " " not in label:
+        return None
+    return label.split(" ", 1)[1]
+
+
+def _preserve_actual_methods(case: Any) -> None:
+    if _coverage_scenario(case) != "unsupported_method":
+        return
+    path = _operation_path(case)
+    methods = _METHODS_BY_PATH.get(path)
+    raw_method = getattr(case, "method", "")
+    method = raw_method.upper() if isinstance(raw_method, str) else ""
+    if methods is None or method not in methods:
+        return
+    for candidate in UNSUPPORTED_METHOD_CANDIDATES:
+        if candidate not in methods:
+            case.method = candidate
+            return
+    raise unittest.SkipTest(f"Every standard HTTP method is declared for {path}")
+
+
 class _RequestAdapterAuth(requests.auth.AuthBase):
     def __init__(self, case: Any) -> None:
         self._id = case.id
@@ -379,6 +436,7 @@ class _RequestAdapterAuth(requests.auth.AuthBase):
 
 @schemathesis.hook
 def before_call(_context: Any, case: Any, kwargs: dict[str, Any]) -> None:
+    _preserve_actual_methods(case)
     if _ADAPTER is not None:
         kwargs["auth"] = _RequestAdapterAuth(case)
 

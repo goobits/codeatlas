@@ -5,13 +5,14 @@ mod toolchain;
 use self::toolchain::{ensure_schemathesis, SCHEMATHESIS_VERSION};
 use super::environment::cache_base;
 use super::target::{
-    ResolvedHttpFuzzTarget, ResolvedHttpOpenApiSource, REQUEST_HOOK_CONFIG_ENV,
-    SCHEMATHESIS_HOOKS_ENV,
+    parse_http_fuzz_operation, HttpFuzzOperation, ResolvedHttpFuzzTarget,
+    ResolvedHttpOpenApiSource, REQUEST_HOOK_CONFIG_ENV, SCHEMATHESIS_HOOKS_ENV,
 };
 use super::{provider, transport_schema};
 use crate::config::HttpFuzzPositiveCoverageConfig;
 use crate::http::model::{
-    HttpFuzzContractMode, HttpFuzzTotals, HttpSourceCompleteness, HttpSourceInventory,
+    HttpFuzzContractMode, HttpFuzzOperationSummary, HttpFuzzTotals, HttpSourceCompleteness,
+    HttpSourceInventory, HttpSourceOperationKind,
 };
 use crate::http::runtime::OwnedHttpServer;
 use anyhow::{Context, Result};
@@ -29,7 +30,7 @@ const SCHEMATHESIS_CONFIG_FILENAME: &str = "schemathesis.toml";
 const PROVIDED_OPENAPI_FILENAME: &str = "provided-openapi.yaml";
 const STATEFUL_CONFIG: &str = "\
 [phases.coverage]
-unexpected-methods = [\"get\", \"put\", \"post\", \"delete\", \"options\", \"patch\"]
+unexpected-methods = [\"get\", \"put\", \"post\", \"delete\", \"options\", \"patch\", \"trace\"]
 
 [phases.stateful]
 link-calibration = false
@@ -39,7 +40,7 @@ algorithms = []
 ";
 const STANDARD_CONFIG: &str = "\
 [phases.coverage]
-unexpected-methods = [\"get\", \"put\", \"post\", \"delete\", \"options\", \"patch\"]
+unexpected-methods = [\"get\", \"put\", \"post\", \"delete\", \"options\", \"patch\", \"trace\"]
 ";
 const CHECKS: &[&str] = &[
     "not_a_server_error",
@@ -97,12 +98,23 @@ pub(crate) fn run(
             "Stateful HTTP fuzzing requires an explicit OpenAPI contract with declared links"
         );
     }
-    let schemathesis = ensure_schemathesis(options.schemathesis)?;
-    let operation = options.operation.map(parse_operation).transpose()?;
+    let operation = options
+        .operation
+        .map(parse_http_fuzz_operation)
+        .transpose()?;
     let report_dir = prepare_report_dir(target, options.profile, operation.as_ref())?;
-    let schema = match contract {
+    let (schema, available_operations) = match contract {
         Contract::OpenApi { source, display } => {
-            let document = provider::read(source, display)?;
+            let (document, openapi) = provider::read_with_inventory(source, display)?;
+            let operations = openapi
+                .operations
+                .iter()
+                .map(|operation| HttpFuzzOperation {
+                    name: operation.key.clone(),
+                    method: operation.method.clone(),
+                    path: operation.path.clone(),
+                })
+                .collect();
             let path = report_dir.join(PROVIDED_OPENAPI_FILENAME);
             report::write_private(&path, &document).with_context(|| {
                 format!(
@@ -110,7 +122,7 @@ pub(crate) fn run(
                     path.display()
                 )
             })?;
-            path
+            (path, operations)
         }
         Contract::SourceTransport(source) => {
             if source.completeness == HttpSourceCompleteness::Partial {
@@ -123,10 +135,26 @@ pub(crate) fn run(
                 "CodeAtlas generated a source transport contract for {}. It checks route transport safety without claiming domain request, response, query, or authentication schemas.",
                 target.contract
             );
-            transport_schema::write(&report_dir, target, source)?
+            let operations = source
+                .operations
+                .iter()
+                .filter(|operation| operation.kind == HttpSourceOperationKind::Endpoint)
+                .map(|operation| parse_http_fuzz_operation(&operation.key))
+                .collect::<Result<Vec<_>>>()?;
+            (
+                transport_schema::write(&report_dir, target, source)?,
+                operations,
+            )
         }
     };
-    let hooks = request_adapter::prepare(target)?;
+    let selected_operations = select_operations(
+        target,
+        contract.mode(),
+        &available_operations,
+        operation.as_ref(),
+    )?;
+    let schemathesis = ensure_schemathesis(options.schemathesis)?;
+    let hooks = request_adapter::prepare(target, &available_operations)?;
     request_adapter::validate(&schemathesis, &hooks)?;
     let config_path = prepare_schemathesis_config(&report_dir, options.stateful, &hooks.hook_path)?;
     let seed = options.seed.unwrap_or_else(generate_seed);
@@ -135,7 +163,7 @@ pub(crate) fn run(
         contract.mode(),
         options,
         seed,
-        operation.as_ref(),
+        &selected_operations,
         &SchemathesisFiles {
             schema: &schema,
             config: &config_path,
@@ -192,10 +220,13 @@ pub(crate) fn run(
                 summary.totals.negative_rejections,
                 summary_path.display()
             );
-            if contract.mode() == HttpFuzzContractMode::OpenApi
-                && !options.stateful
-                && options.operation.is_none()
-            {
+            if !options.stateful && (options.operation.is_none() || !target.operations.is_empty()) {
+                for failure in
+                    selected_operation_failures(&selected_operations, &summary.operations)
+                {
+                    eprintln!("CodeAtlas operation selection failed: {failure}");
+                    code = 1;
+                }
                 for failure in
                     positive_coverage_failures(&target.positive_coverage, &summary.totals)
                 {
@@ -285,7 +316,7 @@ fn schemathesis_args(
     contract_mode: HttpFuzzContractMode,
     options: &RunOptions<'_>,
     seed: u128,
-    operation: Option<&OperationFilter>,
+    operations: &[HttpFuzzOperation],
     files: &SchemathesisFiles<'_>,
 ) -> Vec<OsString> {
     let mut args = vec![
@@ -322,7 +353,7 @@ fn schemathesis_args(
         "--wait-for-schema".into(),
         "30".into(),
     ]);
-    if let Some(operation) = operation {
+    for operation in operations {
         args.extend(["--include-name".into(), operation.name.clone().into()]);
     }
     if !target.suppress_health_checks.is_empty() {
@@ -410,28 +441,65 @@ fn positive_coverage_failures(
     failures
 }
 
-struct OperationFilter {
-    name: String,
+fn select_operations(
+    target: &ResolvedHttpFuzzTarget,
+    contract_mode: HttpFuzzContractMode,
+    available: &[HttpFuzzOperation],
+    requested: Option<&HttpFuzzOperation>,
+) -> Result<Vec<HttpFuzzOperation>> {
+    let available_names = available
+        .iter()
+        .map(|operation| operation.name.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    if contract_mode == HttpFuzzContractMode::SourceTransport && target.operations.is_empty() {
+        anyhow::bail!(
+            "Source-transport fuzz target {} needs a non-empty target-owned `operations` allowlist",
+            target.id
+        );
+    }
+    for operation in &target.operations {
+        if !available_names.contains(operation.name.as_str()) {
+            anyhow::bail!(
+                "HTTP fuzz target {} selects unknown operation {}",
+                target.id,
+                operation.name
+            );
+        }
+    }
+    if let Some(requested) = requested {
+        if !available_names.contains(requested.name.as_str()) {
+            anyhow::bail!("Unknown HTTP operation {}", requested.name);
+        }
+        if !target.operations.is_empty()
+            && !target
+                .operations
+                .iter()
+                .any(|operation| operation.name == requested.name)
+        {
+            anyhow::bail!(
+                "--operation can only narrow HTTP fuzz target {}'s configured allowlist; {} is not allowed",
+                target.id,
+                requested.name
+            );
+        }
+        return Ok(vec![requested.clone()]);
+    }
+    Ok(target.operations.clone())
 }
 
-fn parse_operation(value: &str) -> Result<OperationFilter> {
-    let Some((method, path)) = value.trim().split_once(' ') else {
-        anyhow::bail!("HTTP operation must use the format `METHOD /path`");
-    };
-    if method.is_empty()
-        || !method
-            .bytes()
-            .all(|byte| byte.is_ascii_alphabetic() || byte == b'-')
-    {
-        anyhow::bail!("HTTP operation method must contain only letters or `-`");
-    }
-    let path = path.trim();
-    if !path.starts_with('/') || path.chars().any(char::is_whitespace) {
-        anyhow::bail!("HTTP operation path must be absolute and contain no whitespace");
-    }
-    Ok(OperationFilter {
-        name: format!("{} {path}", method.to_ascii_uppercase()),
-    })
+fn selected_operation_failures(
+    selected: &[HttpFuzzOperation],
+    observed: &[HttpFuzzOperationSummary],
+) -> Vec<String> {
+    let observed = observed
+        .iter()
+        .map(|operation| operation.operation.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    selected
+        .iter()
+        .filter(|operation| !observed.contains(operation.name.as_str()))
+        .map(|operation| format!("{} produced no retained fuzz evidence", operation.name))
+        .collect()
 }
 
 fn generate_seed() -> u128 {
@@ -442,7 +510,7 @@ fn generate_seed() -> u128 {
     timestamp ^ (u128::from(std::process::id()) << 96)
 }
 
-fn operation_report_component(operation: &OperationFilter) -> String {
+fn operation_report_component(operation: &HttpFuzzOperation) -> String {
     let mut slug = operation
         .name
         .chars()
@@ -465,7 +533,7 @@ fn operation_report_component(operation: &OperationFilter) -> String {
 fn prepare_report_dir(
     target: &ResolvedHttpFuzzTarget,
     profile: &str,
-    operation: Option<&OperationFilter>,
+    operation: Option<&HttpFuzzOperation>,
 ) -> Result<PathBuf> {
     let root = target
         .report_root
@@ -555,18 +623,45 @@ fn schemathesis_config(stateful: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        checks, clear_owned_report_files, operation_report_component, parse_operation, phases,
+        checks, clear_owned_report_files, operation_report_component, phases,
         positive_coverage_failures, render_schemathesis_config, schemathesis_args,
-        schemathesis_config, RunOptions, SchemathesisFiles, CHECKS, PROVIDED_OPENAPI_FILENAME,
-        SCHEMATHESIS_CONFIG_FILENAME, SOURCE_TRANSPORT_CHECKS, STATEFUL_CONFIG,
+        schemathesis_config, select_operations, selected_operation_failures, RunOptions,
+        SchemathesisFiles, CHECKS, PROVIDED_OPENAPI_FILENAME, SCHEMATHESIS_CONFIG_FILENAME,
+        SOURCE_TRANSPORT_CHECKS, STATEFUL_CONFIG,
     };
     use crate::config::{HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig};
-    use crate::http::model::{HttpFuzzContractMode, HttpFuzzTotals};
-    use crate::http::target::{ResolvedHttpFuzzHeader, ResolvedHttpFuzzTarget};
+    use crate::http::model::{
+        HttpFuzzContractMode, HttpFuzzOperationSummary, HttpFuzzPositiveCoverage, HttpFuzzTotals,
+    };
+    use crate::http::target::{
+        parse_http_fuzz_operation, ResolvedHttpFuzzHeader, ResolvedHttpFuzzTarget,
+    };
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn target_with_operations(operations: &[&str]) -> ResolvedHttpFuzzTarget {
+        ResolvedHttpFuzzTarget {
+            id: "api".to_string(),
+            contract: "public-api".to_string(),
+            base_url: url::Url::parse("http://127.0.0.1:3443").expect("base URL"),
+            openapi_url: url::Url::parse("http://127.0.0.1:3443/openapi.json")
+                .expect("OpenAPI URL"),
+            environment: BTreeMap::new(),
+            headers: Vec::new(),
+            report_root: None,
+            server: None,
+            request_adapter: None,
+            operations: operations
+                .iter()
+                .map(|operation| parse_http_fuzz_operation(operation).expect("operation"))
+                .collect(),
+            positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
+            suppress_health_checks: Vec::new(),
+            suppress_warnings: false,
+        }
+    }
 
     #[test]
     fn report_cleanup_removes_only_codeatlas_owned_files() {
@@ -601,24 +696,13 @@ mod tests {
 
     #[test]
     fn schemathesis_arguments_centralize_the_http_fuzz_policy() {
-        let target = ResolvedHttpFuzzTarget {
-            id: "api".to_string(),
-            contract: "public-api".to_string(),
-            base_url: url::Url::parse("http://127.0.0.1:3443").expect("base URL"),
-            openapi_url: url::Url::parse("http://127.0.0.1:3443/openapi.json")
-                .expect("OpenAPI URL"),
-            environment: BTreeMap::new(),
-            headers: vec![ResolvedHttpFuzzHeader {
-                name: "Authorization".to_string(),
-                value: "Bearer invalid".to_string(),
-            }],
-            report_root: None,
-            server: None,
-            request_adapter: None,
-            positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
-            suppress_health_checks: vec![HttpFuzzHealthCheck::FilterTooMuch],
-            suppress_warnings: true,
-        };
+        let mut target = target_with_operations(&["GET /health", "POST /widgets/{id}"]);
+        target.headers.push(ResolvedHttpFuzzHeader {
+            name: "Authorization".to_string(),
+            value: "Bearer invalid".to_string(),
+        });
+        target.suppress_health_checks = vec![HttpFuzzHealthCheck::FilterTooMuch];
+        target.suppress_warnings = true;
         let options = RunOptions {
             max_examples: 75,
             profile: "standard",
@@ -627,13 +711,14 @@ mod tests {
             operation: Some("POST /widgets/{id}"),
             schemathesis: None,
         };
-        let operation = parse_operation(options.operation.expect("operation")).expect("filter");
+        let operation =
+            parse_http_fuzz_operation(options.operation.expect("operation")).expect("filter");
         let args = schemathesis_args(
             &target,
             HttpFuzzContractMode::OpenApi,
             &options,
             options.seed.expect("seed"),
-            Some(&operation),
+            std::slice::from_ref(&operation),
             &SchemathesisFiles {
                 schema: Path::new("reports/provided-openapi.yaml"),
                 config: Path::new("reports/schemathesis.toml"),
@@ -693,7 +778,8 @@ mod tests {
     #[test]
     fn managed_schemathesis_config_ignores_ambient_repository_configuration() {
         assert!(schemathesis_config(false).contains("unexpected-methods"));
-        assert!(!schemathesis_config(false).contains("\"trace\""));
+        assert!(!schemathesis_config(false).contains("\"head\""));
+        assert!(schemathesis_config(false).contains("\"trace\""));
         assert_eq!(schemathesis_config(true), STATEFUL_CONFIG);
         let rendered = render_schemathesis_config(false, Path::new("cache/hooks.py"))
             .expect("rendered Schemathesis config");
@@ -702,18 +788,80 @@ mod tests {
 
     #[test]
     fn operation_filters_require_an_exact_method_and_absolute_path() {
-        let filter = parse_operation("post /widgets/{id}").expect("valid filter");
+        let filter = parse_http_fuzz_operation("post /widgets/{id}").expect("valid filter");
         assert_eq!(filter.name, "POST /widgets/{id}");
         let component = operation_report_component(&filter);
         assert!(component.starts_with("post-widgets-id-"));
         assert_eq!(component.len(), "post-widgets-id-".len() + 12);
         assert_ne!(
             component,
-            operation_report_component(&parse_operation("GET /widgets/{id}").expect("filter"))
+            operation_report_component(
+                &parse_http_fuzz_operation("GET /widgets/{id}").expect("filter")
+            )
         );
-        assert!(parse_operation("POST").is_err());
-        assert!(parse_operation("POST widgets").is_err());
-        assert!(parse_operation("POST /widget path").is_err());
+        assert!(parse_http_fuzz_operation("POST").is_err());
+        assert!(parse_http_fuzz_operation("POST widgets").is_err());
+        assert!(parse_http_fuzz_operation("POST /widget path").is_err());
+    }
+
+    #[test]
+    fn target_operations_are_validated_and_cli_selection_only_narrows() {
+        let target = target_with_operations(&["GET /health"]);
+        let available = [
+            parse_http_fuzz_operation("GET /health").expect("GET operation"),
+            parse_http_fuzz_operation("POST /health").expect("POST operation"),
+        ];
+        assert_eq!(
+            select_operations(
+                &target,
+                HttpFuzzContractMode::SourceTransport,
+                &available,
+                None,
+            )
+            .expect("target allowlist"),
+            target.operations
+        );
+        let disallowed = parse_http_fuzz_operation("POST /health").expect("POST operation");
+        let error = select_operations(
+            &target,
+            HttpFuzzContractMode::SourceTransport,
+            &available,
+            Some(&disallowed),
+        )
+        .expect_err("CLI selection must not expand the target")
+        .to_string();
+        assert!(error.contains("can only narrow"), "{error}");
+
+        let empty = target_with_operations(&[]);
+        assert!(select_operations(
+            &empty,
+            HttpFuzzContractMode::SourceTransport,
+            &available,
+            None,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn selected_operations_must_produce_retained_evidence() {
+        let selected = [parse_http_fuzz_operation("GET /health").expect("operation")];
+        let observed = [HttpFuzzOperationSummary {
+            operation: "POST /widgets".to_string(),
+            positive_coverage: HttpFuzzPositiveCoverage::SuccessObserved,
+            cases: 1,
+            positive_cases: 1,
+            positive_successes: 1,
+            positive_auth_rejections: 0,
+            positive_client_errors: 0,
+            negative_cases: 0,
+            negative_rejections: 0,
+            server_errors: 0,
+            check_failures: 0,
+            observed_statuses: BTreeMap::new(),
+        }];
+        let failures = selected_operation_failures(&selected, &observed);
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("GET /health"));
     }
 
     #[test]

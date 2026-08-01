@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-API_VERSION = "codeatlas.http-request-adapter/v1"
+API_VERSION = "codeatlas.http-request-adapter/v2"
 
 if len(sys.argv) != 2:
     raise SystemExit("usage: request_adapter.py AUDIT_LOG")
@@ -66,6 +66,8 @@ try:
                     "headerOverride": not negative_header,
                     "id": message_id,
                     "kind": kind,
+                    "method": message.get("method"),
+                    "operation": message.get("operation"),
                     "staticHeader": header_value(headers, "x-codeatlas-static")
                     == "fixture-static-token",
                 }

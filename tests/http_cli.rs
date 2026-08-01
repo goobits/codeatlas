@@ -300,6 +300,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
                     "contract": "fixture-api",
                     "base_url": format!("http://127.0.0.1:{port}"),
                     "openapi_path": "/openapi.yaml",
+                    "operations": ["POST /widgets/{id}"],
                     "headers": [{
                         "name": "X-CodeAtlas-Static",
                         "value": "fixture-static-token"
@@ -404,6 +405,12 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
     assert_eq!(requests.len(), responses.len());
     assert!(requests.iter().all(|event| event["staticHeader"] == true));
     assert!(requests.iter().any(|event| event["bodyOverride"] == true));
+    assert!(
+        requests.iter().all(|event| {
+            event["operation"] != "POST /widgets/{id}" || event["method"] != "GET"
+        }),
+        "unsupported-method probes must not call a real sibling operation"
+    );
     let negative_body_ids = requests
         .iter()
         .filter(|event| event["bodyGeneration"] == "negative")

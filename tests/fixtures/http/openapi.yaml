@@ -10,6 +10,23 @@ paths:
         "204":
           description: Ready
   /widgets/{id}:
+    get:
+      operationId: getWidget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Widget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+        "404":
+          description: Widget not found
     post:
       operationId: updateWidget
       parameters:
