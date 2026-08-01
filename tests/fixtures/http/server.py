@@ -38,6 +38,9 @@ class FixtureHandler(BaseHTTPRequestHandler):
         if not self._has_static_header():
             self._respond(401, b'{"error":"missing_static_header"}')
             return
+        if self.headers.get("cookie") != "session=fixture-session":
+            self._respond(401, b'{"error":"invalid_session"}')
+            return
         path = urlparse(self.path).path
         prefix = "/widgets/"
         if path == "/health":
@@ -45,6 +48,9 @@ class FixtureHandler(BaseHTTPRequestHandler):
             return
         if not path.startswith(prefix):
             self._respond(404, b'{"error":"not_found"}')
+            return
+        if not path.endswith("/"):
+            self._redirect(f"{path}/")
             return
         length = int(self.headers.get("content-length", "0"))
         try:
@@ -117,6 +123,15 @@ class FixtureHandler(BaseHTTPRequestHandler):
             "x-codeatlas-adapter-seen",
             str(self.headers.get("x-codeatlas-adapter") == "fixture-adapter").lower(),
         )
+        self.send_header("content-length", "0")
+        self.end_headers()
+
+    def _redirect(self, location: str) -> None:
+        length = int(self.headers.get("content-length", "0"))
+        if length:
+            self.rfile.read(length)
+        self.send_response(307)
+        self.send_header("location", location)
         self.send_header("content-length", "0")
         self.end_headers()
 

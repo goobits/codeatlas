@@ -4,26 +4,37 @@ from __future__ import annotations
 
 import atexit
 import base64
+import http.client
 import json
 import os
 import queue
 import subprocess
 import threading
+from collections.abc import Mapping
+from http.cookies import SimpleCookie
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 import schemathesis
 from schemathesis.openapi.checks import IgnoredAuth
+from schemathesis.specs.openapi._auth_retry import (
+    build_retry_transport_kwargs,
+    get_security_parameters,
+    remove_auth,
+    set_auth_for_case,
+)
+from schemathesis.specs.openapi.adapter.security import has_effective_optional_auth
 from schemathesis.specs.openapi.checks import (
     ignored_auth as _schemathesis_ignored_auth,
     negative_data_rejection as _schemathesis_negative_data_rejection,
 )
 
 
-API_VERSION = "codeatlas.http-request-adapter/v1"
+API_VERSION = "codeatlas.http-request-adapter/v2"
 CONFIG_ENVIRONMENT_VARIABLE = "CODEATLAS_HTTP_REQUEST_ADAPTER_CONFIG"
-RESPONSE_TIMEOUT_SECONDS = 5
-STARTUP_RESPONSE_TIMEOUT_SECONDS = 30
+RESPONSE_TIMEOUT_SECONDS = 15
+STARTUP_RESPONSE_TIMEOUT_SECONDS = 90
 POSITIVE_COVERAGE_SCENARIOS = frozenset(
     {
         "const_value",
@@ -149,7 +160,29 @@ class _Adapter:
             raise RuntimeError(
                 "CodeAtlas request adapters must preserve negatively generated bodies"
             )
+        authentication = value.get("authentication", [])
+        if (
+            not isinstance(authentication, list)
+            or len(authentication) > 32
+            or not all(
+                isinstance(parameter, dict)
+                and set(parameter) == {"in", "name", "value"}
+                and parameter["in"] in {"cookie", "header", "query"}
+                and isinstance(parameter["name"], str)
+                and bool(parameter["name"])
+                and isinstance(parameter["value"], str)
+                and not any(
+                    character in parameter["name"] + parameter["value"]
+                    for character in "\r\n\0"
+                )
+                for parameter in authentication
+            )
+        ):
+            raise RuntimeError(
+                "CodeAtlas request adapter returned invalid authentication parameters"
+            )
         value["headers"] = headers
+        value["authentication"] = authentication
         return value
 
     def observe(self, response: dict[str, Any]) -> None:
@@ -240,12 +273,69 @@ if _ADAPTER is not None:
 @schemathesis.check
 def codeatlas_auth_rejection(context: Any, response: Any, case: Any) -> bool | None:
     """Accept privacy-preserving auth rejection statuses in Schemathesis probes."""
+    if _ADAPTER is not None:
+        return _check_adapter_auth_rejection(context, response, case)
     try:
         return _schemathesis_ignored_auth(context, response, case)
     except IgnoredAuth as error:
         if "got `403 " in error.message or "got `404 " in error.message:
             return None
         raise
+
+
+def _check_adapter_auth_rejection(
+    context: Any, response: Any, case: Any
+) -> bool | None:
+    """Probe missing and invalid auth without reapplying adapter credentials."""
+    if not 200 <= response.status_code < 300:
+        return None
+    operation = case.operation
+    if has_effective_optional_auth(operation, operation.schema.raw_schema):
+        return None
+    security_parameters = get_security_parameters(operation)
+    if not security_parameters:
+        return None
+
+    _send_auth_probe(context, case, security_parameters)
+    for parameter in security_parameters:
+        _send_auth_probe(context, case, security_parameters, parameter)
+    return None
+
+
+def _send_auth_probe(
+    context: Any,
+    case: Any,
+    security_parameters: list[Mapping[str, Any]],
+    invalid_parameter: Mapping[str, Any] | None = None,
+) -> None:
+    probe = remove_auth(case, security_parameters)
+    if invalid_parameter is not None:
+        set_auth_for_case(probe, invalid_parameter)
+    kwargs = build_retry_transport_kwargs(
+        context._transport_kwargs, security_parameters
+    )
+    # The adapter supplied the successful request's credentials. Reusing it
+    # here would silently turn these probes back into authenticated requests.
+    kwargs.pop("auth", None)
+    if case.operation.app is not None:
+        kwargs.setdefault("app", case.operation.app)
+    context._record_case(parent_id=case.id, case=probe)
+    probe_response = case.operation.schema.transport.send(probe, **kwargs)
+    context._record_response(case_id=probe.id, response=probe_response)
+    if probe_response.status_code in {401, 403, 404}:
+        return
+
+    scenario = "invalid" if invalid_parameter is not None else "missing"
+    reason = http.client.responses.get(probe_response.status_code, "Unknown")
+    raise IgnoredAuth(
+        operation=case.operation.label,
+        title=f"API accepts requests with {scenario} authentication",
+        message=(
+            f"Expected 401, 403, or 404, got `{probe_response.status_code} {reason}` "
+            f"for `{case.operation.label}`"
+        ),
+        case_id=probe.id,
+    )
 
 
 @schemathesis.check
@@ -317,6 +407,67 @@ def _prepared_body(value: Any) -> bytes | None:
     )
 
 
+def _public_security_parameters(case: Any) -> list[dict[str, str]]:
+    return [
+        {"in": parameter["in"], "name": parameter["name"]}
+        for parameter in get_security_parameters(case.operation)
+    ]
+
+
+def _apply_authentication(
+    prepared: requests.PreparedRequest,
+    authentication: list[dict[str, str]],
+    security_parameters: list[dict[str, str]],
+) -> None:
+    allowed = {
+        (
+            parameter["in"],
+            parameter["name"].lower()
+            if parameter["in"] == "header"
+            else parameter["name"],
+        )
+        for parameter in security_parameters
+    }
+    for parameter in authentication:
+        location = parameter["in"]
+        name = parameter["name"]
+        match_name = name.lower() if location == "header" else name
+        if (location, match_name) not in allowed:
+            raise RuntimeError(
+                "CodeAtlas request adapter returned authentication that is not "
+                "declared by the operation"
+            )
+        value = parameter["value"]
+        if location == "header":
+            prepared.headers[name] = value
+        elif location == "cookie":
+            cookies: SimpleCookie = SimpleCookie()
+            cookies.load(prepared.headers.get("Cookie", ""))
+            cookies[name] = value
+            prepared.headers["Cookie"] = "; ".join(
+                f"{key}={morsel.coded_value}" for key, morsel in cookies.items()
+            )
+            hostname = urlsplit(prepared.url).hostname
+            if not hostname:
+                raise RuntimeError(
+                    "CodeAtlas cannot scope cookie authentication to a URL without a host"
+                )
+            prepared._cookies.set(name, value, domain=hostname, path="/")
+        else:
+            parts = urlsplit(prepared.url)
+            query = [
+                (key, query_value)
+                for key, query_value in parse_qsl(
+                    parts.query, keep_blank_values=True
+                )
+                if key != name
+            ]
+            query.append((name, value))
+            prepared.url = urlunsplit(
+                (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+            )
+
+
 def _generation(case: Any) -> dict[str, Any]:
     metadata = case.meta
     if metadata is None:
@@ -337,6 +488,7 @@ class _RequestAdapterAuth(requests.auth.AuthBase):
         self._media_type = case.media_type
         self._generation = _generation(case)
         self._prior_auth = getattr(case, "_auth", None)
+        self._security_parameters = _public_security_parameters(case)
 
     def __call__(self, prepared: requests.PreparedRequest) -> requests.PreparedRequest:
         if self._prior_auth is not None:
@@ -356,6 +508,7 @@ class _RequestAdapterAuth(requests.auth.AuthBase):
             "bodyBase64": None if body is None else base64.b64encode(body).decode("ascii"),
             "mediaType": self._media_type,
             "generation": self._generation,
+            "securityParameters": self._security_parameters,
         }
         overrides = _ADAPTER.adapt(request)
         for name, value in overrides["headers"].items():
@@ -374,6 +527,11 @@ class _RequestAdapterAuth(requests.auth.AuthBase):
                 ) from error
             prepared.headers.pop("Content-Length", None)
             prepared.prepare_content_length(prepared.body)
+        _apply_authentication(
+            prepared,
+            overrides["authentication"],
+            self._security_parameters,
+        )
         return prepared
 
 

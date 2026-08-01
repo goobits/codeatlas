@@ -264,6 +264,22 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
 
     let port = available_port();
     let python = configured_python();
+    let server_args = if cfg!(unix) {
+        json!([
+            fixture.join("managed_server.py"),
+            fixture.join("server.py"),
+            port.to_string(),
+            &openapi,
+            "fixture-static-token"
+        ])
+    } else {
+        json!([
+            fixture.join("server.py"),
+            port.to_string(),
+            &openapi,
+            "fixture-static-token"
+        ])
+    };
     let config_path = directory.path().join("codeatlas.json");
     let config = json!({
         "root": ".",
@@ -290,17 +306,12 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
                     }],
                     "report_dir": "reports",
                     "server": {
-                        "command": python,
-                        "args": [
-                            fixture.join("server.py"),
-                            port.to_string(),
-                            &openapi,
-                            "fixture-static-token"
-                        ],
+                        "command": &python,
+                        "args": server_args,
                         "cwd": directory.path()
                     },
                     "request_adapter": {
-                        "command": python,
+                        "command": &python,
                         "args": [fixture.join("request_adapter.py"), &adapter_log],
                         "cwd": directory.path()
                     }
@@ -375,6 +386,9 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
     assert_eq!(requests.len(), responses.len());
     assert!(requests.iter().all(|event| event["staticHeader"] == true));
     assert!(requests.iter().any(|event| event["bodyOverride"] == true));
+    assert!(requests
+        .iter()
+        .any(|event| event["sessionAuthentication"] == true));
     let negative_body_ids = requests
         .iter()
         .filter(|event| event["bodyGeneration"] == "negative")

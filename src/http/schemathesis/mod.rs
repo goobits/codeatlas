@@ -41,7 +41,7 @@ const STANDARD_CONFIG: &str = "\
 unexpected-methods = [\"get\", \"put\", \"post\", \"delete\", \"options\", \"patch\"]
 ";
 const CHECKS: &[&str] = &[
-    "not_a_server_error",
+    "codeatlas_no_internal_server_error",
     "status_code_conformance",
     "content_type_conformance",
     "response_headers_conformance",
@@ -655,6 +655,8 @@ mod tests {
         assert!(stateful_checks.contains("codeatlas_auth_rejection"));
         assert!(checks(HttpFuzzContractMode::OpenApi, false).contains("codeatlas_auth_rejection"));
         assert!(CHECKS.contains(&"codeatlas_negative_data_rejection"));
+        assert!(CHECKS.contains(&"codeatlas_no_internal_server_error"));
+        assert!(!CHECKS.contains(&"not_a_server_error"));
         assert!(!CHECKS.contains(&"negative_data_rejection"));
         assert_eq!(
             checks(HttpFuzzContractMode::SourceTransport, false),

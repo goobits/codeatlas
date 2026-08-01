@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub(super) const API_VERSION: &str = "codeatlas.http-request-adapter/v1";
+pub(super) const API_VERSION: &str = "codeatlas.http-request-adapter/v2";
 const HOOK_SOURCE: &str = include_str!("hooks.py");
 static CONFIG_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 

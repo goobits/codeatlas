@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-API_VERSION = "codeatlas.http-request-adapter/v1"
+API_VERSION = "codeatlas.http-request-adapter/v2"
 
 if len(sys.argv) != 2:
     raise SystemExit("usage: request_adapter.py AUDIT_LOG")
@@ -54,8 +54,23 @@ try:
             negative_body = components.get("body") == "negative"
             has_body = message.get("bodyBase64") is not None
             reply["headers"] = (
-                {} if negative_header else {"X-CodeAtlas-Adapter": "fixture-adapter"}
+                {}
+                if negative_header
+                else {
+                    "X-CodeAtlas-Adapter": "fixture-adapter",
+                }
             )
+            if {
+                "in": "cookie",
+                "name": "session",
+            } in message.get("securityParameters", []):
+                reply["authentication"] = [
+                    {
+                        "in": "cookie",
+                        "name": "session",
+                        "value": "fixture-session",
+                    }
+                ]
             if has_body and not negative_body:
                 reply["bodyBase64"] = message["bodyBase64"]
             append_audit(
@@ -66,6 +81,7 @@ try:
                     "headerOverride": not negative_header,
                     "id": message_id,
                     "kind": kind,
+                    "sessionAuthentication": bool(reply.get("authentication")),
                     "staticHeader": header_value(headers, "x-codeatlas-static")
                     == "fixture-static-token",
                 }
