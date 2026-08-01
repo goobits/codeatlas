@@ -1,4 +1,4 @@
-use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolDocs, Visibility};
+use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolDocs, SymbolKind, Visibility};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
@@ -107,6 +107,12 @@ fn clean_block_comment(comment: &str) -> String {
 }
 
 fn extract_python_docstring(source: &str, symbol: &Symbol) -> Option<String> {
+    if !matches!(
+        symbol.kind,
+        SymbolKind::Class | SymbolKind::Function | SymbolKind::Method
+    ) {
+        return None;
+    }
     let span = symbol.span.as_ref()?;
     let lines: Vec<&str> = source.lines().collect();
     let start = span.start_line.saturating_sub(1) as usize;

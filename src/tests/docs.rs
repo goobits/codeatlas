@@ -910,4 +910,23 @@ fn extracts_python_and_rust_source_docs() {
             Some(summary)
         );
     }
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("py");
+    let config = ScanConfig {
+        include_types: true,
+        include_private: false,
+        entrypoints: None,
+        no_default_ignore: false,
+    };
+    let mut report = languages::scan_all(&root, &config, languages::get_scanners_auto(&root));
+    analysis::annotate_docs(&mut report, &root);
+    let constant = report
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "PUBLIC_LABEL")
+        .expect("Python constant");
+    assert!(constant.docs.is_none());
 }
