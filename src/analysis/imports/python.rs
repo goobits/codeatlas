@@ -1,6 +1,6 @@
 use super::{add_file_edge, add_importer, FileEdges, Importers};
 use crate::domain::Language;
-use crate::languages::python::parser;
+use crate::languages::python::{parser, resolver};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
@@ -70,7 +70,7 @@ fn load_modules(
         };
 
         let relative = crate::paths::normalize_relative_path(path, root_dir);
-        let module_name = module_name_from_path(&relative);
+        let module_name = resolver::module_name_from_path(&relative);
         module_by_name.insert(module_name.clone(), relative.clone());
 
         let info = match parser::parse_module_info(path, root_dir, &source) {
@@ -110,7 +110,7 @@ fn process_imports(
 ) {
     for import in &info.imports {
         if import.module.is_empty() && import.level > 0 {
-            let base_module = resolve_module_name("", &info.module_name, import.level);
+            let base_module = resolver::resolve_module_name("", &info.module_name, import.level);
             if let Some(target_file) = resolution.module_by_name.get(&base_module) {
                 // Always track file edge
                 add_file_edge(file_edges, file, target_file);
@@ -142,7 +142,7 @@ fn process_imports(
         let import_target = if import.module.is_empty() {
             None
         } else {
-            Some(resolve_module_name(
+            Some(resolver::resolve_module_name(
                 &import.module,
                 &info.module_name,
                 import.level,
@@ -320,7 +320,7 @@ fn resolve_export(
 
     let mut ids = Vec::new();
     if let Some(info) = modules.get(file) {
-        let import_map = import_name_map(&info.imports, &info.module_name);
+        let import_map = resolver::import_name_map(&info.imports, &info.module_name);
         if let Some((module_name, imported)) = import_map.name_map.get(name) {
             if let Some(target) = modules
                 .values()
@@ -395,134 +395,12 @@ fn module_export_names(
         return HashSet::new();
     };
 
-    if let Some(exports) = &info.exports {
-        return exports.iter().cloned().collect();
-    }
-
-    let mut names = HashSet::new();
-    if let Some(symbols) = symbols_by_file.get(file) {
-        for name in symbols.keys() {
-            if !name.starts_with('_') {
-                names.insert(name.clone());
-            }
-        }
-    }
-
-    for import in &info.imports {
-        if import.module.is_empty() {
-            for (idx, module) in import.names.iter().enumerate() {
-                let alias = import
-                    .aliases
-                    .get(idx)
-                    .and_then(|alias| alias.as_ref())
-                    .map(|alias| alias.as_str())
-                    .unwrap_or_else(|| module.split('.').next().unwrap_or(module));
-                if !alias.starts_with('_') {
-                    names.insert(alias.to_string());
-                }
-            }
-        } else if import.is_star {
-            names.insert("*".to_string());
-        } else {
-            for (idx, name) in import.names.iter().enumerate() {
-                let alias = import
-                    .aliases
-                    .get(idx)
-                    .and_then(|alias| alias.as_ref())
-                    .map(|alias| alias.as_str())
-                    .unwrap_or(name);
-                if !alias.starts_with('_') {
-                    names.insert(alias.to_string());
-                }
-            }
-        }
-    }
-
-    names
-}
-
-struct ImportResolution {
-    name_map: HashMap<String, (String, String)>,
-    star_modules: Vec<String>,
-}
-
-fn import_name_map(imports: &[parser::PythonImport], current_module: &str) -> ImportResolution {
-    let mut map = HashMap::new();
-    let mut star_modules = Vec::new();
-    for import in imports {
-        if import.module.is_empty() {
-            if import.level > 0 {
-                let module = resolve_module_name("", current_module, import.level);
-                for (idx, name) in import.names.iter().enumerate() {
-                    let alias = import
-                        .aliases
-                        .get(idx)
-                        .and_then(|alias| alias.as_ref())
-                        .map(|alias| alias.as_str())
-                        .unwrap_or(name);
-                    map.insert(alias.to_string(), (module.clone(), name.clone()));
-                }
-                continue;
-            }
-
-            for (idx, module) in import.names.iter().enumerate() {
-                let alias = import
-                    .aliases
-                    .get(idx)
-                    .and_then(|alias| alias.as_ref())
-                    .map(|alias| alias.as_str())
-                    .unwrap_or_else(|| module.split('.').next().unwrap_or(module));
-                map.insert(alias.to_string(), (module.clone(), "*".to_string()));
-            }
-            continue;
-        }
-
-        let module = resolve_module_name(&import.module, current_module, import.level);
-        if import.is_star {
-            star_modules.push(module);
-            continue;
-        }
-
-        for (idx, name) in import.names.iter().enumerate() {
-            let alias = import
-                .aliases
-                .get(idx)
-                .and_then(|alias| alias.as_ref())
-                .map(|alias| alias.as_str())
-                .unwrap_or(name);
-            map.insert(alias.to_string(), (module.clone(), name.clone()));
-        }
-    }
-    ImportResolution {
-        name_map: map,
-        star_modules,
-    }
-}
-
-fn resolve_module_name(module: &str, current_module: &str, level: usize) -> String {
-    if level == 0 {
-        return module.to_string();
-    }
-    let mut parts: Vec<&str> = current_module.split('.').collect();
-    let pop_count = level.saturating_sub(1).min(parts.len());
-    for _ in 0..pop_count {
-        parts.pop();
-    }
-    if module.is_empty() {
-        return parts.join(".");
-    }
-    if parts.is_empty() {
-        module.to_string()
-    } else {
-        format!("{}.{}", parts.join("."), module)
-    }
-}
-
-fn module_name_from_path(path: &str) -> String {
-    let path = path.strip_suffix(".py").unwrap_or(path);
-    if path.ends_with("/__init__") {
-        let trimmed = path.trim_end_matches("/__init__");
-        return trimmed.replace('/', ".");
-    }
-    path.replace('/', ".")
+    resolver::export_names(
+        info.exports.as_deref(),
+        symbols_by_file
+            .get(file)
+            .into_iter()
+            .flat_map(|symbols| symbols.keys().cloned()),
+        &info.imports,
+    )
 }

@@ -1,5 +1,6 @@
 use super::parser;
 use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
+use crate::languages::ecmascript::resolver;
 use crate::source_discovery;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
@@ -56,7 +57,7 @@ fn referenced_declaration_symbols(
     if entrypoints.is_empty()
         || !entrypoints
             .iter()
-            .all(|entrypoint| is_declaration_file(Path::new(entrypoint)))
+            .all(|entrypoint| resolver::is_declaration_file(Path::new(entrypoint)))
     {
         return HashMap::new();
     }
@@ -691,19 +692,13 @@ fn resolve_ts_module(
     spec: &str,
     modules: &std::collections::HashMap<String, ModuleInfo>,
 ) -> Option<String> {
-    if !spec.starts_with('.') {
-        return None;
-    }
-    let from_path = root_dir.join(from_file);
-    let base_dir = from_path.parent()?;
-    let raw = base_dir.join(spec);
-    for candidate in typescript_module_candidates(&raw, is_declaration_file(&from_path)) {
-        let relative = crate::paths::normalize_relative_path(&candidate, root_dir);
-        if modules.contains_key(&relative) {
-            return Some(relative);
-        }
-    }
-    None
+    resolver::resolve_relative_module(
+        root_dir,
+        from_file,
+        spec,
+        resolver::is_declaration_file(&root_dir.join(from_file)),
+        |candidate| modules.contains_key(candidate),
+    )
 }
 
 fn is_typescript_file(path: &Path) -> bool {
@@ -718,54 +713,4 @@ fn is_typescript_file(path: &Path) -> bool {
             | Some("mjs")
             | Some("cjs")
     )
-}
-
-fn is_declaration_file(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| {
-            name.ends_with(".d.ts") || name.ends_with(".d.mts") || name.ends_with(".d.cts")
-        })
-}
-
-fn typescript_module_candidates(raw: &Path, declarations_first: bool) -> Vec<std::path::PathBuf> {
-    let declaration_candidates = [
-        raw.with_extension("d.ts"),
-        raw.with_extension("d.mts"),
-        raw.with_extension("d.cts"),
-        raw.join("index.d.ts"),
-        raw.join("index.d.mts"),
-        raw.join("index.d.cts"),
-    ];
-    let source_candidates = [
-        raw.to_path_buf(),
-        raw.with_extension("ts"),
-        raw.with_extension("tsx"),
-        raw.with_extension("mts"),
-        raw.with_extension("cts"),
-        raw.with_extension("js"),
-        raw.with_extension("jsx"),
-        raw.with_extension("mjs"),
-        raw.with_extension("cjs"),
-        raw.join("index.ts"),
-        raw.join("index.tsx"),
-        raw.join("index.mts"),
-        raw.join("index.cts"),
-        raw.join("index.js"),
-        raw.join("index.jsx"),
-        raw.join("index.mjs"),
-        raw.join("index.cjs"),
-    ];
-
-    if declarations_first {
-        declaration_candidates
-            .into_iter()
-            .chain(source_candidates)
-            .collect()
-    } else {
-        source_candidates
-            .into_iter()
-            .chain(declaration_candidates)
-            .collect()
-    }
 }

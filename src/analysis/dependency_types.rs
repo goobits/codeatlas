@@ -1,5 +1,6 @@
 use crate::domain::{Language, ScanConfig, ScanReport, Symbol, Visibility};
 use crate::languages;
+use crate::languages::ecmascript::resolver;
 use crate::package;
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
@@ -316,28 +317,12 @@ fn resolve_relative_module(
     from_file: &str,
     specifier: &str,
 ) -> Option<String> {
-    let base = Path::new(from_file).parent()?;
-    let raw = base.join(specifier);
-    let candidates = [
-        raw.clone(),
-        raw.with_extension("ts"),
-        raw.with_extension("tsx"),
-        raw.with_extension("js"),
-        raw.with_extension("jsx"),
-        raw.join("index.ts"),
-        raw.join("index.tsx"),
-        raw.join("index.js"),
-        raw.join("index.jsx"),
-    ];
-    candidates
-        .into_iter()
-        .map(|path| crate::paths::normalize_path(&path))
-        .find(|path| {
-            report
-                .symbols
-                .iter()
-                .any(|symbol| symbol.file_path == *path)
-        })
+    resolver::resolve_relative_module(Path::new(""), from_file, specifier, false, |candidate| {
+        report
+            .symbols
+            .iter()
+            .any(|symbol| symbol.file_path == candidate)
+    })
 }
 
 fn select_symbol(

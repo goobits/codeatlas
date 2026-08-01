@@ -6,6 +6,7 @@ use std::path::Path;
 pub(crate) mod parser;
 mod public_api;
 pub(super) mod reachability;
+pub(crate) mod resolver;
 
 /// Python language definition for scanning and project detection.
 pub(crate) struct PythonLanguage;

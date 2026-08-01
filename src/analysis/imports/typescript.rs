@@ -1,5 +1,6 @@
 use super::{add_file_edge, add_importer, FileEdges, Importers};
 use crate::domain::Language;
+use crate::languages::ecmascript::resolver;
 use crate::languages::typescript::parser;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -306,41 +307,7 @@ fn resolve_ts_module(
     spec: &str,
     modules: &HashMap<String, ModuleInfo>,
 ) -> Option<String> {
-    if !spec.starts_with('.') {
-        return None;
-    }
-    let base = if root_dir.as_os_str().is_empty() {
-        Path::new(from_file)
-            .parent()
-            .map(|parent| parent.to_path_buf())?
-    } else {
-        let from_path = root_dir.join(from_file);
-        from_path.parent()?.to_path_buf()
-    };
-
-    let raw = base.join(spec);
-    let candidates = [
-        raw.clone(),
-        raw.with_extension("ts"),
-        raw.with_extension("tsx"),
-        raw.with_extension("js"),
-        raw.with_extension("jsx"),
-        raw.join("index.ts"),
-        raw.join("index.tsx"),
-        raw.join("index.js"),
-        raw.join("index.jsx"),
-    ];
-
-    for candidate in candidates {
-        let relative = if root_dir.as_os_str().is_empty() {
-            crate::paths::normalize_path(&candidate)
-        } else {
-            crate::paths::normalize_relative_path(&candidate, root_dir)
-        };
-
-        if modules.contains_key(&relative) {
-            return Some(relative);
-        }
-    }
-    None
+    resolver::resolve_relative_module(root_dir, from_file, spec, false, |candidate| {
+        modules.contains_key(candidate)
+    })
 }

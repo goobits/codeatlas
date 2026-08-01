@@ -1,5 +1,5 @@
 mod definition;
-mod ecmascript;
+pub(crate) mod ecmascript;
 pub(crate) mod python;
 pub(crate) mod reachability;
 mod registry;

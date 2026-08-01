@@ -858,20 +858,18 @@ fn load_alias_config<'a>(
     modules: impl Iterator<Item = &'a Module>,
 ) -> Result<AliasConfig> {
     let mut config = AliasConfig::default();
-    for name in ["tsconfig.json", "jsconfig.json"] {
-        let path = root.join(name);
-        if !path.is_file() {
-            continue;
-        }
+    if let Some(path) = nearest_alias_config(root) {
         let source = std::fs::read_to_string(&path)
             .with_context(|| format!("Could not read {}", path.display()))?;
         let value: Value = json5::from_str(&source)
             .with_context(|| format!("Invalid TypeScript configuration at {}", path.display()))?;
         let compiler = &value["compilerOptions"];
-        config.base_url = compiler["baseUrl"]
-            .as_str()
-            .map(PathBuf::from)
-            .unwrap_or_default();
+        let config_root = path.parent().unwrap_or(root);
+        let absolute_base_url = config_root.join(compiler["baseUrl"].as_str().unwrap_or(""));
+        if compiler["baseUrl"].is_string() {
+            let relative = crate::paths::normalize_relative_path(&absolute_base_url, root);
+            config.base_url = PathBuf::from(if relative.is_empty() { "." } else { &relative });
+        }
         if let Some(paths) = compiler["paths"].as_object() {
             for (pattern, targets) in paths {
                 let targets = targets
@@ -879,14 +877,15 @@ fn load_alias_config<'a>(
                     .into_iter()
                     .flatten()
                     .filter_map(Value::as_str)
-                    .map(|target| crate::paths::normalize_path(&config.base_url.join(target)))
+                    .map(|target| {
+                        crate::paths::normalize_relative_path(&absolute_base_url.join(target), root)
+                    })
                     .collect::<Vec<_>>();
                 if !targets.is_empty() {
                     config.paths.insert(pattern.clone(), targets);
                 }
             }
         }
-        break;
     }
 
     for module in modules.filter(|module| is_alias_config_module(&module.path)) {
@@ -901,6 +900,25 @@ fn load_alias_config<'a>(
         targets.dedup();
     }
     Ok(config)
+}
+
+fn nearest_alias_config(root: &Path) -> Option<PathBuf> {
+    let package_root = root
+        .ancestors()
+        .find(|directory| directory.join("package.json").is_file())
+        .unwrap_or(root);
+    for directory in root.ancestors() {
+        for name in ["tsconfig.json", "jsconfig.json"] {
+            let candidate = directory.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        if directory == package_root {
+            break;
+        }
+    }
+    None
 }
 
 fn add_configured_alias(paths: &mut BTreeMap<String, Vec<String>>, pattern: &str, target: &str) {
@@ -1004,34 +1022,134 @@ fn apply_alias_capture(target: &str, capture: Option<&str>) -> String {
         .unwrap_or_else(|| target.to_string())
 }
 
-fn module_candidates(raw: &Path) -> Vec<PathBuf> {
-    let declaration = raw
-        .file_name()
+pub(crate) fn is_declaration_file(path: &Path) -> bool {
+    path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(".d.ts"));
-    let mut candidates = vec![raw.to_path_buf()];
-    for extension in ["ts", "tsx", "js", "jsx", "mjs", "cjs", "svelte"] {
-        candidates.push(PathBuf::from(format!(
-            "{}.{}",
-            raw.to_string_lossy(),
-            extension
-        )));
-        candidates.push(raw.with_extension(extension));
+        .is_some_and(|name| {
+            name.ends_with(".d.ts") || name.ends_with(".d.mts") || name.ends_with(".d.cts")
+        })
+}
+
+pub(crate) fn module_candidates(raw: &Path) -> Vec<PathBuf> {
+    module_candidates_with_declarations(raw, false)
+}
+
+pub(crate) fn module_candidates_with_declarations(
+    raw: &Path,
+    declarations_first: bool,
+) -> Vec<PathBuf> {
+    fn push_unique(output: &mut Vec<PathBuf>, seen: &mut BTreeSet<PathBuf>, path: PathBuf) {
+        if seen.insert(path.clone()) {
+            output.push(path);
+        }
     }
-    if !declaration {
-        candidates.push(raw.with_extension("d.ts"));
+
+    let mut declarations = Vec::new();
+    let mut declaration_seen = BTreeSet::new();
+    if is_declaration_file(raw) {
+        push_unique(&mut declarations, &mut declaration_seen, raw.to_path_buf());
+    }
+    for extension in ["d.ts", "d.mts", "d.cts"] {
+        push_unique(
+            &mut declarations,
+            &mut declaration_seen,
+            raw.with_extension(extension),
+        );
+        push_unique(
+            &mut declarations,
+            &mut declaration_seen,
+            PathBuf::from(format!("{}.{}", raw.to_string_lossy(), extension)),
+        );
+    }
+    for filename in ["index.d.ts", "index.d.mts", "index.d.cts"] {
+        push_unique(&mut declarations, &mut declaration_seen, raw.join(filename));
+    }
+
+    let mut sources = Vec::new();
+    let mut source_seen = BTreeSet::new();
+    push_unique(&mut sources, &mut source_seen, raw.to_path_buf());
+    for extension in [
+        "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "svelte",
+    ] {
+        push_unique(
+            &mut sources,
+            &mut source_seen,
+            PathBuf::from(format!("{}.{}", raw.to_string_lossy(), extension)),
+        );
+        push_unique(
+            &mut sources,
+            &mut source_seen,
+            raw.with_extension(extension),
+        );
     }
     for filename in [
         "index.ts",
         "index.tsx",
+        "index.mts",
+        "index.cts",
         "index.js",
         "index.jsx",
         "index.mjs",
         "index.cjs",
         "index.svelte",
-        "index.d.ts",
     ] {
-        candidates.push(raw.join(filename));
+        push_unique(&mut sources, &mut source_seen, raw.join(filename));
     }
-    candidates
+
+    if declarations_first {
+        declarations.extend(sources);
+        declarations
+    } else {
+        sources.extend(declarations);
+        sources
+    }
+}
+
+pub(crate) fn resolve_relative_module(
+    root_dir: &Path,
+    from_file: &str,
+    specifier: &str,
+    declarations_first: bool,
+    mut exists: impl FnMut(&str) -> bool,
+) -> Option<String> {
+    if !specifier.starts_with('.') {
+        return None;
+    }
+    let base = if root_dir.as_os_str().is_empty() {
+        Path::new(from_file).parent()?.to_path_buf()
+    } else {
+        root_dir.join(from_file).parent()?.to_path_buf()
+    };
+    for candidate in module_candidates_with_declarations(&base.join(specifier), declarations_first)
+    {
+        let relative = if root_dir.as_os_str().is_empty() {
+            crate::paths::normalize_path(&candidate)
+        } else {
+            crate::paths::normalize_relative_path(&candidate, root_dir)
+        };
+        if exists(&relative) {
+            return Some(relative);
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alias_config_inherits_from_the_nearest_package_root() {
+        let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/dead-code/workspace/packages/a");
+        let project_root = package_root.join("src");
+        let config = load_alias_config(&project_root, std::iter::empty::<&Module>())
+            .expect("ancestor alias config");
+
+        assert_eq!(config.base_url, PathBuf::from(".."));
+        assert_eq!(
+            config.paths["@fixture/aliased-shared"],
+            ["../../b/src/aliasShared.ts"]
+        );
+    }
 }

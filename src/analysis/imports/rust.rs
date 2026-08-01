@@ -1,6 +1,6 @@
 use super::{add_file_edge, add_importer, FileEdges, Importers};
 use crate::domain::Language;
-use crate::languages::rust::parser;
+use crate::languages::rust::{parser, resolver};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -40,7 +40,7 @@ pub(crate) fn collect_importers(
         };
 
         let relative = crate::paths::normalize_relative_path(path, root_dir);
-        let module_path = module_path_from_file(&relative);
+        let module_path = resolver::module_path_from_file(&relative);
         module_map.insert(module_path.clone(), relative.clone());
 
         let info = match parser::parse_module_info(path, root_dir, &source) {
@@ -91,16 +91,16 @@ pub(crate) fn collect_importers(
     for (file, info) in &modules {
         // Track mod declarations as file dependencies
         for mod_name in &info.public_mods {
-            let mut child_path = info.module_path.clone();
-            child_path.push(mod_name.clone());
-            if let Some(target) = module_map.get(&child_path) {
-                add_file_edge(file_edges, file, target);
+            if let Some(target) = resolver::resolve_declared_module(file, mod_name, &module_map) {
+                add_file_edge(file_edges, file, &target);
             }
         }
 
         // Track use statements as file dependencies
         for import in &info.uses {
-            if let Some(target) = resolve_rust_use_module(&info.module_path, import, &module_map) {
+            if let Some(target) =
+                resolver::resolve_use_module(&info.module_path, &import.module_path, &module_map)
+            {
                 // Always add file edge for any resolved import
                 add_file_edge(file_edges, file, &target);
 
@@ -202,14 +202,18 @@ fn resolve_export(
             for &i in indices {
                 let export = &info.public_uses[i];
                 if export.is_glob {
-                    if let Some(target) =
-                        resolve_rust_use_module(&info.module_path, export, graph.module_map)
-                    {
+                    if let Some(target) = resolver::resolve_use_module(
+                        &info.module_path,
+                        &export.module_path,
+                        graph.module_map,
+                    ) {
                         ids.extend(resolve_all_exports(&target, graph, export_cache, all_cache));
                     }
-                } else if let Some(target) =
-                    resolve_rust_use_module(&info.module_path, export, graph.module_map)
-                {
+                } else if let Some(target) = resolver::resolve_use_module(
+                    &info.module_path,
+                    &export.module_path,
+                    graph.module_map,
+                ) {
                     ids.extend(resolve_export(
                         &target,
                         &export.name,
@@ -227,53 +231,4 @@ fn resolve_export(
     ids.dedup();
     export_cache.insert(key, ids.clone());
     ids
-}
-
-fn resolve_rust_use_module(
-    current_module: &[String],
-    export: &parser::UseExport,
-    module_map: &HashMap<Vec<String>, String>,
-) -> Option<String> {
-    if export.module_path.is_empty() {
-        return None;
-    }
-
-    let mut path = Vec::new();
-    let first = export.module_path.first().map(|s| s.as_str()).unwrap_or("");
-    if first == "crate" {
-        path.extend(export.module_path.iter().skip(1).cloned());
-    } else if first == "self" {
-        path.extend(current_module.iter().cloned());
-        path.extend(export.module_path.iter().skip(1).cloned());
-    } else if first == "super" {
-        let mut base = current_module.to_vec();
-        base.pop();
-        path.extend(base);
-        path.extend(export.module_path.iter().skip(1).cloned());
-    } else {
-        path.extend(current_module.iter().cloned());
-        path.extend(export.module_path.iter().cloned());
-    }
-
-    if export.is_glob && export.name != "*" {
-        path.push(export.name.clone());
-    }
-
-    module_map.get(&path).cloned()
-}
-
-fn module_path_from_file(file_path: &str) -> Vec<String> {
-    let path = file_path.strip_suffix(".rs").unwrap_or(file_path);
-    let path = path.trim_start_matches("src/");
-    if path.ends_with("/mod") {
-        return path
-            .trim_end_matches("/mod")
-            .split('/')
-            .map(|s| s.to_string())
-            .collect();
-    }
-    if path == "lib" || path == "main" || path.ends_with("/lib") || path.ends_with("/main") {
-        return Vec::new();
-    }
-    path.split('/').map(|s| s.to_string()).collect()
 }

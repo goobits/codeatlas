@@ -1,11 +1,11 @@
-use super::parser;
+use super::{parser, resolver};
 use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
 use crate::source_discovery;
 use std::path::Path;
 
 struct ModuleInfo {
     symbols: Vec<Symbol>,
-    exports: Option<std::collections::HashSet<String>>,
+    exports: Option<Vec<String>>,
     imports: Vec<parser::PythonImport>,
     module_name: String,
 }
@@ -72,8 +72,8 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
 
         match parser::parse_module_info(path, root_dir, &source) {
             Ok(info) => {
-                let exports = info.exports.map(|list| list.into_iter().collect());
-                let module_name = module_name_from_path(&relative);
+                let exports = info.exports;
+                let module_name = resolver::module_name_from_path(&relative);
                 module_by_name.insert(module_name.clone(), relative.clone());
                 modules.insert(
                     relative.clone(),
@@ -138,7 +138,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         };
         let mut current_allowed = std::collections::HashSet::new();
         let defined = defined_symbol_names(&info.symbols);
-        let import_map = import_name_map(&info.imports, &info.module_name);
+        let import_map = resolver::import_name_map(&info.imports, &info.module_name);
 
         for name in export_names {
             if name == "*" {
@@ -195,149 +195,12 @@ fn module_export_names(
     modules: &std::collections::HashMap<String, ModuleInfo>,
     file: &str,
 ) -> std::collections::HashSet<String> {
-    let info = match modules.get(file) {
-        Some(info) => info,
-        None => return std::collections::HashSet::new(),
+    let Some(info) = modules.get(file) else {
+        return std::collections::HashSet::new();
     };
-
-    if let Some(ref exports) = info.exports {
-        return exports.iter().cloned().collect();
-    }
-
-    let mut names = std::collections::HashSet::new();
-    for sym in &info.symbols {
-        if !sym.name.starts_with('_') {
-            names.insert(sym.name.clone());
-        }
-    }
-    for import in &info.imports {
-        if import.module.is_empty() {
-            if import.level > 0 {
-                for (idx, name) in import.names.iter().enumerate() {
-                    let alias = import
-                        .aliases
-                        .get(idx)
-                        .and_then(|a| a.as_ref())
-                        .map(|a| a.as_str())
-                        .unwrap_or(name);
-                    if !alias.starts_with('_') {
-                        names.insert(alias.to_string());
-                    }
-                }
-                continue;
-            }
-            for (idx, module) in import.names.iter().enumerate() {
-                let alias = import
-                    .aliases
-                    .get(idx)
-                    .and_then(|a| a.as_ref())
-                    .map(|a| a.as_str())
-                    .unwrap_or_else(|| module.split('.').next().unwrap_or(module));
-                if !alias.starts_with('_') {
-                    names.insert(alias.to_string());
-                }
-            }
-        } else if import.is_star {
-            names.insert("*".to_string());
-        } else {
-            for (idx, name) in import.names.iter().enumerate() {
-                let alias = import
-                    .aliases
-                    .get(idx)
-                    .and_then(|a| a.as_ref())
-                    .map(|a| a.as_str())
-                    .unwrap_or(name);
-                if !alias.starts_with('_') {
-                    names.insert(alias.to_string());
-                }
-            }
-        }
-    }
-
-    names
-}
-
-struct ImportResolution {
-    name_map: std::collections::HashMap<String, (String, String)>,
-    star_modules: Vec<String>,
-}
-
-fn import_name_map(imports: &[parser::PythonImport], current_module: &str) -> ImportResolution {
-    let mut map = std::collections::HashMap::new();
-    let mut star_modules = Vec::new();
-    for import in imports {
-        if import.module.is_empty() {
-            if import.level > 0 {
-                let module = resolve_module_name("", current_module, import.level);
-                for (idx, name) in import.names.iter().enumerate() {
-                    let alias = import
-                        .aliases
-                        .get(idx)
-                        .and_then(|a| a.as_ref())
-                        .map(|a| a.as_str())
-                        .unwrap_or(name);
-                    map.insert(alias.to_string(), (module.clone(), name.clone()));
-                }
-                continue;
-            }
-            for (idx, module) in import.names.iter().enumerate() {
-                let alias = import
-                    .aliases
-                    .get(idx)
-                    .and_then(|a| a.as_ref())
-                    .map(|a| a.as_str())
-                    .unwrap_or_else(|| module.split('.').next().unwrap_or(module));
-                map.insert(alias.to_string(), (module.clone(), "*".to_string()));
-            }
-            continue;
-        }
-
-        let module = resolve_module_name(&import.module, current_module, import.level);
-        if import.is_star {
-            star_modules.push(module);
-            continue;
-        }
-
-        for (idx, name) in import.names.iter().enumerate() {
-            let alias = import
-                .aliases
-                .get(idx)
-                .and_then(|a| a.as_ref())
-                .map(|a| a.as_str())
-                .unwrap_or(name);
-            map.insert(alias.to_string(), (module.clone(), name.clone()));
-        }
-    }
-    ImportResolution {
-        name_map: map,
-        star_modules,
-    }
-}
-
-fn resolve_module_name(module: &str, current_module: &str, level: usize) -> String {
-    if level == 0 {
-        return module.to_string();
-    }
-    let mut parts: Vec<&str> = current_module.split('.').collect();
-    let pop_count = level.saturating_sub(1).min(parts.len());
-    for _ in 0..pop_count {
-        parts.pop();
-    }
-    if module.is_empty() {
-        return parts.join(".");
-    }
-    if parts.is_empty() {
-        module.to_string()
-    } else {
-        format!("{}.{}", parts.join("."), module)
-    }
-}
-
-fn module_name_from_path(path: &str) -> String {
-    let path = path.strip_suffix(".py").unwrap_or(path);
-    if path.ends_with("/__init__") {
-        let trimmed = path.trim_end_matches("/__init__");
-        return trimmed.replace('/', ".");
-    }
-    path.replace('/', ".")
+    resolver::export_names(
+        info.exports.as_deref(),
+        info.symbols.iter().map(|symbol| symbol.name.clone()),
+        &info.imports,
+    )
 }

@@ -1,4 +1,4 @@
-use super::parser;
+use super::{parser, resolver};
 use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
 use crate::source_discovery;
 use std::path::Path;
@@ -60,7 +60,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         };
 
         let relative = crate::paths::normalize_relative_path(path, root_dir);
-        let module_path = module_path_from_file(&relative);
+        let module_path = resolver::module_path_from_file(&relative);
         module_map.insert(module_path.clone(), relative.clone());
         match parser::parse_module_info(path, root_dir, &source) {
             Ok(info) => {
@@ -146,7 +146,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                 .filter(|module| module.visibility.is_public())
             {
                 if let Some(target) =
-                    resolve_rust_module(&info.file_path, &module.name, &module_map)
+                    resolver::resolve_declared_module(&info.file_path, &module.name, &module_map)
                 {
                     queue.push_back((target, None));
                 }
@@ -160,14 +160,18 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         {
             if is_all || export_names.contains(&export.alias) {
                 if export.is_glob {
-                    if let Some(target) =
-                        resolve_rust_use_module(&info.module_path, export, &module_map)
-                    {
+                    if let Some(target) = resolver::resolve_use_module(
+                        &info.module_path,
+                        &export.module_path,
+                        &module_map,
+                    ) {
                         queue.push_back((target, None));
                     }
-                } else if let Some(target) =
-                    resolve_rust_use_module(&info.module_path, export, &module_map)
-                {
+                } else if let Some(target) = resolver::resolve_use_module(
+                    &info.module_path,
+                    &export.module_path,
+                    &module_map,
+                ) {
                     let mut names = std::collections::HashSet::new();
                     names.insert(export.name.clone());
                     queue.push_back((target, Some(names)));
@@ -192,59 +196,4 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
     }
 
     report
-}
-
-fn resolve_rust_module(
-    current_file: &str,
-    module: &str,
-    module_map: &std::collections::HashMap<Vec<String>, String>,
-) -> Option<String> {
-    let mut base = module_path_from_file(current_file);
-    base.push(module.to_string());
-    module_map.get(&base).cloned()
-}
-
-fn resolve_rust_use_module(
-    current_module: &[String],
-    export: &parser::UseExport,
-    module_map: &std::collections::HashMap<Vec<String>, String>,
-) -> Option<String> {
-    if export.module_path.is_empty() {
-        return None;
-    }
-
-    let mut path = Vec::new();
-    let first = export.module_path.first().map(|s| s.as_str()).unwrap_or("");
-    if first == "crate" {
-        path.extend(export.module_path.iter().skip(1).cloned());
-    } else if first == "self" {
-        path.extend(current_module.iter().cloned());
-        path.extend(export.module_path.iter().skip(1).cloned());
-    } else if first == "super" {
-        let mut base = current_module.to_vec();
-        base.pop();
-        path.extend(base);
-        path.extend(export.module_path.iter().skip(1).cloned());
-    } else {
-        path.extend(current_module.iter().cloned());
-        path.extend(export.module_path.iter().cloned());
-    }
-
-    module_map.get(&path).cloned()
-}
-
-fn module_path_from_file(file_path: &str) -> Vec<String> {
-    let path = file_path.strip_suffix(".rs").unwrap_or(file_path);
-    let path = path.trim_start_matches("src/");
-    if path.ends_with("/mod") {
-        return path
-            .trim_end_matches("/mod")
-            .split('/')
-            .map(|s| s.to_string())
-            .collect();
-    }
-    if path == "lib" || path == "main" || path.ends_with("/lib") || path.ends_with("/main") {
-        return Vec::new();
-    }
-    path.split('/').map(|s| s.to_string()).collect()
 }

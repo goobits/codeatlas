@@ -26,7 +26,7 @@ const TOOLING_CONTEXT: &str = "ecmascript-tooling";
 const DECLARATION_CONTEXT: &str = "ecmascript-declarations";
 const TEST_DISCOVERY_PATTERN: &str = "**/*.test.ts";
 
-mod resolver;
+pub(crate) mod resolver;
 
 pub(crate) fn collect_projects(
     graph: &mut SourceGraph,
