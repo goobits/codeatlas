@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-const SOURCE_EXTENSIONS: [&str; 7] = ["cjs", "js", "jsx", "mjs", "svelte", "ts", "tsx"];
+const SOURCE_EXTENSIONS: [&str; 9] = ["cjs", "js", "jsx", "mjs", "py", "rs", "svelte", "ts", "tsx"];
 
 fn is_ignored_part(part: &str) -> bool {
     matches!(
@@ -63,6 +63,14 @@ mod tests {
         assert_eq!(
             source_argument("tasks/build.js").as_deref(),
             Some("tasks/build.js")
+        );
+        assert_eq!(
+            source_argument("scripts/request_adapter.py").as_deref(),
+            Some("scripts/request_adapter.py")
+        );
+        assert_eq!(
+            source_argument("tools/fuzz_server.rs").as_deref(),
+            Some("tools/fuzz_server.rs")
         );
         assert_eq!(source_argument("/tmp/server.ts"), None);
         assert_eq!(source_argument("README.md"), None);
