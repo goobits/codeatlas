@@ -359,7 +359,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         &fs::read(reports.join("summary.json")).expect("fuzz summary should be written"),
     )
     .expect("fuzz summary should be JSON");
-    assert_eq!(summary["apiVersion"], "codeatlas.http-fuzz/v1");
+    assert_eq!(summary["apiVersion"], "codeatlas.http-fuzz/v2");
     assert_eq!(summary["targetId"], "fixture-local");
     assert_eq!(summary["contractId"], "fixture-api");
 

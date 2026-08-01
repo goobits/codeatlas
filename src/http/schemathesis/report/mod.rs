@@ -7,6 +7,7 @@ mod tests;
 
 use crate::http::model::{HttpFuzzContractMode, HttpFuzzReport};
 use anyhow::{Context, Result};
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
@@ -21,15 +22,17 @@ pub(super) fn summarize(
     contract_id: &str,
     contract_mode: HttpFuzzContractMode,
     profile: &str,
+    expected_non_success_operations: &BTreeSet<String>,
 ) -> Result<HttpFuzzReport> {
     let file = File::open(path)
         .with_context(|| format!("Could not read Schemathesis events at {}", path.display()))?;
-    summary::summarize_reader(
+    summary::summarize_reader_with_expected_non_success(
         BufReader::new(file),
         target_id,
         contract_id,
         contract_mode,
         profile,
+        expected_non_success_operations,
     )
 }
 

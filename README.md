@@ -568,11 +568,15 @@ report directory with owner-only permissions where the platform supports them.
 An interrupted run stops its managed processes and discards raw exchange
 evidence; the next run also clears any owned files left by an abnormal exit.
 It retains sanitized NDJSON, a compact evidence-safe JUnit report, and a compact
-versioned `codeatlas.http-fuzz/v1` summary; request and response bodies,
+versioned `codeatlas.http-fuzz/v2` summary; request and response bodies,
 sensitive headers, and URL queries are removed from retained evidence. The
-summary separates positive successes, negative rejections, server errors,
-operations whose positive cases only reached authentication rejection, and
-stateful link/scenario coverage. Projects retain only their domain-owned
+summary separates positive successes, declared non-success operations, negative
+rejections, server errors, operations whose positive cases only reached
+authentication rejection, and stateful link/scenario coverage. An operation
+whose OpenAPI contract has no 2xx, 3xx, or `default` response satisfies the
+coverage gate when a positive case reaches its declared client-error response;
+privacy-preserving and deny-only endpoints therefore do not weaken the success
+budget. Projects retain only their domain-owned
 runtime fixture, optional explicit OpenAPI contract and Links, adapter, and
 target configuration.
 
