@@ -22,7 +22,7 @@ pub(crate) fn collect_importers(
             return true;
         }
         let name = e.file_name().to_string_lossy();
-        !crate::source_discovery::is_ignored_dir(&name, no_default_ignore) && name != "target"
+        !crate::source_policy::is_ignored_dir(&name, no_default_ignore) && name != "target"
     }) {
         let entry = match entry {
             Ok(e) => e,

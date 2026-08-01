@@ -288,7 +288,7 @@ impl ProjectConfig {
             .unwrap_or_else(|| self.root.clone());
         std::iter::once(command)
             .chain(args.iter().map(String::as_str))
-            .filter_map(crate::package::source_argument)
+            .filter_map(crate::source_policy::source_argument)
             .map(|source| root.join(source))
             .filter(|source| source.is_file())
             .map(|source| source.canonicalize().unwrap_or(source))

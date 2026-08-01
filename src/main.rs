@@ -14,6 +14,7 @@ mod outputs;
 mod package;
 mod paths;
 mod source_discovery;
+mod source_policy;
 
 #[cfg(test)]
 mod tests;

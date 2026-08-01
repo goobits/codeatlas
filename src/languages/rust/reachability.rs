@@ -62,7 +62,8 @@ fn collect_modules(
         .iter()
         .map(|target| crate::paths::normalize_relative_path(&target.root, &project.root))
         .collect::<Vec<_>>();
-    let discovery = crate::source_discovery::discover_with_patterns(project, &target_patterns);
+    let discovery =
+        crate::languages::reachability::discover_project_sources(project, &target_patterns);
     for warning in discovery.warnings {
         graph.record_boundary(
             &project.id,

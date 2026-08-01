@@ -13,6 +13,27 @@ use globset::{GlobBuilder, GlobMatcher};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+pub(crate) fn discover_project_sources(
+    project: &ResolvedAnalysisProject,
+    additional_patterns: &[String],
+) -> crate::source_discovery::SourceDiscovery {
+    let mut patterns = project
+        .contexts
+        .values()
+        .flat_map(|context| context.entrypoints.iter().cloned())
+        .chain(project.assume_reachable.iter().cloned())
+        .chain(additional_patterns.iter().cloned())
+        .collect::<Vec<_>>();
+    patterns.sort();
+    patterns.dedup();
+    crate::source_discovery::discover(crate::source_discovery::SourceDiscoveryRequest {
+        root: &project.root,
+        patterns: &patterns,
+        excluded_roots: &project.excluded_roots,
+        no_default_ignore: project.no_default_ignore,
+    })
+}
+
 pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result<SourceGraph> {
     if projects.is_empty() {
         anyhow::bail!("CodeAtlas needs at least one analysis project");
@@ -115,8 +136,7 @@ fn configured_or_detected_languages(
 
     let mut languages = BTreeSet::new();
     let is_cargo_project = project.root.join("Cargo.toml").is_file();
-    let discovery =
-        crate::source_discovery::discover_with_patterns(project, &["**/*.test.ts".to_string()]);
+    let discovery = discover_project_sources(project, &["**/*.test.ts".to_string()]);
     if let Some(warning) = discovery.warnings.first() {
         anyhow::bail!(
             "Could not inspect reachability project {}: {warning}",

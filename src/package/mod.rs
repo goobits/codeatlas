@@ -13,6 +13,5 @@ pub(crate) use dependency::{
 pub(crate) use entrypoints::discover_bundled_entrypoints;
 pub(crate) use entrypoints::discover_entrypoints as discover_runtime_entrypoints;
 pub(crate) use entrypoints::discover_tooling_entrypoints;
-pub(crate) use entrypoints::source_argument;
 pub(crate) use manifest::{discover, discover_for_docs};
 pub(crate) use workspace::discover as discover_workspace;

@@ -228,8 +228,10 @@ fn discover_html_entrypoints(
             .expect("valid HTML script source expression")
     });
 
-    let discovery =
-        crate::source_discovery::discover_with_patterns(project, &["**/*.html".to_string()]);
+    let discovery = crate::languages::reachability::discover_project_sources(
+        project,
+        &["**/*.html".to_string()],
+    );
     let mut entrypoints = HtmlEntrypoints::default();
     for html_path in discovery.files {
         if html_path.extension().and_then(|value| value.to_str()) != Some("html") {
@@ -410,7 +412,8 @@ fn collect_project_modules(
     discovery_patterns.extend(crate::package::discover_tooling_entrypoints(&project.root)?);
     discovery_patterns.sort();
     discovery_patterns.dedup();
-    let discovery = crate::source_discovery::discover_with_patterns(project, &discovery_patterns);
+    let discovery =
+        crate::languages::reachability::discover_project_sources(project, &discovery_patterns);
     for warning in discovery.warnings {
         graph.record_boundary(
             &project.id,

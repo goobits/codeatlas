@@ -68,7 +68,7 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
         .filter_entry(|entry| {
             entry.depth() == 0
                 || !entry.file_type().is_some_and(|kind| kind.is_dir())
-                || !crate::source_discovery::is_ignored_dir(
+                || !crate::source_policy::is_ignored_dir(
                     &entry.file_name().to_string_lossy(),
                     false,
                 )

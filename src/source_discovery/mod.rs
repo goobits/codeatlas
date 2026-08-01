@@ -4,13 +4,8 @@
 //! Reachability analysis may re-enter test roots named by a context, while
 //! nested fixture data remains a boundary unless a path selects it explicitly.
 
-use crate::config::ResolvedAnalysisProject;
 use ::ignore::WalkBuilder;
-use std::path::PathBuf;
-
-mod ignore;
-
-pub(crate) use ignore::{is_ignored_dir, is_ignored_path};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default)]
 pub(crate) struct SourceDiscovery {
@@ -18,32 +13,25 @@ pub(crate) struct SourceDiscovery {
     pub warnings: Vec<String>,
 }
 
-pub(crate) fn discover(project: &ResolvedAnalysisProject) -> SourceDiscovery {
-    discover_with_patterns(project, &[])
+pub(crate) struct SourceDiscoveryRequest<'a> {
+    pub root: &'a Path,
+    pub patterns: &'a [String],
+    pub excluded_roots: &'a [PathBuf],
+    pub no_default_ignore: bool,
 }
 
-pub(crate) fn discover_with_patterns(
-    project: &ResolvedAnalysisProject,
-    additional_patterns: &[String],
-) -> SourceDiscovery {
-    let patterns = project
-        .contexts
-        .values()
-        .flat_map(|context| context.entrypoints.iter())
-        .chain(project.assume_reachable.iter())
+pub(crate) fn discover(request: SourceDiscoveryRequest<'_>) -> SourceDiscovery {
+    let patterns = request
+        .patterns
+        .iter()
         .map(|pattern| normalize_pattern(pattern))
-        .chain(
-            additional_patterns
-                .iter()
-                .map(|pattern| normalize_pattern(pattern)),
-        )
         .collect::<Vec<_>>();
     let mut discovery = SourceDiscovery::default();
-    let root = project.root.clone();
+    let root = request.root.to_path_buf();
     let filter_root = root.clone();
     let filter_patterns = patterns.clone();
-    let excluded_roots = project.excluded_roots.clone();
-    let no_default_ignore = project.no_default_ignore;
+    let excluded_roots = request.excluded_roots.to_vec();
+    let no_default_ignore = request.no_default_ignore;
     let mut builder = WalkBuilder::new(&root);
     builder
         .hidden(false)
@@ -105,7 +93,7 @@ fn should_descend(
             .iter()
             .any(|pattern| pattern_may_descend_into(pattern, &relative, name));
     }
-    if !is_ignored_dir(name, false) {
+    if !crate::source_policy::is_ignored_dir(name, false) {
         return true;
     }
     patterns
@@ -146,10 +134,7 @@ fn pattern_may_descend_into(pattern: &str, directory: &str, name: &str) -> bool 
 
 #[cfg(test)]
 mod tests {
-    use super::{discover, pattern_may_descend_into, should_descend};
-    use crate::config::{ResolvedAnalysisProject, RustAnalysisConfig};
-    use crate::domain::source_graph::ProjectId;
-    use std::collections::BTreeMap;
+    use super::{discover, pattern_may_descend_into, should_descend, SourceDiscoveryRequest};
     use std::path::{Path, PathBuf};
 
     struct TemporaryProject(PathBuf);
@@ -239,24 +224,16 @@ mod tests {
             "export const ignored = true;\n",
         )
         .expect("ignored fixture");
-        let project = ResolvedAnalysisProject {
-            id: ProjectId("discovery".to_string()),
-            root: temporary.path().to_path_buf(),
-            report_root: ".".to_string(),
-            languages: vec!["ts".to_string()],
-            contexts: BTreeMap::new(),
-            assume_reachable: Vec::new(),
+        let paths = discover(SourceDiscoveryRequest {
+            root: temporary.path(),
+            patterns: &[],
+            excluded_roots: &[],
             no_default_ignore: false,
-            rust: RustAnalysisConfig::default(),
-            workspace_member: false,
-            excluded_roots: Vec::new(),
-        };
-
-        let paths = discover(&project)
-            .files
-            .into_iter()
-            .map(|path| crate::paths::normalize_relative_path(&path, temporary.path()))
-            .collect::<Vec<_>>();
+        })
+        .files
+        .into_iter()
+        .map(|path| crate::paths::normalize_relative_path(&path, temporary.path()))
+        .collect::<Vec<_>>();
 
         assert!(paths.contains(&"visible.ts".to_string()));
         assert!(!paths.contains(&"ignored/unreachable.ts".to_string()));

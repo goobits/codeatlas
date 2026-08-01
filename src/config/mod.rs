@@ -1,8 +1,6 @@
 mod analysis;
 mod http;
 
-#[cfg(test)]
-pub(crate) use analysis::RustAnalysisConfig;
 pub(crate) use analysis::{AnalysisContextConfig, AnalysisProjectConfig, ResolvedAnalysisProject};
 pub(crate) use http::{
     HttpConfig, HttpFuzzCommandConfig, HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig,

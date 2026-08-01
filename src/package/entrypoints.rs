@@ -3,11 +3,11 @@
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::LazyLock;
 
 const RUNTIME_SCRIPTS: [&str; 2] = ["start", "serve"];
-const SOURCE_EXTENSIONS: [&str; 7] = ["cjs", "js", "jsx", "mjs", "svelte", "ts", "tsx"];
 
 pub(crate) fn discover_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
     let mut entrypoints = discover_script_entrypoints(root_dir, is_runtime_script)?;
@@ -21,6 +21,7 @@ pub(crate) fn discover_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
     )?);
     entrypoints.extend(discover_wrangler_entrypoints(root_dir)?);
     entrypoints.extend(discover_embedded_source_entrypoints(root_dir)?);
+    entrypoints.extend(discover_manifest_bin_entrypoints(root_dir)?);
     entrypoints.sort();
     entrypoints.dedup();
     Ok(entrypoints)
@@ -49,8 +50,14 @@ pub(crate) fn discover_tooling_entrypoints(root_dir: &Path) -> Result<Vec<String
     entrypoints.extend(discover_descendant_script_entrypoints(root_dir, |name| {
         !is_runtime_script(name)
     })?);
-    entrypoints.extend(discover_manifest_bin_entrypoints(root_dir)?);
-    entrypoints.extend(discover_conventional_bin_entrypoints(root_dir)?);
+    let runtime_bins = discover_manifest_bin_entrypoints(root_dir)?
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    entrypoints.extend(
+        discover_conventional_bin_entrypoints(root_dir)?
+            .into_iter()
+            .filter(|entrypoint| !runtime_bins.contains(entrypoint)),
+    );
     entrypoints.sort();
     entrypoints.dedup();
     Ok(entrypoints)
@@ -128,7 +135,7 @@ fn discover_descendant_script_entrypoints(
     for entry in walker.filter_entry(|entry| {
         entry.depth() == 0
             || !entry.file_type().is_dir()
-            || !crate::source_discovery::is_ignored_dir(&entry.file_name().to_string_lossy(), false)
+            || !crate::source_policy::is_ignored_dir(&entry.file_name().to_string_lossy(), false)
     }) {
         let entry = match entry {
             Ok(entry) => entry,
@@ -172,7 +179,7 @@ fn discover_manifest_bin_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
     };
     Ok(values
         .into_iter()
-        .filter_map(source_argument)
+        .filter_map(crate::source_policy::source_argument)
         .filter(|path| root_dir.join(path).is_file())
         .collect())
 }
@@ -192,7 +199,7 @@ fn discover_conventional_bin_entrypoints(root_dir: &Path) -> Result<Vec<String>>
             continue;
         };
         let relative = crate::paths::normalize_path(relative);
-        if source_argument(&relative).is_none() {
+        if crate::source_policy::source_argument(&relative).is_none() {
             continue;
         }
         let source = std::fs::read_to_string(entry.path())
@@ -217,7 +224,7 @@ fn discover_embedded_source_entrypoints(root_dir: &Path) -> Result<Vec<String>> 
     for entry in walker.filter_entry(|entry| {
         entry.depth() == 0
             || !entry.file_type().is_dir()
-            || !crate::source_discovery::is_ignored_dir(&entry.file_name().to_string_lossy(), false)
+            || !crate::source_policy::is_ignored_dir(&entry.file_name().to_string_lossy(), false)
     }) {
         let entry = match entry {
             Ok(entry) => entry,
@@ -250,7 +257,7 @@ fn discover_embedded_source_entrypoints(root_dir: &Path) -> Result<Vec<String>> 
                 continue;
             };
             let relative = crate::paths::normalize_path(relative);
-            if source_argument(&relative).is_some() {
+            if crate::source_policy::source_argument(&relative).is_some() {
                 entrypoints.push(relative);
             }
         }
@@ -281,7 +288,8 @@ fn discover_wrangler_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
                 .and_then(Value::as_str)
                 .map(str::to_string)
         };
-        if let Some(entrypoint) = main.and_then(|main| source_argument(&main)) {
+        if let Some(entrypoint) = main.and_then(|main| crate::source_policy::source_argument(&main))
+        {
             entrypoints.push(entrypoint);
         }
     }
@@ -313,25 +321,14 @@ fn bundled_source_paths(script: &str) -> Vec<String> {
         .into_iter()
         .skip(bundler_index + 1)
         .take_while(|token| !token.starts_with('-') && !matches!(*token, "&&" | "||" | ";" | "|"))
-        .filter_map(source_argument)
+        .filter_map(crate::source_policy::source_argument)
         .collect()
 }
 
 fn script_source_paths(script: &str) -> impl Iterator<Item = String> + '_ {
-    script
-        .split_ascii_whitespace()
-        .filter_map(|token| source_argument(token.trim_matches(is_shell_delimiter)))
-}
-
-pub(crate) fn source_argument(token: &str) -> Option<String> {
-    let token = token.strip_prefix("./").unwrap_or(token);
-    let path = Path::new(token);
-    (!path.is_absolute()
-        && path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| SOURCE_EXTENSIONS.contains(&extension)))
-    .then(|| crate::paths::normalize_path(path))
+    script.split_ascii_whitespace().filter_map(|token| {
+        crate::source_policy::source_argument(token.trim_matches(is_shell_delimiter))
+    })
 }
 
 fn is_shell_delimiter(character: char) -> bool {
@@ -399,13 +396,15 @@ mod tests {
         .expect("root package manifest");
         fs::write(
             package.join("package.json"),
-            r#"{"name":"tool","scripts":{"build":"tsx ../../tasks/build.ts"}}"#,
+            r#"{"name":"tool","bin":"bin/generate.js","scripts":{"build":"tsx ../../tasks/build.ts"}}"#,
         )
         .expect("package manifest");
         fs::write(package.join("index.ts"), "export {}\n").expect("workspace script");
         fs::write(root.join("tasks/build.ts"), "export {}\n").expect("workspace task");
         fs::write(package.join("bin/generate.js"), "#!/usr/bin/env node\n")
             .expect("bin entrypoint");
+        fs::write(package.join("bin/dev.js"), "#!/usr/bin/env node\n")
+            .expect("local bin entrypoint");
         fs::write(package.join("bridge/host.js"), "globalThis.host = true\n")
             .expect("embedded source");
         fs::write(
@@ -416,11 +415,11 @@ mod tests {
 
         assert_eq!(
             discover_entrypoints(&package).expect("runtime entrypoints"),
-            ["bridge/host.js"]
+            ["bin/generate.js", "bridge/host.js"]
         );
         assert_eq!(
             discover_tooling_entrypoints(&package).expect("tooling entrypoints"),
-            ["bin/generate.js", "index.ts"]
+            ["bin/dev.js", "index.ts"]
         );
         assert_eq!(
             discover_tooling_entrypoints(&root).expect("root tooling entrypoints"),
