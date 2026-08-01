@@ -30,6 +30,33 @@ fn fixture_report(include_private: bool) -> crate::domain::ScanReport {
 }
 
 #[test]
+fn python_package_manifest_discovers_the_import_surface() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("py");
+    let package = package::discover(&root)
+        .expect("Python package manifest")
+        .expect("Python package metadata");
+
+    assert_eq!(package.name, "codeatlas-python-fixture");
+    assert_eq!(package.version.as_deref(), Some("0.1.0"));
+    assert_eq!(package.exports.len(), 1);
+    assert_eq!(package.exports[0].public_path, "pkg");
+    assert_eq!(package.exports[0].source_path, "pkg/__init__.py");
+    assert!(package::discover_javascript(&root)
+        .expect("JavaScript manifest discovery")
+        .is_none());
+
+    let project = ProjectConfig::load(&root, None).expect("default Python project");
+    let config = commands::build_scan_config(&project, false, None).expect("scan config");
+    assert_eq!(
+        config.entrypoints,
+        Some(vec!["pkg/__init__.py".to_string()])
+    );
+}
+
+#[test]
 fn package_exports_map_declaration_outputs_back_to_source() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")

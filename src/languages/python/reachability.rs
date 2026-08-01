@@ -12,6 +12,10 @@ use std::path::{Path, PathBuf};
 
 type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.python";
+const PACKAGE_EXPORT_CONTEXT: &str = "python-package-exports";
+const PROJECT_ENTRYPOINT_CONTEXT: &str = "python-project-entrypoints";
+const TEST_CONTEXT: &str = "python-tests";
+const TEST_DISCOVERY_PATTERNS: [&str; 3] = ["**/test_*.py", "**/*_test.py", "**/conftest.py"];
 
 pub(crate) fn collect_projects(
     graph: &mut SourceGraph,
@@ -30,7 +34,9 @@ pub(crate) fn collect_projects(
         connect_module(graph, module, &modules, &resolver);
     }
     for project in projects {
+        add_package_exports(graph, project, &modules)?;
         add_pyproject_entrypoints(graph, project, &modules, &resolver)?;
+        add_test_context(graph, project, &modules)?;
     }
     Ok(())
 }
@@ -52,7 +58,9 @@ fn collect_project_modules(
     source_roots: &[PathBuf],
     modules: &mut BTreeMap<ModuleKey, Module>,
 ) -> Result<()> {
-    let discovery = crate::languages::reachability::discover_project_sources(project, &[]);
+    let test_patterns = TEST_DISCOVERY_PATTERNS.map(str::to_string);
+    let discovery =
+        crate::languages::reachability::discover_project_sources(project, &test_patterns);
     for warning in discovery.warnings {
         graph.record_boundary(
             &project.id,
@@ -187,6 +195,7 @@ fn connect_module(
     modules: &BTreeMap<ModuleKey, Module>,
     resolver: &PythonResolver,
 ) {
+    connect_package_initializers(graph, module, resolver);
     connect_local_references(graph, module);
     connect_explicit_exports(graph, module, modules, resolver);
 
@@ -341,10 +350,18 @@ fn connect_from_import(
             } else {
                 format!("{base_name}.{imported}")
             };
-            if let Some(target) = resolver
-                .resolve_absolute(&module.project, &child_name)
-                .node()
-            {
+            let child_resolution = resolver.resolve_absolute(&module.project, &child_name);
+            if let Some(target) = child_resolution.node() {
+                // `from package import child` executes the child module even
+                // when the bound name is never referenced afterwards.
+                connect_resolution(
+                    graph,
+                    module,
+                    &child_name,
+                    &child_resolution,
+                    SourceEdgeKind::ModuleDependency,
+                    Vec::new(),
+                );
                 targets.insert(target);
             }
         }
@@ -365,6 +382,38 @@ fn connect_from_import(
                 });
             }
         }
+    }
+}
+
+fn connect_package_initializers(
+    graph: &mut SourceGraph,
+    module: &Module,
+    resolver: &PythonResolver,
+) {
+    let mut parts = module
+        .canonical_name
+        .split('.')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if !module.package {
+        parts.pop();
+    }
+    while !parts.is_empty() {
+        let package_name = parts.join(".");
+        if let Some(target) = resolver
+            .resolve_absolute(&module.project, &package_name)
+            .node()
+            .filter(|target| target != &module.file)
+        {
+            graph.edges.insert(SourceEdge {
+                from: module.file.clone(),
+                to: EdgeTarget::Node(target),
+                kind: SourceEdgeKind::ModuleDependency,
+                bindings: Vec::new(),
+                evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
+            });
+        }
+        parts.pop();
     }
 }
 
@@ -565,6 +614,9 @@ fn add_pyproject_entrypoints(
     modules: &BTreeMap<ModuleKey, Module>,
     resolver: &PythonResolver,
 ) -> Result<()> {
+    if project.contexts.contains_key(PROJECT_ENTRYPOINT_CONTEXT) {
+        return Ok(());
+    }
     let path = project.root.join("pyproject.toml");
     if !path.is_file() {
         return Ok(());
@@ -619,19 +671,107 @@ fn add_pyproject_entrypoints(
             roots.insert(module.file.clone());
         }
     }
+    add_discovered_context(
+        graph,
+        project,
+        PROJECT_ENTRYPOINT_CONTEXT,
+        ContextRole::Production,
+        ContextScope::Runtime,
+        roots,
+    )
+}
+
+fn add_package_exports(
+    graph: &mut SourceGraph,
+    project: &ResolvedAnalysisProject,
+    modules: &BTreeMap<ModuleKey, Module>,
+) -> Result<()> {
+    if project.contexts.contains_key(PACKAGE_EXPORT_CONTEXT) {
+        return Ok(());
+    }
+    let roots = crate::package::discover_python(&project.root)?
+        .into_iter()
+        .flat_map(|package| package.exports)
+        .filter_map(|export| {
+            modules
+                .get(&(project.id.clone(), export.source_path))
+                .map(|module| module.file.clone())
+        })
+        .collect();
+    add_discovered_context(
+        graph,
+        project,
+        PACKAGE_EXPORT_CONTEXT,
+        ContextRole::Production,
+        ContextScope::PublicSurface,
+        roots,
+    )
+}
+
+fn add_test_context(
+    graph: &mut SourceGraph,
+    project: &ResolvedAnalysisProject,
+    modules: &BTreeMap<ModuleKey, Module>,
+) -> Result<()> {
+    if project.contexts.contains_key(TEST_CONTEXT) {
+        return Ok(());
+    }
+    let roots = modules
+        .values()
+        .filter(|module| module.project == project.id && is_conventional_test_module(&module.path))
+        .map(|module| module.file.clone())
+        .collect();
+    add_discovered_context(
+        graph,
+        project,
+        TEST_CONTEXT,
+        ContextRole::Test,
+        ContextScope::Runtime,
+        roots,
+    )
+}
+
+fn add_discovered_context(
+    graph: &mut SourceGraph,
+    project: &ResolvedAnalysisProject,
+    name: &str,
+    role: ContextRole,
+    scope: ContextScope,
+    roots: BTreeSet<NodeId>,
+) -> Result<()> {
     if roots.is_empty() {
         return Ok(());
     }
     graph
         .add_context(SourceContext {
-            id: ContextId::new(&project.id, "python-project-entrypoints"),
+            id: ContextId::new(&project.id, name),
             project: project.id.clone(),
-            name: "python-project-entrypoints".to_string(),
-            role: ContextRole::Production,
-            scope: ContextScope::Runtime,
+            name: name.to_string(),
+            role,
+            scope,
             roots,
         })
         .map_err(anyhow::Error::from)
+}
+
+fn is_conventional_test_module(path: &str) -> bool {
+    let path = Path::new(path);
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let in_test_root = path.parent().is_none_or(|parent| {
+        parent.as_os_str().is_empty()
+            || parent.components().any(|component| {
+                matches!(
+                    component.as_os_str().to_str(),
+                    Some("test" | "tests" | "__test__" | "__tests__")
+                )
+            })
+    });
+    in_test_root
+        && (name == "conftest.py"
+            || (name.starts_with("test_") && name.ends_with(".py"))
+            || (name.ends_with("_test.py") && name.len() > "_test.py".len()))
 }
 
 #[derive(Debug, Clone)]
@@ -776,30 +916,7 @@ fn resolve_relative_module(module: &Module, level: usize, imported: &str) -> Str
 }
 
 fn python_source_roots(root: &Path) -> Result<Vec<PathBuf>> {
-    let mut roots = BTreeSet::from([PathBuf::new()]);
-    if root.join("src").is_dir() {
-        roots.insert(PathBuf::from("src"));
-    }
-    let pyproject = root.join("pyproject.toml");
-    if pyproject.is_file() {
-        let source = std::fs::read_to_string(&pyproject)
-            .with_context(|| format!("Could not read {}", pyproject.display()))?;
-        let document: toml::Value =
-            toml::from_str(&source).with_context(|| format!("Invalid {}", pyproject.display()))?;
-        if let Some(package_dir) = document
-            .get("tool")
-            .and_then(|value| value.get("setuptools"))
-            .and_then(|value| value.get("package-dir"))
-            .and_then(toml::Value::as_table)
-            .and_then(|table| table.get(""))
-            .and_then(toml::Value::as_str)
-        {
-            roots.insert(PathBuf::from(package_dir));
-        }
-    }
-    let mut roots = roots.into_iter().collect::<Vec<_>>();
-    roots.sort_by_key(|root| std::cmp::Reverse(root.components().count()));
-    Ok(roots)
+    crate::package::discover_python_source_roots(root)
 }
 
 fn module_names(path: &str, source_roots: &[PathBuf]) -> BTreeSet<String> {
@@ -831,8 +948,10 @@ fn module_name_from_relative_path(path: &str) -> String {
 fn source_symbol_kind(kind: SymbolKind) -> SourceSymbolKind {
     match kind {
         SymbolKind::Class => SourceSymbolKind::Class,
+        SymbolKind::Const => SourceSymbolKind::Constant,
         SymbolKind::Function => SourceSymbolKind::Function,
         SymbolKind::Method => SourceSymbolKind::Method,
+        SymbolKind::Property => SourceSymbolKind::Property,
         _ => SourceSymbolKind::Other,
     }
 }

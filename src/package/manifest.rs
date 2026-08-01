@@ -5,6 +5,13 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 pub(crate) fn discover(root_dir: &Path) -> Result<Option<PackageInfo>> {
+    discover_javascript(root_dir)?.map_or_else(
+        || super::python_manifest::discover(root_dir),
+        |package| Ok(Some(package)),
+    )
+}
+
+pub(crate) fn discover_javascript(root_dir: &Path) -> Result<Option<PackageInfo>> {
     discover_with_export_condition(root_dir, false)
 }
 
@@ -12,7 +19,11 @@ pub(crate) fn discover_for_docs(
     root_dir: &Path,
     declaration_contract: bool,
 ) -> Result<Option<PackageInfo>> {
-    let package = discover_with_export_condition(root_dir, declaration_contract)?;
+    let package = if declaration_contract {
+        discover_with_export_condition(root_dir, true)?
+    } else {
+        discover(root_dir)?
+    };
     if declaration_contract
         && package
             .as_ref()

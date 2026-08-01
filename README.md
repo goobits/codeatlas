@@ -289,11 +289,14 @@ tooling roots.
 Each project may select `js`, `ts`, `svelte`, `py`, and `rs`. Rust projects can
 also configure `rust.all_features` or an explicit `rust.features` list. Cargo
 library targets use public-surface semantics; binaries, examples, benches,
-build scripts, and tests use runtime semantics. Python project entrypoints are
-runtime roots. Python decorators that may register or replace a declaration
-conservatively retain that symbol and its dependencies while recording the
-dynamic boundary. Rust reachability honors `pub(crate)`, `pub(super)`, and
-`pub(in path)` scope instead of treating restricted exports as public, follows
+build scripts, and tests use runtime semantics. Python PEP 621 projects derive
+their public surface from import packages under configured setuptools roots or
+the conventional `src`/root layout. Project scripts and conventional Python
+tests become production and test contexts automatically; an explicit context
+with the same name overrides discovery. Python decorators that may register or
+replace a declaration conservatively retain that symbol and its dependencies
+while recording the dynamic boundary. Rust reachability honors `pub(crate)`,
+`pub(super)`, and `pub(in path)` scope instead of treating restricted exports as public, follows
 explicitly declared modules, and connects literal `include_str!` and
 `include_bytes!` source dependencies.
 

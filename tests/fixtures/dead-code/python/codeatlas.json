@@ -9,10 +9,6 @@
           "role": "production",
           "entrypoints": ["src/app.py"]
         },
-        "unit-tests": {
-          "role": "test",
-          "entrypoints": ["tests/test_app.py"]
-        },
         "build-tools": {
           "role": "tooling",
           "entrypoints": ["tools/build.py"]

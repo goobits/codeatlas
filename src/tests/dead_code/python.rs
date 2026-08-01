@@ -2,7 +2,20 @@ use super::*;
 
 #[test]
 fn python_reachability_handles_src_layouts_relative_imports_and_context_roles() {
-    let report = analyze_fixture("python");
+    let graph = source_graph_fixture("python");
+    let context_names = graph
+        .contexts
+        .values()
+        .map(|context| context.name.as_str())
+        .collect::<BTreeSet<_>>();
+    assert!(context_names.contains("python-package-exports"));
+    assert!(context_names.contains("python-project-entrypoints"));
+    assert!(context_names.contains("python-tests"));
+    assert!(!graph
+        .boundaries
+        .iter()
+        .any(|boundary| boundary.message.contains("pytest.mark.unit")));
+    let report = dead_code::analyze(&graph).expect("dead-code report");
 
     let unused_file = finding(
         &report.findings,
@@ -46,6 +59,9 @@ fn python_reachability_handles_src_layouts_relative_imports_and_context_roles() 
             && matches!(
                 finding.path.as_str(),
                 "src/fixture/lazy.py"
+                    | "src/fixture/alias_target.py"
+                    | "src/fixture/nested/__init__.py"
+                    | "src/fixture/nested/used.py"
                     | "src/fixture/star_source.py"
                     | "src/fixture/star_consumer.py"
                     | "src/namespace_pkg/part.py"

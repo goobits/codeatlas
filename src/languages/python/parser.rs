@@ -80,7 +80,7 @@ pub(crate) fn parse_module_info(
         relative_path,
         source,
         line_index,
-        recurse_into_functions: true,
+        assignment_kind: Some(SymbolKind::Const),
     };
 
     visitor.visit_suite(&ast);
@@ -100,7 +100,7 @@ struct SymbolVisitor {
     relative_path: String,
     source: Arc<str>,
     line_index: LineIndex,
-    recurse_into_functions: bool,
+    assignment_kind: Option<SymbolKind>,
 }
 
 impl SymbolVisitor {
@@ -144,6 +144,37 @@ impl SymbolVisitor {
         }
     }
 
+    fn add_assignment(&mut self, name: &str, range: TextRange, annotation: Option<&ast::Expr>) {
+        let Some(kind) = self.assignment_kind else {
+            return;
+        };
+        if name == "__all__" {
+            return;
+        }
+        let signature = annotation.map_or_else(
+            || name.to_string(),
+            |annotation| format!("{name}: {}", format_py_expr(annotation)),
+        );
+        let symbol = self.create_symbol(
+            name.to_string(),
+            kind,
+            determine_visibility(name),
+            range,
+            signature,
+        );
+        if let Some(existing) = self
+            .symbols
+            .iter_mut()
+            .find(|existing| existing.name == name && existing.kind == kind)
+        {
+            if !existing.signature.contains(": ") && symbol.signature.contains(": ") {
+                *existing = symbol;
+            }
+        } else {
+            self.symbols.push(symbol);
+        }
+    }
+
     fn visit_stmt(&mut self, stmt: &ast::Stmt) {
         match stmt {
             ast::Stmt::FunctionDef(f) => {
@@ -155,10 +186,6 @@ impl SymbolVisitor {
                 let sig = format!("{}def {}({}){}", dec_str, name, args_str, ret_str);
                 let symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, sig);
                 self.symbols.push(symbol);
-
-                if self.recurse_into_functions {
-                    self.visit_suite(&f.body);
-                }
             }
             ast::Stmt::AsyncFunctionDef(f) => {
                 let name = f.name.as_str().to_string();
@@ -169,10 +196,6 @@ impl SymbolVisitor {
                 let sig = format!("{}async def {}({}){}", dec_str, name, args_str, ret_str);
                 let symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, sig);
                 self.symbols.push(symbol);
-
-                if self.recurse_into_functions {
-                    self.visit_suite(&f.body);
-                }
             }
             ast::Stmt::ClassDef(c) => {
                 let name = c.name.as_str().to_string();
@@ -197,7 +220,7 @@ impl SymbolVisitor {
                     relative_path: self.relative_path.clone(),
                     source: self.source.clone(),
                     line_index: self.line_index.clone(),
-                    recurse_into_functions: false,
+                    assignment_kind: Some(SymbolKind::Property),
                 };
                 child_visitor.visit_suite(&c.body);
 
@@ -207,11 +230,30 @@ impl SymbolVisitor {
                         child.kind = SymbolKind::Method;
                         child.id =
                             format!("py:{}:method#{}.{}", self.relative_path, name, child.name);
+                    } else if child.kind == SymbolKind::Property {
+                        child.id =
+                            format!("py:{}:property#{}.{}", self.relative_path, name, child.name);
                     }
                     symbol.children.push(child);
                 }
 
                 self.symbols.push(symbol);
+            }
+            ast::Stmt::Assign(assign) => {
+                for target in &assign.targets {
+                    if let ast::Expr::Name(name) = target {
+                        self.add_assignment(name.id.as_str(), assign.range, None);
+                    }
+                }
+            }
+            ast::Stmt::AnnAssign(assign) => {
+                if let ast::Expr::Name(name) = assign.target.as_ref() {
+                    self.add_assignment(
+                        name.id.as_str(),
+                        assign.range,
+                        Some(assign.annotation.as_ref()),
+                    );
+                }
             }
             _ => {}
         }
@@ -462,17 +504,25 @@ fn has_unknown_decorator(decorators: &[ast::Expr]) -> bool {
 }
 
 fn known_decorator(expression: &ast::Expr) -> bool {
+    let name = qualified_expr_name(expression);
     matches!(
-        qualified_expr_name(expression).as_deref(),
+        name.as_deref(),
         Some(
             "staticmethod"
                 | "classmethod"
                 | "property"
                 | "typing.overload"
+                | "overload"
                 | "dataclasses.dataclass"
+                | "dataclass"
                 | "functools.cached_property"
+                | "cached_property"
+                | "contextlib.contextmanager"
+                | "contextmanager"
+                | "typing.runtime_checkable"
+                | "runtime_checkable"
         )
-    )
+    ) || name.is_some_and(|name| name.starts_with("pytest.mark."))
 }
 
 fn qualified_expr_name(expression: &ast::Expr) -> Option<String> {
@@ -524,6 +574,8 @@ fn kind_to_str(kind: SymbolKind) -> &'static str {
         SymbolKind::Class => "class",
         SymbolKind::Function => "def",
         SymbolKind::Method => "method",
+        SymbolKind::Const => "const",
+        SymbolKind::Property => "property",
         _ => "sym",
     }
 }

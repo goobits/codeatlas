@@ -59,7 +59,7 @@ impl ModuleResolver {
         let mut project_resolutions = BTreeMap::new();
         let mut packages = BTreeMap::new();
         for (project, _) in projects {
-            let package = crate::package::discover_for_docs(&project.root, false)?;
+            let package = crate::package::discover_javascript(&project.root)?;
             if let Some(package) = &package {
                 if packages
                     .insert(

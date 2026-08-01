@@ -27,7 +27,7 @@ pub(super) fn add_discovered_contexts(
 ) -> Result<()> {
     let html_entrypoints = discover_html_entrypoints(project, resolver);
     if !project.contexts.contains_key(PACKAGE_EXPORT_CONTEXT) {
-        let roots = crate::package::discover(&project.root)?
+        let roots = crate::package::discover_javascript(&project.root)?
             .into_iter()
             .flat_map(|package| package.exports)
             .filter_map(|export| {

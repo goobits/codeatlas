@@ -143,6 +143,8 @@ fn annotate_export_path(symbol: &mut Symbol, ids: &HashSet<String>, public_path:
 fn format_public_path(package: &str, public_path: &str) -> String {
     if public_path == "." {
         package.to_string()
+    } else if !public_path.starts_with('.') {
+        public_path.to_string()
     } else {
         format!("{}{}", package, public_path.trim_start_matches('.'))
     }
@@ -163,6 +165,7 @@ mod tests {
             format_public_path("@goobits/example", "./tools"),
             "@goobits/example/tools"
         );
+        assert_eq!(format_public_path("example-dist", "example"), "example");
     }
 
     #[test]

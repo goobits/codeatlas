@@ -39,6 +39,43 @@ fn public_api_python_exports() {
     let names: Vec<&str> = report.symbols.iter().map(|s| s.name.as_str()).collect();
     assert!(names.contains(&"public_func"));
     assert!(!names.contains(&"unused_func"));
+    assert!(!names.contains(&"nested_helper"));
+}
+
+#[test]
+fn python_parser_projects_module_constants_and_class_properties_without_values() {
+    let root = fixture_root("py");
+    let path = root.join("pkg/api.py");
+    let source = std::fs::read_to_string(&path).expect("Python fixture");
+    let symbols = crate::languages::python::parser::parse_file(&path, &root, &source)
+        .expect("Python symbols");
+    let timeout = symbols
+        .iter()
+        .find(|symbol| symbol.name == "PUBLIC_TIMEOUT")
+        .expect("annotated module constant");
+    let label = symbols
+        .iter()
+        .find(|symbol| symbol.name == "PUBLIC_LABEL")
+        .expect("module constant");
+    let client = symbols
+        .iter()
+        .find(|symbol| symbol.name == "PublicClient")
+        .expect("public class");
+
+    assert_eq!(timeout.kind, crate::domain::SymbolKind::Const);
+    assert_eq!(timeout.signature, "PUBLIC_TIMEOUT: int");
+    assert_eq!(label.signature, "PUBLIC_LABEL");
+    assert!(!label.signature.contains("fixture-secret"));
+    assert!(client.children.iter().any(|child| {
+        child.name == "endpoint"
+            && child.kind == crate::domain::SymbolKind::Property
+            && child.signature == "endpoint: str"
+    }));
+    assert!(client.children.iter().any(|child| {
+        child.name == "retries"
+            && child.kind == crate::domain::SymbolKind::Property
+            && child.signature == "retries"
+    }));
 }
 
 #[test]
