@@ -273,15 +273,10 @@ fn collect_expected_non_success_operations(
             !operation
                 .responses
                 .iter()
-                .any(|response| response_can_succeed(&response.status))
+                .any(|response| openapi::response_status_can_succeed(&response.status))
         })
         .map(|operation| operation.key)
         .collect())
-}
-
-fn response_can_succeed(status: &str) -> bool {
-    let normalized = status.trim().to_ascii_uppercase();
-    normalized == "DEFAULT" || matches!(normalized.as_bytes().first(), Some(b'2' | b'3'))
 }
 
 fn install_interrupt_handler() -> Result<()> {
