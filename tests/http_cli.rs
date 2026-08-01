@@ -3,19 +3,23 @@ use std::fs;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static TEST_DIRECTORY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct TestDirectory(PathBuf);
 
 impl TestDirectory {
     fn create() -> Self {
         let unique = format!(
-            "codeatlas-http-cli-{}-{}",
+            "codeatlas-http-cli-{}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("system clock should follow the Unix epoch")
-                .as_nanos()
+                .as_nanos(),
+            TEST_DIRECTORY_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         );
         let path = std::env::temp_dir().join(unique);
         fs::create_dir_all(path.join("src")).expect("HTTP test directory should be created");
