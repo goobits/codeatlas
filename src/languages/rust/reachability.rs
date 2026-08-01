@@ -148,18 +148,20 @@ fn collect_modules(
             if declaration.inline {
                 continue;
             }
-            if let Some(child) =
-                module_file_candidates(&module_declaration_base(&source_path, declaration))
-                    .into_iter()
-                    .find(|candidate| {
-                        candidate.is_file()
-                            && candidate.starts_with(&project.root)
-                            && !project
-                                .excluded_roots
-                                .iter()
-                                .any(|root| candidate.starts_with(root))
-                    })
-            {
+            if let Some(child) = module_file_candidates(&module_declaration_base(
+                &source_path,
+                declaration,
+                cargo.is_target_root(&source_path),
+            ))
+            .into_iter()
+            .find(|candidate| {
+                candidate.is_file()
+                    && candidate.starts_with(&project.root)
+                    && !project
+                        .excluded_roots
+                        .iter()
+                        .any(|root| candidate.starts_with(root))
+            }) {
                 pending.insert(child);
             }
         }

@@ -25,7 +25,7 @@ pub(crate) fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<crate:
 }
 
 pub(crate) fn parse_module_info(file_path: &Path, root_dir: &Path) -> Result<TypeScriptModuleInfo> {
-    let (module, source_map) = parse_module(file_path)?;
+    let (module, source_map) = parse_syntax_tree(file_path)?;
     let relative_path = pathdiff::diff_paths(file_path, root_dir)
         .unwrap_or(file_path.to_path_buf())
         .to_string_lossy()
@@ -105,7 +105,7 @@ fn consolidate_overloads(symbols: &mut Vec<crate::domain::Symbol>) {
     *symbols = consolidated;
 }
 
-fn parse_module(file_path: &Path) -> Result<(Module, Lrc<SourceMap>)> {
+pub(crate) fn parse_syntax_tree(file_path: &Path) -> Result<(Module, Lrc<SourceMap>)> {
     let source_map: Lrc<SourceMap> = Default::default();
     let file = source_map.load_file(file_path)?;
     let module = parse_source_file(file, source_map.clone(), syntax_for_path(file_path))?;

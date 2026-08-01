@@ -1,4 +1,5 @@
 use anyhow::Context;
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -6,6 +7,13 @@ pub(super) fn render_json(value: &impl Serialize) -> anyhow::Result<String> {
     let mut rendered = serde_json::to_string_pretty(value)?;
     rendered.push('\n');
     Ok(rendered)
+}
+
+pub(super) fn read_json<T: DeserializeOwned>(path: &Path, label: &str) -> anyhow::Result<T> {
+    let source = std::fs::read_to_string(path)
+        .with_context(|| format!("Could not read {label} {}", path.display()))?;
+    serde_json::from_str(&source)
+        .with_context(|| format!("Invalid {label} JSON at {}", path.display()))
 }
 
 pub(super) fn write_file(path: &Path, content: &str) -> anyhow::Result<()> {

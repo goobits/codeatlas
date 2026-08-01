@@ -1,4 +1,4 @@
-use super::{annotate_report, build_scan_config, exit_code, load_project, scan_project};
+use super::{annotate_report, build_scan_config, exit_code, load_project, output, scan_project};
 use crate::domain::{ScanReport, Symbol, SCAN_SCHEMA_VERSION};
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
@@ -10,10 +10,7 @@ pub(crate) fn run(baseline_path: &Path, path: &Path, config_path: Option<&Path>)
 }
 
 fn compare(baseline_path: &Path, path: &Path, config_path: Option<&Path>) -> Result<i32> {
-    let baseline_content = std::fs::read_to_string(baseline_path)
-        .with_context(|| format!("Could not read {}", baseline_path.display()))?;
-    let baseline: ScanReport = serde_json::from_str(&baseline_content)
-        .with_context(|| format!("Invalid baseline JSON at {}", baseline_path.display()))?;
+    let baseline: ScanReport = output::read_json(baseline_path, "CodeAtlas scan baseline")?;
     validate_schema_version(&baseline)?;
 
     let project = load_project(path, config_path)?;

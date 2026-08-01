@@ -108,6 +108,10 @@ impl CargoLayout {
         &self.targets
     }
 
+    pub(super) fn is_target_root(&self, path: &Path) -> bool {
+        self.targets.iter().any(|target| target.root == path)
+    }
+
     pub(super) fn cfg_is_covered(&self, package: Option<&str>, expression: &str) -> bool {
         if expression.starts_with("cfg_attr") {
             return false;
@@ -162,7 +166,8 @@ fn default_features(package: &Package) -> BTreeSet<String> {
 
 fn cargo_target(package: &Package, target: &Target) -> CargoTarget {
     let root = target.src_path.as_std_path().to_path_buf();
-    let role = if target.kind.iter().any(|kind| kind == "test") {
+    let integration_test = target.kind.iter().any(|kind| kind == "test");
+    let role = if integration_test {
         ContextRole::Test
     } else if target
         .kind
@@ -173,7 +178,7 @@ fn cargo_target(package: &Package, target: &Target) -> CargoTarget {
     } else {
         ContextRole::Production
     };
-    let module_base = target_module_base(&root);
+    let module_base = target_module_base(&root, integration_test);
     CargoTarget {
         package: package.name.clone(),
         name: target.name.clone(),
@@ -189,12 +194,12 @@ fn cargo_target(package: &Package, target: &Target) -> CargoTarget {
     }
 }
 
-fn target_module_base(root: &Path) -> PathBuf {
+fn target_module_base(root: &Path, modules_beside_root: bool) -> PathBuf {
     let stem = root
         .file_stem()
         .and_then(|stem| stem.to_str())
         .unwrap_or("");
-    if matches!(stem, "lib" | "main") {
+    if modules_beside_root || matches!(stem, "lib" | "main") {
         root.parent().unwrap_or_else(|| Path::new("")).to_path_buf()
     } else {
         root.parent().unwrap_or_else(|| Path::new("")).join(stem)

@@ -326,6 +326,7 @@ dependencies = [
  "json5",
  "jsonschema",
  "pathdiff",
+ "percent-encoding",
  "proc-macro2",
  "pulldown-cmark",
  "quote",

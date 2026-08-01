@@ -1,37 +1,11 @@
+mod support;
+
+use self::support::TestDirectory;
 use serde_json::json;
 use std::fs;
 use std::net::TcpListener;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-struct TestDirectory(PathBuf);
-
-impl TestDirectory {
-    fn create() -> Self {
-        let unique = format!(
-            "codeatlas-http-cli-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system clock should follow the Unix epoch")
-                .as_nanos()
-        );
-        let path = std::env::temp_dir().join(unique);
-        fs::create_dir_all(path.join("src")).expect("HTTP test directory should be created");
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TestDirectory {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
 
 #[test]
 fn source_only_inventory_reports_pages_and_bounded_node_endpoints() {
@@ -39,7 +13,9 @@ fn source_only_inventory_reports_pages_and_bounded_node_endpoints() {
         .join("tests")
         .join("fixtures")
         .join("http");
-    let directory = TestDirectory::create();
+    let directory = TestDirectory::create("codeatlas-http-cli");
+    fs::create_dir_all(directory.path().join("src"))
+        .expect("HTTP source test directory should be created");
     fs::copy(
         fixture.join("src").join("node-routes.ts"),
         directory.path().join("src").join("node-routes.ts"),
@@ -155,7 +131,9 @@ fn target_provider_starts_fetches_and_stops_its_server() {
         .join("tests")
         .join("fixtures")
         .join("http");
-    let directory = TestDirectory::create();
+    let directory = TestDirectory::create("codeatlas-http-cli");
+    fs::create_dir_all(directory.path().join("src"))
+        .expect("HTTP source test directory should be created");
     let openapi = directory.path().join("openapi.yaml");
     fs::copy(fixture.join("openapi.yaml"), &openapi).expect("OpenAPI fixture should be copied");
     fs::copy(
@@ -252,7 +230,9 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         .join("tests")
         .join("fixtures")
         .join("http");
-    let directory = TestDirectory::create();
+    let directory = TestDirectory::create("codeatlas-http-cli");
+    fs::create_dir_all(directory.path().join("src"))
+        .expect("HTTP source test directory should be created");
     let openapi = directory.path().join("openapi.yaml");
     let adapter_log = directory.path().join("adapter.ndjson");
     fs::copy(fixture.join("openapi.yaml"), &openapi).expect("OpenAPI fixture should be copied");

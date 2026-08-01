@@ -145,6 +145,7 @@ impl ProjectConfig {
             });
         }
         self.add_http_contexts(&mut resolved)?;
+        self.add_postgres_contexts(&mut resolved)?;
         add_nested_project_boundaries(&mut resolved);
         Ok(resolved)
     }
@@ -212,6 +213,7 @@ impl ProjectConfig {
             resolved.push(project);
         }
         self.add_http_contexts(&mut resolved)?;
+        self.add_postgres_contexts(&mut resolved)?;
         add_nested_project_boundaries(&mut resolved);
         Ok(resolved)
     }
@@ -280,6 +282,58 @@ impl ProjectConfig {
 
     fn http_fuzz_command_sources(&self, command: &HttpFuzzCommandConfig) -> Vec<PathBuf> {
         self.command_sources(&command.command, &command.args, command.cwd.as_deref())
+    }
+
+    fn add_postgres_contexts(&self, projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
+        let mut sources = Vec::new();
+        for contract in &self.config.postgres.contracts {
+            for configured in contract
+                .bootstrap_sources
+                .iter()
+                .chain(&contract.migration_sources)
+            {
+                let unresolved = if configured.path.is_absolute() {
+                    configured.path.clone()
+                } else {
+                    self.config_base().join(&configured.path)
+                };
+                let Ok(root) = unresolved.canonicalize() else {
+                    continue;
+                };
+                if root.is_file() {
+                    let display = crate::paths::normalize_relative_path(&root, &self.root);
+                    if crate::source_policy::source_argument(&display).is_some() {
+                        sources.push(root);
+                    }
+                    continue;
+                }
+                if !root.is_dir() {
+                    continue;
+                }
+                sources.extend(
+                    crate::source_discovery::discover(
+                        crate::source_discovery::SourceDiscoveryRequest {
+                            root: &root,
+                            patterns: &[],
+                            excluded_roots: &[],
+                            no_default_ignore: self.config.no_default_ignore,
+                        },
+                    )
+                    .files
+                    .into_iter()
+                    .filter(|source| {
+                        let display = crate::paths::normalize_relative_path(source, &self.root);
+                        crate::source_policy::source_argument(&display).is_some()
+                    }),
+                );
+            }
+        }
+        add_inferred_context(
+            projects,
+            "codeatlas-postgres-migrations",
+            crate::domain::source_graph::ContextRole::Production,
+            &sources,
+        )
     }
 
     fn command_sources(&self, command: &str, args: &[String], cwd: Option<&Path>) -> Vec<PathBuf> {

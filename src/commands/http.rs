@@ -4,7 +4,7 @@ use crate::http::{
     FuzzRunOptions, HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpDiffReport,
     HttpInventoryReport, HTTP_BASELINE_API_VERSION,
 };
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::ValueEnum;
 use std::path::{Path, PathBuf};
 
@@ -171,10 +171,7 @@ fn require_schema_inventory(inventory: &HttpInventoryReport) -> Result<()> {
 }
 
 fn load_baseline(path: &Path) -> Result<HttpBaselineReport> {
-    let source = std::fs::read_to_string(path)
-        .with_context(|| format!("Could not read HTTP baseline {}", path.display()))?;
-    let baseline: HttpBaselineReport = serde_json::from_str(&source)
-        .with_context(|| format!("Invalid CodeAtlas HTTP baseline {}", path.display()))?;
+    let baseline: HttpBaselineReport = output::read_json(path, "CodeAtlas HTTP baseline")?;
     if baseline.api_version != HTTP_BASELINE_API_VERSION {
         anyhow::bail!(
             "Unsupported CodeAtlas HTTP baseline API version {:?}; expected {:?}",

@@ -1,35 +1,10 @@
+mod support;
+
+use self::support::TestDirectory;
 use serde_json::Value;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
-
-struct TestDirectory(PathBuf);
-
-impl TestDirectory {
-    fn create() -> Self {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock should follow the Unix epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "codeatlas-cli-contract-{}-{nonce}",
-            std::process::id()
-        ));
-        fs::create_dir(&path).expect("CLI contract directory should be created");
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TestDirectory {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
 
 fn fixture(path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -55,7 +30,7 @@ fn assert_success(output: &Output, label: &str) {
 
 #[test]
 fn scan_writes_machine_readable_json_to_the_requested_directory() {
-    let output_directory = TestDirectory::create();
+    let output_directory = TestDirectory::create("codeatlas-cli-contract");
     let fixture = fixture("ts");
     let output = run(&[
         "scan",
@@ -82,7 +57,7 @@ fn scan_writes_machine_readable_json_to_the_requested_directory() {
 
 #[test]
 fn dead_code_check_only_fails_when_gating_is_requested() {
-    let output_directory = TestDirectory::create();
+    let output_directory = TestDirectory::create("codeatlas-cli-contract");
     let fixture = fixture("dead-code/ecmascript");
     let report_path = output_directory.path().join("report.json");
     let checked_report_path = output_directory.path().join("checked.json");

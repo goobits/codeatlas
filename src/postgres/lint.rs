@@ -1,10 +1,9 @@
 use crate::config::PostgresTransactionMode;
 use crate::postgres::model::{PostgresEvidence, PostgresFinding, PostgresFindingSeverity};
-use crate::postgres::source::CollectedMigration;
+use crate::postgres::source::CollectedSqlSource;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::collections::BTreeSet;
-use std::ffi::OsStr;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -12,73 +11,36 @@ use std::process::{Command, Stdio};
 const SQUAWK_VERSION: &str = "2.61.0";
 const SQUAWK_ENV: &str = "CODEATLAS_SQUAWK_PATH";
 
-pub(crate) fn check(
-    migrations: &[CollectedMigration],
+pub(crate) fn check<'a>(
+    sources: impl IntoIterator<Item = &'a CollectedSqlSource>,
+    contract_ids: Option<&[String]>,
     explicit: Option<&Path>,
 ) -> Result<Vec<PostgresFinding>> {
-    if migrations.is_empty() {
+    let sources = sources
+        .into_iter()
+        .filter(|source| {
+            contract_ids.is_none_or(|ids| ids.iter().any(|id| id == &source.contract_id))
+        })
+        .collect::<Vec<_>>();
+    if sources.is_empty() {
         return Ok(Vec::new());
     }
     let executable = resolve(explicit)?;
     verify_version(&executable)?;
     let mut findings = Vec::new();
-    for migration in migrations {
-        findings.extend(run(&executable, migration)?);
+    for source in sources {
+        findings.extend(run(&executable, source)?);
     }
-    findings.sort_by(|left, right| {
-        (
-            &left.contract_id,
-            &left.artifact,
-            left.evidence.as_ref().map(|evidence| evidence.line),
-            left.evidence.as_ref().and_then(|evidence| evidence.column),
-            &left.code,
-        )
-            .cmp(&(
-                &right.contract_id,
-                &right.artifact,
-                right.evidence.as_ref().map(|evidence| evidence.line),
-                right.evidence.as_ref().and_then(|evidence| evidence.column),
-                &right.code,
-            ))
-    });
+    PostgresFinding::sort(&mut findings);
     Ok(findings)
 }
 
 fn resolve(explicit: Option<&Path>) -> Result<PathBuf> {
-    if let Some(path) = explicit {
-        return existing_tool(path, "--squawk");
-    }
-    if let Some(path) = std::env::var_os(SQUAWK_ENV) {
-        return existing_tool(Path::new(&path), SQUAWK_ENV);
-    }
-    Ok(PathBuf::from("squawk"))
-}
-
-fn existing_tool(path: &Path, source: &str) -> Result<PathBuf> {
-    if path.components().count() == 1
-        && path
-            .parent()
-            .is_some_and(|parent| parent.as_os_str().is_empty())
-    {
-        return Ok(path.to_path_buf());
-    }
-    let path = path.canonicalize().with_context(|| {
-        format!(
-            "CodeAtlas Squawk executable from {source} does not exist: {}",
-            path.display()
-        )
-    })?;
-    if !path.is_file() {
-        anyhow::bail!(
-            "CodeAtlas Squawk executable from {source} is not a file: {}",
-            path.display()
-        );
-    }
-    Ok(path)
+    crate::external_tool::resolve(explicit, SQUAWK_ENV, "squawk", "Squawk")
 }
 
 fn verify_version(executable: &Path) -> Result<()> {
-    let output = tool_command(executable)
+    let output = crate::external_tool::command(executable)
         .arg("--version")
         .output()
         .with_context(|| missing_tool_message(executable))?;
@@ -89,9 +51,10 @@ fn verify_version(executable: &Path) -> Result<()> {
         );
     }
     let version = String::from_utf8_lossy(&output.stdout);
-    if version.trim() != format!("squawk {SQUAWK_VERSION}") {
+    if version.trim() != format!("squawk {}", SQUAWK_VERSION) {
         anyhow::bail!(
-            "CodeAtlas requires Squawk {SQUAWK_VERSION}, but {} reported {:?}",
+            "CodeAtlas requires Squawk {}, but {} reported {:?}",
+            SQUAWK_VERSION,
             executable.display(),
             version.trim()
         );
@@ -99,12 +62,12 @@ fn verify_version(executable: &Path) -> Result<()> {
     Ok(())
 }
 
-fn run(executable: &Path, migration: &CollectedMigration) -> Result<Vec<PostgresFinding>> {
-    let mut command = tool_command(executable);
+fn run(executable: &Path, source: &CollectedSqlSource) -> Result<Vec<PostgresFinding>> {
+    let mut command = crate::external_tool::command(executable);
     command
         .arg("--reporter=json")
-        .arg(format!("--stdin-filepath={}", migration.inventory.path));
-    match migration.inventory.transaction {
+        .arg(format!("--stdin-filepath={}", source.inventory.path));
+    match source.inventory.transaction {
         PostgresTransactionMode::Always => {
             command.arg("--assume-in-transaction");
         }
@@ -113,11 +76,11 @@ fn run(executable: &Path, migration: &CollectedMigration) -> Result<Vec<Postgres
         }
         PostgresTransactionMode::Unknown => {}
     }
-    if let Some(version) = migration.lint.pg_version.as_deref() {
+    if let Some(version) = source.lint.pg_version.as_deref() {
         command.arg(format!("--pg-version={version}"));
     }
-    append_rules(&mut command, "--include", &migration.lint.include);
-    append_rules(&mut command, "--exclude", &migration.lint.exclude);
+    append_rules(&mut command, "--include", &source.lint.include);
+    append_rules(&mut command, "--exclude", &source.lint.exclude);
     command
         .current_dir(std::env::temp_dir())
         .stdin(Stdio::piped())
@@ -130,7 +93,7 @@ fn run(executable: &Path, migration: &CollectedMigration) -> Result<Vec<Postgres
         .stdin
         .take()
         .context("Could not open Squawk stdin")?
-        .write_all(migration.lint_sql.as_bytes())
+        .write_all(source.lint_sql.as_bytes())
         .context("Could not write PostgreSQL migration to Squawk")?;
     let output = child
         .wait_with_output()
@@ -138,14 +101,14 @@ fn run(executable: &Path, migration: &CollectedMigration) -> Result<Vec<Postgres
     if !matches!(output.status.code(), Some(0 | 1)) {
         anyhow::bail!(
             "Squawk failed for {}: {}",
-            migration.inventory.path,
+            source.inventory.path,
             bounded_stderr(&output.stderr)
         );
     }
-    parse_findings(&output.stdout, migration).with_context(|| {
+    parse_findings(&output.stdout, source).with_context(|| {
         format!(
             "Squawk returned invalid JSON for {}{}",
-            migration.inventory.path,
+            source.inventory.path,
             stderr_suffix(&output.stderr)
         )
     })
@@ -162,16 +125,6 @@ fn append_rules(command: &mut Command, flag: &str, rules: &[String]) {
             "{flag}={}",
             rules.into_iter().collect::<Vec<_>>().join(",")
         ));
-    }
-}
-
-fn tool_command(executable: &Path) -> Command {
-    if executable.extension() == Some(OsStr::new("js")) {
-        let mut command = Command::new("node");
-        command.arg(executable);
-        command
-    } else {
-        Command::new(executable)
     }
 }
 
@@ -216,7 +169,7 @@ struct SquawkFinding {
     column: Option<u32>,
 }
 
-fn parse_findings(output: &[u8], migration: &CollectedMigration) -> Result<Vec<PostgresFinding>> {
+fn parse_findings(output: &[u8], source: &CollectedSqlSource) -> Result<Vec<PostgresFinding>> {
     let findings = serde_json::from_slice::<Vec<SquawkFinding>>(output)?;
     Ok(findings
         .into_iter()
@@ -237,20 +190,29 @@ fn parse_findings(output: &[u8], migration: &CollectedMigration) -> Result<Vec<P
                 .as_deref()
                 .filter(|rule| !rule.is_empty())
                 .unwrap_or("unknown");
-            PostgresFinding {
+            let gates = severity == PostgresFindingSeverity::Error;
+            PostgresFinding::new(
                 severity,
-                code: format!("squawk/{rule}"),
-                contract_id: migration.contract_id.clone(),
-                artifact: Some(migration.inventory.name.clone()),
-                message: finding.message.unwrap_or_default(),
-                help: finding.help.filter(|help| !help.is_empty()),
-                evidence: Some(PostgresEvidence {
-                    path: migration.inventory.path.clone(),
-                    line: finding.line.unwrap_or_default().saturating_add(1),
-                    column: Some(finding.column.unwrap_or_default().saturating_add(1)),
+                &format!("squawk/{rule}"),
+                &source.contract_id,
+                Some(source.inventory.name.clone()),
+                finding.message.unwrap_or_default(),
+                gates,
+                Some(PostgresEvidence {
+                    path: source.inventory.path.clone(),
+                    line: source
+                        .source_line
+                        .saturating_add(finding.line.unwrap_or_default()),
+                    column: Some(if finding.line.unwrap_or_default() == 0 {
+                        source
+                            .source_column
+                            .saturating_add(finding.column.unwrap_or_default())
+                    } else {
+                        finding.column.unwrap_or_default().saturating_add(1)
+                    }),
                 }),
-                gates: true,
-            }
+            )
+            .with_help(finding.help)
         })
         .collect())
 }
@@ -259,14 +221,14 @@ fn parse_findings(output: &[u8], migration: &CollectedMigration) -> Result<Vec<P
 mod tests {
     use super::parse_findings;
     use crate::config::{PostgresLintConfig, PostgresPsqlMetaCommandMode, PostgresTransactionMode};
-    use crate::postgres::model::PostgresMigrationInventory;
-    use crate::postgres::source::CollectedMigration;
+    use crate::postgres::model::PostgresSqlSourceInventory;
+    use crate::postgres::source::CollectedSqlSource;
 
     #[test]
     fn translates_squawk_json_without_copying_sql_into_the_report() {
-        let migration = CollectedMigration {
+        let migration = CollectedSqlSource {
             contract_id: "accounts".to_string(),
-            inventory: PostgresMigrationInventory {
+            inventory: PostgresSqlSourceInventory {
                 name: "001_users.sql".to_string(),
                 path: "migrations/001_users.sql".to_string(),
                 line: None,
@@ -279,6 +241,8 @@ mod tests {
             },
             lint_sql: "CREATE INDEX users_email ON users(email);".to_string(),
             lint: PostgresLintConfig::default(),
+            source_line: 1,
+            source_column: 1,
         };
         let output = br#"[{"level":"Warning","message":"use CONCURRENTLY","help":null,"rule_name":"require-concurrent-index-creation","line":2,"column":4}]"#;
 
@@ -286,7 +250,7 @@ mod tests {
 
         assert_eq!(findings[0].code, "squawk/require-concurrent-index-creation");
         assert_eq!(findings[0].evidence.as_ref().expect("evidence").line, 3);
-        assert!(findings[0].gates);
+        assert!(!findings[0].gates);
         assert!(!serde_json::to_string(&findings)
             .expect("findings JSON")
             .contains("CREATE INDEX"));

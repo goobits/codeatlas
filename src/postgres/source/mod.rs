@@ -1,38 +1,59 @@
+mod contract;
+mod discovery;
+mod ecmascript;
+mod parameters;
+mod query;
 mod sql;
 
-use crate::config::{
-    PostgresContractConfig, PostgresMigrationSourceConfig, PostgresPsqlMetaCommandMode,
-};
+use self::contract::collect as collect_contract;
+use crate::config::{PostgresContractConfig, ProjectConfig};
 use crate::postgres::model::{
-    PostgresContractInventory, PostgresEvidence, PostgresFinding, PostgresFindingSeverity,
-    PostgresInventoryReport, PostgresMigrationInventory,
+    PostgresContractInventory, PostgresFinding, PostgresFindingSeverity, PostgresInventoryReport,
+    PostgresQueryInventory, PostgresSqlSourceInventory,
 };
-use crate::source_discovery::{self, SourceDiscoveryRequest};
-use crate::{config::ProjectConfig, paths};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeSet, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
-const MAX_SQL_BYTES: u64 = 8 * 1024 * 1024;
+pub(super) const MAX_SQL_BYTES: u64 = 8 * 1024 * 1024;
 
 pub(crate) struct CollectedPostgres {
     pub report: PostgresInventoryReport,
-    pub migrations: Vec<CollectedMigration>,
+    pub bootstraps: Vec<CollectedSqlSource>,
+    pub migrations: Vec<CollectedSqlSource>,
+    pub queries: Vec<CollectedQuery>,
 }
 
-pub(crate) struct CollectedMigration {
+pub(super) struct CollectedContract {
+    pub inventory: PostgresContractInventory,
+    pub bootstraps: Vec<CollectedSqlSource>,
+    pub migrations: Vec<CollectedSqlSource>,
+    pub queries: Vec<CollectedQuery>,
+}
+
+pub(crate) struct CollectedSqlSource {
     pub contract_id: String,
-    pub inventory: PostgresMigrationInventory,
+    pub inventory: PostgresSqlSourceInventory,
     pub lint_sql: String,
     pub lint: crate::config::PostgresLintConfig,
+    pub source_line: u32,
+    pub source_column: u32,
+}
+
+pub(crate) struct CollectedQuery {
+    pub contract_id: String,
+    pub inventory: PostgresQueryInventory,
+    pub sql: Option<String>,
 }
 
 pub(crate) fn collect(project: &ProjectConfig) -> Result<CollectedPostgres> {
-    let contracts = configured_or_discovered_contracts(project)?;
+    let contracts = discovery::contracts(project)?;
     let mut ids = BTreeSet::new();
     let mut inventories = Vec::with_capacity(contracts.len());
-    let mut collected = Vec::new();
+    let mut bootstraps = Vec::new();
+    let mut migrations = Vec::new();
+    let mut queries = Vec::new();
 
     for (index, contract) in contracts.into_iter().enumerate() {
         if contract.id.trim().is_empty() {
@@ -41,395 +62,131 @@ pub(crate) fn collect(project: &ProjectConfig) -> Result<CollectedPostgres> {
         if !ids.insert(contract.id.clone()) {
             anyhow::bail!("Duplicate PostgreSQL contract ID: {}", contract.id);
         }
-        let (inventory, mut migrations) = collect_contract(project, &contract)?;
-        inventories.push(inventory);
-        collected.append(&mut migrations);
+        let mut collected = collect_contract(project, &contract)?;
+        inventories.push(collected.inventory);
+        bootstraps.append(&mut collected.bootstraps);
+        migrations.append(&mut collected.migrations);
+        queries.append(&mut collected.queries);
     }
 
     inventories.sort_by(|left, right| left.id.cmp(&right.id));
-    collected.sort_by(|left, right| {
-        (&left.contract_id, &left.inventory.path, left.inventory.line).cmp(&(
-            &right.contract_id,
-            &right.inventory.path,
-            right.inventory.line,
-        ))
+    queries.sort_by(|left, right| {
+        (&left.contract_id, &left.inventory.id).cmp(&(&right.contract_id, &right.inventory.id))
     });
+    let report = PostgresInventoryReport::new(inventories);
+    for contract in &report.contracts {
+        dependency_order(&report, &contract.id)?;
+    }
     Ok(CollectedPostgres {
-        report: PostgresInventoryReport::new(inventories),
-        migrations: collected,
+        report,
+        bootstraps,
+        migrations,
+        queries,
     })
+}
+
+pub(crate) fn dependency_order(
+    report: &PostgresInventoryReport,
+    contract_id: &str,
+) -> Result<Vec<String>> {
+    let graph = report
+        .contracts
+        .iter()
+        .map(|contract| (contract.id.clone(), contract.depends_on.clone()))
+        .collect::<BTreeMap<_, _>>();
+    for (id, dependencies) in &graph {
+        let mut unique = BTreeSet::new();
+        for dependency in dependencies {
+            if dependency == id {
+                anyhow::bail!("PostgreSQL contract {id} cannot depend on itself");
+            }
+            if !graph.contains_key(dependency) {
+                anyhow::bail!("PostgreSQL contract {id} depends on unknown contract {dependency}");
+            }
+            if !unique.insert(dependency) {
+                anyhow::bail!(
+                    "PostgreSQL contract {id} lists dependency {dependency} more than once"
+                );
+            }
+        }
+    }
+    if !graph.contains_key(contract_id) {
+        anyhow::bail!("Unknown PostgreSQL contract {contract_id}");
+    }
+    let mut visiting = Vec::new();
+    let mut visited = BTreeSet::new();
+    let mut ordered = Vec::new();
+    visit_dependency(
+        contract_id,
+        &graph,
+        &mut visiting,
+        &mut visited,
+        &mut ordered,
+    )?;
+    Ok(ordered)
+}
+
+fn visit_dependency(
+    contract_id: &str,
+    graph: &BTreeMap<String, Vec<String>>,
+    visiting: &mut Vec<String>,
+    visited: &mut BTreeSet<String>,
+    ordered: &mut Vec<String>,
+) -> Result<()> {
+    if visited.contains(contract_id) {
+        return Ok(());
+    }
+    if let Some(start) = visiting.iter().position(|id| id == contract_id) {
+        let mut cycle = visiting[start..].to_vec();
+        cycle.push(contract_id.to_string());
+        anyhow::bail!(
+            "PostgreSQL contract dependency cycle: {}",
+            cycle.join(" -> ")
+        );
+    }
+    visiting.push(contract_id.to_string());
+    for dependency in &graph[contract_id] {
+        visit_dependency(dependency, graph, visiting, visited, ordered)?;
+    }
+    visiting.pop();
+    visited.insert(contract_id.to_string());
+    ordered.push(contract_id.to_string());
+    Ok(())
 }
 
 pub(crate) fn proposed_config(project: &ProjectConfig) -> Result<crate::config::PostgresConfig> {
-    let contracts = configured_or_discovered_contracts(project)?;
+    let contracts = discovery::contracts(project)?;
     if contracts.is_empty() {
         anyhow::bail!(
-            "No PostgreSQL migration sources were discovered in {}",
+            "No PostgreSQL schema or migration sources were discovered in {}",
             project.root.display()
         );
     }
-    Ok(crate::config::PostgresConfig { contracts })
-}
-
-fn configured_or_discovered_contracts(
-    project: &ProjectConfig,
-) -> Result<Vec<PostgresContractConfig>> {
-    if !project.config.postgres.contracts.is_empty() {
-        return Ok(project.config.postgres.contracts.clone());
-    }
-    let migration_sources = discover_migration_directories(project)?;
-    if migration_sources.is_empty() {
-        return Ok(Vec::new());
-    }
-    Ok(vec![PostgresContractConfig {
-        id: "postgres".to_string(),
-        migration_sources,
-        query_roots: Vec::new(),
-        source_complete: false,
-        lint: crate::config::PostgresLintConfig::default(),
-    }])
-}
-
-fn discover_migration_directories(
-    project: &ProjectConfig,
-) -> Result<Vec<PostgresMigrationSourceConfig>> {
-    let project_evidence = has_postgres_project_evidence(&project.root);
-    let discovery = source_discovery::discover(SourceDiscoveryRequest {
-        root: &project.root,
-        patterns: &[],
-        excluded_roots: &[],
-        no_default_ignore: project.config.no_default_ignore,
-    });
-    let mut candidates = std::collections::BTreeMap::<PathBuf, bool>::new();
-    for file in discovery.files {
-        if !is_sql_file(&file) {
-            continue;
-        }
-        if let Some(parent) = file.parent().filter(|parent| {
-            parent
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| {
-                    matches!(
-                        name.to_ascii_lowercase().as_str(),
-                        "migration" | "migrations"
-                    )
-                })
-        }) {
-            let sql_evidence = std::fs::read_to_string(&file)
-                .ok()
-                .is_some_and(|source| has_postgres_sql_evidence(&source));
-            candidates
-                .entry(parent.to_path_buf())
-                .and_modify(|evidence| *evidence |= sql_evidence)
-                .or_insert(sql_evidence);
-        }
-    }
-    Ok(candidates
-        .into_iter()
-        .filter(|(_, sql_evidence)| project_evidence || *sql_evidence)
-        .map(|(path, _)| path)
-        .map(|path| PostgresMigrationSourceConfig {
-            path: PathBuf::from(paths::normalize_relative_path(&path, &project.config_dir)),
-            ..PostgresMigrationSourceConfig::default()
-        })
-        .collect())
-}
-
-fn has_postgres_project_evidence(root: &Path) -> bool {
-    crate::package::declares_any_dependency(
-        root,
-        &[
-            "pg",
-            "pg-promise",
-            "postgres",
-            "@neondatabase/serverless",
-            "@electric-sql/pglite",
-        ],
-    ) || pyproject_uses_postgres(&root.join("pyproject.toml"))
-        || cargo_manifest_uses_postgres(&root.join("Cargo.toml"))
-}
-
-fn pyproject_uses_postgres(path: &Path) -> bool {
-    let Ok(source) = std::fs::read_to_string(path) else {
-        return false;
-    };
-    dependency_text_contains(&source, &["asyncpg", "psycopg", "psycopg2"])
-}
-
-fn cargo_manifest_uses_postgres(path: &Path) -> bool {
-    let Ok(source) = std::fs::read_to_string(path) else {
-        return false;
-    };
-    dependency_text_contains(
-        &source,
-        &[
-            "tokio-postgres",
-            "sqlx-postgres",
-            "sqlx_postgres",
-            "features = [\"postgres\"",
-        ],
-    ) || source.lines().any(|line| {
-        let normalized = line.trim_start();
-        normalized.starts_with("postgres =") || normalized.starts_with("postgres=")
+    Ok(crate::config::PostgresConfig {
+        contracts,
+        targets: Vec::new(),
     })
 }
 
-fn dependency_text_contains(source: &str, needles: &[&str]) -> bool {
-    let source = source.to_ascii_lowercase();
-    needles.iter().any(|needle| source.contains(needle))
-}
-
-fn has_postgres_sql_evidence(source: &str) -> bool {
-    let source = source.to_ascii_lowercase();
-    [
-        "timestamptz",
-        "jsonb",
-        "bigserial",
-        "create extension",
-        "pg_catalog",
-        "pg_advisory",
-        "language plpgsql",
-        "set search_path",
-        "using gin",
-        "::json",
-        "do $$",
-    ]
-    .iter()
-    .any(|marker| source.contains(marker))
-}
-
-fn collect_contract(
+pub(super) fn source_error(
+    code: &str,
     project: &ProjectConfig,
     contract: &PostgresContractConfig,
-) -> Result<(PostgresContractInventory, Vec<CollectedMigration>)> {
-    let mut diagnostics = Vec::new();
-    let mut migrations = Vec::new();
-    let mut seen = HashSet::new();
-
-    for source in &contract.migration_sources {
-        let paths = migration_paths(project, source, &contract.id, &mut diagnostics)?;
-        for path in paths {
-            if !seen.insert(path.clone()) {
-                diagnostics.push(finding(
-                    PostgresFindingSeverity::Error,
-                    "duplicate-migration-source",
-                    &contract.id,
-                    Some(paths::normalize_relative_path(&path, &project.root)),
-                    "Migration is selected by more than one configured source".to_string(),
-                    true,
-                    None,
-                ));
-                continue;
-            }
-            match collect_sql_file(project, contract, source, &path) {
-                Ok(migration) => migrations.push(migration),
-                Err(error) => diagnostics.push(finding(
-                    PostgresFindingSeverity::Error,
-                    "migration-read-failed",
-                    &contract.id,
-                    Some(paths::normalize_relative_path(&path, &project.root)),
-                    error.to_string(),
-                    true,
-                    None,
-                )),
-            }
-        }
-    }
-
-    if contract.migration_sources.is_empty() {
-        diagnostics.push(finding(
-            if contract.source_complete {
-                PostgresFindingSeverity::Error
-            } else {
-                PostgresFindingSeverity::Warning
-            },
-            "migration-source-missing",
-            &contract.id,
-            None,
-            "No PostgreSQL migration sources are configured or discoverable".to_string(),
-            contract.source_complete,
-            None,
-        ));
-    } else if migrations.is_empty() {
-        diagnostics.push(finding(
-            PostgresFindingSeverity::Error,
-            "migration-source-empty",
-            &contract.id,
-            None,
-            "Configured PostgreSQL migration sources contain no supported migrations".to_string(),
-            true,
-            None,
-        ));
-    }
-
-    if contract
-        .migration_sources
-        .iter()
-        .any(|source| source.transaction == crate::config::PostgresTransactionMode::Unknown)
-    {
-        diagnostics.push(finding(
-            PostgresFindingSeverity::Warning,
-            "migration-transaction-unknown",
-            &contract.id,
-            None,
-            "Migration transaction semantics are unknown; configure `transaction` to match the runtime migration runner".to_string(),
-            false,
-            None,
-        ));
-    }
-
-    for migration in &migrations {
-        if migration.inventory.psql_meta_commands == PostgresPsqlMetaCommandMode::Reject {
-            for directive in &migration.inventory.directives {
-                diagnostics.push(finding(
-                    PostgresFindingSeverity::Error,
-                    "psql-meta-command-rejected",
-                    &contract.id,
-                    Some(migration.inventory.name.clone()),
-                    format!(
-                        "psql meta-command \\{} is not accepted by this migration runner",
-                        directive.command
-                    ),
-                    true,
-                    Some(PostgresEvidence {
-                        path: migration.inventory.path.clone(),
-                        line: directive.line,
-                        column: Some(1),
-                    }),
-                ));
-            }
-        }
-    }
-
-    migrations.sort_by(|left, right| {
-        (&left.inventory.path, left.inventory.line)
-            .cmp(&(&right.inventory.path, right.inventory.line))
-    });
-    diagnostics.sort_by(finding_order);
-    let inventory = PostgresContractInventory {
-        id: contract.id.clone(),
-        source_complete: contract.source_complete,
-        migrations: migrations
-            .iter()
-            .map(|migration| migration.inventory.clone())
-            .collect(),
-        queries: Vec::new(),
-        diagnostics,
-    };
-    Ok((inventory, migrations))
-}
-
-fn migration_paths(
-    project: &ProjectConfig,
-    source: &PostgresMigrationSourceConfig,
-    contract_id: &str,
-    diagnostics: &mut Vec<PostgresFinding>,
-) -> Result<Vec<PathBuf>> {
-    if source.path.as_os_str().is_empty() {
-        anyhow::bail!("PostgreSQL contract {contract_id} has an empty migration source path");
-    }
-    let unresolved = if source.path.is_absolute() {
-        source.path.clone()
-    } else {
-        project.config_dir.join(&source.path)
-    };
-    let resolved = unresolved.canonicalize().with_context(|| {
-        format!(
-            "PostgreSQL migration source does not exist: {}",
-            unresolved.display()
-        )
-    })?;
-    require_project_path(&resolved, &project.root, contract_id)?;
-    if resolved.is_file() {
-        if !is_sql_file(&resolved) {
-            anyhow::bail!(
-                "Unsupported PostgreSQL migration source {}; expected a .sql file or directory",
-                unresolved.display()
-            );
-        }
-        return Ok(vec![resolved]);
-    }
-    if !resolved.is_dir() {
-        anyhow::bail!(
-            "PostgreSQL migration source is not a file or directory: {}",
-            unresolved.display()
-        );
-    }
-
-    let discovery = source_discovery::discover(SourceDiscoveryRequest {
-        root: &resolved,
-        patterns: &[],
-        excluded_roots: &[],
-        no_default_ignore: project.config.no_default_ignore,
-    });
-    for warning in discovery.warnings {
-        diagnostics.push(finding(
-            PostgresFindingSeverity::Warning,
-            "migration-discovery-warning",
-            contract_id,
-            Some(paths::normalize_relative_path(&resolved, &project.root)),
-            warning,
-            false,
-            None,
-        ));
-    }
-    Ok(discovery
-        .files
-        .into_iter()
-        .filter(|path| is_sql_file(path))
-        .collect())
-}
-
-fn collect_sql_file(
-    project: &ProjectConfig,
-    contract: &PostgresContractConfig,
-    source: &PostgresMigrationSourceConfig,
     path: &Path,
-) -> Result<CollectedMigration> {
-    require_project_path(path, &project.root, &contract.id)?;
-    let metadata = std::fs::metadata(path)
-        .with_context(|| format!("Could not inspect PostgreSQL migration {}", path.display()))?;
-    if metadata.len() > MAX_SQL_BYTES {
-        anyhow::bail!(
-            "PostgreSQL migration {} is {} bytes; the per-file limit is {} bytes",
-            path.display(),
-            metadata.len(),
-            MAX_SQL_BYTES
-        );
-    }
-    let contents = std::fs::read_to_string(path).with_context(|| {
-        format!(
-            "Could not read PostgreSQL migration {} as UTF-8",
-            path.display()
-        )
-    })?;
-    let prepared = sql::prepare(&contents, source.psql_meta_commands);
-    let display = paths::normalize_relative_path(path, &project.root);
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or(&display)
-        .to_string();
-    Ok(CollectedMigration {
-        contract_id: contract.id.clone(),
-        inventory: PostgresMigrationInventory {
-            name,
-            path: display,
-            line: None,
-            sha256: digest(&contents),
-            lint_sha256: digest(&prepared.lint_sql),
-            bytes: metadata.len(),
-            transaction: source.transaction,
-            psql_meta_commands: source.psql_meta_commands,
-            directives: prepared.directives,
-        },
-        lint_sql: prepared.lint_sql,
-        lint: contract.lint.clone(),
-    })
+    error: anyhow::Error,
+) -> PostgresFinding {
+    PostgresFinding::new(
+        PostgresFindingSeverity::Error,
+        code,
+        &contract.id,
+        Some(crate::paths::normalize_relative_path(path, &project.root)),
+        error.to_string(),
+        true,
+        None,
+    )
 }
 
-fn require_project_path(path: &Path, root: &Path, contract_id: &str) -> Result<()> {
+pub(super) fn require_project_path(path: &Path, root: &Path, contract_id: &str) -> Result<()> {
     if path.strip_prefix(root).is_err() {
         anyhow::bail!(
             "PostgreSQL contract {contract_id} source escapes the project root: {}",
@@ -439,63 +196,49 @@ fn require_project_path(path: &Path, root: &Path, contract_id: &str) -> Result<(
     Ok(())
 }
 
-fn is_sql_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("sql"))
-}
-
-fn digest(value: &str) -> String {
+pub(super) fn digest(value: &str) -> String {
     format!("sha256:{:x}", Sha256::digest(value.as_bytes()))
-}
-
-fn finding(
-    severity: PostgresFindingSeverity,
-    code: &str,
-    contract_id: &str,
-    artifact: Option<String>,
-    message: String,
-    gates: bool,
-    evidence: Option<PostgresEvidence>,
-) -> PostgresFinding {
-    PostgresFinding {
-        severity,
-        code: code.to_string(),
-        contract_id: contract_id.to_string(),
-        artifact,
-        message,
-        help: None,
-        evidence,
-        gates,
-    }
-}
-
-fn finding_order(left: &PostgresFinding, right: &PostgresFinding) -> std::cmp::Ordering {
-    (
-        &left.contract_id,
-        &left.artifact,
-        left.evidence.as_ref().map(|evidence| evidence.line),
-        &left.code,
-    )
-        .cmp(&(
-            &right.contract_id,
-            &right.artifact,
-            right.evidence.as_ref().map(|evidence| evidence.line),
-            &right.code,
-        ))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::has_postgres_sql_evidence;
+    use super::dependency_order;
+    use crate::postgres::model::{PostgresContractInventory, PostgresInventoryReport};
+
+    fn contract(id: &str, dependencies: &[&str]) -> PostgresContractInventory {
+        PostgresContractInventory {
+            id: id.to_string(),
+            depends_on: dependencies
+                .iter()
+                .map(|dependency| (*dependency).to_string())
+                .collect(),
+            source_complete: true,
+            bootstraps: Vec::new(),
+            migrations: Vec::new(),
+            queries: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
 
     #[test]
-    fn postgres_autodiscovery_requires_dialect_evidence() {
-        assert!(has_postgres_sql_evidence(
-            "create table jobs (payload jsonb not null, created_at timestamptz not null);"
-        ));
-        assert!(!has_postgres_sql_evidence(
-            "create table jobs (payload text not null, created_at integer not null);"
-        ));
+    fn contract_dependencies_are_ordered_once_and_cycles_fail() {
+        let report = PostgresInventoryReport::new(vec![
+            contract("identity", &[]),
+            contract("platform", &["identity"]),
+            contract("billing", &["identity", "platform"]),
+        ]);
+        assert_eq!(
+            dependency_order(&report, "billing").expect("dependency order"),
+            ["identity", "platform", "billing"]
+        );
+
+        let cycle = PostgresInventoryReport::new(vec![
+            contract("left", &["right"]),
+            contract("right", &["left"]),
+        ]);
+        assert!(dependency_order(&cycle, "left")
+            .expect_err("cycle should fail")
+            .to_string()
+            .contains("left -> right -> left"));
     }
 }

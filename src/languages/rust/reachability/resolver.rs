@@ -249,7 +249,13 @@ impl RustResolver {
         module: &Module,
         declaration: &parser::ModuleDeclaration,
     ) -> Resolution {
-        let raw = module_declaration_base(&module.absolute_path, declaration);
+        let raw = module_declaration_base(
+            &module.absolute_path,
+            declaration,
+            self.targets
+                .iter()
+                .any(|target| target.root == module.absolute_path),
+        );
         self.resolve_file_candidates(&raw).map_or_else(
             || Resolution::UnresolvedInternal(declaration.name.clone()),
             Resolution::Module,
@@ -449,15 +455,11 @@ impl RustResolver {
         let Some(owner_path) = self.module_files.get(owner) else {
             return false;
         };
-        let Some(owner_target) = self.target_for_path(owner_path) else {
+        let Some((owner_target, requester_target)) =
+            self.shared_target(owner_path, &requester.absolute_path)
+        else {
             return false;
         };
-        let Some(requester_target) = self.target_for_module(requester) else {
-            return false;
-        };
-        if owner_target.root != requester_target.root {
-            return false;
-        }
 
         let owner_segments = module_segments(owner_target, owner_path);
         let requester_segments = module_segments(requester_target, &requester.absolute_path);
@@ -523,10 +525,35 @@ impl RustResolver {
     }
 
     fn target_for_path(&self, path: &Path) -> Option<&CargoTarget> {
+        self.targets_for_path(path)
+            .into_iter()
+            .max_by_key(|target| target.module_base.components().count())
+    }
+
+    fn shared_target(&self, left: &Path, right: &Path) -> Option<(&CargoTarget, &CargoTarget)> {
+        let left_targets = self.targets_for_path(left);
+        let right_targets = self.targets_for_path(right);
+        left_targets.into_iter().find_map(|left_target| {
+            right_targets
+                .iter()
+                .find(|right_target| right_target.root == left_target.root)
+                .map(|right_target| (left_target, *right_target))
+        })
+    }
+
+    fn targets_for_path(&self, path: &Path) -> Vec<&CargoTarget> {
+        let exact = self
+            .targets
+            .iter()
+            .filter(|target| path == target.root)
+            .collect::<Vec<_>>();
+        if !exact.is_empty() {
+            return exact;
+        }
         self.targets
             .iter()
-            .filter(|target| path == target.root.as_path() || path.starts_with(&target.module_base))
-            .max_by_key(|target| target.module_base.components().count())
+            .filter(|target| path.starts_with(&target.module_base))
+            .collect()
     }
 
     fn resolve_file_candidates(&self, raw: &Path) -> Option<ModuleKey> {
@@ -570,6 +597,7 @@ fn module_child_base(path: &Path) -> PathBuf {
 pub(super) fn module_declaration_base(
     path: &Path,
     declaration: &parser::ModuleDeclaration,
+    crate_root: bool,
 ) -> PathBuf {
     declaration
         .path_override
@@ -579,7 +607,14 @@ pub(super) fn module_declaration_base(
                 .unwrap_or_else(|| Path::new(""))
                 .join(override_path)
         })
-        .unwrap_or_else(|| module_child_base(path).join(&declaration.name))
+        .unwrap_or_else(|| {
+            let base = if crate_root {
+                path.parent().unwrap_or_else(|| Path::new("")).to_path_buf()
+            } else {
+                module_child_base(path)
+            };
+            base.join(&declaration.name)
+        })
 }
 
 pub(super) fn module_file_candidates(raw: &Path) -> [PathBuf; 2] {

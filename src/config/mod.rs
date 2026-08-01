@@ -8,8 +8,8 @@ pub(crate) use http::{
     HttpFuzzServerConfig, HttpOpenApiProviderConfig, HttpOpenApiSourceConfig,
 };
 pub(crate) use postgres::{
-    PostgresConfig, PostgresContractConfig, PostgresLintConfig, PostgresMigrationSourceConfig,
-    PostgresPsqlMetaCommandMode, PostgresTransactionMode,
+    PostgresConfig, PostgresContractConfig, PostgresLintConfig, PostgresPsqlMetaCommandMode,
+    PostgresSqlSourceConfig, PostgresTargetConfig, PostgresTransactionMode,
 };
 
 use anyhow::{Context, Result};
@@ -94,6 +94,7 @@ pub(crate) struct ProjectConfig {
     pub root: PathBuf,
     pub config: CodeAtlasConfig,
     pub config_dir: PathBuf,
+    pub config_path: Option<PathBuf>,
 }
 
 impl ProjectConfig {
@@ -104,7 +105,7 @@ impl ProjectConfig {
                 .then(|| path.join("codeatlas.json"))
         });
 
-        let (config, config_dir) = if let Some(config_path) = discovered {
+        let (config, config_dir, config_path) = if let Some(config_path) = discovered {
             let absolute = if config_path.is_absolute() {
                 config_path
             } else {
@@ -118,9 +119,9 @@ impl ProjectConfig {
                 .parent()
                 .map(Path::to_path_buf)
                 .unwrap_or_else(|| PathBuf::from("."));
-            (config, config_dir)
+            (config, config_dir, Some(absolute))
         } else {
-            (CodeAtlasConfig::default(), std::env::current_dir()?)
+            (CodeAtlasConfig::default(), std::env::current_dir()?, None)
         };
 
         let root = config
@@ -136,6 +137,7 @@ impl ProjectConfig {
             root,
             config,
             config_dir,
+            config_path,
         };
         if !project.config.projects.is_empty() {
             project.analysis_projects()?;
@@ -151,6 +153,14 @@ impl ProjectConfig {
                 .as_ref()
                 .map(|path| self.config_dir.join(path))
         })
+    }
+
+    pub(crate) fn config_base(&self) -> &Path {
+        if self.config_path.is_some() {
+            &self.config_dir
+        } else {
+            &self.root
+        }
     }
 }
 
@@ -175,6 +185,7 @@ mod tests {
         assert!(!config.docs.declaration_contract);
         assert!(!config.docs.require_descriptions);
         assert!(config.postgres.contracts.is_empty());
+        assert!(config.postgres.targets.is_empty());
     }
 
     #[test]

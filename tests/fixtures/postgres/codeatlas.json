@@ -5,13 +5,31 @@
 		"contracts": [
 			{
 				"id": "fixture-postgres",
+				"bootstrap_sources": [
+					{
+						"path": "embedded/bootstrap.ts",
+						"transaction": "always",
+						"psql_meta_commands": "reject"
+					}
+				],
 				"migration_sources": [
 					{
 						"path": "migrations",
 						"transaction": "always",
 						"psql_meta_commands": "strip"
+					},
+					{
+						"path": "embedded/migrations.ts",
+						"transaction": "always",
+						"psql_meta_commands": "reject"
+					},
+					{
+						"path": "embedded/bootstrap.ts",
+						"transaction": "always",
+						"psql_meta_commands": "reject"
 					}
 				],
+				"query_roots": ["embedded"],
 				"source_complete": true
 			}
 		]

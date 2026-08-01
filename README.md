@@ -1,9 +1,9 @@
 # CodeAtlas
 
-CodeAtlas maps public APIs and analyzes source reachability in JavaScript,
-TypeScript, Svelte, Python, and Rust projects. Reports preserve unresolved and
-dynamic boundaries instead of calling code dead when the source graph is
-incomplete.
+CodeAtlas maps public APIs, analyzes source reachability, and checks HTTP and
+PostgreSQL contracts across JavaScript, TypeScript, Svelte, Python, and Rust
+projects. Reports preserve unresolved and dynamic boundaries instead of
+claiming certainty when the source graph is incomplete.
 
 ## Quick Start
 
@@ -17,6 +17,7 @@ npx @goobits/codeatlas architecture compile architecture/root.atlas.yaml --sourc
 npx @goobits/codeatlas architecture providers architecture/root.atlas.yaml --source-root . --capability example.capability.context
 npx @goobits/codeatlas docs . --out docs/API-Reference.md
 npx @goobits/codeatlas docs . --format html --out docs/API-Reference.html
+npx @goobits/codeatlas postgres inventory .
 ```
 
 Use `CODEATLAS_BINARY_PATH` to run a locally built binary through the npm
@@ -44,6 +45,7 @@ a positive integer to allow more parallel build work.
 | `map`          | Generate a Mermaid dependency diagram                                                  |
 | `docs`         | Generate deterministic Markdown or searchable HTML from public exports and source docs |
 | `http`         | Inventory source routes, check/diff OpenAPI contracts, and run schema or transport fuzzing |
+| `postgres`     | Discover, lint, replay, prepare, inventory, and diff PostgreSQL contracts               |
 
 Run `codeatlas <command> --help` for command-specific options.
 
@@ -383,6 +385,111 @@ The JSON report contains `schema_version`, `tool_version`, package metadata,
 public export paths, source signatures, structured documentation, imports, and
 unused-public findings. Baselines must use the current report schema; CodeAtlas
 does not carry legacy baseline readers.
+
+## PostgreSQL Contracts
+
+PostgreSQL analysis is a separate versioned domain. `postgres init <path>`
+discovers conservative PostgreSQL evidence and prints a proposed explicit
+contract; add `--write` to insert that property into `codeatlas.json` without
+reformatting the rest of the file. Discovery requires PostgreSQL-specific SQL
+or a PostgreSQL driver, so SQLite and generic data files do not become false
+contracts.
+
+```json
+{
+	"postgres": {
+		"contracts": [
+			{
+				"id": "accounts-postgres",
+				"bootstrap_sources": [
+					{
+						"path": "src/platform/db/schema.ts",
+						"transaction": "always",
+						"psql_meta_commands": "reject"
+					}
+				],
+				"migration_sources": [
+					{
+						"path": "src/platform/db/migrations.ts",
+						"transaction": "always",
+						"psql_meta_commands": "reject"
+					}
+				],
+				"query_roots": ["src"],
+				"source_complete": true,
+				"lint": {
+					"pg_version": "17"
+				}
+			}
+		],
+		"targets": [
+			{
+				"id": "accounts-local",
+				"contract": "accounts-postgres",
+				"admin_url_env": "ACCOUNTS_CODEATLAS_POSTGRES_URL"
+			}
+		]
+	}
+}
+```
+
+Bootstrap and migration sources may be SQL files or directories. JavaScript and
+TypeScript bootstrap files expose static schema SQL bindings; migration files
+contain static `{ name, sql }` entries. Static SQL can be resolved through
+relative imports and local workspace package exports. Calls that pass static
+bindings through a runner's `bootstrapSql` property are discovered in runtime
+order. Query roots inventory SQL files and SQL passed to supported database
+calls such as `query`, `execute`, and the common pg-promise methods. Safe
+pg-promise named value parameters are normalized for PostgreSQL preparation;
+identifier, raw, list, and runtime interpolation remain explicit dynamic
+boundaries and are never executed. Reports contain locations, counts, and
+SHA-256 digests—not raw SQL.
+
+Use `depends_on` when one independently tracked migration contract must be
+replayed before another. CodeAtlas rejects missing or cyclic dependencies and
+executes each dependency once in declared order, without flattening migration
+names from separate runners.
+
+Set migration semantics to match the real runner. `transaction` is `always` or
+`never`; `unknown` remains visible and prevents live replay. Psql meta-commands
+can be rejected, stripped when the application runner strips them, or declared
+as psql-owned. Live replay refuses psql-owned directives rather than guessing
+their side effects.
+
+```bash
+codeatlas postgres init .
+codeatlas postgres init . --write
+codeatlas postgres inventory . --out postgres-inventory.json
+codeatlas postgres check . --out postgres-check.json
+
+export ACCOUNTS_CODEATLAS_POSTGRES_URL='postgresql://postgres:password@127.0.0.1:5432/postgres'
+codeatlas postgres test . --target accounts-local --out postgres-test.json
+codeatlas postgres baseline . --target accounts-local --out postgres-baseline.json
+codeatlas postgres diff postgres-baseline.json . --target accounts-local --out postgres-diff.json
+```
+
+`postgres check` runs the exact Squawk version shipped with the CodeAtlas npm
+package. Squawk warnings stay visible but do not force unsafe edits to applied
+migration history. A baseline records their structured identities, and a diff
+gates newly introduced warnings while reporting resolved warnings as
+informational. Squawk errors still gate immediately. `postgres test`
+additionally requires `psql` and an admin URL supplied only through the
+configured environment variable. It creates a bounded, uniquely named database
+from `template0`, replays the selected contract and its dependencies with their
+declared transaction semantics, and removes the database on success or failure.
+It prepares supported static application queries so PostgreSQL checks their
+relations, columns, operators, and parameter inference without executing
+data-changing statements.
+
+A clean live run can become a compact baseline. Baselines require
+`source_complete: true`, zero gating findings, and PostgreSQL 13 or newer. A
+diff requires the same contract and PostgreSQL server major. It gates migration
+edits, removals, or insertions before applied names; lost static-query coverage;
+removed or changed catalog objects; required columns without defaults; new
+constraints; and unique indexes. Appended migrations and safe catalog
+additions remain additive. Bootstrap source changes gate for explicit
+upgrade-path review. Constraint-owned indexes are represented by their
+constraint only, avoiding duplicate changes in the report.
 
 ## HTTP Contracts
 

@@ -60,6 +60,10 @@ fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
         finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
             && finding.message.contains("tooling")
     }));
+    assert!(!report.findings.iter().any(|finding| {
+        finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge
+            && finding.message.contains("support")
+    }));
     assert!(!report
         .findings
         .iter()
