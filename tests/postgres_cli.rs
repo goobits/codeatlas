@@ -54,12 +54,23 @@ fn inventory_uses_explicit_runner_semantics_without_leaking_sql() {
     assert!(migrations.iter().any(|migration| {
         migration["name"] == "002_imported.sql" && migration["path"] == "embedded/schema.ts"
     }));
+    let queries = report["contracts"][0]["queries"]
+        .as_array()
+        .expect("queries array");
+    assert_eq!(queries.len(), 7);
     assert_eq!(
-        report["contracts"][0]["queries"]
-            .as_array()
-            .expect("queries array")
-            .len(),
+        queries
+            .iter()
+            .filter(|query| query["dynamic"] == true)
+            .count(),
         2
+    );
+    assert_eq!(
+        queries
+            .iter()
+            .filter(|query| query["parameterCount"] == 1 && query["dynamic"] == false)
+            .count(),
+        3
     );
     assert!(!String::from_utf8_lossy(&output.stdout).contains("fixture_database"));
     assert!(!String::from_utf8_lossy(&output.stdout).contains("CREATE TABLE"));
