@@ -1,0 +1,13 @@
+{
+  "name": "@fixture/consumer",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@fixture/brush": "workspace:*"
+  },
+  "scripts": {
+    "test": "vitest run"
+  }
+}

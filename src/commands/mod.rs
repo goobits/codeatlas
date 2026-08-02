@@ -7,6 +7,7 @@ pub(crate) mod http;
 pub(crate) mod lexicon;
 mod output;
 pub(crate) mod postgres;
+pub(crate) mod testing;
 
 use crate::config::ProjectConfig;
 use crate::domain::{ScanConfig, ScanReport};

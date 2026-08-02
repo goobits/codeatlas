@@ -17,6 +17,9 @@ npx @goobits/codeatlas ci . --workspace --fail-unused false --baseline public-ap
 npx @goobits/codeatlas diff public-api.json . --workspace --exact
 npx @goobits/codeatlas dead-code . --format json
 npx @goobits/codeatlas dead-code packages --workspace --format json
+npx @goobits/codeatlas testing inventory . --workspace
+npx @goobits/codeatlas testing impact . --workspace --changed packages/example/src/index.ts
+npx @goobits/codeatlas testing witnesses . --workspace
 npx @goobits/codeatlas context . --target src/main.rs
 npx @goobits/codeatlas architecture compile architecture/root.atlas.yaml --source-root .
 npx @goobits/codeatlas architecture source-check architecture/root.atlas.yaml --source-root . --repository . --check
@@ -45,6 +48,7 @@ a positive integer to allow more parallel build work.
 | `lexicon`      | Report deterministic source-name collisions, structural aliases, repeated helpers, and terms |
 | `audit`        | Report public exports with no detected local or explicitly scanned package consumers    |
 | `dead-code`    | Classify source reachability, context-only code, and uncertain boundaries              |
+| `testing`      | Inventory tests, select affected suites, and report public API witnesses               |
 | `context`      | Return a bounded source graph slice for exact files or symbols                         |
 | `architecture` | Compile declarations, query provider approvals, observe bindings, and evaluate conformance |
 | `ci`           | Write a compact public API baseline and fail on configured audit findings              |
@@ -292,7 +296,11 @@ are arbitrary.
 				},
 				"unit-tests": {
 					"role": "test",
-					"entrypoints": ["src/**/*.test.ts"]
+					"entrypoints": ["src/**/*.test.ts"],
+					"subjects": [
+						{ "project": "web" },
+						{ "source": "src/brushes/**" }
+					]
 				},
 				"build-tools": {
 					"role": "tooling",
@@ -460,6 +468,48 @@ noise. The schema-v2 result includes dependencies, dependents, visibility,
 evidence, analysis boundaries, and an explicit truncation status.
 The source context graph remains separate from the declared architecture graph
 because the two graphs have different authority and semantics.
+
+## Testing Intelligence
+
+Testing analysis is read-only: CodeAtlas inventories and selects tests but never
+executes package scripts or arbitrary repository commands.
+
+```bash
+codeatlas testing inventory . --workspace --format json
+codeatlas testing impact . --workspace \
+  --changed packages/brush/src/model.ts \
+  --changed packages/paint/src/canvas.ts
+codeatlas testing witnesses . --workspace --format json
+```
+
+`testing inventory` reports every analysis project, discovered test context and
+root, test-related `package.json` script, recognized runner, conservative no-op
+or allows-empty script, and exact duplicate test command. Runner detection is
+evidence about a script string; it does not imply the command was executed
+successfully.
+
+`testing impact` follows the existing source graph from changed source to test
+contexts. Each selection says whether it came from an observed dependency, a
+declared project or source subject, or a conservative project/workspace
+fallback. New, deleted, manifest, and unsupported paths fall back instead of
+being presented as exact static selections. `selection_complete` is false when
+any fallback was necessary. Changed paths are repository-relative, and
+`--changed` can be repeated.
+
+`testing witnesses` evaluates public symbols reached from production
+`public_surface` contexts. An observed witness identifies the exact test context
+and root that statically reaches a symbol. A declaration remains visibly
+`declared_only` until CodeAtlas observes that path. Missing witnesses become
+`unwitnessed` only at high analysis confidence; incomplete source evidence is
+reported as `unknown`. Test contexts with no observed public-API witness are
+listed separately as detached from the public surface.
+
+Test subjects are optional and valid only on contexts whose role is `test`.
+`{ "project": "package-id" }` covers a named analysis project, including a
+different workspace package. `{ "source": "src/domain/**" }` matches source
+inside the test context's own project. Subjects express black-box intent and do
+not replace observed graph evidence. Inventory, impact, and witness reports use
+the separate versioned `codeatlas.testing/v1` data contract.
 
 ## Public API Baselines
 

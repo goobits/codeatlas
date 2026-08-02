@@ -1,0 +1,39 @@
+{
+  "projects": [
+    {
+      "id": "@fixture/brush",
+      "root": "packages/brush",
+      "languages": ["ts"],
+      "contexts": {
+        "public-api": {
+          "role": "production",
+          "scope": "public_surface",
+          "entrypoints": ["src/index.ts"]
+        },
+        "ecmascript-tests": {
+          "role": "test",
+          "entrypoints": ["tests/**/*.test.ts"],
+          "subjects": [
+            { "project": "@fixture/brush" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "@fixture/consumer",
+      "root": "packages/consumer",
+      "languages": ["ts"],
+      "contexts": {
+        "public-api": {
+          "role": "production",
+          "scope": "public_surface",
+          "entrypoints": ["src/index.ts"]
+        },
+        "ecmascript-tests": {
+          "role": "test",
+          "entrypoints": ["tests/**/*.test.ts"]
+        }
+      }
+    }
+  ]
+}

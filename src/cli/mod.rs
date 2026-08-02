@@ -9,10 +9,12 @@ use std::path::PathBuf;
 use architecture::ArchitectureCommand;
 use http::HttpCommand;
 use postgres::PostgresCommand;
+use testing::TestingCommand;
 
 mod architecture;
 mod http;
 mod postgres;
+mod testing;
 
 #[derive(Parser)]
 #[command(name = "codeatlas")]
@@ -132,6 +134,12 @@ enum Command {
         command: PostgresCommand,
     },
 
+    /// Inventory tests, select affected suites, and report public API witnesses
+    Testing {
+        #[command(subcommand)]
+        command: TestingCommand,
+    },
+
     /// CI mode: exit non-zero if issues found
     Ci {
         /// Path to scan
@@ -248,6 +256,7 @@ pub(crate) fn run() -> i32 {
         Command::Architecture { command } => command.run(config_path.as_deref()),
         Command::Http { command } => command.run(config_path.as_deref()),
         Command::Postgres { command } => command.run(config_path.as_deref()),
+        Command::Testing { command } => command.run(config_path.as_deref()),
         Command::Ci {
             path,
             consumer_root,
@@ -341,6 +350,18 @@ mod tests {
         ])
         .is_ok());
         assert!(Cli::try_parse_from(["codeatlas", "dead-code", "packages", "--workspace"]).is_ok());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "testing",
+            "impact",
+            ".",
+            "--workspace",
+            "--changed",
+            "packages/example/src/index.ts",
+            "--changed",
+            "pnpm-lock.yaml"
+        ])
+        .is_ok());
         assert!(Cli::try_parse_from([
             "codeatlas",
             "ci",

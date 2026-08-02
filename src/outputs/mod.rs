@@ -7,4 +7,5 @@ pub(crate) mod lexicon;
 pub(crate) mod markdown;
 pub(crate) mod mermaid;
 pub(crate) mod reference;
+pub(crate) mod testing;
 pub(crate) mod text_tree;

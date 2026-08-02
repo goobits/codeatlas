@@ -18,6 +18,7 @@ mod paths;
 mod postgres;
 mod source_discovery;
 mod source_policy;
+mod testing;
 
 #[cfg(test)]
 mod tests;

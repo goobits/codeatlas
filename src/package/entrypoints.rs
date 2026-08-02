@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -61,6 +61,21 @@ pub(crate) fn discover_tooling_entrypoints(root_dir: &Path) -> Result<Vec<String
     entrypoints.sort();
     entrypoints.dedup();
     Ok(entrypoints)
+}
+
+pub(crate) fn read_scripts(root_dir: &Path) -> Result<BTreeMap<String, String>> {
+    let manifest = read_manifest(root_dir)?;
+    Ok(manifest
+        .get("scripts")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|scripts| scripts.iter())
+        .filter_map(|(name, command)| {
+            command
+                .as_str()
+                .map(|command| (name.clone(), command.to_string()))
+        })
+        .collect())
 }
 
 fn discover_script_entrypoints(
