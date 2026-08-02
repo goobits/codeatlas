@@ -481,6 +481,16 @@ def codeatlas_no_internal_server_error(
     return response.status_code != 500
 
 
+@schemathesis.check
+def codeatlas_unsupported_method_rejection(
+    _context: Any, response: Any, case: Any
+) -> bool | None:
+    """Require a client-error rejection without assuming an inferred HTTP contract."""
+    if _coverage_scenario(case) != "unsupported_method":
+        return None
+    return 400 <= response.status_code < 500
+
+
 class _CodeAtlasAuthProvider:
     def get(self, _case: Any, _context: Any) -> tuple[tuple[str, str], ...]:
         return _STATIC_HEADERS

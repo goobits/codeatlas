@@ -156,7 +156,9 @@ mod tests {
         HttpConfidence, HttpSourceCompleteness, HttpSourceEvidence, HttpSourceInventory,
         HttpSourceOperation, HttpSourceOperationKind,
     };
-    use crate::http::target::{parse_http_fuzz_operation, ResolvedHttpFuzzTarget};
+    use crate::http::target::{
+        parse_http_fuzz_operation, ResolvedHttpFuzzOperationSelection, ResolvedHttpFuzzTarget,
+    };
     use std::collections::BTreeMap;
 
     #[test]
@@ -172,9 +174,9 @@ mod tests {
             report_root: None,
             server: None,
             request_adapter: None,
-            operations: vec![
-                parse_http_fuzz_operation("POST /widgets/{id}").expect("selected operation")
-            ],
+            operation_selection: ResolvedHttpFuzzOperationSelection::Explicit(vec![
+                parse_http_fuzz_operation("POST /widgets/{id}").expect("selected operation"),
+            ]),
             positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
             suppress_health_checks: Vec::new(),
             suppress_warnings: false,

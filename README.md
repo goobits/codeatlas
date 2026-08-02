@@ -714,10 +714,12 @@ fetcher over standard input rather than exposed in process arguments.
 Without OpenAPI, `http check` emits one non-gating schema-missing warning while
 retaining the source inventory. `http fuzz` automatically turns discovered
 endpoints into a temporary source-transport contract after the target declares
-a non-empty `operations` allowlist. It exercises path
-serialization, arbitrary request bodies, unsupported methods, and server-error
-handling without pretending that CodeAtlas inferred domain fields, query
-parameters, authentication rules, or response schemas. Source-transport
+its operation ownership. Use a reviewed string array to freeze an exact
+allowlist, or `"operations": "contract"` to follow every endpoint retained by
+the contract's source roots and include/exclude filters as that contract changes.
+It exercises path serialization, arbitrary request bodies, unsupported methods,
+and server-error handling without pretending that CodeAtlas inferred domain
+fields, query parameters, authentication rules, or response schemas. Source-transport
 reports are labeled `contractMode: "source_transport"`; the stateful profile
 remains exclusive to explicit OpenAPI contracts. Curated source-transport
 operations receive the same retained-evidence and positive-coverage gates as
@@ -752,8 +754,11 @@ policy for negative-data rejection, response conformance, missing
 authentication, unsupported methods, and unhandled server errors.
 Source-transport targets run the narrower assertions that their static evidence
 can support: known operations must not return any 5xx response and unsupported
-methods must be rejected. Readiness probes run before fuzz cases, so lifecycle
-statuses do not weaken the response-safety check.
+methods must be rejected with a 4xx client error. This accepts a framework-level
+`400 Bad Request` when its request model cannot represent the method, while an
+explicit OpenAPI contract retains strict `405 Method Not Allowed` and `Allow`
+header conformance. Readiness probes run before fuzz cases, so lifecycle statuses
+do not weaken the response-safety check.
 `standard` generates 75 examples per operation and `thorough` generates 750.
 The additive `stateful` profile runs 25 scenarios against explicit OpenAPI
 Links, rejects speculative link inference, and fails when it does not traverse
@@ -761,7 +766,9 @@ every selected link. Run `standard` and `stateful` to cover both isolated
 request behavior and declared resource workflows. `--max-examples` provides a
 focused local override. Every run prints its exact random seed; pass it back
 through `--seed` to reproduce the generated sequence.
-The target-owned `operations` list is the authoritative fuzz boundary.
+The target-owned `operations` selection is the authoritative fuzz boundary.
+An explicit list rejects contract additions until reviewed; `"contract"`
+explicitly delegates that boundary to the selected contract and its source filters.
 `--operation "METHOD /path"` can only narrow that list for local debugging; it
 cannot expand it. CodeAtlas validates every configured operation against the
 selected contract, requires retained evidence for each selection, and keeps

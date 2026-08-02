@@ -1,6 +1,7 @@
 use crate::config::{
-    HttpFuzzCommandConfig, HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig,
-    HttpFuzzServerConfig, HttpOpenApiProviderConfig, HttpOpenApiSourceConfig, ProjectConfig,
+    HttpFuzzCommandConfig, HttpFuzzHealthCheck, HttpFuzzOperationScopeConfig,
+    HttpFuzzOperationSelectionConfig, HttpFuzzPositiveCoverageConfig, HttpFuzzServerConfig,
+    HttpOpenApiProviderConfig, HttpOpenApiSourceConfig, ProjectConfig,
 };
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
@@ -50,7 +51,7 @@ pub(crate) struct ResolvedHttpFuzzTarget {
     pub report_root: Option<PathBuf>,
     pub server: Option<ResolvedHttpFuzzServer>,
     pub request_adapter: Option<ResolvedHttpFuzzCommand>,
-    pub operations: Vec<HttpFuzzOperation>,
+    pub operation_selection: ResolvedHttpFuzzOperationSelection,
     pub positive_coverage: HttpFuzzPositiveCoverageConfig,
     pub suppress_health_checks: Vec<HttpFuzzHealthCheck>,
     pub suppress_warnings: bool,
@@ -61,6 +62,12 @@ pub(crate) struct HttpFuzzOperation {
     pub name: String,
     pub method: String,
     pub path: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ResolvedHttpFuzzOperationSelection {
+    Contract,
+    Explicit(Vec<HttpFuzzOperation>),
 }
 
 #[derive(Debug, Clone)]
@@ -378,24 +385,32 @@ impl ProjectConfig {
             &target.environment,
             &format!("HTTP fuzz target {}", target.id),
         )?;
-        let mut operation_names = BTreeSet::new();
-        let operations = target
-            .operations
-            .iter()
-            .map(|operation| {
-                let operation = parse_http_fuzz_operation(operation).with_context(|| {
-                    format!("Invalid operation in HTTP fuzz target {}", target.id)
-                })?;
-                if !operation_names.insert(operation.name.clone()) {
-                    anyhow::bail!(
-                        "HTTP fuzz target {} repeats operation {}",
-                        target.id,
-                        operation.name
-                    );
-                }
-                Ok(operation)
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let operation_selection = match &target.operations {
+            HttpFuzzOperationSelectionConfig::Explicit(configured) => {
+                let mut operation_names = BTreeSet::new();
+                let operations = configured
+                    .iter()
+                    .map(|operation| {
+                        let operation =
+                            parse_http_fuzz_operation(operation).with_context(|| {
+                                format!("Invalid operation in HTTP fuzz target {}", target.id)
+                            })?;
+                        if !operation_names.insert(operation.name.clone()) {
+                            anyhow::bail!(
+                                "HTTP fuzz target {} repeats operation {}",
+                                target.id,
+                                operation.name
+                            );
+                        }
+                        Ok(operation)
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                ResolvedHttpFuzzOperationSelection::Explicit(operations)
+            }
+            HttpFuzzOperationSelectionConfig::Scope(HttpFuzzOperationScopeConfig::Contract) => {
+                ResolvedHttpFuzzOperationSelection::Contract
+            }
+        };
 
         let mut headers = Vec::with_capacity(target.headers.len());
         for header in &target.headers {
@@ -466,7 +481,7 @@ impl ProjectConfig {
             report_root,
             server,
             request_adapter,
-            operations,
+            operation_selection,
             positive_coverage: target.positive_coverage.clone(),
             suppress_health_checks: target.suppress_health_checks.clone(),
             suppress_warnings: target.suppress_warnings,

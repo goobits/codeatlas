@@ -69,7 +69,7 @@ pub(crate) struct HttpFuzzTargetConfig {
     pub report_dir: Option<PathBuf>,
     pub server: Option<HttpFuzzServerConfig>,
     pub request_adapter: Option<HttpFuzzCommandConfig>,
-    pub operations: Vec<String>,
+    pub operations: HttpFuzzOperationSelectionConfig,
     pub positive_coverage: HttpFuzzPositiveCoverageConfig,
     pub suppress_health_checks: Vec<HttpFuzzHealthCheck>,
     pub suppress_warnings: bool,
@@ -87,12 +87,31 @@ impl Default for HttpFuzzTargetConfig {
             report_dir: None,
             server: None,
             request_adapter: None,
-            operations: Vec::new(),
+            operations: HttpFuzzOperationSelectionConfig::default(),
             positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
             suppress_health_checks: Vec::new(),
             suppress_warnings: false,
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum HttpFuzzOperationSelectionConfig {
+    Explicit(Vec<String>),
+    Scope(HttpFuzzOperationScopeConfig),
+}
+
+impl Default for HttpFuzzOperationSelectionConfig {
+    fn default() -> Self {
+        Self::Explicit(Vec::new())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HttpFuzzOperationScopeConfig {
+    Contract,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -150,7 +169,9 @@ impl HttpFuzzHealthCheck {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::CodeAtlasConfig;
+    use crate::config::{
+        CodeAtlasConfig, HttpFuzzOperationScopeConfig, HttpFuzzOperationSelectionConfig,
+    };
 
     #[test]
     fn config_reads_portable_http_fuzz_targets() {
@@ -198,6 +219,11 @@ mod tests {
                             },
                             "suppress_health_checks": ["filter_too_much"],
                             "suppress_warnings": true
+                        }, {
+                            "id": "public-contract",
+                            "contract": "public-api",
+                            "base_url": "http://127.0.0.1:3444",
+                            "operations": "contract"
                         }]
                     }
                 }
@@ -244,7 +270,17 @@ mod tests {
                 .map(String::as_str),
             Some("src/sign-fuzz-request.js")
         );
-        assert_eq!(target.operations, ["GET /health", "POST /widgets/{id}"]);
+        let HttpFuzzOperationSelectionConfig::Explicit(operations) = &target.operations else {
+            panic!("explicit operation allowlist")
+        };
+        assert_eq!(
+            operations.iter().map(String::as_str).collect::<Vec<_>>(),
+            ["GET /health", "POST /widgets/{id}"]
+        );
+        assert!(matches!(
+            config.http.fuzz.targets[1].operations,
+            HttpFuzzOperationSelectionConfig::Scope(HttpFuzzOperationScopeConfig::Contract)
+        ));
         assert_eq!(
             target.positive_coverage.max_operations_without_success,
             Some(3)

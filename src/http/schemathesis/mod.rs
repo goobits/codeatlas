@@ -5,8 +5,9 @@ mod toolchain;
 use self::toolchain::{ensure_schemathesis, SCHEMATHESIS_VERSION};
 use super::environment::cache_base;
 use super::target::{
-    parse_http_fuzz_operation, HttpFuzzOperation, ResolvedHttpFuzzTarget,
-    ResolvedHttpOpenApiSource, REQUEST_HOOK_CONFIG_ENV, SCHEMATHESIS_HOOKS_ENV,
+    parse_http_fuzz_operation, HttpFuzzOperation, ResolvedHttpFuzzOperationSelection,
+    ResolvedHttpFuzzTarget, ResolvedHttpOpenApiSource, REQUEST_HOOK_CONFIG_ENV,
+    SCHEMATHESIS_HOOKS_ENV,
 };
 use super::{openapi, provider, transport_schema};
 use crate::config::HttpFuzzPositiveCoverageConfig;
@@ -54,7 +55,10 @@ const CHECKS: &[&str] = &[
     "unsupported_method",
     "codeatlas_auth_rejection",
 ];
-const SOURCE_TRANSPORT_CHECKS: &[&str] = &["not_a_server_error", "unsupported_method"];
+const SOURCE_TRANSPORT_CHECKS: &[&str] = &[
+    "not_a_server_error",
+    "codeatlas_unsupported_method_rejection",
+];
 const STATEFUL_CHECKS: &[&str] = &["use_after_free", "ensure_resource_availability"];
 static INTERRUPTED: AtomicBool = AtomicBool::new(false);
 static INTERRUPT_HANDLER: OnceLock<std::result::Result<(), String>> = OnceLock::new();
@@ -225,18 +229,20 @@ pub(crate) fn run(
                 summary.totals.negative_rejections,
                 summary_path.display()
             );
-            if !options.stateful && (options.operation.is_none() || !target.operations.is_empty()) {
+            if !options.stateful {
                 for failure in
                     selected_operation_failures(&selected_operations, &summary.operations)
                 {
                     eprintln!("CodeAtlas operation selection failed: {failure}");
                     code = 1;
                 }
-                for failure in
-                    positive_coverage_failures(&target.positive_coverage, &summary.totals)
-                {
-                    eprintln!("CodeAtlas positive coverage policy failed: {failure}");
-                    code = 1;
+                if options.operation.is_none() {
+                    for failure in
+                        positive_coverage_failures(&target.positive_coverage, &summary.totals)
+                    {
+                        eprintln!("CodeAtlas positive coverage policy failed: {failure}");
+                        code = 1;
+                    }
                 }
             }
             if options.stateful {
@@ -476,13 +482,28 @@ fn select_operations(
         .iter()
         .map(|operation| operation.name.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    if contract_mode == HttpFuzzContractMode::SourceTransport && target.operations.is_empty() {
-        anyhow::bail!(
-            "Source-transport fuzz target {} needs a non-empty target-owned `operations` allowlist",
-            target.id
-        );
+    let configured = match &target.operation_selection {
+        ResolvedHttpFuzzOperationSelection::Contract => available,
+        ResolvedHttpFuzzOperationSelection::Explicit(operations) => operations,
+    };
+    if configured.is_empty() {
+        match &target.operation_selection {
+            ResolvedHttpFuzzOperationSelection::Contract => anyhow::bail!(
+                "HTTP fuzz target {} selects its contract, but the contract exposes no operations",
+                target.id
+            ),
+            ResolvedHttpFuzzOperationSelection::Explicit(_)
+                if contract_mode == HttpFuzzContractMode::SourceTransport =>
+            {
+                anyhow::bail!(
+                    "Source-transport fuzz target {} needs a target-owned `operations` allowlist or `operations: \"contract\"`",
+                    target.id
+                )
+            }
+            ResolvedHttpFuzzOperationSelection::Explicit(_) => {}
+        }
     }
-    for operation in &target.operations {
+    for operation in configured {
         if !available_names.contains(operation.name.as_str()) {
             anyhow::bail!(
                 "HTTP fuzz target {} selects unknown operation {}",
@@ -495,9 +516,8 @@ fn select_operations(
         if !available_names.contains(requested.name.as_str()) {
             anyhow::bail!("Unknown HTTP operation {}", requested.name);
         }
-        if !target.operations.is_empty()
-            && !target
-                .operations
+        if !configured.is_empty()
+            && !configured
                 .iter()
                 .any(|operation| operation.name == requested.name)
         {
@@ -509,7 +529,7 @@ fn select_operations(
         }
         return Ok(vec![requested.clone()]);
     }
-    Ok(target.operations.clone())
+    Ok(configured.to_vec())
 }
 
 fn selected_operation_failures(
@@ -660,7 +680,8 @@ mod tests {
         HttpFuzzContractMode, HttpFuzzOperationSummary, HttpFuzzPositiveCoverage, HttpFuzzTotals,
     };
     use crate::http::target::{
-        parse_http_fuzz_operation, ResolvedHttpFuzzHeader, ResolvedHttpFuzzTarget,
+        parse_http_fuzz_operation, ResolvedHttpFuzzHeader, ResolvedHttpFuzzOperationSelection,
+        ResolvedHttpFuzzTarget,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -679,10 +700,12 @@ mod tests {
             report_root: None,
             server: None,
             request_adapter: None,
-            operations: operations
-                .iter()
-                .map(|operation| parse_http_fuzz_operation(operation).expect("operation"))
-                .collect(),
+            operation_selection: ResolvedHttpFuzzOperationSelection::Explicit(
+                operations
+                    .iter()
+                    .map(|operation| parse_http_fuzz_operation(operation).expect("operation"))
+                    .collect(),
+            ),
             positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
             suppress_health_checks: Vec::new(),
             suppress_warnings: false,
@@ -802,6 +825,8 @@ mod tests {
             SOURCE_TRANSPORT_CHECKS.join(",")
         );
         assert!(SOURCE_TRANSPORT_CHECKS.contains(&"not_a_server_error"));
+        assert!(SOURCE_TRANSPORT_CHECKS.contains(&"codeatlas_unsupported_method_rejection"));
+        assert!(!SOURCE_TRANSPORT_CHECKS.contains(&"unsupported_method"));
     }
 
     #[test]
@@ -854,16 +879,15 @@ mod tests {
             parse_http_fuzz_operation("GET /health").expect("GET operation"),
             parse_http_fuzz_operation("POST /health").expect("POST operation"),
         ];
-        assert_eq!(
-            select_operations(
-                &target,
-                HttpFuzzContractMode::SourceTransport,
-                &available,
-                None,
-            )
-            .expect("target allowlist"),
-            target.operations
-        );
+        let selected = select_operations(
+            &target,
+            HttpFuzzContractMode::SourceTransport,
+            &available,
+            None,
+        )
+        .expect("target allowlist");
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].name, "GET /health");
         let disallowed = parse_http_fuzz_operation("POST /health").expect("POST operation");
         let error = select_operations(
             &target,
@@ -883,6 +907,29 @@ mod tests {
             None,
         )
         .is_err());
+
+        let mut contract = target_with_operations(&[]);
+        contract.operation_selection = ResolvedHttpFuzzOperationSelection::Contract;
+        assert_eq!(
+            select_operations(
+                &contract,
+                HttpFuzzContractMode::SourceTransport,
+                &available,
+                None,
+            )
+            .expect("contract operation scope"),
+            available
+        );
+        assert_eq!(
+            select_operations(
+                &contract,
+                HttpFuzzContractMode::SourceTransport,
+                &available,
+                Some(&disallowed),
+            )
+            .expect("contract scope can be narrowed"),
+            [disallowed]
+        );
     }
 
     #[test]

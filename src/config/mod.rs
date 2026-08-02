@@ -4,8 +4,9 @@ mod postgres;
 
 pub(crate) use analysis::{AnalysisContextConfig, AnalysisProjectConfig, ResolvedAnalysisProject};
 pub(crate) use http::{
-    HttpConfig, HttpFuzzCommandConfig, HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig,
-    HttpFuzzServerConfig, HttpOpenApiProviderConfig, HttpOpenApiSourceConfig,
+    HttpConfig, HttpFuzzCommandConfig, HttpFuzzHealthCheck, HttpFuzzOperationScopeConfig,
+    HttpFuzzOperationSelectionConfig, HttpFuzzPositiveCoverageConfig, HttpFuzzServerConfig,
+    HttpOpenApiProviderConfig, HttpOpenApiSourceConfig,
 };
 pub(crate) use postgres::{
     PostgresConfig, PostgresContractConfig, PostgresLintConfig, PostgresPsqlMetaCommandMode,
