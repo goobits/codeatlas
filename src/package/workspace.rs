@@ -21,6 +21,7 @@ pub(crate) struct PackageWorkspaceMember {
 
 #[derive(Deserialize)]
 struct PnpmWorkspaceManifest {
+    #[serde(default)]
     packages: Vec<String>,
 }
 
@@ -242,7 +243,7 @@ impl WorkspacePatterns {
 
 #[cfg(test)]
 mod tests {
-    use super::workspace_pattern_owns_descendants;
+    use super::{workspace_pattern_owns_descendants, PnpmWorkspaceManifest};
 
     #[test]
     fn only_positive_nested_workspace_patterns_own_descendants() {
@@ -251,5 +252,20 @@ mod tests {
         assert!(!workspace_pattern_owns_descendants("!tools/ignored"));
         assert!(!workspace_pattern_owns_descendants("."));
         assert!(!workspace_pattern_owns_descendants("../shared/*"));
+    }
+
+    #[test]
+    fn pnpm_workspace_package_patterns_are_optional() {
+        let manifest: PnpmWorkspaceManifest = serde_yaml::from_str(
+            r#"
+allowBuilds:
+  esbuild: true
+overrides:
+  vite: 8.0.16
+"#,
+        )
+        .expect("settings-only workspace manifest");
+
+        assert!(manifest.packages.is_empty());
     }
 }
