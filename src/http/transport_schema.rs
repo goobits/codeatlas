@@ -177,6 +177,7 @@ mod tests {
             operation_selection: ResolvedHttpFuzzOperationSelection::Explicit(vec![
                 parse_http_fuzz_operation("POST /widgets/{id}").expect("selected operation"),
             ]),
+            expected_non_success_operations: Vec::new(),
             positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
             suppress_health_checks: Vec::new(),
             suppress_warnings: false,

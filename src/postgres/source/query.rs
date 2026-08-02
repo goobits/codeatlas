@@ -67,26 +67,31 @@ fn query_paths(
     contract: &PostgresContractConfig,
     diagnostics: &mut Vec<PostgresFinding>,
 ) -> Result<Vec<PathBuf>> {
-    let mut paths = BTreeSet::new();
-    for configured in &contract.query_roots {
-        if configured.as_os_str().is_empty() {
+    let excluded_paths = resolve_query_paths(
+        project,
+        contract,
+        &contract.query_exclude_paths,
+        "query exclusion",
+    )?;
+    let query_roots = resolve_query_paths(project, contract, &contract.query_roots, "query root")?;
+    for excluded in &excluded_paths {
+        if !query_roots
+            .iter()
+            .any(|root| excluded == root || excluded.starts_with(root))
+        {
             anyhow::bail!(
-                "PostgreSQL contract {} has an empty query root",
-                contract.id
+                "PostgreSQL query exclusion is outside every query root for contract {}: {}",
+                contract.id,
+                excluded.display()
             );
         }
-        let unresolved = if configured.is_absolute() {
-            configured.clone()
-        } else {
-            project.config_base().join(configured)
-        };
-        let root = unresolved.canonicalize().with_context(|| {
-            format!(
-                "PostgreSQL query root does not exist: {}",
-                unresolved.display()
-            )
-        })?;
-        require_project_path(&root, &project.root, &contract.id)?;
+    }
+
+    let mut paths = BTreeSet::new();
+    for root in query_roots {
+        if is_excluded_query_path(&root, &excluded_paths) {
+            continue;
+        }
         if root.is_file() {
             if discovery::is_supported_source_file(&root) {
                 paths.insert(root);
@@ -96,7 +101,7 @@ fn query_paths(
         let discovery = source_discovery::discover(SourceDiscoveryRequest {
             root: &root,
             patterns: &[],
-            excluded_roots: &[],
+            excluded_roots: &excluded_paths,
             no_default_ignore: project.config.no_default_ignore,
         });
         for warning in discovery.warnings {
@@ -110,14 +115,49 @@ fn query_paths(
                 None,
             ));
         }
-        paths.extend(
-            discovery
-                .files
-                .into_iter()
-                .filter(|path| discovery::is_supported_source_file(path)),
-        );
+        paths.extend(discovery.files.into_iter().filter(|path| {
+            discovery::is_supported_source_file(path)
+                && !is_excluded_query_path(path, &excluded_paths)
+                && !crate::source_policy::is_conventional_test_source(
+                    path.strip_prefix(&root).unwrap_or(path),
+                )
+        }));
     }
     Ok(paths.into_iter().collect())
+}
+
+fn resolve_query_paths(
+    project: &ProjectConfig,
+    contract: &PostgresContractConfig,
+    configured_paths: &[PathBuf],
+    label: &str,
+) -> Result<Vec<PathBuf>> {
+    let mut paths = BTreeSet::new();
+    for configured in configured_paths {
+        if configured.as_os_str().is_empty() {
+            anyhow::bail!("PostgreSQL contract {} has an empty {label}", contract.id);
+        }
+        let unresolved = if configured.is_absolute() {
+            configured.clone()
+        } else {
+            project.config_base().join(configured)
+        };
+        let path = unresolved.canonicalize().with_context(|| {
+            format!(
+                "PostgreSQL {label} does not exist: {}",
+                unresolved.display()
+            )
+        })?;
+        require_project_path(&path, &project.root, &contract.id)?;
+        paths.insert(path);
+    }
+    Ok(paths.into_iter().collect())
+}
+
+fn is_excluded_query_path(path: &Path, excluded_paths: &[PathBuf]) -> bool {
+    excluded_paths
+        .iter()
+        .any(|excluded| path == excluded || path.starts_with(excluded))
 }
 
 fn collect_query_file(

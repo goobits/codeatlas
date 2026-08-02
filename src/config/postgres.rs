@@ -21,6 +21,8 @@ pub(crate) struct PostgresContractConfig {
     pub migration_sources: Vec<PostgresSqlSourceConfig>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub query_roots: Vec<PathBuf>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub query_exclude_paths: Vec<PathBuf>,
     pub source_complete: bool,
     #[serde(skip_serializing_if = "PostgresLintConfig::is_empty")]
     pub lint: PostgresLintConfig,
@@ -32,6 +34,7 @@ pub(crate) struct PostgresSqlSourceConfig {
     pub path: PathBuf,
     pub transaction: PostgresTransactionMode,
     pub psql_meta_commands: PostgresPsqlMetaCommandMode,
+    pub recursive: bool,
 }
 
 impl Default for PostgresSqlSourceConfig {
@@ -40,6 +43,7 @@ impl Default for PostgresSqlSourceConfig {
             path: PathBuf::new(),
             transaction: PostgresTransactionMode::Unknown,
             psql_meta_commands: PostgresPsqlMetaCommandMode::Reject,
+            recursive: true,
         }
     }
 }
@@ -113,7 +117,8 @@ mod tests {
                         "bootstrap_sources": [{
                             "path": "src/platform/db/schema.ts",
                             "transaction": "always",
-                            "psql_meta_commands": "reject"
+                            "psql_meta_commands": "reject",
+                            "recursive": true
                         }],
                         "migration_sources": [{
                             "path": "src/platform/db/migrations.ts",
@@ -121,6 +126,7 @@ mod tests {
                             "psql_meta_commands": "strip"
                         }],
                         "query_roots": ["src"],
+                        "query_exclude_paths": ["src/integration"],
                         "source_complete": true,
                         "lint": {
                             "include": ["require-table-schema"],
@@ -146,6 +152,7 @@ mod tests {
             contract.bootstrap_sources[0].transaction,
             PostgresTransactionMode::Always
         );
+        assert!(contract.bootstrap_sources[0].recursive);
         assert_eq!(
             contract.migration_sources[0].transaction,
             PostgresTransactionMode::Always
@@ -153,6 +160,11 @@ mod tests {
         assert_eq!(
             contract.migration_sources[0].psql_meta_commands,
             PostgresPsqlMetaCommandMode::Strip
+        );
+        assert!(contract.migration_sources[0].recursive);
+        assert_eq!(
+            contract.query_exclude_paths,
+            [std::path::PathBuf::from("src/integration")]
         );
         assert_eq!(contract.lint.pg_version.as_deref(), Some("17"));
         assert_eq!(config.postgres.targets[0].id, "accounts-local");

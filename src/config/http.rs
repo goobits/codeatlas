@@ -70,6 +70,7 @@ pub(crate) struct HttpFuzzTargetConfig {
     pub server: Option<HttpFuzzServerConfig>,
     pub request_adapter: Option<HttpFuzzCommandConfig>,
     pub operations: HttpFuzzOperationSelectionConfig,
+    pub expected_non_success_operations: Vec<String>,
     pub positive_coverage: HttpFuzzPositiveCoverageConfig,
     pub suppress_health_checks: Vec<HttpFuzzHealthCheck>,
     pub suppress_warnings: bool,
@@ -88,6 +89,7 @@ impl Default for HttpFuzzTargetConfig {
             server: None,
             request_adapter: None,
             operations: HttpFuzzOperationSelectionConfig::default(),
+            expected_non_success_operations: Vec::new(),
             positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
             suppress_health_checks: Vec::new(),
             suppress_warnings: false,
@@ -213,6 +215,7 @@ mod tests {
                                 "GET /health",
                                 "POST /widgets/{id}"
                             ],
+                            "expected_non_success_operations": ["GET /health"],
                             "positive_coverage": {
                                 "max_operations_without_success": 3,
                                 "max_authentication_rejection_only_operations": 0
@@ -277,6 +280,7 @@ mod tests {
             operations.iter().map(String::as_str).collect::<Vec<_>>(),
             ["GET /health", "POST /widgets/{id}"]
         );
+        assert_eq!(target.expected_non_success_operations, ["GET /health"]);
         assert!(matches!(
             config.http.fuzz.targets[1].operations,
             HttpFuzzOperationSelectionConfig::Scope(HttpFuzzOperationScopeConfig::Contract)

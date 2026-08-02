@@ -26,6 +26,7 @@ pub(super) fn contracts(project: &ProjectConfig) -> Result<Vec<PostgresContractC
         bootstrap_sources: discovered.bootstraps,
         migration_sources: discovered.migrations,
         query_roots,
+        query_exclude_paths: Vec::new(),
         source_complete: false,
         lint: crate::config::PostgresLintConfig::default(),
     }])

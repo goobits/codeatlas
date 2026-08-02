@@ -107,7 +107,7 @@ pub(crate) fn run(
         .map(parse_http_fuzz_operation)
         .transpose()?;
     let report_dir = prepare_report_dir(target, options.profile, operation.as_ref())?;
-    let (schema, available_operations, expected_non_success_operations) = match contract {
+    let (schema, available_operations, contract_expected_non_success_operations) = match contract {
         Contract::OpenApi { source, display } => {
             let (document, openapi) = provider::read_with_inventory(source, display)?;
             let expected_non_success_operations =
@@ -159,6 +159,11 @@ pub(crate) fn run(
         contract.mode(),
         &available_operations,
         operation.as_ref(),
+    )?;
+    let expected_non_success_operations = expected_non_success_operations(
+        target,
+        &available_operations,
+        contract_expected_non_success_operations,
     )?;
     let schemathesis = ensure_schemathesis(options.schemathesis)?;
     let hooks = request_adapter::prepare(target, &available_operations)?;
@@ -400,7 +405,7 @@ fn schemathesis_args(
                 .into(),
         );
     }
-    if target.suppress_warnings {
+    if contract_mode == HttpFuzzContractMode::SourceTransport || target.suppress_warnings {
         args.extend(["--warnings".into(), "off".into()]);
     }
     args.extend([
@@ -548,6 +553,47 @@ fn selected_operation_failures(
         .collect()
 }
 
+fn expected_non_success_operations(
+    target: &ResolvedHttpFuzzTarget,
+    available: &[HttpFuzzOperation],
+    mut inferred: BTreeSet<String>,
+) -> Result<BTreeSet<String>> {
+    let available_names = available
+        .iter()
+        .map(|operation| operation.name.as_str())
+        .collect::<BTreeSet<_>>();
+    let selected_names = match &target.operation_selection {
+        ResolvedHttpFuzzOperationSelection::Contract => None,
+        ResolvedHttpFuzzOperationSelection::Explicit(operations) => Some(
+            operations
+                .iter()
+                .map(|operation| operation.name.as_str())
+                .collect::<BTreeSet<_>>(),
+        ),
+    };
+    for operation in &target.expected_non_success_operations {
+        if !available_names.contains(operation.name.as_str()) {
+            anyhow::bail!(
+                "HTTP fuzz target {} expects non-success from unknown operation {}",
+                target.id,
+                operation.name
+            );
+        }
+        if selected_names
+            .as_ref()
+            .is_some_and(|selected| !selected.contains(operation.name.as_str()))
+        {
+            anyhow::bail!(
+                "HTTP fuzz target {} expects non-success from {}, but that operation is outside its allowlist",
+                target.id,
+                operation.name
+            );
+        }
+        inferred.insert(operation.name.clone());
+    }
+    Ok(inferred)
+}
+
 fn generate_seed() -> u128 {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -671,10 +717,11 @@ mod tests {
     use super::request_adapter::HOOK_SOURCE;
     use super::{
         checks, clear_owned_report_files, collect_expected_non_success_operations,
-        operation_report_component, phases, positive_coverage_failures, render_schemathesis_config,
-        schemathesis_args, schemathesis_config, select_operations, selected_operation_failures,
-        RunOptions, SchemathesisFiles, CHECKS, PROVIDED_OPENAPI_FILENAME,
-        SCHEMATHESIS_CONFIG_FILENAME, SOURCE_TRANSPORT_CHECKS, STATEFUL_CONFIG,
+        expected_non_success_operations, operation_report_component, phases,
+        positive_coverage_failures, render_schemathesis_config, schemathesis_args,
+        schemathesis_config, select_operations, selected_operation_failures, RunOptions,
+        SchemathesisFiles, CHECKS, PROVIDED_OPENAPI_FILENAME, SCHEMATHESIS_CONFIG_FILENAME,
+        SOURCE_TRANSPORT_CHECKS, STATEFUL_CONFIG,
     };
     use crate::config::{HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig};
     use crate::http::model::{
@@ -707,6 +754,7 @@ mod tests {
                     .map(|operation| parse_http_fuzz_operation(operation).expect("operation"))
                     .collect(),
             ),
+            expected_non_success_operations: Vec::new(),
             positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
             suppress_health_checks: Vec::new(),
             suppress_warnings: false,
@@ -805,6 +853,26 @@ mod tests {
         assert!(!args
             .iter()
             .any(|argument| argument.contains("Bearer invalid")));
+
+        target.suppress_warnings = false;
+        let source_args = schemathesis_args(
+            &target,
+            HttpFuzzContractMode::SourceTransport,
+            &options,
+            options.seed.expect("seed"),
+            std::slice::from_ref(&operation),
+            &SchemathesisFiles {
+                schema: Path::new("reports/source-transport-openapi.json"),
+                config: Path::new("reports/schemathesis.toml"),
+                report_dir: Path::new("reports"),
+            },
+        )
+        .into_iter()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+        assert!(source_args
+            .windows(2)
+            .any(|pair| pair == ["--warnings", "off"]));
     }
 
     #[test]
@@ -954,6 +1022,27 @@ mod tests {
         let failures = selected_operation_failures(&selected, &observed);
         assert_eq!(failures.len(), 1);
         assert!(failures[0].contains("GET /health"));
+    }
+
+    #[test]
+    fn target_non_success_expectations_must_stay_inside_the_owned_operations() {
+        let available = [
+            parse_http_fuzz_operation("GET /health").expect("GET operation"),
+            parse_http_fuzz_operation("POST /widgets").expect("POST operation"),
+        ];
+        let mut target = target_with_operations(&["GET /health"]);
+        target.expected_non_success_operations = vec![available[0].clone()];
+        assert_eq!(
+            expected_non_success_operations(&target, &available, BTreeSet::new())
+                .expect("owned expectation"),
+            BTreeSet::from(["GET /health".to_string()])
+        );
+
+        target.expected_non_success_operations = vec![available[1].clone()];
+        let error = expected_non_success_operations(&target, &available, BTreeSet::new())
+            .expect_err("expectation outside allowlist")
+            .to_string();
+        assert!(error.contains("outside its allowlist"), "{error}");
     }
 
     #[test]
