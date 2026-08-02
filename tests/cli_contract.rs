@@ -147,7 +147,17 @@ fn workspace_public_api_baselines_are_compact_deterministic_and_exact() {
     write(
         &workspace,
         "package.json",
-        r#"{"name":"fixture-workspace","private":true}"#,
+        r#"{
+            "name": "@example/root",
+            "version": "1.0.0",
+            "type": "module",
+            "exports": { ".": "./src/index.ts" }
+        }"#,
+    );
+    write(
+        &workspace,
+        "src/index.ts",
+        "export interface RootAPI { readonly ready: boolean }\n",
     );
     write(
         &workspace,
@@ -192,13 +202,19 @@ fn workspace_public_api_baselines_are_compact_deterministic_and_exact() {
     assert_eq!(baseline["format"], "codeatlas.public-api-baseline");
     assert_eq!(baseline["schema_version"], 1);
     assert_eq!(baseline["workspace"], true);
-    assert_eq!(baseline["packages"].as_array().map(Vec::len), Some(1));
-    assert_eq!(baseline["packages"][0]["name"], "@example/sdk");
-    assert!(baseline["packages"][0]["symbols"]
-        .as_array()
-        .expect("symbols")
+    let packages = baseline["packages"].as_array().expect("packages");
+    assert_eq!(packages.len(), 2);
+    assert!(packages
         .iter()
-        .any(|symbol| symbol["export_path"] == "@example/sdk/admin"));
+        .any(|package| package["name"] == "@example/root"));
+    assert!(packages.iter().any(|package| {
+        package["name"] == "@example/sdk"
+            && package["symbols"]
+                .as_array()
+                .expect("symbols")
+                .iter()
+                .any(|symbol| symbol["export_path"] == "@example/sdk/admin")
+    }));
 
     let unchanged = run(&[
         "diff",
@@ -225,6 +241,45 @@ fn workspace_public_api_baselines_are_compact_deterministic_and_exact() {
     ]);
     assert_eq!(exact.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&exact.stdout).contains("Policy:   exact"));
+}
+
+#[test]
+fn root_only_workspace_public_api_baselines_include_the_root_package() {
+    let workspace = TestDirectory::create("codeatlas-cli-contract");
+    write(&workspace, "pnpm-workspace.yaml", "packages:\n  - .\n");
+    write(
+        &workspace,
+        "package.json",
+        r#"{
+            "name": "@example/root-only",
+            "version": "1.0.0",
+            "type": "module",
+            "exports": { ".": "./src/index.ts" }
+        }"#,
+    );
+    write(
+        &workspace,
+        "src/index.ts",
+        "export interface RootOnlyAPI { readonly ready: boolean }\n",
+    );
+    let baseline_path = workspace.path().join("public-api.json");
+    let output = run(&[
+        "ci",
+        workspace.path().to_str().expect("workspace UTF-8"),
+        "--workspace",
+        "--baseline",
+        baseline_path.to_str().expect("baseline UTF-8"),
+        "--fail-unused",
+        "false",
+    ]);
+    assert_success(&output, "root-only workspace baseline");
+
+    let baseline: Value =
+        serde_json::from_slice(&fs::read(&baseline_path).expect("root-only baseline output"))
+            .expect("root-only baseline should be JSON");
+    assert_eq!(baseline["packages"].as_array().map(Vec::len), Some(1));
+    assert_eq!(baseline["packages"][0]["name"], "@example/root-only");
+    assert_eq!(baseline["packages"][0]["root"], ".");
 }
 
 #[test]
