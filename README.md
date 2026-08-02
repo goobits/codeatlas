@@ -859,7 +859,9 @@ Local verification has three intentional layers:
   a live fixture. It may provision the pinned Python toolchain on first use, so
   it stays out of the default test loop.
 - `pnpm run self:check` dogfoods CodeAtlas's dead-code analysis against its own
-  source and writes the detailed report to `target/codeatlas-self-check.json`.
+  source and writes the detailed report to
+  `$CARGO_TARGET_DIR/codeatlas-self-check.json`. The Cargo target must be an
+  absolute path outside and disjoint from the checkout.
 
 `pnpm check` composes the default tests with architecture-spec validation, Rust
 formatting and linting, the dogfood scan, and the package-content check. Only

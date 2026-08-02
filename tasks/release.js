@@ -3,6 +3,7 @@
 const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
+const { requireExternalCargoTarget } = require('./storage.js')
 
 const allowedBumps = new Set(['patch', 'minor', 'major', 'premajor', 'preminor', 'prepatch', 'prerelease'])
 const bump = process.argv[2] || 'patch'
@@ -54,15 +55,6 @@ const syncCargoVersion = (version) => {
 const repoDirty = () => {
 	const output = runCapture('git', ['status', '--porcelain'])
 	return output.trim().length > 0
-}
-
-const requireExternalCargoTarget = () => {
-	const target = process.env.CARGO_TARGET_DIR
-	const relative = target && path.isAbsolute(target) ? path.relative(process.cwd(), target) : ''
-	const outside = relative.startsWith('..') || path.isAbsolute(relative)
-	if (!target || !path.isAbsolute(target) || !outside) {
-		throw new Error('CARGO_TARGET_DIR must be an absolute path outside the CodeAtlas checkout')
-	}
 }
 
 const readVersion = () => readPackageJson().version
