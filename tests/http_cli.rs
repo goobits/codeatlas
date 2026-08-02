@@ -7,6 +7,20 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::Command;
 
+fn run_codeatlas(args: &[&str], action: &str) -> std::process::Output {
+    let output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+        .args(args)
+        .output()
+        .unwrap_or_else(|error| panic!("{action} should start: {error}"));
+    assert!(
+        output.status.success(),
+        "{action} failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
 #[test]
 fn source_only_inventory_reports_pages_and_bounded_node_endpoints() {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -123,6 +137,113 @@ fn source_only_inventory_reports_pages_and_bounded_node_endpoints() {
     assert!(!baseline.status.success());
     assert!(String::from_utf8_lossy(&baseline.stderr)
         .contains("baselines require schema-backed contracts"));
+}
+
+#[test]
+fn mixed_schema_and_source_contracts_share_baseline_commands() {
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("http");
+    let directory = TestDirectory::create("codeatlas-http-cli");
+    let schema_source = directory.path().join("schema-src");
+    let transport_source = directory.path().join("transport-src");
+    fs::create_dir_all(&schema_source).expect("schema source directory should be created");
+    fs::create_dir_all(&transport_source).expect("transport source directory should be created");
+    fs::copy(
+        fixture.join("openapi.yaml"),
+        directory.path().join("openapi.yaml"),
+    )
+    .expect("OpenAPI fixture should be copied");
+    fs::copy(
+        fixture.join("src/routes.ts"),
+        schema_source.join("routes.ts"),
+    )
+    .expect("schema route fixture should be copied");
+    fs::copy(
+        fixture.join("src/node-routes.ts"),
+        transport_source.join("routes.ts"),
+    )
+    .expect("source-transport route fixture should be copied");
+
+    let config_path = directory.path().join("codeatlas.json");
+    let baseline_path = directory.path().join("baseline.json");
+    let config = json!({
+        "root": ".",
+        "package_exports": false,
+        "http": {
+            "contracts": [
+                {
+                    "id": "schema-api",
+                    "openapi": "openapi.yaml",
+                    "source_roots": ["schema-src"],
+                    "source_complete": true
+                },
+                {
+                    "id": "source-transport",
+                    "source_roots": ["transport-src"],
+                    "source_complete": true
+                }
+            ]
+        }
+    });
+    fs::write(
+        &config_path,
+        serde_json::to_vec_pretty(&config).expect("HTTP config should serialize"),
+    )
+    .expect("HTTP config should be written");
+
+    let config_path = config_path.to_str().expect("config path should be UTF-8");
+    let root = directory
+        .path()
+        .to_str()
+        .expect("fixture root should be UTF-8");
+    let baseline_path = baseline_path
+        .to_str()
+        .expect("baseline path should be UTF-8");
+    run_codeatlas(
+        &[
+            "--config",
+            config_path,
+            "http",
+            "baseline",
+            root,
+            "--out",
+            baseline_path,
+        ],
+        "mixed HTTP baseline",
+    );
+    let baseline_report: serde_json::Value = serde_json::from_slice(
+        &fs::read(baseline_path).expect("mixed HTTP baseline should be written"),
+    )
+    .expect("mixed HTTP baseline should be JSON");
+    assert_eq!(
+        baseline_report["contracts"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(baseline_report["contracts"][0]["id"], "schema-api");
+
+    run_codeatlas(
+        &[
+            "--config",
+            config_path,
+            "http",
+            "check",
+            root,
+            "--baseline",
+            baseline_path,
+        ],
+        "mixed HTTP check",
+    );
+
+    let diff = run_codeatlas(
+        &["--config", config_path, "http", "diff", baseline_path, root],
+        "mixed HTTP diff",
+    );
+    let diff_report: serde_json::Value =
+        serde_json::from_slice(&diff.stdout).expect("mixed HTTP diff should be JSON");
+    assert_eq!(diff_report["breakingChanges"], 0);
+    assert_eq!(diff_report["additiveChanges"], 0);
 }
 
 #[test]

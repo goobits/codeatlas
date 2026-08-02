@@ -752,8 +752,10 @@ fields, query parameters, authentication rules, or response schemas. Source-tran
 reports are labeled `contractMode: "source_transport"`; the stateful profile
 remains exclusive to explicit OpenAPI contracts. Curated source-transport
 operations receive the same retained-evidence and positive-coverage gates as
-curated OpenAPI operations. `http baseline`, `http diff`, and baseline
-comparison also require schema-backed contracts.
+curated OpenAPI operations. In a mixed configuration, `http baseline` stores
+only schema-backed contracts, and `http diff` and baseline comparison ignore
+new source-only contracts. A baselined contract that loses its schema remains a
+breaking change. Baseline creation fails when no schema-backed contract exists.
 
 With OpenAPI, `http check` also reports malformed path parameters, undefined security
 schemes, missing success/error responses, missing request/response schemas,
