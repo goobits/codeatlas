@@ -92,7 +92,7 @@ impl ModuleResolver {
                 ProjectResolution {
                     root: project.root.clone(),
                     report_root: project.report_root.clone(),
-                    workspace_root: infer_workspace_root(&project.root, &project.report_root),
+                    workspace_root: infer_workspace_root(&project.root, &project.report_root)?,
                     workspace_member: project.workspace_member,
                     aliases: load_alias_config(
                         &project.root,
@@ -192,9 +192,20 @@ impl ModuleResolver {
     ) -> Vec<Resolution> {
         match target {
             DynamicDependencyTarget::Literal(specifier) => {
-                if kind == crate::languages::typescript::parser::DynamicDependencyKind::RuntimeFile
-                {
-                    return vec![self.resolve_configured_entrypoint(module, specifier)];
+                if matches!(
+                    kind,
+                    crate::languages::typescript::parser::DynamicDependencyKind::RuntimeFile
+                        | crate::languages::typescript::parser::DynamicDependencyKind::RuntimeProcess
+                ) {
+                    let resolution = self.resolve_configured_entrypoint(module, specifier);
+                    return vec![if kind
+                        == crate::languages::typescript::parser::DynamicDependencyKind::RuntimeProcess
+                        && matches!(resolution, Resolution::UnresolvedInternal(_))
+                    {
+                        Resolution::DynamicUnknown(specifier.to_string())
+                    } else {
+                        resolution
+                    }];
                 }
                 let resolved = self.resolve(module, specifier);
                 if kind
@@ -750,15 +761,12 @@ impl ModuleResolver {
     }
 }
 
-fn infer_workspace_root(project_root: &Path, report_root: &str) -> Option<PathBuf> {
-    if let Some(root) = project_root
-        .ancestors()
-        .find(|ancestor| ancestor.join("pnpm-workspace.yaml").is_file())
-    {
-        return Some(root.to_path_buf());
+fn infer_workspace_root(project_root: &Path, report_root: &str) -> Result<Option<PathBuf>> {
+    if let Some(root) = crate::package::nearest_workspace_root(project_root)? {
+        return Ok(Some(root));
     }
     if report_root.is_empty() || report_root == "." {
-        return Some(project_root.to_path_buf());
+        return Ok(Some(project_root.to_path_buf()));
     }
     let depth = Path::new(report_root)
         .components()
@@ -766,9 +774,12 @@ fn infer_workspace_root(project_root: &Path, report_root: &str) -> Option<PathBu
             std::path::Component::Normal(_) => Some(()),
             _ => None,
         })
-        .collect::<Option<Vec<_>>>()?
-        .len();
-    project_root.ancestors().nth(depth).map(Path::to_path_buf)
+        .collect::<Option<Vec<_>>>()
+        .map(|components| components.len());
+    let Some(depth) = depth else {
+        return Ok(None);
+    };
+    Ok(project_root.ancestors().nth(depth).map(Path::to_path_buf))
 }
 
 fn nearest_sveltekit_source_root(project_root: &Path, module_path: &str) -> PathBuf {
@@ -1255,7 +1266,7 @@ mod tests {
         let project_root = workspace_root.join("packages/a/src");
 
         assert_eq!(
-            infer_workspace_root(&project_root, "."),
+            infer_workspace_root(&project_root, ".").expect("workspace root"),
             Some(workspace_root)
         );
     }

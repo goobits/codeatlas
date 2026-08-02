@@ -365,6 +365,38 @@ const generated = read(outputPath)
     }
 
     #[test]
+    fn static_child_process_launchers_track_source_dependencies() {
+        let info = parse_source(
+            r#"
+childProcess.spawnSync(process.execPath, ["-r", "dotenv/config", "./scripts/check.js"])
+fork("./workers/child.ts")
+spawn("tsx", ["./scripts/task.ts"])
+spawnSync("tsc", ["--outFile", "generated.js"])
+const spawnSync = () => {}
+spawnSync("node", ["./scripts/local-shadow.js"])
+"#,
+            "scripts/run.mjs",
+        )
+        .expect("module info");
+        let targets = info
+            .reachability
+            .dynamic_dependencies
+            .iter()
+            .filter(|dependency| dependency.kind == DynamicDependencyKind::RuntimeProcess)
+            .map(|dependency| dependency.target.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            targets,
+            [
+                DynamicDependencyTarget::Literal("./scripts/check.js".to_string()),
+                DynamicDependencyTarget::Literal("./workers/child.ts".to_string()),
+                DynamicDependencyTarget::Literal("./scripts/task.ts".to_string()),
+            ]
+        );
+    }
+
+    #[test]
     fn static_url_bindings_track_dynamic_imports() {
         let info = parse_source(
             r#"

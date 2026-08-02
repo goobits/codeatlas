@@ -11,6 +11,16 @@ fn python_reachability_handles_src_layouts_relative_imports_and_context_roles() 
     assert!(context_names.contains("python-package-exports"));
     assert!(context_names.contains("python-project-entrypoints"));
     assert!(context_names.contains("python-tests"));
+    assert!(context_names.contains("python-tooling"));
+    let script_context = graph
+        .contexts
+        .values()
+        .find(|context| context.name == "python-tooling")
+        .expect("Python script context");
+    assert!(script_context.roots.contains(&NodeId::file(
+        &ProjectId("python".to_string()),
+        "tools/manual_usage.py"
+    )));
     assert!(!graph
         .boundaries
         .iter()

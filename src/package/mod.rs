@@ -18,3 +18,6 @@ pub(crate) use manifest::{discover, discover_for_docs, discover_javascript};
 pub(crate) use python_manifest::discover as discover_python;
 pub(crate) use python_manifest::source_roots as discover_python_source_roots;
 pub(crate) use workspace::discover as discover_workspace;
+pub(crate) use workspace::{
+    nearest_root as nearest_workspace_root, owns_descendants as workspace_owns_descendants,
+};

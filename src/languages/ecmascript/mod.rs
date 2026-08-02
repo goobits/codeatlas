@@ -366,6 +366,7 @@ fn connect_module(
             parser::DynamicDependencyKind::ImportScripts => SourceEdgeKind::Require,
             parser::DynamicDependencyKind::Require => SourceEdgeKind::Require,
             parser::DynamicDependencyKind::RuntimeFile => SourceEdgeKind::ModuleDependency,
+            parser::DynamicDependencyKind::RuntimeProcess => SourceEdgeKind::ModuleDependency,
             parser::DynamicDependencyKind::RuntimeUrl => SourceEdgeKind::DynamicImport,
         };
         for resolution in resolver.resolve_dynamic(module, &dependency.target, dependency.kind) {

@@ -43,7 +43,7 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     let projects = project
         .workspace_analysis_projects()
         .expect("workspace projects");
-    assert_eq!(projects.len(), 5);
+    assert_eq!(projects.len(), 6);
     let workspace_root = projects
         .iter()
         .find(|project| project.id.0 == "@fixture/root")
@@ -71,6 +71,16 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     assert_eq!(
         configured_b.contexts["workspace-tool"].role,
         ContextRole::Tooling
+    );
+    let nested_a_runtime = projects
+        .iter()
+        .find(|project| project.id.0 == "a-runtime")
+        .expect("package-owned nested analysis project");
+    assert_eq!(nested_a_runtime.report_root, "packages/a/tools/runtime");
+    assert!(!nested_a_runtime.workspace_member);
+    assert_eq!(
+        nested_a_runtime.contexts["runtime"].role,
+        ContextRole::Production
     );
     assert!(projects
         .iter()

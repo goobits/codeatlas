@@ -19,6 +19,10 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
         &ProjectId("ecmascript".to_string()),
         "tests/htmlHarness.ts"
     )));
+    assert!(test_context.roots.contains(&NodeId::file(
+        &ProjectId("ecmascript".to_string()),
+        "tests/inlineHarness.ts"
+    )));
     let package_context = graph
         .contexts
         .values()
@@ -35,6 +39,10 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
     assert!(browser_context.roots.contains(&NodeId::file(
         &ProjectId("ecmascript".to_string()),
         "src/htmlRuntime.ts"
+    )));
+    assert!(browser_context.roots.contains(&NodeId::file(
+        &ProjectId("ecmascript".to_string()),
+        "src/inlineHtmlRuntime.ts"
     )));
     let runtime_context = graph
         .contexts
@@ -62,6 +70,31 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
         &ProjectId("ecmascript".to_string()),
         "build/scripts/compile.ts"
     )));
+    assert!(tooling_context.roots.contains(&NodeId::file(
+        &ProjectId("ecmascript".to_string()),
+        "tools/manual.mjs"
+    )));
+    assert!(tooling_context.roots.contains(&NodeId::file(
+        &ProjectId("ecmascript".to_string()),
+        "src/mikro-orm.config.ts"
+    )));
+    let medusa_context = graph
+        .contexts
+        .values()
+        .find(|context| context.name == "medusa-runtime")
+        .expect("Medusa runtime context");
+    for path in [
+        "instrumentation.ts",
+        "medusa-config.ts",
+        "src/api/example/route.ts",
+        "src/api/middlewares.ts",
+        "src/jobs/hourly.ts",
+        "src/subscribers/order.ts",
+    ] {
+        assert!(medusa_context
+            .roots
+            .contains(&NodeId::file(&ProjectId("ecmascript".to_string()), path)));
+    }
     let http_fuzz_context = graph
         .contexts
         .values()
@@ -110,7 +143,10 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
         finding.kind == DeadCodeFindingKind::UnreachableFile
             && matches!(
                 finding.path.as_str(),
-                "src/worker.ts" | "src/vendor/worker-support.js" | "src/vendor/helper.min.js"
+                "src/worker.ts"
+                    | "src/vendor/worker-support.js"
+                    | "src/vendor/helper.min.js"
+                    | "tools/subprocess.mjs"
             )
     }));
     assert!(!report

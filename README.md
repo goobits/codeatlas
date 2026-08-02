@@ -297,9 +297,13 @@ declared by `wrangler.toml`, `wrangler.json`, or `wrangler.jsonc`. Source entryp
 to common bundler CLIs (`esbuild`, Rollup, and webpack) are production roots,
 as are static `entry`, `entryPoints`, and `input` sources in conventional
 esbuild, Rollup, tsup, Vite, and webpack config modules;
-other package-script source paths become tooling roots, including maintained
-scripts under normally ignored `build` directories. Local scripts referenced by conventional
-`index.html` files become production browser roots; scripts referenced by test
+other package-script source paths and executable shebang modules become tooling
+roots, including maintained scripts under normally ignored `build` directories.
+Static local source files launched with Node child-process APIs are followed;
+paths that depend on a generated runtime working directory remain explicit
+dynamic boundaries rather than false missing-source gates. Local scripts
+referenced by conventional `index.html` files, including imports in inline
+module scripts, become production browser roots; scripts referenced by test
 HTML and `test-harness.html` files become test roots. Conventional `*.test.*`,
 `*.spec.*`, and test-config files become runtime roots in an
 `ecmascript-tests` context.
@@ -337,13 +341,18 @@ Local source commands used by configured HTTP fuzz servers and request adapters
 become test roots; source commands used to generate OpenAPI contracts become
 tooling roots.
 
+Medusa projects automatically root their conventional configuration,
+instrumentation, API route, middleware, subscriber, and scheduled-job modules.
+MikroORM configuration beneath a Medusa source tree is classified as tooling.
+
 Each project may select `js`, `ts`, `svelte`, `py`, and `rs`. Rust projects can
 also configure `rust.all_features` or an explicit `rust.features` list. Cargo
 library targets use public-surface semantics; binaries, examples, benches,
 build scripts, and tests use runtime semantics. Python PEP 621 projects derive
 their public surface from import packages under configured setuptools roots or
-the conventional `src`/root layout. Project scripts and conventional Python
-tests become production and test contexts automatically; an explicit context
+the conventional `src`/root layout. Project scripts, executable Python shebang
+modules, and conventional Python tests become production, tooling, and test
+contexts automatically; an explicit context
 with the same name overrides discovery. Python decorators that may register or
 replace a declaration conservatively retain that symbol and its dependencies
 while recording the dynamic boundary. Rust reachability honors `pub(crate)`,

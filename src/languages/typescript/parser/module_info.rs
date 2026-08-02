@@ -87,6 +87,7 @@ pub(crate) enum DynamicDependencyKind {
     ImportScripts,
     Require,
     RuntimeFile,
+    RuntimeProcess,
     RuntimeUrl,
 }
 

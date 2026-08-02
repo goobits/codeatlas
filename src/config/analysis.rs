@@ -164,6 +164,7 @@ impl ProjectConfig {
             self.analysis_projects()?
         };
         let workspace = crate::package::discover_workspace(&self.root)?;
+        let workspace_root = workspace.root.clone();
         let mut resolved = Vec::with_capacity(
             workspace.members.len() + usize::from(workspace.root_name.is_some()),
         );
@@ -185,7 +186,7 @@ impl ProjectConfig {
             }
         }
         for member in workspace.members {
-            let mut project = ResolvedAnalysisProject {
+            let project = ResolvedAnalysisProject {
                 id: crate::domain::source_graph::ProjectId(member.name),
                 root: member.root,
                 report_root: member.report_root,
@@ -198,9 +199,9 @@ impl ProjectConfig {
                 workspace_member: true,
                 excluded_roots: Vec::new(),
             };
-            self.merge_local_analysis_settings(&mut project)?;
             resolved.push(project);
         }
+        self.merge_workspace_local_analysis_settings(&mut resolved, &workspace_root)?;
         let aggregate_config = self
             .config_path
             .clone()
@@ -318,6 +319,72 @@ impl ProjectConfig {
                 )
             })?;
         merge_analysis_settings(project, owned, &config_path)
+    }
+
+    fn merge_workspace_local_analysis_settings(
+        &self,
+        projects: &mut Vec<ResolvedAnalysisProject>,
+        workspace_root: &Path,
+    ) -> Result<()> {
+        let member_roots = projects
+            .iter()
+            .filter(|project| project.workspace_member)
+            .map(|project| project.root.clone())
+            .collect::<Vec<_>>();
+        for member_root in member_roots {
+            if member_root == self.root || !member_root.starts_with(&self.root) {
+                continue;
+            }
+            let config_path = member_root.join("codeatlas.json");
+            if !config_path.is_file() {
+                continue;
+            }
+            let config_path = config_path.canonicalize().with_context(|| {
+                format!(
+                    "Could not resolve analysis project config {}",
+                    config_path.display()
+                )
+            })?;
+            if self.config_path.as_ref() == Some(&config_path) {
+                continue;
+            }
+            let local =
+                ProjectConfig::load(&member_root, Some(&config_path)).with_context(|| {
+                    format!(
+                        "Could not load analysis project config {}",
+                        config_path.display()
+                    )
+                })?;
+            for mut owned in local.analysis_projects()? {
+                if !owned.root.starts_with(&member_root) {
+                    anyhow::bail!(
+                        "Analysis project {} from {} must stay within its owning workspace member {}",
+                        owned.id.0,
+                        config_path.display(),
+                        member_root.display()
+                    );
+                }
+                if let Some(project) = projects
+                    .iter_mut()
+                    .find(|project| project.root == owned.root)
+                {
+                    merge_analysis_settings(project, owned, &config_path)?;
+                    continue;
+                }
+                if let Some(existing) = projects.iter().find(|project| project.id == owned.id) {
+                    anyhow::bail!(
+                        "Analysis project ID {} from {} conflicts with project root {}",
+                        owned.id.0,
+                        config_path.display(),
+                        existing.root.display()
+                    );
+                }
+                owned.report_root =
+                    crate::paths::normalize_relative_path(&owned.root, workspace_root);
+                projects.push(owned);
+            }
+        }
+        Ok(())
     }
 
     fn add_http_contexts(&self, projects: &mut [ResolvedAnalysisProject]) -> Result<()> {

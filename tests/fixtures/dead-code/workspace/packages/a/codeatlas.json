@@ -1,0 +1,15 @@
+{
+  "projects": [
+    {
+      "id": "a-runtime",
+      "root": "tools/runtime",
+      "languages": ["ts"],
+      "contexts": {
+        "runtime": {
+          "role": "production",
+          "entrypoints": ["index.ts"]
+        }
+      }
+    }
+  ]
+}

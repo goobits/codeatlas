@@ -99,15 +99,14 @@ fn discover_workspace_script_entrypoints(
     root_dir: &Path,
     include: impl Fn(&str) -> bool,
 ) -> Result<Vec<String>> {
-    let Some(workspace_root) = root_dir
-        .ancestors()
-        .skip(1)
-        .find(|ancestor| ancestor.join("pnpm-workspace.yaml").is_file())
-    else {
+    let Some(parent) = root_dir.parent() else {
+        return Ok(Vec::new());
+    };
+    let Some(workspace_root) = crate::package::nearest_workspace_root(parent)? else {
         return Ok(Vec::new());
     };
     let mut entrypoints = Vec::new();
-    for workspace_path in discover_script_entrypoints(workspace_root, include)? {
+    for workspace_path in discover_script_entrypoints(&workspace_root, include)? {
         let absolute = workspace_root.join(&workspace_path);
         if !absolute.is_file() {
             continue;
@@ -124,7 +123,7 @@ fn discover_descendant_script_entrypoints(
     root_dir: &Path,
     include: impl Fn(&str) -> bool,
 ) -> Result<Vec<String>> {
-    if !root_dir.join("pnpm-workspace.yaml").is_file() {
+    if !crate::package::workspace_owns_descendants(root_dir)? {
         return Ok(Vec::new());
     }
     let canonical_root = root_dir
