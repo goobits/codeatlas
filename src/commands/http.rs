@@ -122,10 +122,7 @@ fn check(
 ) -> Result<i32> {
     let inventory = build_inventory(path, openapi, config_path)?;
     let baseline_report = baseline
-        .map(|path| {
-            require_schema_inventory(&inventory)?;
-            load_baseline(path).map(|baseline| http::compare(&baseline, &inventory))
-        })
+        .map(|path| load_baseline(path).map(|baseline| http::compare(&baseline, &inventory)))
         .transpose()?;
     let report: HttpCheckReport = http::check(inventory);
     let gate_count = report.gate_count();
@@ -147,27 +144,10 @@ fn diff(
 ) -> Result<i32> {
     let baseline = load_baseline(baseline)?;
     let current = build_inventory(path, openapi, config_path)?;
-    require_schema_inventory(&current)?;
     let report: HttpDiffReport = http::compare(&baseline, &current);
     let breaking_changes = report.breaking_changes;
     output::write_or_print(&report, out, "HTTP diff")?;
     Ok(i32::from(breaking_changes > 0))
-}
-
-fn require_schema_inventory(inventory: &HttpInventoryReport) -> Result<()> {
-    let missing = inventory
-        .contracts
-        .iter()
-        .filter(|contract| contract.schema_missing)
-        .map(|contract| contract.id.as_str())
-        .collect::<Vec<_>>();
-    if !missing.is_empty() {
-        anyhow::bail!(
-            "HTTP schema comparison requires OpenAPI for contract(s): {}",
-            missing.join(", ")
-        );
-    }
-    Ok(())
 }
 
 fn load_baseline(path: &Path) -> Result<HttpBaselineReport> {

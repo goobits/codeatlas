@@ -16,6 +16,10 @@ pub(crate) fn compare(
     let current_contracts = current
         .contracts
         .iter()
+        .filter(|contract| {
+            contract.openapi_version.is_some()
+                || baseline_contracts.contains_key(contract.id.as_str())
+        })
         .map(|contract| (contract.id.as_str(), contract))
         .collect::<BTreeMap<_, _>>();
     let contract_ids = baseline_contracts
@@ -199,11 +203,19 @@ mod tests {
         openapi_version: &str,
         operations: Vec<HttpOperation>,
     ) -> HttpInventoryReport {
-        HttpInventoryReport::new(vec![HttpContractInventory {
-            id: "api".to_string(),
-            contract_source: Some("openapi.json".to_string()),
-            openapi_version: Some(openapi_version.to_string()),
-            schema_missing: false,
+        HttpInventoryReport::new(vec![contract("api", Some(openapi_version), operations)])
+    }
+
+    fn contract(
+        id: &str,
+        openapi_version: Option<&str>,
+        operations: Vec<HttpOperation>,
+    ) -> HttpContractInventory {
+        HttpContractInventory {
+            id: id.to_string(),
+            contract_source: openapi_version.map(|_| "openapi.json".to_string()),
+            openapi_version: openapi_version.map(str::to_string),
+            schema_missing: openapi_version.is_none(),
             operations,
             diagnostics: Vec::new(),
             source: HttpSourceInventory {
@@ -212,7 +224,7 @@ mod tests {
                 operations: Vec::new(),
                 skipped_files: Vec::new(),
             },
-        }])
+        }
     }
 
     #[test]
@@ -251,5 +263,39 @@ mod tests {
         assert!(result.contracts[0].changes[0]
             .message
             .contains("3.0.3 to 3.1.0"));
+    }
+
+    #[test]
+    fn ignores_new_source_only_contracts_during_schema_comparison() {
+        let operations = vec![operation("/users", &["200"])];
+        let baseline = report(operations.clone());
+        let baseline =
+            HttpBaselineReport::from_inventory(&baseline).expect("schema-backed baseline");
+        let current = HttpInventoryReport::new(vec![
+            contract("api", Some("3.1.0"), operations),
+            contract("source-only", None, Vec::new()),
+        ]);
+
+        let result = compare(&baseline, &current);
+
+        assert_eq!(result.breaking_changes, 0);
+        assert_eq!(result.additive_changes, 0);
+        assert!(result.contracts.is_empty());
+    }
+
+    #[test]
+    fn treats_a_baselined_contract_losing_its_schema_as_breaking() {
+        let baseline = report(vec![operation("/users", &["200"])]);
+        let baseline =
+            HttpBaselineReport::from_inventory(&baseline).expect("schema-backed baseline");
+        let current = HttpInventoryReport::new(vec![contract("api", None, Vec::new())]);
+
+        let result = compare(&baseline, &current);
+
+        assert!(result.breaking_changes > 0);
+        assert!(result.contracts[0]
+            .changes
+            .iter()
+            .any(|change| change.message.contains("3.1.0 to <missing>")));
     }
 }

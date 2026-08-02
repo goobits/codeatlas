@@ -40,20 +40,20 @@ impl HttpBaselineReport {
         let contracts = inventory
             .contracts
             .iter()
-            .map(|contract| {
-                let openapi_version = contract.openapi_version.clone().ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "HTTP contract {} has no OpenAPI schema; baselines require schema-backed contracts",
-                        contract.id
-                    )
-                })?;
-                Ok(HttpBaselineContract {
-                    id: contract.id.clone(),
-                    openapi_version,
-                    operations: contract.operations.clone(),
-                })
+            .filter_map(|contract| {
+                contract
+                    .openapi_version
+                    .clone()
+                    .map(|openapi_version| HttpBaselineContract {
+                        id: contract.id.clone(),
+                        openapi_version,
+                        operations: contract.operations.clone(),
+                    })
             })
-            .collect::<anyhow::Result<Vec<_>>>()?;
+            .collect::<Vec<_>>();
+        if contracts.is_empty() {
+            anyhow::bail!("HTTP baselines require schema-backed contracts");
+        }
         Ok(Self {
             schema_version: HTTP_BASELINE_SCHEMA_VERSION,
             api_version: HTTP_BASELINE_API_VERSION.to_string(),
