@@ -151,7 +151,10 @@ The source check discovers pnpm workspace ownership, resolves JavaScript,
 TypeScript, and Svelte imports, and reports three deterministic errors:
 unexported workspace package imports, direct cross-package source bypasses,
 and observed `depends_on` paths forbidden by accepted `no_path` or
-`forbids_relation` constraints. Aliases that resolve to the exact maintained
+`forbids_relation` constraints. Declared dependency constraints use only
+production-reachable edges, so test and tooling imports do not invent runtime
+architecture paths. Intrinsic export and source-bypass errors still apply in
+every context. Aliases that resolve to the exact maintained
 target of a declared package export remain valid. Repository-root tooling and
 same-package implementation imports are not treated as cross-package API
 violations. The report is deterministic and VCS-neutral.
@@ -320,11 +323,14 @@ works normally.
 `dead-code --workspace` preserves package ownership while applying the matching
 local project from each member's `codeatlas.json`. Projects declared in the
 workspace-root `codeatlas.json` may add settings for the root package or an
-exact discovered member root; unmatched roots fail configuration. When the
-workspace root is also a package, its non-member source is scanned as one
+exact discovered member root. Other configured roots remain explicit projects
+beside the discovered workspace, including nested Rust or migration owners.
+When the workspace root is also a package, its non-member source is scanned as one
 non-overlapping root project; member roots remain excluded from it. Packages
 can therefore own their exceptional roots without duplicating one
-workspace-wide configuration. Nested pnpm workspaces are expanded recursively,
+workspace-wide configuration. Aggregate contexts that select only member-owned
+sources are left to those member projects instead of becoming empty root
+contexts. Nested pnpm workspaces are expanded recursively,
 so packages embedded in a workspace member retain their own ownership instead
 of being folded into the parent package's source graph.
 Explicit aggregate projects follow the same ownership rule: when a nested

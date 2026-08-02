@@ -1,6 +1,7 @@
 use super::http::{HttpFuzzCommandConfig, HttpOpenApiProviderConfig, HttpOpenApiSourceConfig};
 use super::ProjectConfig;
 use anyhow::{Context, Result};
+use globset::GlobBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -154,6 +155,7 @@ impl ProjectConfig {
         self.add_http_contexts(&mut resolved)?;
         self.add_postgres_contexts(&mut resolved)?;
         add_nested_project_boundaries(&mut resolved);
+        remove_nested_workspace_contexts(&mut resolved)?;
         Ok(resolved)
     }
 
@@ -165,7 +167,7 @@ impl ProjectConfig {
         };
         let workspace = crate::package::discover_workspace(&self.root)?;
         let mut resolved = Vec::with_capacity(
-            workspace.members.len() + usize::from(workspace.root_name.is_some()),
+            workspace.members.len() + configured.len() + usize::from(workspace.root_name.is_some()),
         );
         if self.root == workspace.root {
             if let Some(root_name) = workspace.root_name.clone() {
@@ -206,21 +208,26 @@ impl ProjectConfig {
             .clone()
             .unwrap_or_else(|| self.config_base().join("codeatlas.json"));
         for owned in configured {
-            let project = resolved
+            if let Some(project) = resolved
                 .iter_mut()
                 .find(|project| project.root == owned.root)
-                .with_context(|| {
-                    format!(
-                        "Workspace analysis project {} from {} must match the workspace root or a discovered package root",
-                        owned.id.0,
-                        aggregate_config.display()
-                    )
-                })?;
-            merge_analysis_settings(project, owned, &aggregate_config)?;
+            {
+                merge_analysis_settings(project, owned, &aggregate_config)?;
+                continue;
+            }
+            if resolved.iter().any(|project| project.id == owned.id) {
+                anyhow::bail!(
+                    "Workspace analysis project ID {} from {} conflicts with a discovered package",
+                    owned.id.0,
+                    aggregate_config.display()
+                );
+            }
+            resolved.push(owned);
         }
         self.add_http_contexts(&mut resolved)?;
         self.add_postgres_contexts(&mut resolved)?;
         add_nested_project_boundaries(&mut resolved);
+        remove_nested_workspace_contexts(&mut resolved)?;
         Ok(resolved)
     }
 
@@ -546,6 +553,90 @@ fn add_nested_project_boundaries(projects: &mut [ResolvedAnalysisProject]) {
             .collect();
         project.excluded_roots.sort();
     }
+}
+
+fn remove_nested_workspace_contexts(projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
+    for project in projects {
+        if project.excluded_roots.is_empty() {
+            continue;
+        }
+        let mut nested_only = Vec::new();
+        for (name, context) in &project.contexts {
+            let matchers = context
+                .entrypoints
+                .iter()
+                .map(|pattern| {
+                    let normalized = pattern
+                        .strip_prefix("./")
+                        .unwrap_or(pattern)
+                        .replace('\\', "/");
+                    GlobBuilder::new(&normalized)
+                        .literal_separator(true)
+                        .build()
+                        .with_context(|| {
+                            format!(
+                                "Invalid source pattern {pattern:?} in context {name} for {}",
+                                project.id.0
+                            )
+                        })
+                        .map(|glob| glob.compile_matcher())
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let discovery = crate::source_discovery::discover(
+                crate::source_discovery::SourceDiscoveryRequest {
+                    root: &project.root,
+                    patterns: &context.entrypoints,
+                    excluded_roots: &[],
+                    no_default_ignore: project.no_default_ignore,
+                },
+            );
+            if let Some(warning) = discovery.warnings.first() {
+                anyhow::bail!(
+                    "Could not inspect analysis context {name} in {}: {warning}",
+                    project.id.0
+                );
+            }
+            let matched = discovery
+                .files
+                .iter()
+                .filter(|source| {
+                    let relative = crate::paths::normalize_relative_path(source, &project.root);
+                    crate::source_policy::source_argument(&relative).is_some()
+                        && matchers.iter().any(|matcher| matcher.is_match(&relative))
+                })
+                .collect::<Vec<_>>();
+            let all_matches_are_nested = !matched.is_empty()
+                && matched.iter().all(|source| {
+                    project
+                        .excluded_roots
+                        .iter()
+                        .any(|excluded| source.starts_with(excluded))
+                });
+            let all_patterns_are_nested = matched.is_empty()
+                && context.entrypoints.iter().all(|pattern| {
+                    let normalized = pattern
+                        .strip_prefix("./")
+                        .unwrap_or(pattern)
+                        .replace('\\', "/");
+                    let prefix = normalized
+                        .find(['*', '?', '[', '{'])
+                        .map_or(normalized.as_str(), |index| &normalized[..index])
+                        .trim_end_matches('/');
+                    project.excluded_roots.iter().any(|excluded| {
+                        let relative =
+                            crate::paths::normalize_relative_path(excluded, &project.root);
+                        prefix == relative || prefix.starts_with(&format!("{relative}/"))
+                    })
+                });
+            if all_matches_are_nested || all_patterns_are_nested {
+                nested_only.push(name.clone());
+            }
+        }
+        for name in nested_only {
+            project.contexts.remove(&name);
+        }
+    }
+    Ok(())
 }
 
 fn derive_project_id(root: &Path, index: usize) -> String {
