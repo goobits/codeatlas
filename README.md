@@ -753,12 +753,13 @@ service does not also need to expose a schema route. They run one standard
 policy for negative-data rejection, response conformance, missing
 authentication, unsupported methods, and unhandled server errors.
 Source-transport targets run the narrower assertions that their static evidence
-can support: known operations must not return any 5xx response and unsupported
-methods must be rejected with a 4xx client error. This accepts a framework-level
-`400 Bad Request` when its request model cannot represent the method, while an
-explicit OpenAPI contract retains strict `405 Method Not Allowed` and `Allow`
-header conformance. Readiness probes run before fuzz cases, so lifecycle statuses
-do not weaken the response-safety check.
+can support: known operations must not return an unhandled `500 Internal Server
+Error`, and unsupported methods must be rejected with a 4xx client error. This
+accepts intentional lifecycle statuses such as `503 Service Unavailable` and a
+framework-level `400 Bad Request` when its request model cannot represent the
+method. An explicit OpenAPI contract retains declared-status conformance plus
+strict `405 Method Not Allowed` and `Allow` header conformance. Readiness
+probes still run before fuzz cases.
 `standard` generates 75 examples per operation and `thorough` generates 750.
 The additive `stateful` profile runs 25 scenarios against explicit OpenAPI
 Links, rejects speculative link inference, and fails when it does not traverse
