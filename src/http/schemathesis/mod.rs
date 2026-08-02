@@ -647,6 +647,7 @@ fn schemathesis_config(stateful: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use super::request_adapter::HOOK_SOURCE;
     use super::{
         checks, clear_owned_report_files, collect_expected_non_success_operations,
         operation_report_component, phases, positive_coverage_failures, render_schemathesis_config,
@@ -801,6 +802,20 @@ mod tests {
             SOURCE_TRANSPORT_CHECKS.join(",")
         );
         assert!(SOURCE_TRANSPORT_CHECKS.contains(&"not_a_server_error"));
+    }
+
+    #[test]
+    fn every_selected_codeatlas_check_is_registered_by_the_managed_hook() {
+        for check in CHECKS
+            .iter()
+            .chain(SOURCE_TRANSPORT_CHECKS)
+            .filter(|check| check.starts_with("codeatlas_"))
+        {
+            assert!(
+                HOOK_SOURCE.contains(&format!("def {check}(")),
+                "managed hook does not register selected check {check}"
+            );
+        }
     }
 
     #[test]
