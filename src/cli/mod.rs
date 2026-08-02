@@ -1,17 +1,20 @@
 use crate::commands;
 use crate::commands::dead_code::DeadCodeFormat;
 use crate::commands::docs::DocsFormat;
-use crate::commands::OutputFormat;
+use crate::commands::lexicon::LexiconFormat;
+use crate::commands::{OutputFormat, ScanScope};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use architecture::ArchitectureCommand;
 use http::HttpCommand;
 use postgres::PostgresCommand;
+use testing::TestingCommand;
 
 mod architecture;
 mod http;
 mod postgres;
+mod testing;
 
 #[derive(Parser)]
 #[command(name = "codeatlas")]
@@ -41,7 +44,23 @@ enum Command {
         /// Include private/internal symbols
         #[arg(long)]
         all: bool,
+        /// Choose package API reachability or all maintained source files
+        #[arg(long, value_enum, default_value_t = ScanScope::Api)]
+        scope: ScanScope,
         /// Output directory instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
+
+    /// Find deterministic naming collisions, aliases, and duplicate symbol families
+    Lexicon {
+        /// Path to scan
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = LexiconFormat::Text)]
+        format: LexiconFormat,
+        /// Write the report to a file instead of stdout
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
@@ -51,7 +70,7 @@ enum Command {
         /// Path to scan
         #[arg(default_value = ".")]
         path: PathBuf,
-        /// Additional source tree whose package imports count as consumers
+        /// External source tree whose maintained package imports count as consumers
         #[arg(long)]
         consumer_root: Option<PathBuf>,
     },
@@ -115,12 +134,18 @@ enum Command {
         command: PostgresCommand,
     },
 
+    /// Inventory tests, select affected suites, and report public API witnesses
+    Testing {
+        #[command(subcommand)]
+        command: TestingCommand,
+    },
+
     /// CI mode: exit non-zero if issues found
     Ci {
         /// Path to scan
         #[arg(default_value = ".")]
         path: PathBuf,
-        /// Additional source tree whose package imports count as consumers
+        /// External source tree whose maintained package imports count as consumers
         #[arg(long)]
         consumer_root: Option<PathBuf>,
         /// Fail if any unused public exports exist
@@ -188,8 +213,12 @@ pub(crate) fn run() -> i32 {
             path,
             format,
             all,
+            scope,
             out,
-        } => commands::run_scan(&path, format, all, out, config_path.as_deref()),
+        } => commands::run_scan(&path, format, all, scope, out, config_path.as_deref()),
+        Command::Lexicon { path, format, out } => {
+            commands::lexicon::run(&path, format, out.as_deref(), config_path.as_deref())
+        }
         Command::Audit {
             path,
             consumer_root,
@@ -227,6 +256,7 @@ pub(crate) fn run() -> i32 {
         Command::Architecture { command } => command.run(config_path.as_deref()),
         Command::Http { command } => command.run(config_path.as_deref()),
         Command::Postgres { command } => command.run(config_path.as_deref()),
+        Command::Testing { command } => command.run(config_path.as_deref()),
         Command::Ci {
             path,
             consumer_root,
@@ -274,6 +304,9 @@ mod tests {
     fn requires_an_explicit_command() {
         assert!(Cli::try_parse_from(["codeatlas"]).is_err());
         assert!(Cli::try_parse_from(["codeatlas", "scan", "."]).is_ok());
+        assert!(
+            Cli::try_parse_from(["codeatlas", "scan", ".", "--scope", "source", "--all"]).is_ok()
+        );
         assert!(Cli::try_parse_from([
             "codeatlas",
             "http",
@@ -281,6 +314,14 @@ mod tests {
             ".",
             "--openapi",
             "openapi.json"
+        ])
+        .is_ok());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "lexicon",
+            "packages/example",
+            "--format",
+            "json"
         ])
         .is_ok());
         assert!(Cli::try_parse_from([
@@ -309,6 +350,18 @@ mod tests {
         ])
         .is_ok());
         assert!(Cli::try_parse_from(["codeatlas", "dead-code", "packages", "--workspace"]).is_ok());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "testing",
+            "impact",
+            ".",
+            "--workspace",
+            "--changed",
+            "packages/example/src/index.ts",
+            "--changed",
+            "pnpm-lock.yaml"
+        ])
+        .is_ok());
         assert!(Cli::try_parse_from([
             "codeatlas",
             "ci",

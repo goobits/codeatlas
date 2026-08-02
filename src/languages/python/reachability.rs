@@ -15,6 +15,7 @@ const EXTRACTOR: &str = "codeatlas.python";
 const PACKAGE_EXPORT_CONTEXT: &str = "python-package-exports";
 const PROJECT_ENTRYPOINT_CONTEXT: &str = "python-project-entrypoints";
 const TEST_CONTEXT: &str = "python-tests";
+const TOOLING_CONTEXT: &str = "python-tooling";
 const TEST_DISCOVERY_PATTERNS: [&str; 3] = ["**/test_*.py", "**/*_test.py", "**/conftest.py"];
 
 pub(crate) fn collect_projects(
@@ -37,6 +38,7 @@ pub(crate) fn collect_projects(
         add_package_exports(graph, project, &modules)?;
         add_pyproject_entrypoints(graph, project, &modules, &resolver)?;
         add_test_context(graph, project, &modules)?;
+        add_script_context(graph, project, &modules)?;
     }
     Ok(())
 }
@@ -49,6 +51,7 @@ struct Module {
     canonical_name: String,
     package: bool,
     info: parser::PythonModuleInfo,
+    script: bool,
     symbols: BTreeMap<String, BTreeSet<NodeId>>,
 }
 
@@ -139,6 +142,7 @@ fn collect_project_modules(
                 names,
                 canonical_name,
                 info,
+                script: source.starts_with("#!"),
                 symbols,
             },
         );
@@ -999,6 +1003,29 @@ fn add_test_context(
         project,
         TEST_CONTEXT,
         ContextRole::Test,
+        ContextScope::Runtime,
+        roots,
+    )
+}
+
+fn add_script_context(
+    graph: &mut SourceGraph,
+    project: &ResolvedAnalysisProject,
+    modules: &BTreeMap<ModuleKey, Module>,
+) -> Result<()> {
+    if project.contexts.contains_key(TOOLING_CONTEXT) {
+        return Ok(());
+    }
+    let roots = modules
+        .values()
+        .filter(|module| module.project == project.id && module.script)
+        .map(|module| module.file.clone())
+        .collect();
+    add_discovered_context(
+        graph,
+        project,
+        TOOLING_CONTEXT,
+        ContextRole::Tooling,
         ContextScope::Runtime,
         roots,
     )

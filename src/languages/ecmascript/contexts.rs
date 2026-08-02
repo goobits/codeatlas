@@ -14,6 +14,7 @@ const BROWSER_RUNTIME_CONTEXT: &str = "browser-html-runtime";
 const PACKAGE_EXPORT_CONTEXT: &str = "npm-package-exports";
 const PACKAGE_RUNTIME_CONTEXT: &str = "npm-package-runtime";
 const SVELTEKIT_RUNTIME_CONTEXT: &str = "sveltekit-runtime";
+const MEDUSA_RUNTIME_CONTEXT: &str = "medusa-runtime";
 pub(super) const TEST_CONTEXT: &str = "ecmascript-tests";
 const TOOLING_CONTEXT: &str = "ecmascript-tooling";
 const DECLARATION_CONTEXT: &str = "ecmascript-declarations";
@@ -26,6 +27,7 @@ pub(super) fn add_discovered_contexts(
     resolver: &ModuleResolver,
 ) -> Result<()> {
     let html_entrypoints = discover_html_entrypoints(project, resolver);
+    let medusa_project = is_medusa_project(project, modules);
     if !project.contexts.contains_key(PACKAGE_EXPORT_CONTEXT) {
         let roots = crate::package::discover_javascript(&project.root)?
             .into_iter()
@@ -111,6 +113,22 @@ pub(super) fn add_discovered_contexts(
         )?;
     }
 
+    if medusa_project && !project.contexts.contains_key(MEDUSA_RUNTIME_CONTEXT) {
+        let roots = modules
+            .values()
+            .filter(|module| module.project == project.id && is_medusa_runtime_module(&module.path))
+            .map(|module| module.file.clone())
+            .collect();
+        add_discovered_context(
+            graph,
+            project,
+            MEDUSA_RUNTIME_CONTEXT,
+            ContextRole::Production,
+            ContextScope::Runtime,
+            roots,
+        )?;
+    }
+
     if !project.contexts.contains_key(TEST_CONTEXT) {
         let mut roots = modules
             .values()
@@ -152,7 +170,8 @@ pub(super) fn add_discovered_contexts(
             .values()
             .filter(|module| {
                 module.project == project.id
-                    && is_project_tooling_module(&project.root, &module.path)
+                    && (is_project_tooling_module(&project.root, &module.path)
+                        || (medusa_project && is_medusa_tooling_module(&module.path)))
             })
             .map(|module| module.file.clone())
             .collect::<BTreeSet<_>>();
@@ -223,6 +242,20 @@ fn discover_html_entrypoints(
         Regex::new(r#"(?is)<script\b[^>]*?\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))"#)
             .expect("valid HTML script source expression")
     });
+    static SCRIPT_ELEMENT: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?is)<script\b([^>]*)>(.*?)</script\s*>"#)
+            .expect("valid HTML script element expression")
+    });
+    static MODULE_TYPE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?i)\btype\s*=\s*(?:\"module\"|'module'|module(?:\s|$))"#)
+            .expect("valid HTML module type expression")
+    });
+    static MODULE_SOURCE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r#"(?m)(?:\b(?:import|export)\s+(?:[^'\"\n;]*?\s+from\s*)?|\bimport\s*\(\s*)['\"]([^'\"]+)['\"]"#,
+        )
+        .expect("valid inline module source expression")
+    });
 
     let discovery = crate::languages::reachability::discover_project_sources(
         project,
@@ -240,16 +273,33 @@ fn discover_html_entrypoints(
         let Ok(source) = std::fs::read_to_string(&html_path) else {
             continue;
         };
-        for captures in SCRIPT_SOURCE.captures_iter(&source) {
-            let Some(source) = captures
-                .get(1)
-                .or_else(|| captures.get(2))
-                .or_else(|| captures.get(3))
-                .map(|value| value.as_str())
-                .and_then(local_html_script_path)
-            else {
+        let mut sources = SCRIPT_SOURCE
+            .captures_iter(&source)
+            .filter_map(|captures| {
+                captures
+                    .get(1)
+                    .or_else(|| captures.get(2))
+                    .or_else(|| captures.get(3))
+                    .map(|value| value.as_str())
+                    .and_then(local_html_script_path)
+                    .map(str::to_owned)
+            })
+            .collect::<BTreeSet<_>>();
+        for script in SCRIPT_ELEMENT.captures_iter(&source) {
+            let attributes = script.get(1).map_or("", |value| value.as_str());
+            if !MODULE_TYPE.is_match(attributes) {
                 continue;
-            };
+            }
+            let body = script.get(2).map_or("", |value| value.as_str());
+            sources.extend(
+                MODULE_SOURCE
+                    .captures_iter(body)
+                    .filter_map(|captures| captures.get(1))
+                    .filter_map(|value| local_html_script_path(value.as_str()))
+                    .map(str::to_owned),
+            );
+        }
+        for source in sources {
             let html_parent = Path::new(&relative)
                 .parent()
                 .unwrap_or_else(|| Path::new(""));
@@ -371,6 +421,9 @@ pub(super) fn is_conventional_tooling_module(path: &str) -> bool {
 }
 
 fn is_project_tooling_module(root: &Path, path: &str) -> bool {
+    if std::fs::read(root.join(path)).is_ok_and(|source| source.starts_with(b"#!")) {
+        return true;
+    }
     if is_conventional_tooling_module(path) {
         return true;
     }
@@ -382,6 +435,51 @@ fn is_project_tooling_module(root: &Path, path: &str) -> bool {
         return false;
     };
     is_tooling_module_name(name) && root.join(parent).join("package.json").is_file()
+}
+
+fn is_medusa_project(
+    project: &ResolvedAnalysisProject,
+    modules: &BTreeMap<ModuleKey, Module>,
+) -> bool {
+    modules.values().any(|module| {
+        module.project == project.id
+            && matches!(
+                module.path.as_str(),
+                "medusa-config.js" | "medusa-config.mjs" | "medusa-config.cjs" | "medusa-config.ts"
+            )
+    })
+}
+
+fn is_medusa_runtime_module(path: &str) -> bool {
+    if matches!(
+        path,
+        "medusa-config.js"
+            | "medusa-config.mjs"
+            | "medusa-config.cjs"
+            | "medusa-config.ts"
+            | "instrumentation.js"
+            | "instrumentation.mjs"
+            | "instrumentation.cjs"
+            | "instrumentation.ts"
+            | "src/api/middlewares.js"
+            | "src/api/middlewares.ts"
+    ) {
+        return true;
+    }
+    let supported = matches!(
+        Path::new(path).extension().and_then(|value| value.to_str()),
+        Some("js" | "mjs" | "cjs" | "ts")
+    );
+    supported
+        && !is_conventional_test_module(path)
+        && ((path.starts_with("src/api/")
+            && Path::new(path).file_stem().and_then(|value| value.to_str()) == Some("route"))
+            || path.starts_with("src/jobs/")
+            || path.starts_with("src/subscribers/"))
+}
+
+fn is_medusa_tooling_module(path: &str) -> bool {
+    matches!(path, "src/mikro-orm.config.js" | "src/mikro-orm.config.ts")
 }
 
 fn is_tooling_module_name(path: &str) -> bool {

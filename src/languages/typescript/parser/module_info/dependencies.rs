@@ -75,6 +75,21 @@ impl Visit for DynamicDependencyCollector {
         {
             return;
         }
+        if let Some(targets) =
+            runtime_process_targets(call, &self.static_bindings, &self.local_bindings)
+        {
+            let span = source_span(&self.source_map, call.span);
+            self.dependencies.extend(
+                targets
+                    .into_iter()
+                    .filter(runtime_path_targets_source_module)
+                    .map(|target| DynamicDependency {
+                        target,
+                        kind: DynamicDependencyKind::RuntimeProcess,
+                        span: span.clone(),
+                    }),
+            );
+        }
         let kind = match &call.callee {
             Callee::Import(_) => Some(DynamicDependencyKind::Import),
             Callee::Expr(expression) if matches!(&**expression, Expr::Ident(identifier) if identifier.sym == *"require") => {
@@ -156,6 +171,80 @@ impl Visit for DynamicDependencyCollector {
         }
         expression.visit_children_with(self);
     }
+}
+
+fn runtime_process_targets(
+    call: &CallExpr,
+    static_bindings: &BTreeMap<String, Vec<DynamicDependencyTarget>>,
+    local_bindings: &BTreeSet<String>,
+) -> Option<Vec<DynamicDependencyTarget>> {
+    let Callee::Expr(callee) = &call.callee else {
+        return None;
+    };
+    let launcher = process_launcher_name(callee, local_bindings)?;
+    let command = call.args.first()?;
+    if launcher == "fork" {
+        return Some(dependency_targets(
+            &command.expr,
+            DynamicDependencyKind::RuntimeProcess,
+            static_bindings,
+        ));
+    }
+
+    let mut targets = dependency_targets(
+        &command.expr,
+        DynamicDependencyKind::RuntimeProcess,
+        static_bindings,
+    );
+    if is_javascript_runtime(&command.expr) {
+        if let Some(arguments) = call.args.get(1) {
+            targets.extend(dependency_targets(
+                &arguments.expr,
+                DynamicDependencyKind::RuntimeProcess,
+                static_bindings,
+            ));
+        }
+    }
+    Some(targets)
+}
+
+fn process_launcher_name<'a>(
+    expression: &'a Expr,
+    local_bindings: &BTreeSet<String>,
+) -> Option<&'a str> {
+    let name = match expression {
+        Expr::Ident(identifier) if !local_bindings.contains(identifier.sym.as_ref()) => {
+            identifier.sym.as_ref()
+        }
+        Expr::Member(member) => match &member.prop {
+            MemberProp::Ident(identifier) => identifier.sym.as_ref(),
+            MemberProp::Computed(computed) => match &*computed.expr {
+                Expr::Lit(Lit::Str(value)) => value.value.as_ref(),
+                _ => return None,
+            },
+            MemberProp::PrivateName(_) => return None,
+        },
+        _ => return None,
+    };
+    matches!(
+        name,
+        "execFile" | "execFileSync" | "fork" | "spawn" | "spawnSync"
+    )
+    .then_some(name)
+}
+
+fn is_javascript_runtime(expression: &Expr) -> bool {
+    if let Expr::Member(member) = expression {
+        return matches!(&*member.obj, Expr::Ident(identifier) if identifier.sym == *"process")
+            && matches!(&member.prop, MemberProp::Ident(identifier) if identifier.sym == *"execPath");
+    }
+    let Expr::Lit(Lit::Str(value)) = expression else {
+        return false;
+    };
+    Path::new(value.value.as_ref())
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| matches!(name, "bun" | "deno" | "node" | "nodejs" | "ts-node" | "tsx"))
 }
 
 fn runtime_path_targets_source_module(target: &DynamicDependencyTarget) -> bool {
@@ -285,18 +374,13 @@ fn dependency_targets(
             .and_then(|arguments| arguments.first())
             .map(|argument| dependency_targets(&argument.expr, kind, static_bindings))
             .unwrap_or_else(|| vec![DynamicDependencyTarget::Unknown]),
-        Expr::Array(array) if kind == DynamicDependencyKind::ImportMetaGlob => {
+        Expr::Array(array) => {
             let targets = array
                 .elems
                 .iter()
-                .map(|element| match element {
-                    Some(element) => match &*element.expr {
-                        Expr::Lit(Lit::Str(value)) => {
-                            DynamicDependencyTarget::Glob(value.value.to_string())
-                        }
-                        _ => DynamicDependencyTarget::Unknown,
-                    },
-                    None => DynamicDependencyTarget::Unknown,
+                .flat_map(|element| match element {
+                    Some(element) => dependency_targets(&element.expr, kind, static_bindings),
+                    None => vec![DynamicDependencyTarget::Unknown],
                 })
                 .collect::<Vec<_>>();
             if targets.is_empty() {

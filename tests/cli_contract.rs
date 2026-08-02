@@ -64,6 +64,120 @@ fn scan_writes_machine_readable_json_to_the_requested_directory() {
 }
 
 #[test]
+fn scan_source_scope_keeps_package_exposure_while_including_unreachable_source() {
+    let project = TestDirectory::create("codeatlas-cli-source-scope");
+    write(
+        &project,
+        "package.json",
+        r#"{
+            "name": "@example/source-scope",
+            "type": "module",
+            "exports": { ".": "./src/index.ts" }
+        }"#,
+    );
+    write(
+        &project,
+        "src/index.ts",
+        "export interface PublicSurface { ready: boolean }\n",
+    );
+    write(
+        &project,
+        "src/internal.ts",
+        "export interface InternalSurface { pending: boolean }\n",
+    );
+    write(
+        &project,
+        "src/__tests__/internal.test.ts",
+        "export interface TestOnlySurface { fixture: boolean }\n",
+    );
+    let project_path = project
+        .path()
+        .to_str()
+        .expect("project path should be UTF-8");
+
+    let api = run(&["scan", project_path, "--format", "json", "--all"]);
+    assert_success(&api, "API-scope scan");
+    let api: Value = serde_json::from_slice(&api.stdout).expect("API scan should be JSON");
+
+    let source = run(&[
+        "scan",
+        project_path,
+        "--format",
+        "json",
+        "--scope",
+        "source",
+        "--all",
+    ]);
+    assert_success(&source, "source-scope scan");
+    let source: Value = serde_json::from_slice(&source.stdout).expect("source scan should be JSON");
+
+    fn names(report: &Value) -> Vec<&str> {
+        report["symbols"]
+            .as_array()
+            .expect("symbols should be an array")
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect::<Vec<_>>()
+    }
+    assert_eq!(names(&api), vec!["PublicSurface"]);
+    assert_eq!(names(&source), vec!["PublicSurface", "InternalSurface"]);
+    assert!(!names(&source).contains(&"TestOnlySurface"));
+    assert_eq!(
+        source["symbols"][0]["export_paths"][0],
+        "@example/source-scope"
+    );
+    assert!(source["symbols"][1].get("export_paths").is_none());
+}
+
+#[test]
+fn lexicon_reports_source_collisions_without_mislabeling_public_exposure() {
+    let project = TestDirectory::create("codeatlas-cli-lexicon");
+    write(
+        &project,
+        "package.json",
+        r#"{
+            "name": "@example/lexicon",
+            "type": "module",
+            "exports": { ".": "./src/index.ts" }
+        }"#,
+    );
+    write(
+        &project,
+        "src/index.ts",
+        "export interface SurfaceState { ready: boolean }\n",
+    );
+    write(
+        &project,
+        "src/internal.ts",
+        "export interface SurfaceState { texture: GPUTexture }\n",
+    );
+    let output = run(&[
+        "lexicon",
+        project
+            .path()
+            .to_str()
+            .expect("project path should be UTF-8"),
+        "--format",
+        "json",
+    ]);
+    assert_success(&output, "lexicon report");
+    let report: Value =
+        serde_json::from_slice(&output.stdout).expect("lexicon report should be JSON");
+
+    assert_eq!(report["schema_version"], 1);
+    assert_eq!(report["name_collisions"][0]["name"], "SurfaceState");
+    let public_symbols = report["public_symbols"]
+        .as_array()
+        .expect("public symbols should be an array");
+    assert!(public_symbols
+        .iter()
+        .all(|symbol| symbol["file_path"] == "src/index.ts"));
+    assert!(public_symbols
+        .iter()
+        .all(|symbol| { symbol["export_paths"][0] == "@example/lexicon" }));
+}
+
+#[test]
 fn dead_code_check_only_fails_when_gating_is_requested() {
     let output_directory = TestDirectory::create("codeatlas-cli-contract");
     let fixture = fixture("dead-code/ecmascript");

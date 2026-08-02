@@ -1,6 +1,6 @@
-use crate::analysis;
 use crate::domain::ScanConfig;
 use crate::languages;
+use crate::{analysis, commands};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -65,9 +65,12 @@ fn package_consumer_report(file_name: &str, source: &str) -> crate::domain::Scan
         std::process::id()
     ));
     fs::create_dir_all(&consumer_root).expect("consumer fixture directory");
-    fs::write(consumer_root.join(file_name), source).expect("consumer fixture");
+    let consumer_path = consumer_root.join(file_name);
+    fs::create_dir_all(consumer_path.parent().expect("consumer parent"))
+        .expect("consumer fixture directory");
+    fs::write(&consumer_path, source).expect("consumer fixture");
 
-    analysis::annotate_package_consumers(&mut report, &mut importers, &consumer_root, false);
+    analysis::annotate_package_consumers(&mut report, &mut importers, &root, &consumer_root);
     analysis::annotate_unused_public(&mut report, &importers, false);
 
     fs::remove_dir_all(consumer_root).expect("remove consumer fixture");
@@ -77,7 +80,7 @@ fn package_consumer_report(file_name: &str, source: &str) -> crate::domain::Scan
 #[test]
 fn unused_public_typescript_counts_explicit_package_consumers() {
     let report = package_consumer_report(
-        "consumer.ts",
+        "__tests__/consumer.ts",
         "import { unused } from '@fixture/codeatlas-ts';\nvoid unused;\n",
     );
 
@@ -86,7 +89,8 @@ fn unused_public_typescript_counts_explicit_package_consumers() {
         .iter()
         .any(|entry| entry.id == "ts:src/lib.ts:fn#unused"));
     assert!(report.imports.iter().any(|usage| {
-        usage.id == "ts:src/lib.ts:fn#unused" && usage.importers == ["consumer.ts".to_string()]
+        usage.id == "ts:src/lib.ts:fn#unused"
+            && usage.importers == ["__tests__/consumer.ts".to_string()]
     }));
 }
 
@@ -104,6 +108,60 @@ fn unused_public_typescript_counts_svelte_package_consumers() {
     assert!(report.imports.iter().any(|usage| {
         usage.id == "ts:src/lib.ts:fn#unused" && usage.importers == ["Consumer.svelte".to_string()]
     }));
+}
+
+#[test]
+fn baseline_consumer_scan_uses_exports_without_counting_the_audited_package() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock")
+        .as_nanos();
+    let consumer_root = std::env::temp_dir().join(format!(
+        "codeatlas-baseline-consumers-{}-{nonce}",
+        std::process::id()
+    ));
+    let package_root = consumer_root.join("packages/example");
+    fs::create_dir_all(package_root.join("src")).expect("package source directory");
+    fs::create_dir_all(package_root.join("__tests__")).expect("package test directory");
+    fs::create_dir_all(consumer_root.join("sandbox/__tests__")).expect("external test directory");
+    fs::write(
+        package_root.join("package.json"),
+        r#"{
+            "name": "@example/consumer-audit",
+            "exports": { ".": { "source": "./src/index.ts" } }
+        }"#,
+    )
+    .expect("package manifest");
+    fs::write(
+        package_root.join("src/index.ts"),
+        "export function externallyUsed(): void {}\nexport function boundaryOnly(): void {}\n",
+    )
+    .expect("package entrypoint");
+    fs::write(
+        package_root.join("__tests__/consumerImports.test.ts"),
+        "import { boundaryOnly } from '@example/consumer-audit';\nvoid boundaryOnly;\n",
+    )
+    .expect("package boundary test");
+    fs::write(
+        consumer_root.join("sandbox/__tests__/external.test.ts"),
+        "import { externallyUsed } from '@example/consumer-audit';\nvoid externallyUsed;\n",
+    )
+    .expect("external consumer test");
+
+    let scan =
+        commands::diff::create_baseline(&package_root, false, true, Some(&consumer_root), None)
+            .expect("baseline scan");
+
+    assert!(!scan
+        .unused_public
+        .iter()
+        .any(|id| id.ends_with("fn#externallyUsed")));
+    assert!(scan
+        .unused_public
+        .iter()
+        .any(|id| id.ends_with("fn#boundaryOnly")));
+
+    fs::remove_dir_all(consumer_root).expect("remove baseline consumer fixture");
 }
 
 #[test]

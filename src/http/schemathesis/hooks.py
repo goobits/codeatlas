@@ -19,6 +19,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 import schemathesis
+from schemathesis.core.parameters import ParameterLocation
 from schemathesis.openapi.checks import IgnoredAuth
 from schemathesis.specs.openapi._auth_retry import (
     build_retry_transport_kwargs,
@@ -468,6 +469,8 @@ def codeatlas_negative_data_rejection(
         "query",
     }:
         return None
+    if _stateful_body_revalidated_positive(case):
+        return None
     if _stateful_numeric_query_type_round_trip(case):
         return None
     return _schemathesis_negative_data_rejection(context, response, case)
@@ -520,6 +523,29 @@ if _STATIC_HEADERS:
 
 def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
+
+
+def _stateful_body_revalidated_positive(case: Any) -> bool:
+    """Trust the linked body when a state transition repairs negative generation."""
+    metadata = case.meta
+    if metadata is None or _enum_value(getattr(metadata.phase, "name", None)) != "stateful":
+        return False
+    negative_locations = {
+        _enum_value(component_location)
+        for component_location, component in metadata.components.items()
+        if _enum_value(getattr(component, "mode", None)) == "negative"
+    }
+    if negative_locations != {"body"}:
+        return False
+    try:
+        validator_cls = case.operation.schema.adapter.jsonschema_validator_cls
+        return case._validate_component(
+            ParameterLocation.BODY,
+            case.body,
+            validator_cls,
+        )
+    except (AttributeError, TypeError, ValueError):
+        return False
 
 
 def _stateful_numeric_query_type_round_trip(case: Any) -> bool:

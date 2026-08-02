@@ -9,12 +9,17 @@ claiming certainty when the source graph is incomplete.
 
 ```bash
 npx @goobits/codeatlas scan .
+npx @goobits/codeatlas scan packages/example --scope source --all --format json
+npx @goobits/codeatlas lexicon packages/example --format json
 npx @goobits/codeatlas audit .
 npx @goobits/codeatlas audit packages/example --consumer-root .
 npx @goobits/codeatlas ci . --workspace --fail-unused false --baseline public-api.json
 npx @goobits/codeatlas diff public-api.json . --workspace --exact
 npx @goobits/codeatlas dead-code . --format json
 npx @goobits/codeatlas dead-code packages --workspace --format json
+npx @goobits/codeatlas testing inventory . --workspace
+npx @goobits/codeatlas testing impact . --workspace --changed packages/example/src/index.ts
+npx @goobits/codeatlas testing witnesses . --workspace
 npx @goobits/codeatlas context . --target src/main.rs
 npx @goobits/codeatlas architecture compile architecture/root.atlas.yaml --source-root .
 npx @goobits/codeatlas architecture source-check architecture/root.atlas.yaml --source-root . --repository . --check
@@ -39,9 +44,11 @@ a positive integer to allow more parallel build work.
 
 | Command        | Purpose                                                                                |
 | -------------- | -------------------------------------------------------------------------------------- |
-| `scan`         | Show the public surface as a tree, Mermaid, or versioned JSON report                   |
+| `scan`         | Show package API reachability or maintained source as a tree, Mermaid, or versioned JSON report |
+| `lexicon`      | Report deterministic source-name collisions, structural aliases, repeated helpers, and terms |
 | `audit`        | Report public exports with no detected local or explicitly scanned package consumers    |
 | `dead-code`    | Classify source reachability, context-only code, and uncertain boundaries              |
+| `testing`      | Inventory tests, select affected suites, and report public API witnesses               |
 | `context`      | Return a bounded source graph slice for exact files or symbols                         |
 | `architecture` | Compile declarations, query provider approvals, observe bindings, and evaluate conformance |
 | `ci`           | Write a compact public API baseline and fail on configured audit findings              |
@@ -55,16 +62,36 @@ Run `codeatlas <command> --help` for command-specific options.
 
 `audit --consumer-root <path>` and `ci --consumer-root <path>` count static
 JavaScript, TypeScript, and Svelte imports, re-exports, and literal dynamic imports of
-the scanned package from an additional source tree. The scan is opt-in so a
-package-local audit stays bounded; candidate files are filtered by the package
-name before parsing. Namespace, default, and dynamically imported package
-modules are handled conservatively because the exact member used may be
+the scanned package from an external source tree. Maintained test and tooling
+directories are included; the audited package itself, hidden directories,
+dependencies, generated builds, and coverage output are excluded. The scan is
+opt-in so a package-local audit stays bounded, and candidate files are filtered
+by the package name before parsing. Namespace, default, and dynamically imported
+package modules are handled conservatively because the exact member used may be
 runtime-dependent. Public symbols required by another exported TypeScript
 signature are treated as supporting API dependencies instead of duplicate
 unused-public findings.
 
 An explicit command is required. Repository-wide scan settings belong in
 `codeatlas.json`; the former top-level flag interface has been removed.
+
+`scan --scope api` is the default and follows configured entrypoints or
+discovered package exports. `scan --scope source` removes that reachability
+filter while preserving package export annotations, so `export_paths` still
+distinguishes importable API from implementation-only symbols. Add `--all` when
+the report should also include internal and private declarations. Source scans
+honor repository ignore rules and exclude conventional test, dependency, and
+generated-output directories unless the project explicitly disables default
+ignores.
+
+`lexicon` always inspects maintained source with internal and private symbols
+included. Its advisory report flags exact same-name/different-shape concepts,
+different-name/same-shape type candidates, and same-name/same-signature helper
+families. Repeated identifier terms provide a deterministic vocabulary index;
+no fuzzy or probabilistic naming guesses are used. Package exposure is derived
+only from each symbol's `export_paths`, so an exported declaration in an
+implementation-only file is not mislabeled as public API. Use text for a short
+review or JSON for the complete term and public-symbol inventory.
 
 ## Declared Architecture
 
@@ -275,7 +302,11 @@ the same boundary policy.
 				},
 				"unit-tests": {
 					"role": "test",
-					"entrypoints": ["src/**/*.test.ts"]
+					"entrypoints": ["src/**/*.test.ts"],
+					"subjects": [
+						{ "project": "web" },
+						{ "source": "src/brushes/**" }
+					]
 				},
 				"build-tools": {
 					"role": "tooling",
@@ -306,9 +337,13 @@ declared by `wrangler.toml`, `wrangler.json`, or `wrangler.jsonc`. Source entryp
 to common bundler CLIs (`esbuild`, Rollup, and webpack) are production roots,
 as are static `entry`, `entryPoints`, and `input` sources in conventional
 esbuild, Rollup, tsup, Vite, and webpack config modules;
-other package-script source paths become tooling roots, including maintained
-scripts under normally ignored `build` directories. Local scripts referenced by conventional
-`index.html` files become production browser roots; scripts referenced by test
+other package-script source paths and executable shebang modules become tooling
+roots, including maintained scripts under normally ignored `build` directories.
+Static local source files launched with Node child-process APIs are followed;
+paths that depend on a generated runtime working directory remain explicit
+dynamic boundaries rather than false missing-source gates. Local scripts
+referenced by conventional `index.html` files, including imports in inline
+module scripts, become production browser roots; scripts referenced by test
 HTML and `test-harness.html` files become test roots. Conventional `*.test.*`,
 `*.spec.*`, and test-config files become runtime roots in an
 `ecmascript-tests` context.
@@ -349,13 +384,18 @@ Local source commands used by configured HTTP fuzz servers and request adapters
 become test roots; source commands used to generate OpenAPI contracts become
 tooling roots.
 
+Medusa projects automatically root their conventional configuration,
+instrumentation, API route, middleware, subscriber, and scheduled-job modules.
+MikroORM configuration beneath a Medusa source tree is classified as tooling.
+
 Each project may select `js`, `ts`, `svelte`, `py`, and `rs`. Rust projects can
 also configure `rust.all_features` or an explicit `rust.features` list. Cargo
 library targets use public-surface semantics; binaries, examples, benches,
 build scripts, and tests use runtime semantics. Python PEP 621 projects derive
 their public surface from import packages under configured setuptools roots or
-the conventional `src`/root layout. Project scripts and conventional Python
-tests become production and test contexts automatically; an explicit context
+the conventional `src`/root layout. Project scripts, executable Python shebang
+modules, and conventional Python tests become production, tooling, and test
+contexts automatically; an explicit context
 with the same name overrides discovery. Python decorators that may register or
 replace a declaration conservatively retain that symbol and its dependencies
 while recording the dynamic boundary. Rust reachability honors `pub(crate)`,
@@ -434,6 +474,48 @@ noise. The schema-v2 result includes dependencies, dependents, visibility,
 evidence, analysis boundaries, and an explicit truncation status.
 The source context graph remains separate from the declared architecture graph
 because the two graphs have different authority and semantics.
+
+## Testing Intelligence
+
+Testing analysis is read-only: CodeAtlas inventories and selects tests but never
+executes package scripts or arbitrary repository commands.
+
+```bash
+codeatlas testing inventory . --workspace --format json
+codeatlas testing impact . --workspace \
+  --changed packages/brush/src/model.ts \
+  --changed packages/paint/src/canvas.ts
+codeatlas testing witnesses . --workspace --format json
+```
+
+`testing inventory` reports every analysis project, discovered test context and
+root, test-related `package.json` script, recognized runner, conservative no-op
+or allows-empty script, and exact duplicate test command. Runner detection is
+evidence about a script string; it does not imply the command was executed
+successfully.
+
+`testing impact` follows the existing source graph from changed source to test
+contexts. Each selection says whether it came from an observed dependency, a
+declared project or source subject, or a conservative project/workspace
+fallback. New, deleted, manifest, and unsupported paths fall back instead of
+being presented as exact static selections. `selection_complete` is false when
+any fallback was necessary. Changed paths are repository-relative, and
+`--changed` can be repeated.
+
+`testing witnesses` evaluates public symbols reached from production
+`public_surface` contexts. An observed witness identifies the exact test context
+and root that statically reaches a symbol. A declaration remains visibly
+`declared_only` until CodeAtlas observes that path. Missing witnesses become
+`unwitnessed` only at high analysis confidence; incomplete source evidence is
+reported as `unknown`. Test contexts with no observed public-API witness are
+listed separately as detached from the public surface.
+
+Test subjects are optional and valid only on contexts whose role is `test`.
+`{ "project": "package-id" }` covers a named analysis project, including a
+different workspace package. `{ "source": "src/domain/**" }` matches source
+inside the test context's own project. Subjects express black-box intent and do
+not replace observed graph evidence. Inventory, impact, and witness reports use
+the separate versioned `codeatlas.testing/v1` data contract.
 
 ## Public API Baselines
 

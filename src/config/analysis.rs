@@ -45,6 +45,7 @@ pub(crate) struct AnalysisContextConfig {
     pub role: crate::domain::source_graph::ContextRole,
     pub scope: crate::domain::source_graph::ContextScope,
     pub entrypoints: Vec<String>,
+    pub subjects: Vec<TestSubjectConfig>,
 }
 
 impl Default for AnalysisContextConfig {
@@ -53,8 +54,18 @@ impl Default for AnalysisContextConfig {
             role: crate::domain::source_graph::ContextRole::Production,
             scope: crate::domain::source_graph::ContextScope::Runtime,
             entrypoints: Vec::new(),
+            subjects: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TestSubjectConfig {
+    /// The test context intentionally exercises the named analysis project.
+    Project(String),
+    /// The test context intentionally exercises matching source in its own project.
+    Source(String),
 }
 
 #[derive(Debug, Clone)]
@@ -128,6 +139,7 @@ impl ProjectConfig {
                         "CodeAtlas analysis context {name} in {id} needs at least one entrypoint"
                     );
                 }
+                validate_test_subjects(&id, name, context)?;
             }
             let mut resolved_project = ResolvedAnalysisProject {
                 id: crate::domain::source_graph::ProjectId(id),
@@ -166,6 +178,7 @@ impl ProjectConfig {
             self.analysis_projects()?
         };
         let workspace = crate::package::discover_workspace(&self.root)?;
+        let workspace_root = workspace.root.clone();
         let mut resolved = Vec::with_capacity(
             workspace.members.len() + configured.len() + usize::from(workspace.root_name.is_some()),
         );
@@ -187,7 +200,7 @@ impl ProjectConfig {
             }
         }
         for member in workspace.members {
-            let mut project = ResolvedAnalysisProject {
+            let project = ResolvedAnalysisProject {
                 id: crate::domain::source_graph::ProjectId(member.name),
                 root: member.root,
                 report_root: member.report_root,
@@ -200,9 +213,9 @@ impl ProjectConfig {
                 workspace_member: true,
                 excluded_roots: Vec::new(),
             };
-            self.merge_local_analysis_settings(&mut project)?;
             resolved.push(project);
         }
+        self.merge_workspace_local_analysis_settings(&mut resolved, &workspace_root)?;
         let aggregate_config = self
             .config_path
             .clone()
@@ -285,6 +298,7 @@ impl ProjectConfig {
                     role: crate::domain::source_graph::ContextRole::Production,
                     scope: crate::domain::source_graph::ContextScope::Runtime,
                     entrypoints: self.config.entrypoints.clone(),
+                    subjects: Vec::new(),
                 },
             )])
         }
@@ -325,6 +339,72 @@ impl ProjectConfig {
                 )
             })?;
         merge_analysis_settings(project, owned, &config_path)
+    }
+
+    fn merge_workspace_local_analysis_settings(
+        &self,
+        projects: &mut Vec<ResolvedAnalysisProject>,
+        workspace_root: &Path,
+    ) -> Result<()> {
+        let member_roots = projects
+            .iter()
+            .filter(|project| project.workspace_member)
+            .map(|project| project.root.clone())
+            .collect::<Vec<_>>();
+        for member_root in member_roots {
+            if member_root == self.root || !member_root.starts_with(&self.root) {
+                continue;
+            }
+            let config_path = member_root.join("codeatlas.json");
+            if !config_path.is_file() {
+                continue;
+            }
+            let config_path = config_path.canonicalize().with_context(|| {
+                format!(
+                    "Could not resolve analysis project config {}",
+                    config_path.display()
+                )
+            })?;
+            if self.config_path.as_ref() == Some(&config_path) {
+                continue;
+            }
+            let local =
+                ProjectConfig::load(&member_root, Some(&config_path)).with_context(|| {
+                    format!(
+                        "Could not load analysis project config {}",
+                        config_path.display()
+                    )
+                })?;
+            for mut owned in local.analysis_projects()? {
+                if !owned.root.starts_with(&member_root) {
+                    anyhow::bail!(
+                        "Analysis project {} from {} must stay within its owning workspace member {}",
+                        owned.id.0,
+                        config_path.display(),
+                        member_root.display()
+                    );
+                }
+                if let Some(project) = projects
+                    .iter_mut()
+                    .find(|project| project.root == owned.root)
+                {
+                    merge_analysis_settings(project, owned, &config_path)?;
+                    continue;
+                }
+                if let Some(existing) = projects.iter().find(|project| project.id == owned.id) {
+                    anyhow::bail!(
+                        "Analysis project ID {} from {} conflicts with project root {}",
+                        owned.id.0,
+                        config_path.display(),
+                        existing.root.display()
+                    );
+                }
+                owned.report_root =
+                    crate::paths::normalize_relative_path(&owned.root, workspace_root);
+                projects.push(owned);
+            }
+        }
+        Ok(())
     }
 
     fn add_http_contexts(&self, projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
@@ -524,6 +604,7 @@ fn add_inferred_context(
                     role,
                     scope: crate::domain::source_graph::ContextScope::Runtime,
                     entrypoints: Vec::new(),
+                    subjects: Vec::new(),
                 });
         if context.role != role
             || context.scope != crate::domain::source_graph::ContextScope::Runtime
@@ -662,9 +743,59 @@ fn validate_analysis_languages(languages: &[String], project: &str) -> Result<()
     Ok(())
 }
 
+fn validate_test_subjects(
+    project: &str,
+    name: &str,
+    context: &AnalysisContextConfig,
+) -> Result<()> {
+    if context.subjects.is_empty() {
+        return Ok(());
+    }
+    if context.role != crate::domain::source_graph::ContextRole::Test {
+        anyhow::bail!(
+            "Analysis context {name} in {project} can declare subjects only when its role is test"
+        );
+    }
+    let mut unique = BTreeSet::new();
+    for subject in &context.subjects {
+        if !unique.insert(subject) {
+            anyhow::bail!("Duplicate test subject in analysis context {name} for {project}");
+        }
+        match subject {
+            TestSubjectConfig::Project(target) if target.trim().is_empty() => {
+                anyhow::bail!(
+                    "Project test subjects cannot be empty in analysis context {name} for {project}"
+                );
+            }
+            TestSubjectConfig::Source(pattern) if pattern.trim().is_empty() => {
+                anyhow::bail!(
+                    "Source test subjects cannot be empty in analysis context {name} for {project}"
+                );
+            }
+            TestSubjectConfig::Source(pattern) => {
+                let normalized = pattern
+                    .strip_prefix("./")
+                    .unwrap_or(pattern)
+                    .replace('\\', "/");
+                GlobBuilder::new(&normalized).literal_separator(true).build().with_context(
+                    || {
+                        format!(
+                            "Invalid source test subject {pattern:?} in context {name} for {project}"
+                        )
+                    },
+                )?;
+            }
+            TestSubjectConfig::Project(_) => {}
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::AnalysisProjectConfig;
+    use super::{
+        validate_test_subjects, AnalysisContextConfig, AnalysisProjectConfig, TestSubjectConfig,
+    };
     use crate::config::CodeAtlasConfig;
     use crate::domain::source_graph::{ContextRole, ContextScope};
 
@@ -684,7 +815,11 @@ mod tests {
                         },
                         "unit-tests": {
                             "role": "test",
-                            "entrypoints": ["src/**/*.test.ts"]
+                            "entrypoints": ["src/**/*.test.ts"],
+                            "subjects": [
+                                { "project": "web" },
+                                { "source": "src/brushes/**" }
+                            ]
                         }
                     },
                     "assume_reachable": ["src/runtime/plugins/**/*.ts"]
@@ -701,6 +836,13 @@ mod tests {
             ContextScope::PublicSurface
         );
         assert_eq!(project.contexts["unit-tests"].scope, ContextScope::Runtime);
+        assert_eq!(
+            project.contexts["unit-tests"].subjects,
+            [
+                TestSubjectConfig::Project("web".to_string()),
+                TestSubjectConfig::Source("src/brushes/**".to_string())
+            ]
+        );
         assert_eq!(project.assume_reachable, ["src/runtime/plugins/**/*.ts"]);
 
         let round_trip =
@@ -711,5 +853,22 @@ mod tests {
             decoded[0].contexts["application"].role,
             ContextRole::Production
         );
+    }
+
+    #[test]
+    fn test_subjects_are_bounded_to_test_contexts_and_valid_globs() {
+        let production = AnalysisContextConfig {
+            role: ContextRole::Production,
+            subjects: vec![TestSubjectConfig::Project("web".to_string())],
+            ..AnalysisContextConfig::default()
+        };
+        assert!(validate_test_subjects("web", "application", &production).is_err());
+
+        let invalid_source = AnalysisContextConfig {
+            role: ContextRole::Test,
+            subjects: vec![TestSubjectConfig::Source("src/[".to_string())],
+            ..AnalysisContextConfig::default()
+        };
+        assert!(validate_test_subjects("web", "unit-tests", &invalid_source).is_err());
     }
 }

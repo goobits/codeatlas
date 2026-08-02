@@ -4,8 +4,10 @@ pub(crate) mod dead_code;
 pub(crate) mod diff;
 pub(crate) mod docs;
 pub(crate) mod http;
+pub(crate) mod lexicon;
 mod output;
 pub(crate) mod postgres;
+pub(crate) mod testing;
 
 use crate::config::ProjectConfig;
 use crate::domain::{ScanConfig, ScanReport};
@@ -24,25 +26,39 @@ pub(crate) enum OutputFormat {
     Json,
 }
 
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub(crate) enum ScanScope {
+    /// Follow configured entrypoints and discovered package exports
+    #[default]
+    Api,
+    /// Inspect every maintained source file under the project root
+    Source,
+}
+
 pub(crate) fn run_scan(
     path: &Path,
     format: OutputFormat,
     include_private: bool,
+    scope: ScanScope,
     out: Option<PathBuf>,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(scan(path, format, include_private, out, config_path))
+    exit_code(scan(path, format, include_private, scope, out, config_path))
 }
 
 fn scan(
     path: &Path,
     format: OutputFormat,
     include_private: bool,
+    scope: ScanScope,
     out: Option<PathBuf>,
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, include_private, None)?;
+    let mut config = build_scan_config(&project, include_private, None)?;
+    if scope == ScanScope::Source {
+        config.entrypoints = None;
+    }
     let mut report = scan_project(&project, &config)?;
 
     analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
@@ -71,8 +87,8 @@ fn audit(path: &Path, consumer_root: Option<&Path>, config_path: Option<&Path>) 
         analysis::annotate_package_consumers(
             &mut report,
             &mut importers,
+            &project.root,
             consumer_root,
-            project.config.no_default_ignore,
         );
     }
     analysis::annotate_unused_public(&mut report, &importers, project.config.no_default_ignore);

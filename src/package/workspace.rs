@@ -32,25 +32,17 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
     if !scope.is_dir() {
         anyhow::bail!("Workspace scope is not a directory: {}", scope.display());
     }
-    let manifest_path = scope
-        .ancestors()
-        .map(|ancestor| ancestor.join("pnpm-workspace.yaml"))
-        .find(|candidate| candidate.is_file())
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Could not find pnpm-workspace.yaml at or above {}",
-                scope.display()
-            )
-        })?;
+    let (manifest_path, manifest) = nearest_workspace_manifest(&scope)?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Could not find a pnpm workspace with package patterns at or above {}",
+            scope.display()
+        )
+    })?;
     let root = manifest_path
         .parent()
         .expect("workspace manifest has a parent")
         .canonicalize()
         .with_context(|| format!("Could not resolve {}", manifest_path.display()))?;
-    let source = std::fs::read_to_string(&manifest_path)
-        .with_context(|| format!("Could not read {}", manifest_path.display()))?;
-    let manifest: PnpmWorkspaceManifest = serde_yaml::from_str(&source)
-        .with_context(|| format!("Invalid pnpm workspace at {}", manifest_path.display()))?;
     let patterns = WorkspacePatterns::compile(&manifest.packages)?;
     let root_manifest = root.join("package.json");
     let root_name = if root_manifest.is_file() {
@@ -60,63 +52,11 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
     };
     let workspace_root_selected = root_name.is_some() && patterns.matches(".");
 
-    let mut builder = ignore::WalkBuilder::new(&root);
-    builder
-        .hidden(false)
-        .git_ignore(false)
-        .git_global(false)
-        .git_exclude(false)
-        .require_git(false)
-        .filter_entry(|entry| {
-            entry.depth() == 0
-                || !entry.file_type().is_some_and(|kind| kind.is_dir())
-                || !crate::source_policy::is_ignored_dir(
-                    &entry.file_name().to_string_lossy(),
-                    false,
-                )
-        });
-
-    let mut members = Vec::new();
-    let mut names = BTreeMap::<String, PathBuf>::new();
-    for entry in builder.build() {
-        let entry = entry.with_context(|| {
-            format!(
-                "Could not inspect pnpm workspace rooted at {}",
-                root.display()
-            )
-        })?;
-        if entry.file_name() != "package.json"
-            || !entry.file_type().is_some_and(|kind| kind.is_file())
-        {
-            continue;
-        }
-        let Some(member_root) = entry.path().parent() else {
-            continue;
-        };
-        if !member_root.starts_with(&scope) {
-            continue;
-        }
-        let report_root = crate::paths::normalize_relative_path(member_root, &root);
-        if report_root.is_empty() || !patterns.matches(&report_root) {
-            continue;
-        }
-        let name = read_package_name(entry.path())?.unwrap_or_else(|| report_root.clone());
-        if let Some(previous) = names.insert(name.clone(), member_root.to_path_buf()) {
-            anyhow::bail!(
-                "Duplicate workspace package name {name:?}: {} and {}",
-                previous.display(),
-                member_root.display()
-            );
-        }
-        members.push(PackageWorkspaceMember {
-            name,
-            root: member_root.to_path_buf(),
-            report_root,
-        });
-    }
+    let (mut members, mut names) =
+        retry_once_on_not_found(|| discover_direct_members(&root, &scope, &patterns))?;
     let mut nested_roots = Vec::new();
     for member in &members {
-        if nested_workspace_owns_descendants(&member.root)? {
+        if owns_descendants(&member.root)? {
             nested_roots.push(member.root.clone());
         }
     }
@@ -163,19 +103,130 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
     })
 }
 
-fn nested_workspace_owns_descendants(root: &Path) -> Result<bool> {
+fn discover_direct_members(
+    root: &Path,
+    scope: &Path,
+    patterns: &WorkspacePatterns,
+) -> Result<(Vec<PackageWorkspaceMember>, BTreeMap<String, PathBuf>)> {
+    let mut builder = ignore::WalkBuilder::new(root);
+    builder
+        .hidden(false)
+        .git_ignore(false)
+        .git_global(false)
+        .git_exclude(false)
+        .require_git(false)
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || !entry.file_type().is_some_and(|kind| kind.is_dir())
+                || !crate::source_policy::is_ignored_dir(
+                    &entry.file_name().to_string_lossy(),
+                    false,
+                )
+        });
+
+    let mut members = Vec::new();
+    let mut names = BTreeMap::<String, PathBuf>::new();
+    for entry in builder.build() {
+        let entry = entry.with_context(|| {
+            format!(
+                "Could not inspect pnpm workspace rooted at {}",
+                root.display()
+            )
+        })?;
+        if entry.file_name() != "package.json"
+            || !entry.file_type().is_some_and(|kind| kind.is_file())
+        {
+            continue;
+        }
+        let Some(member_root) = entry.path().parent() else {
+            continue;
+        };
+        if !member_root.starts_with(scope) {
+            continue;
+        }
+        let report_root = crate::paths::normalize_relative_path(member_root, root);
+        if report_root.is_empty() || !patterns.matches(&report_root) {
+            continue;
+        }
+        let name = read_package_name(entry.path())?.unwrap_or_else(|| report_root.clone());
+        if let Some(previous) = names.insert(name.clone(), member_root.to_path_buf()) {
+            anyhow::bail!(
+                "Duplicate workspace package name {name:?}: {} and {}",
+                previous.display(),
+                member_root.display()
+            );
+        }
+        members.push(PackageWorkspaceMember {
+            name,
+            root: member_root.to_path_buf(),
+            report_root,
+        });
+    }
+    Ok((members, names))
+}
+
+fn retry_once_on_not_found<T>(mut operation: impl FnMut() -> Result<T>) -> Result<T> {
+    match operation() {
+        Err(error) if is_not_found(&error) => operation(),
+        result => result,
+    }
+}
+
+fn is_not_found(error: &anyhow::Error) -> bool {
+    error.chain().any(|source| {
+        source
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+            || source
+                .downcast_ref::<ignore::Error>()
+                .and_then(ignore::Error::io_error)
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    })
+}
+
+pub(crate) fn nearest_root(scope: &Path) -> Result<Option<PathBuf>> {
+    let Some((manifest_path, _)) = nearest_workspace_manifest(scope)? else {
+        return Ok(None);
+    };
+    let root = manifest_path
+        .parent()
+        .expect("workspace manifest has a parent")
+        .canonicalize()
+        .with_context(|| format!("Could not resolve {}", manifest_path.display()))?;
+    Ok(Some(root))
+}
+
+pub(crate) fn owns_descendants(root: &Path) -> Result<bool> {
     let manifest_path = root.join("pnpm-workspace.yaml");
     if !manifest_path.is_file() {
         return Ok(false);
     }
-    let source = std::fs::read_to_string(&manifest_path)
-        .with_context(|| format!("Could not read {}", manifest_path.display()))?;
-    let manifest: PnpmWorkspaceManifest = serde_yaml::from_str(&source)
-        .with_context(|| format!("Invalid pnpm workspace at {}", manifest_path.display()))?;
+    let manifest = read_workspace_manifest(&manifest_path)?;
     Ok(manifest
         .packages
         .iter()
         .any(|pattern| workspace_pattern_owns_descendants(pattern)))
+}
+
+fn nearest_workspace_manifest(scope: &Path) -> Result<Option<(PathBuf, PnpmWorkspaceManifest)>> {
+    for ancestor in scope.ancestors() {
+        let manifest_path = ancestor.join("pnpm-workspace.yaml");
+        if !manifest_path.is_file() {
+            continue;
+        }
+        let manifest = read_workspace_manifest(&manifest_path)?;
+        if !manifest.packages.is_empty() {
+            return Ok(Some((manifest_path, manifest)));
+        }
+    }
+    Ok(None)
+}
+
+fn read_workspace_manifest(path: &Path) -> Result<PnpmWorkspaceManifest> {
+    let source = std::fs::read_to_string(path)
+        .with_context(|| format!("Could not read {}", path.display()))?;
+    serde_yaml::from_str(&source)
+        .with_context(|| format!("Invalid pnpm workspace at {}", path.display()))
 }
 
 fn workspace_pattern_owns_descendants(pattern: &str) -> bool {
@@ -244,7 +295,12 @@ impl WorkspacePatterns {
 
 #[cfg(test)]
 mod tests {
-    use super::{workspace_pattern_owns_descendants, PnpmWorkspaceManifest};
+    use super::{
+        nearest_root, retry_once_on_not_found, workspace_pattern_owns_descendants,
+        PnpmWorkspaceManifest,
+    };
+    use anyhow::Context;
+    use std::path::Path;
 
     #[test]
     fn only_positive_nested_workspace_patterns_own_descendants() {
@@ -253,6 +309,35 @@ mod tests {
         assert!(!workspace_pattern_owns_descendants("!tools/ignored"));
         assert!(!workspace_pattern_owns_descendants("."));
         assert!(!workspace_pattern_owns_descendants("../shared/*"));
+    }
+
+    #[test]
+    fn settings_only_manifests_defer_to_the_owning_workspace() {
+        let workspace_root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dead-code/workspace");
+        let package_source = workspace_root.join("packages/a/src");
+
+        assert_eq!(
+            nearest_root(&package_source).expect("nearest workspace"),
+            Some(workspace_root)
+        );
+    }
+
+    #[test]
+    fn workspace_discovery_retries_one_transient_missing_path() {
+        let mut attempts = 0;
+        let value = retry_once_on_not_found(|| {
+            attempts += 1;
+            if attempts == 1 {
+                std::fs::read_to_string("codeatlas-transient-missing-workspace-path")
+                    .context("transient workspace traversal")?;
+            }
+            Ok("complete")
+        })
+        .expect("retry transient workspace traversal");
+
+        assert_eq!(value, "complete");
+        assert_eq!(attempts, 2);
     }
 
     #[test]

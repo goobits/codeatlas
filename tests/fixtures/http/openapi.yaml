@@ -77,6 +77,12 @@ paths:
               operationId: getWidget
               parameters:
                 id: $response.body#/id
+            updateWidgetAgain:
+              operationId: updateWidget
+              parameters:
+                id: $response.body#/id
+              requestBody:
+                name: $response.body#/name
         "400":
           description: Invalid widget request
 components:

@@ -99,37 +99,28 @@ fn scan_language_with_definition(
         .as_ref()
         .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
 
-    // Collect all file paths first (serial walk, parallel parse)
+    let patterns = config.entrypoints.as_deref().unwrap_or_default();
+    let discovery =
+        crate::source_discovery::discover(crate::source_discovery::SourceDiscoveryRequest {
+            root: root_dir,
+            patterns,
+            excluded_roots: &[],
+            no_default_ignore: config.no_default_ignore,
+        });
     let mut files_to_scan: Vec<PathBuf> = Vec::new();
-
-    let walker = walkdir::WalkDir::new(root_dir).into_iter();
-
-    for entry in walker.filter_entry(|e| {
-        // Don't filter the root directory
-        if e.depth() == 0 {
-            return true;
-        }
-        let name = e.file_name().to_string_lossy();
-        !lang.should_ignore_dir(&name)
-    }) {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        let path = entry.path();
-        if path.is_dir() || !lang.is_language_file(path) {
+    for path in discovery.files {
+        if !lang.is_language_file(&path) || has_language_ignored_parent(&path, root_dir, lang) {
             continue;
         }
 
         if let Some(ref entrypoints) = entrypoints {
-            let relative = crate::paths::normalize_relative_path(path, root_dir);
+            let relative = crate::paths::normalize_relative_path(&path, root_dir);
             if !entrypoints.contains(&relative) {
                 continue;
             }
         }
 
-        files_to_scan.push(path.to_path_buf());
+        files_to_scan.push(path);
     }
 
     let language = lang.language();
@@ -180,6 +171,14 @@ fn scan_language_with_definition(
 
     // Combine results
     let mut report = ScanReport::default();
+    report.stats.files_skipped = discovery.warnings.len();
+    report
+        .skipped_files
+        .extend(discovery.warnings.into_iter().map(|reason| SkippedFile {
+            path: root_dir.to_string_lossy().to_string(),
+            reason,
+            language,
+        }));
 
     for result in results {
         if let Some(skipped) = result.skipped {
@@ -193,4 +192,19 @@ fn scan_language_with_definition(
     }
 
     report
+}
+
+fn has_language_ignored_parent(
+    path: &Path,
+    root_dir: &Path,
+    lang: &dyn LanguageDefinition,
+) -> bool {
+    path.strip_prefix(root_dir).is_ok_and(|relative| {
+        relative.components().any(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .is_some_and(|name| lang.should_ignore_dir(name))
+        })
+    })
 }

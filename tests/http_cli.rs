@@ -750,8 +750,8 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         .expect("stateful summary should be written"),
     )
     .expect("stateful summary should be JSON");
-    assert_eq!(stateful_summary["stateful"]["linksSelected"], 1);
-    assert_eq!(stateful_summary["stateful"]["linksCovered"], 1);
+    assert_eq!(stateful_summary["stateful"]["linksSelected"], 2);
+    assert_eq!(stateful_summary["stateful"]["linksCovered"], 2);
     assert!(
         TcpListener::bind(("127.0.0.1", port)).is_ok(),
         "managed stateful server should release its port"

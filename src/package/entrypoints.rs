@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -63,6 +63,21 @@ pub(crate) fn discover_tooling_entrypoints(root_dir: &Path) -> Result<Vec<String
     Ok(entrypoints)
 }
 
+pub(crate) fn read_scripts(root_dir: &Path) -> Result<BTreeMap<String, String>> {
+    let manifest = read_manifest(root_dir)?;
+    Ok(manifest
+        .get("scripts")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|scripts| scripts.iter())
+        .filter_map(|(name, command)| {
+            command
+                .as_str()
+                .map(|command| (name.clone(), command.to_string()))
+        })
+        .collect())
+}
+
 fn discover_script_entrypoints(
     root_dir: &Path,
     include: impl Fn(&str) -> bool,
@@ -99,15 +114,14 @@ fn discover_workspace_script_entrypoints(
     root_dir: &Path,
     include: impl Fn(&str) -> bool,
 ) -> Result<Vec<String>> {
-    let Some(workspace_root) = root_dir
-        .ancestors()
-        .skip(1)
-        .find(|ancestor| ancestor.join("pnpm-workspace.yaml").is_file())
-    else {
+    let Some(parent) = root_dir.parent() else {
+        return Ok(Vec::new());
+    };
+    let Some(workspace_root) = crate::package::nearest_workspace_root(parent)? else {
         return Ok(Vec::new());
     };
     let mut entrypoints = Vec::new();
-    for workspace_path in discover_script_entrypoints(workspace_root, include)? {
+    for workspace_path in discover_script_entrypoints(&workspace_root, include)? {
         let absolute = workspace_root.join(&workspace_path);
         if !absolute.is_file() {
             continue;
@@ -124,7 +138,7 @@ fn discover_descendant_script_entrypoints(
     root_dir: &Path,
     include: impl Fn(&str) -> bool,
 ) -> Result<Vec<String>> {
-    if !root_dir.join("pnpm-workspace.yaml").is_file() {
+    if !crate::package::workspace_owns_descendants(root_dir)? {
         return Ok(Vec::new());
     }
     let canonical_root = root_dir
