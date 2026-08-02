@@ -194,7 +194,11 @@ fn is_declaration_only(module: &Module) -> bool {
                 ..
             })) => declaration,
             ModuleItem::ModuleDecl(ModuleDecl::Import(import)) if import.type_only => continue,
-            ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export)) if export.type_only => continue,
+            ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export))
+                if export.type_only || (export.src.is_none() && export.specifiers.is_empty()) =>
+            {
+                continue;
+            }
             ModuleItem::Stmt(Stmt::Empty(_)) => continue,
             _ => return false,
         };
