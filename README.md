@@ -248,6 +248,12 @@ Dead-code analysis uses named contexts whose roles determine whether reachable
 code is used by production, tests, or tooling. Project names and context names
 are arbitrary.
 
+Direct member-to-member source imports remain hard package-export gates.
+Imports in either direction across the private workspace root remain visible
+as non-gating repository-tooling advisories because the root is not an
+independently consumable package contract. Architecture source conformance uses
+the same boundary policy.
+
 ```json
 {
 	"projects": [

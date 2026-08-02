@@ -274,36 +274,43 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         let Some(project) = project_for_node(graph, &edge.from) else {
             continue;
         };
-        let (kind, value, confidence) = match (&edge.kind, &edge.to) {
+        let (kind, value, confidence, workspace_root_boundary) = match (&edge.kind, &edge.to) {
             (SourceEdgeKind::WorkspaceSourceBypass, EdgeTarget::Node(target)) => (
                 DeadCodeFindingKind::WorkspaceSourceBypass,
                 &target.0,
                 FindingConfidence::High,
+                is_workspace_root_project(graph, project)
+                    || project_for_node(graph, target)
+                        .is_some_and(|target| is_workspace_root_project(graph, target)),
             ),
             (_, EdgeTarget::UnexportedWorkspace(value)) => (
                 DeadCodeFindingKind::UnexportedWorkspaceImport,
                 value,
                 FindingConfidence::High,
+                false,
             ),
             (_, EdgeTarget::UnresolvedInternal(value)) => (
                 DeadCodeFindingKind::UnresolvedInternalEdge,
                 value,
                 unresolved_internal_confidence(graph, project, Some(&edge.from)),
+                false,
             ),
             (_, EdgeTarget::DynamicUnknown(value)) => (
                 DeadCodeFindingKind::DynamicBoundary,
                 value,
                 project_confidence(graph, project),
+                false,
             ),
             (_, EdgeTarget::Unsupported(value)) => (
                 DeadCodeFindingKind::DynamicBoundary,
                 value,
                 project_confidence(graph, project),
+                false,
             ),
             _ => continue,
         };
         represented_boundaries.insert((project.clone(), edge.from.clone(), kind));
-        report.findings.push(finding(
+        let mut boundary_finding = finding(
             kind,
             FindingDetails {
                 project: project.0.clone(),
@@ -324,6 +331,9 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     DeadCodeFindingKind::UnexportedWorkspaceImport => {
                         format!("Workspace import {value:?} is not declared by the target package exports.")
                     }
+                    DeadCodeFindingKind::WorkspaceSourceBypass if workspace_root_boundary => {
+                        format!("Workspace-root source import crosses a repository tooling boundary and resolves to {value}.")
+                    }
                     DeadCodeFindingKind::WorkspaceSourceBypass => {
                         format!("Workspace source import bypasses the target package exports and resolves to {value}.")
                     }
@@ -334,7 +344,11 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 },
                 identity_detail: Some(value.clone()),
             },
-        ));
+        );
+        if workspace_root_boundary {
+            boundary_finding.gates = false;
+        }
+        report.findings.push(boundary_finding);
     }
 
     for boundary in &graph.boundaries {
@@ -553,6 +567,16 @@ fn project_for_node<'a>(
     node: &NodeId,
 ) -> Option<&'a crate::domain::source_graph::ProjectId> {
     graph.nodes.get(node).map(SourceNode::project)
+}
+
+fn is_workspace_root_project(
+    graph: &SourceGraph,
+    project: &crate::domain::source_graph::ProjectId,
+) -> bool {
+    graph
+        .projects
+        .get(project)
+        .is_some_and(|project| project.root == ".")
 }
 
 fn file_language(graph: &SourceGraph, node: &NodeId) -> Option<SourceLanguage> {
