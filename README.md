@@ -343,8 +343,11 @@ HTML and `test-harness.html` files become test roots. Conventional `*.test.*`,
 `ecmascript-tests` context.
 Configured setup, teardown, and Svelte/Vite/Vitest alias replacement modules
 are followed from those configs, including static `path.resolve(...)` values,
-`alias`/`aliases` objects and arrays, and named replacement constants. Strings passed to
-unknown package-resolution helpers are not guessed to be source paths. Ambient
+`alias`/`aliases` objects and arrays, resolver `map` pairs, and named replacement
+constants. Alias targets must resolve relative to their owning project or name
+an exact workspace path; they are never guessed from a same-named sibling
+suffix. Strings passed to unknown package-resolution helpers are not guessed to
+be source paths. Ambient
 `.d.ts` and declaration-only TypeScript
 modules are classified as tooling declarations rather than runtime dead code.
 Files such as `__tests__/support.ts` are scanned and followed when imported,

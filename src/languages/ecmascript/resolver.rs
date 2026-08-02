@@ -560,9 +560,6 @@ impl ModuleResolver {
         if let Some(resolved) = self.resolve_workspace_absolute(&workspace_path) {
             return self.source_resolution(module, resolved);
         }
-        if let Some(resolved) = self.resolve_unique_workspace_suffix(source) {
-            return self.source_resolution(module, resolved);
-        }
         if self.is_unscanned_configured_entrypoint(module, source) {
             return Resolution::Unscanned(path.to_string());
         }
@@ -575,7 +572,7 @@ impl ModuleResolver {
         specifier: &str,
         path: &str,
     ) -> Resolution {
-        let configured = self.resolve_configured_entrypoint(module, path);
+        let configured = self.resolve_configured_alias_target(module, path);
         let exported = self.resolve_workspace_package(module, specifier);
         if matches!(
             (configured.resolved(), exported.as_ref().and_then(Resolution::resolved)),
@@ -592,6 +589,35 @@ impl ModuleResolver {
         }
     }
 
+    fn resolve_configured_alias_target(&self, module: &Module, path: &str) -> Resolution {
+        let source = source_path_specifier(path);
+        if is_relative_specifier(source) {
+            let resolution = self.resolve(module, source);
+            if !matches!(resolution, Resolution::UnresolvedInternal(_)) {
+                return resolution;
+            }
+        } else if !source.starts_with('/') {
+            let resolution = self.resolve(module, source);
+            if matches!(
+                resolution,
+                Resolution::Resolved(_) | Resolution::WorkspaceSource(_)
+            ) {
+                return resolution;
+            }
+        }
+        if let Some(resolved) = self.resolve_project_entrypoint(&module.project, source) {
+            return self.source_resolution(module, resolved);
+        }
+        let workspace_path = format!("/{}", source.trim_start_matches('/'));
+        if let Some(resolved) = self.resolve_workspace_absolute(&workspace_path) {
+            return self.source_resolution(module, resolved);
+        }
+        if self.is_unscanned_configured_entrypoint(module, source) {
+            return Resolution::Unscanned(path.to_string());
+        }
+        Resolution::UnresolvedInternal(path.to_string())
+    }
+
     fn is_unscanned_configured_entrypoint(&self, module: &Module, source: &str) -> bool {
         let Some(project) = self.projects.get(&module.project) else {
             return false;
@@ -605,29 +631,6 @@ impl ModuleResolver {
         module_candidates(&raw)
             .into_iter()
             .any(|candidate| candidate.is_file())
-    }
-
-    fn resolve_unique_workspace_suffix(&self, specifier: &str) -> Option<ModuleKey> {
-        let suffixes = module_candidates(Path::new(
-            source_path_specifier(specifier).trim_start_matches("./"),
-        ))
-        .into_iter()
-        .map(|candidate| crate::paths::normalize_path(&candidate))
-        .filter(|suffix| !suffix.is_empty() && !suffix.starts_with("../"))
-        .collect::<BTreeSet<_>>();
-        let matches = self
-            .modules
-            .iter()
-            .filter(|(_, path)| {
-                suffixes
-                    .iter()
-                    .any(|suffix| path == suffix || path.ends_with(&format!("/{suffix}")))
-            })
-            .cloned()
-            .collect::<BTreeSet<_>>();
-        (matches.len() == 1)
-            .then(|| matches.into_iter().next())
-            .flatten()
     }
 
     fn resolve_pattern(&self, module: &Module, prefix: &str, suffix: &str) -> Vec<Resolution> {
