@@ -9,6 +9,21 @@
         "root-runtime": {
           "role": "production",
           "entrypoints": ["shared/browserRuntime.ts"]
+        },
+        "member-runtime": {
+          "role": "production",
+          "entrypoints": ["packages/a/src/index.ts"]
+        }
+      }
+    },
+    {
+      "id": "@fixture/docs",
+      "root": "sandbox/docs",
+      "languages": ["ts"],
+      "contexts": {
+        "docs-runtime": {
+          "role": "production",
+          "entrypoints": ["index.ts"]
         }
       }
     }

@@ -66,5 +66,5 @@ fn analyze(
     let project = load_project(options.repository_root, options.config_path)?;
     let projects = project.workspace_source_projects()?;
     let graph = languages::reachability::build_source_graph(&projects)?;
-    Ok(conform_source_dependencies(compilation, &graph))
+    conform_source_dependencies(compilation, &graph)
 }

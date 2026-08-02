@@ -54,7 +54,7 @@ pub(super) fn inventory(
             let path = entry.path();
             if !entry.file_type().is_some_and(|kind| kind.is_file())
                 || !is_source_file(path)
-                || is_test_source(path)
+                || is_test_source(path, &source_root)
             {
                 continue;
             }
@@ -132,30 +132,13 @@ fn is_nested_project_root(path: &Path) -> bool {
         .any(|manifest| path.join(manifest).is_file())
 }
 
-fn is_test_source(path: &Path) -> bool {
+fn is_test_source(path: &Path, source_root: &Path) -> bool {
     if sveltekit::is_route(path) {
         return false;
     }
-    let test_directory = path.components().any(|component| {
-        component.as_os_str().to_str().is_some_and(|component| {
-            matches!(
-                component.to_ascii_lowercase().as_str(),
-                "test" | "tests" | "__tests__" | "integration-tests" | "fixtures"
-            )
-        })
-    });
-    if test_directory {
-        return true;
-    }
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| {
-            let name = name.to_ascii_lowercase();
-            name.contains(".test.")
-                || name.contains(".spec.")
-                || name.ends_with("_test.py")
-                || name.ends_with("_test.rs")
-        })
+    crate::source_policy::is_conventional_test_source(
+        path.strip_prefix(source_root).unwrap_or(path),
+    )
 }
 
 fn detect_file(

@@ -49,7 +49,10 @@ pub(super) fn collect(
         &mut diagnostics,
     );
 
-    if contract.bootstrap_sources.is_empty() && contract.migration_sources.is_empty() {
+    if contract.bootstrap_sources.is_empty()
+        && contract.migration_sources.is_empty()
+        && contract.depends_on.is_empty()
+    {
         diagnostics.push(PostgresFinding::new(
             if contract.source_complete {
                 PostgresFindingSeverity::Error
@@ -59,7 +62,7 @@ pub(super) fn collect(
             "schema-source-missing",
             &contract.id,
             None,
-            "No PostgreSQL bootstrap or migration sources are configured or discoverable"
+            "No PostgreSQL bootstrap or migration sources are configured or inherited from a dependency"
                 .to_string(),
             contract.source_complete,
             None,
@@ -335,25 +338,64 @@ fn sql_source_paths(
         );
     }
 
-    let discovery = source_discovery::discover(SourceDiscoveryRequest {
-        root: &resolved,
-        patterns: &[],
-        excluded_roots: &[],
-        no_default_ignore: project.config.no_default_ignore,
-    });
-    for warning in discovery.warnings {
-        diagnostics.push(PostgresFinding::new(
-            PostgresFindingSeverity::Warning,
-            &format!("{}-discovery-warning", kind.label()),
-            contract_id,
-            Some(paths::normalize_relative_path(&resolved, &project.root)),
-            warning,
-            false,
-            None,
-        ));
-    }
-    Ok(discovery
-        .files
+    let mut files = if source.recursive {
+        let discovery = source_discovery::discover(SourceDiscoveryRequest {
+            root: &resolved,
+            patterns: &[],
+            excluded_roots: &[],
+            no_default_ignore: project.config.no_default_ignore,
+        });
+        for warning in discovery.warnings {
+            diagnostics.push(PostgresFinding::new(
+                PostgresFindingSeverity::Warning,
+                &format!("{}-discovery-warning", kind.label()),
+                contract_id,
+                Some(paths::normalize_relative_path(&resolved, &project.root)),
+                warning,
+                false,
+                None,
+            ));
+        }
+        discovery.files
+    } else {
+        let entries = std::fs::read_dir(&resolved).with_context(|| {
+            format!(
+                "Could not list PostgreSQL {} source {}",
+                kind.label(),
+                unresolved.display()
+            )
+        })?;
+        let mut files = Vec::new();
+        for entry in entries {
+            match entry {
+                Ok(entry) => match entry.file_type() {
+                    Ok(kind) if kind.is_file() => files.push(entry.path()),
+                    Ok(_) => {}
+                    Err(error) => diagnostics.push(PostgresFinding::new(
+                        PostgresFindingSeverity::Warning,
+                        &format!("{}-discovery-warning", kind.label()),
+                        contract_id,
+                        Some(paths::normalize_relative_path(&entry.path(), &project.root)),
+                        error.to_string(),
+                        false,
+                        None,
+                    )),
+                },
+                Err(error) => diagnostics.push(PostgresFinding::new(
+                    PostgresFindingSeverity::Warning,
+                    &format!("{}-discovery-warning", kind.label()),
+                    contract_id,
+                    Some(paths::normalize_relative_path(&resolved, &project.root)),
+                    error.to_string(),
+                    false,
+                    None,
+                )),
+            }
+        }
+        files
+    };
+    files.sort();
+    Ok(files
         .into_iter()
         .filter(|path| match kind {
             SqlSourceKind::Bootstrap => {

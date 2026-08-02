@@ -1,7 +1,9 @@
 use super::compiler::CompileResult;
 use super::diagnostic::Severity;
+use crate::analysis::reachability::Reachability;
 use crate::domain::source_graph::{
-    EdgeTarget, NodeId, ProjectId, SourceEdgeKind, SourceEvidence, SourceGraph, SourceNode,
+    ContextRole, EdgeTarget, NodeId, ProjectId, SourceEdgeKind, SourceEvidence, SourceGraph,
+    SourceNode,
 };
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -54,7 +56,7 @@ pub(crate) struct SourceConformanceFinding {
 pub(crate) fn conform_source_dependencies(
     compilation: &CompileResult,
     source_graph: &SourceGraph,
-) -> SourceConformanceReport {
+) -> anyhow::Result<SourceConformanceReport> {
     analyze(
         &compilation.report.graph,
         compilation.report.graph_digest.as_str(),
@@ -66,8 +68,18 @@ fn analyze(
     architecture: &super::graph::CompiledGraph,
     architecture_graph_digest: &str,
     source_graph: &SourceGraph,
-) -> SourceConformanceReport {
-    let dependencies = workspace_dependencies(source_graph);
+) -> anyhow::Result<SourceConformanceReport> {
+    let reachability = Reachability::analyze(source_graph).map_err(|diagnostics| {
+        anyhow::anyhow!(
+            "Invalid source graph: {}",
+            diagnostics
+                .into_iter()
+                .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    })?;
+    let dependencies = workspace_dependencies(source_graph, &reachability);
     let package_bindings = npm_package_bindings(architecture);
     let mut findings = intrinsic_findings(source_graph);
     let mut evaluated_constraints = 0;
@@ -164,7 +176,7 @@ fn analyze(
             .then_with(|| left.evidence.cmp(&right.evidence))
     });
     findings.dedup();
-    SourceConformanceReport {
+    Ok(SourceConformanceReport {
         schema_version: SOURCE_CONFORMANCE_SCHEMA_VERSION,
         tool_version: env!("CARGO_PKG_VERSION").to_string(),
         architecture_graph_digest: architecture_graph_digest.to_string(),
@@ -173,11 +185,12 @@ fn analyze(
         evaluated_constraints,
         skipped_constraints,
         findings,
-    }
+    })
 }
 
 fn workspace_dependencies(
     graph: &SourceGraph,
+    reachability: &Reachability,
 ) -> BTreeMap<String, BTreeMap<String, Vec<SourceEvidence>>> {
     let mut dependencies = BTreeMap::<String, BTreeMap<String, Vec<SourceEvidence>>>::new();
     for edge in &graph.edges {
@@ -189,6 +202,12 @@ fn workspace_dependencies(
                 | SourceEdgeKind::Require
                 | SourceEdgeKind::WorkspaceSourceBypass
         ) {
+            continue;
+        }
+        if !reachability
+            .roles(&edge.from)
+            .contains(&ContextRole::Production)
+        {
             continue;
         }
         let EdgeTarget::Node(target) = &edge.to else {
@@ -343,8 +362,8 @@ mod tests {
     use super::*;
     use crate::architecture::graph::{CompileMode, CompiledGraph, GraphDeclaration};
     use crate::domain::source_graph::{
-        AnalysisCompleteness, SourceFile, SourceLanguage, SourceProject,
-        SOURCE_GRAPH_SCHEMA_VERSION,
+        AnalysisCompleteness, ContextId, ContextScope, SourceContext, SourceFile, SourceLanguage,
+        SourceProject, SOURCE_GRAPH_SCHEMA_VERSION,
     };
     use serde_json::json;
 
@@ -367,12 +386,22 @@ mod tests {
                 .add_node(
                     file.clone(),
                     SourceNode::File(SourceFile {
-                        project,
+                        project: project.clone(),
                         path: "src/index.ts".to_string(),
                         language: SourceLanguage::TypeScript,
                     }),
                 )
                 .expect("file");
+            source_graph
+                .add_context(SourceContext {
+                    id: ContextId::new(&project, "runtime"),
+                    project,
+                    name: "runtime".to_string(),
+                    role: ContextRole::Production,
+                    scope: ContextScope::Runtime,
+                    roots: BTreeSet::from([file.clone()]),
+                })
+                .expect("context");
             files.insert(name, file);
         }
         assert_eq!(source_graph.schema_version, SOURCE_GRAPH_SCHEMA_VERSION);
@@ -453,7 +482,7 @@ mod tests {
             constraints,
         };
 
-        let report = analyze(&architecture, "sha256:test", &source_graph);
+        let report = analyze(&architecture, "sha256:test", &source_graph).expect("conformance");
 
         assert!(report.has_errors());
         assert_eq!(report.evaluated_constraints, 1);
@@ -466,6 +495,23 @@ mod tests {
         assert!(report.findings.iter().any(|finding| {
             finding.kind == SourceConformanceFindingKind::ForbiddenDependencyPath
                 && finding.dependency_path == ["@fixture/a", "@fixture/b", "@fixture/c"]
+        }));
+
+        source_graph
+            .contexts
+            .get_mut(&ContextId::new(
+                &ProjectId("@fixture/a".to_string()),
+                "runtime",
+            ))
+            .expect("fixture A context")
+            .role = ContextRole::Tooling;
+        let tooling_report =
+            analyze(&architecture, "sha256:test", &source_graph).expect("tooling conformance");
+        assert!(!tooling_report.findings.iter().any(|finding| {
+            finding.kind == SourceConformanceFindingKind::ForbiddenDependencyPath
+        }));
+        assert!(tooling_report.findings.iter().any(|finding| {
+            finding.kind == SourceConformanceFindingKind::WorkspaceSourceBypass
         }));
     }
 }

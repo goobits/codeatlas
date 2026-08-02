@@ -26,6 +26,12 @@ class FixtureHandler(BaseHTTPRequestHandler):
         if not self._has_static_header():
             self._respond(401, b'{"error":"missing_static_header"}')
             return
+        if self.headers.get("x-codeatlas-force-500") == "true":
+            self._respond(500, b'{"error":"internal_server_error"}')
+            return
+        if self.headers.get("x-codeatlas-deny") == "true":
+            self._respond(403, b'{"error":"forbidden"}')
+            return
         if path == "/health":
             self._respond(204)
             return
@@ -166,6 +172,15 @@ class FixtureHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("content-length", "0"))
         if length:
             self.rfile.read(length)
+        source_transport = self.headers.get("x-codeatlas-source-transport")
+        if source_transport == "true":
+            self._respond(400, b'{"error":"unsupported_method"}')
+            self.close_connection = True
+            return
+        if source_transport == "accept":
+            self._respond(200, b'{"accepted":true}')
+            self.close_connection = True
+            return
         self.send_response(405)
         self.send_header("allow", allowed)
         self.send_header(

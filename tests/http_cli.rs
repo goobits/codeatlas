@@ -281,37 +281,147 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         "root": ".",
         "package_exports": false,
         "http": {
-            "contracts": [{
-                "id": "fixture-api",
-                "openapi": {
-                    "kind": "target",
-                    "target": "fixture-local"
-                },
-                "source_roots": ["src"],
-                "source_complete": true
-            }],
-            "fuzz": {
-                "targets": [{
-                    "id": "fixture-local",
-                    "contract": "fixture-api",
-                    "base_url": format!("http://127.0.0.1:{port}"),
-                    "openapi_path": "/openapi.yaml",
-                    "headers": [{
-                        "name": "X-CodeAtlas-Static",
-                        "value": "fixture-static-token"
-                    }],
-                    "report_dir": "reports",
-                    "server": {
-                        "command": &python,
-                        "args": server_args,
-                        "cwd": directory.path()
+            "contracts": [
+                {
+                    "id": "fixture-api",
+                    "openapi": {
+                        "kind": "target",
+                        "target": "fixture-local"
                     },
-                    "request_adapter": {
-                        "command": &python,
-                        "args": [fixture.join("request_adapter.py"), &adapter_log],
-                        "cwd": directory.path()
+                    "source_roots": ["src"],
+                    "source_complete": true
+                },
+                {
+                    "id": "fixture-source",
+                    "source_roots": ["src"],
+                    "source_complete": true
+                },
+                {
+                    "id": "fixture-server-error-api",
+                    "openapi": "openapi.yaml"
+                }
+            ],
+            "fuzz": {
+                "targets": [
+                    {
+                        "id": "fixture-local",
+                        "contract": "fixture-api",
+                        "base_url": format!("http://127.0.0.1:{port}"),
+                        "openapi_path": "/openapi.yaml",
+                        "headers": [{
+                            "name": "X-CodeAtlas-Static",
+                            "value": "fixture-static-token"
+                        }],
+                        "report_dir": "reports",
+                        "server": {
+                            "command": &python,
+                            "args": &server_args,
+                            "cwd": directory.path()
+                        },
+                        "request_adapter": {
+                            "command": &python,
+                            "args": [fixture.join("request_adapter.py"), &adapter_log],
+                            "cwd": directory.path()
+                        }
+                    },
+                    {
+                        "id": "fixture-source-local",
+                        "contract": "fixture-source",
+                        "base_url": format!("http://127.0.0.1:{port}"),
+                        "operations": ["GET /health"],
+                        "headers": [
+                            {
+                                "name": "X-CodeAtlas-Static",
+                                "value": "fixture-runtime-token"
+                            },
+                            {
+                                "name": "X-CodeAtlas-Source-Transport",
+                                "value": "true"
+                            }
+                        ],
+                        "report_dir": "source-reports",
+                        "server": {
+                            "command": &python,
+                            "args": &server_args,
+                            "cwd": directory.path()
+                        }
+                    },
+                    {
+                        "id": "fixture-source-unsafe-local",
+                        "contract": "fixture-source",
+                        "base_url": format!("http://127.0.0.1:{port}"),
+                        "operations": ["GET /health"],
+                        "headers": [
+                            {
+                                "name": "X-CodeAtlas-Static",
+                                "value": "fixture-runtime-token"
+                            },
+                            {
+                                "name": "X-CodeAtlas-Source-Transport",
+                                "value": "accept"
+                            }
+                        ],
+                        "report_dir": "unsafe-source-reports",
+                        "server": {
+                            "command": &python,
+                            "args": &server_args,
+                            "cwd": directory.path()
+                        }
+                    },
+                    {
+                        "id": "fixture-source-denied-local",
+                        "contract": "fixture-source",
+                        "base_url": format!("http://127.0.0.1:{port}"),
+                        "operations": ["GET /health"],
+                        "expected_non_success_operations": ["GET /health"],
+                        "positive_coverage": {
+                            "max_operations_without_success": 0,
+                            "max_authentication_rejection_only_operations": 0
+                        },
+                        "headers": [
+                            {
+                                "name": "X-CodeAtlas-Static",
+                                "value": "fixture-runtime-token"
+                            },
+                            {
+                                "name": "X-CodeAtlas-Source-Transport",
+                                "value": "true"
+                            },
+                            {
+                                "name": "X-CodeAtlas-Deny",
+                                "value": "true"
+                            }
+                        ],
+                        "report_dir": "denied-source-reports",
+                        "server": {
+                            "command": &python,
+                            "args": &server_args,
+                            "cwd": directory.path()
+                        }
+                    },
+                    {
+                        "id": "fixture-server-error-local",
+                        "contract": "fixture-server-error-api",
+                        "base_url": format!("http://127.0.0.1:{port}"),
+                        "operations": ["GET /health"],
+                        "headers": [
+                            {
+                                "name": "X-CodeAtlas-Static",
+                                "value": "fixture-runtime-token"
+                            },
+                            {
+                                "name": "X-CodeAtlas-Force-500",
+                                "value": "true"
+                            }
+                        ],
+                        "report_dir": "server-error-reports",
+                        "server": {
+                            "command": &python,
+                            "args": &server_args,
+                            "cwd": directory.path()
+                        }
                     }
-                }]
+                ]
             }
         }
     });
@@ -565,6 +675,178 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
         })
         .collect::<Vec<_>>();
     assert_eq!(report_directories.len(), 1);
+
+    let source_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+        .args([
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "http",
+            "fuzz",
+            directory
+                .path()
+                .to_str()
+                .expect("fixture root should be UTF-8"),
+            "--target",
+            "fixture-source-local",
+            "--max-examples",
+            "6",
+            "--seed",
+            "424242",
+        ])
+        .env("CODEATLAS_PYTHON", &python)
+        .output()
+        .expect("CodeAtlas source-transport smoke should start");
+    assert!(
+        source_output.status.success(),
+        "CodeAtlas source-transport smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&source_output.stdout),
+        String::from_utf8_lossy(&source_output.stderr)
+    );
+    let source_summary: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            directory
+                .path()
+                .join("source-reports/fixture-source-local/standard/summary.json"),
+        )
+        .expect("source-transport summary should be written"),
+    )
+    .expect("source-transport summary should be JSON");
+    assert_eq!(source_summary["contractMode"], "source_transport");
+    assert!(
+        source_summary["totals"]["positiveSuccesses"]
+            .as_u64()
+            .is_some_and(|count| count > 0),
+        "source-transport smoke should reach the declared operation successfully"
+    );
+    assert!(
+        source_summary["totals"]["negativeRejections"]
+            .as_u64()
+            .is_some_and(|count| count > 0),
+        "source-transport smoke should exercise client-error rejections"
+    );
+
+    let denied_source_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+        .args([
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "http",
+            "fuzz",
+            directory
+                .path()
+                .to_str()
+                .expect("fixture root should be UTF-8"),
+            "--target",
+            "fixture-source-denied-local",
+            "--max-examples",
+            "6",
+            "--seed",
+            "424242",
+        ])
+        .env("CODEATLAS_PYTHON", &python)
+        .output()
+        .expect("CodeAtlas denied source-transport smoke should start");
+    assert!(
+        denied_source_output.status.success(),
+        "CodeAtlas denied source-transport smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&denied_source_output.stdout),
+        String::from_utf8_lossy(&denied_source_output.stderr)
+    );
+    let denied_source_summary: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            directory
+                .path()
+                .join("denied-source-reports/fixture-source-denied-local/standard/summary.json"),
+        )
+        .expect("denied source-transport summary should be written"),
+    )
+    .expect("denied source-transport summary should be JSON");
+    assert_eq!(
+        denied_source_summary["totals"]["expectedNonSuccessOperations"],
+        1
+    );
+    assert_eq!(
+        denied_source_summary["totals"]["operationsWithoutSuccess"],
+        0
+    );
+
+    let unsafe_source_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+        .args([
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "http",
+            "fuzz",
+            directory
+                .path()
+                .to_str()
+                .expect("fixture root should be UTF-8"),
+            "--target",
+            "fixture-source-unsafe-local",
+            "--max-examples",
+            "6",
+            "--seed",
+            "424242",
+        ])
+        .env("CODEATLAS_PYTHON", &python)
+        .output()
+        .expect("unsafe source-transport smoke should start");
+    let unsafe_source_log = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&unsafe_source_output.stdout),
+        String::from_utf8_lossy(&unsafe_source_output.stderr)
+    );
+    let unsafe_source_events = fs::read_to_string(
+        directory
+            .path()
+            .join("unsafe-source-reports/fixture-source-unsafe-local/standard/events.ndjson"),
+    )
+    .unwrap_or_else(|error| format!("<could not read retained events: {error}>"));
+    assert!(
+        !unsafe_source_output.status.success(),
+        "source transport must reject an accepted unsupported method:\n{unsafe_source_log}\n\
+         retained events:\n{unsafe_source_events}"
+    );
+    assert!(
+        unsafe_source_log.contains("codeatlas_unsupported_method_rejection"),
+        "source-transport failure should name its violated check:\n{unsafe_source_log}"
+    );
+
+    let server_error_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+        .args([
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "http",
+            "fuzz",
+            directory
+                .path()
+                .to_str()
+                .expect("fixture root should be UTF-8"),
+            "--target",
+            "fixture-server-error-local",
+            "--max-examples",
+            "1",
+            "--seed",
+            "424242",
+        ])
+        .env("CODEATLAS_PYTHON", &python)
+        .output()
+        .expect("server-error smoke should start");
+    let server_error_log = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&server_error_output.stdout),
+        String::from_utf8_lossy(&server_error_output.stderr)
+    );
+    assert!(
+        !server_error_output.status.success(),
+        "managed HTTP fuzzing must reject an HTTP 500 response:\n{server_error_log}"
+    );
+    assert!(
+        server_error_log.contains("codeatlas_no_internal_server_error"),
+        "server-error failure should name its violated check:\n{server_error_log}"
+    );
+    assert!(
+        TcpListener::bind(("127.0.0.1", port)).is_ok(),
+        "managed source-transport server should release its port"
+    );
 }
 
 fn configured_python() -> String {

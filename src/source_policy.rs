@@ -36,6 +36,29 @@ pub(crate) fn is_ignored_path(path: &str, no_default_ignore: bool) -> bool {
     !no_default_ignore && path.split('/').any(is_ignored_part)
 }
 
+pub(crate) fn is_conventional_test_source(path: &Path) -> bool {
+    if path.components().any(|component| {
+        component.as_os_str().to_str().is_some_and(|component| {
+            matches!(
+                component.to_ascii_lowercase().as_str(),
+                "test" | "tests" | "__test__" | "__tests__" | "integration-tests" | "fixtures"
+            )
+        })
+    }) {
+        return true;
+    }
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            let name = name.to_ascii_lowercase();
+            name.contains(".test.")
+                || name.contains(".spec.")
+                || name.contains(".playwright.")
+                || name.ends_with("_test.py")
+                || name.ends_with("_test.rs")
+        })
+}
+
 pub(crate) fn source_argument(token: &str) -> Option<String> {
     let token = token.strip_prefix("./").unwrap_or(token);
     let path = Path::new(token);
@@ -49,7 +72,10 @@ pub(crate) fn source_argument(token: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_ignored_consumer_dir, is_ignored_path, source_argument};
+    use super::{
+        is_conventional_test_source, is_ignored_consumer_dir, is_ignored_path, source_argument,
+    };
+    use std::path::Path;
 
     #[test]
     fn default_ignores_match_complete_path_segments() {
@@ -92,5 +118,14 @@ mod tests {
         assert!(is_ignored_consumer_dir("node_modules"));
         assert!(is_ignored_consumer_dir("dist"));
         assert!(is_ignored_consumer_dir(".git"));
+    }
+
+    #[test]
+    fn conventional_test_sources_do_not_enter_production_scans() {
+        assert!(is_conventional_test_source(Path::new("src/db.test.ts")));
+        assert!(is_conventional_test_source(Path::new("tests/db.ts")));
+        assert!(is_conventional_test_source(Path::new("src/query_test.py")));
+        assert!(!is_conventional_test_source(Path::new("src/contest.ts")));
+        assert!(!is_conventional_test_source(Path::new("src/db.ts")));
     }
 }

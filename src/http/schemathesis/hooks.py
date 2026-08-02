@@ -479,19 +479,27 @@ def codeatlas_negative_data_rejection(
 @schemathesis.check
 def codeatlas_no_internal_server_error(
     _context: Any, response: Any, _case: Any
-) -> bool:
+) -> None:
     """Reject unhandled HTTP 500 responses without treating intentional 5xx states as crashes."""
-    return response.status_code != 500
+    if response.status_code == 500:
+        raise AssertionError("Unhandled HTTP 500 response")
 
 
 @schemathesis.check
 def codeatlas_unsupported_method_rejection(
     _context: Any, response: Any, case: Any
 ) -> bool | None:
-    """Require a client-error rejection without assuming an inferred HTTP contract."""
-    if _coverage_scenario(case) != "unsupported_method":
-        return None
-    return 400 <= response.status_code < 500
+    """Require source-transport method probes to reach a client-error rejection."""
+    if not _is_unsupported_method_case(case):
+        return True
+    method = getattr(case, "method", "")
+    if isinstance(method, str) and method.upper() == "OPTIONS":
+        return True
+    if not 400 <= response.status_code < 500:
+        raise AssertionError(
+            f"Unsupported method {method} returned {response.status_code}, expected a 4xx rejection"
+        )
+    return None
 
 
 class _CodeAtlasAuthProvider:
@@ -774,6 +782,10 @@ def _coverage_scenario(case: Any) -> Any:
     return _enum_value(getattr(phase_data, "scenario", None))
 
 
+def _is_unsupported_method_case(case: Any) -> bool:
+    return _coverage_scenario(case) == "unspecified_http_method"
+
+
 def _operation_path(case: Any) -> str | None:
     label = getattr(case.operation, "label", None)
     if not isinstance(label, str) or " " not in label:
@@ -782,7 +794,7 @@ def _operation_path(case: Any) -> str | None:
 
 
 def _preserve_actual_methods(case: Any) -> None:
-    if _coverage_scenario(case) != "unsupported_method":
+    if not _is_unsupported_method_case(case):
         return
     path = _operation_path(case)
     methods = _METHODS_BY_PATH.get(path)

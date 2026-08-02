@@ -55,6 +55,7 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
         workspace_root.contexts["root-runtime"].role,
         ContextRole::Production
     );
+    assert!(!workspace_root.contexts.contains_key("member-runtime"));
     assert!(workspace_root
         .excluded_roots
         .iter()
@@ -72,25 +73,28 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
         configured_b.contexts["workspace-tool"].role,
         ContextRole::Tooling
     );
-    let nested_a_runtime = projects
-        .iter()
-        .find(|project| project.id.0 == "a-runtime")
-        .expect("package-owned nested analysis project");
-    assert_eq!(nested_a_runtime.report_root, "packages/a/tools/runtime");
-    assert!(!nested_a_runtime.workspace_member);
-    assert_eq!(
-        nested_a_runtime.contexts["runtime"].role,
-        ContextRole::Production
-    );
     assert!(projects
         .iter()
         .any(|project| project.id.0 == "@fixture/b-helper"));
+    let configured_docs = projects
+        .iter()
+        .find(|project| project.id.0 == "@fixture/docs")
+        .expect("configured non-workspace project");
+    assert!(!configured_docs.workspace_member);
+    assert_eq!(
+        configured_docs.contexts["docs-runtime"].role,
+        ContextRole::Production
+    );
+    assert!(workspace_root
+        .excluded_roots
+        .iter()
+        .any(|root| root.ends_with("sandbox/docs")));
     let graph = languages::reachability::build_source_graph(&projects).expect("workspace graph");
 
     let package_a = ProjectId("@fixture/a".to_string());
     let package_b = ProjectId("@fixture/b".to_string());
-    let root_project = ProjectId("@fixture/root".to_string());
-    let root_docs = NodeId::file(&root_project, "sandbox/docs/index.ts");
+    let docs_project = ProjectId("@fixture/docs".to_string());
+    let root_docs = NodeId::file(&docs_project, "index.ts");
     let a_entry = NodeId::file(&package_a, "src/index.ts");
     let b_entry = NodeId::file(&package_b, "src/index.ts");
     let b_absolute = NodeId::file(&package_b, "src/absolute.ts");
