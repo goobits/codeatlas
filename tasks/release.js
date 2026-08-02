@@ -56,6 +56,15 @@ const repoDirty = () => {
 	return output.trim().length > 0
 }
 
+const requireExternalCargoTarget = () => {
+	const target = process.env.CARGO_TARGET_DIR
+	const relative = target && path.isAbsolute(target) ? path.relative(process.cwd(), target) : ''
+	const outside = relative.startsWith('..') || path.isAbsolute(relative)
+	if (!target || !path.isAbsolute(target) || !outside) {
+		throw new Error('CARGO_TARGET_DIR must be an absolute path outside the CodeAtlas checkout')
+	}
+}
+
 const readVersion = () => readPackageJson().version
 
 const parseVersion = (version) => {
@@ -142,8 +151,10 @@ const resolveNextVersion = () => {
 }
 
 const main = () => {
+	requireExternalCargoTarget()
 	if (!fs.existsSync(nodeModulesPath)) {
-		run('pnpm', ['install', '--ignore-workspace'])
+		console.error('Dependencies are missing. Install them before releasing CodeAtlas.')
+		process.exit(1)
 	}
 
 	if (repoDirty()) {
