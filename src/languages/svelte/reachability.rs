@@ -10,7 +10,7 @@ pub(crate) fn parse_module_info(file_path: &Path, root_dir: &Path) -> Result<Typ
     parse_source(&relative_path, &source)
 }
 
-fn parse_source(relative_path: &str, source: &str) -> Result<TypeScriptModuleInfo> {
+pub(crate) fn parse_source(relative_path: &str, source: &str) -> Result<TypeScriptModuleInfo> {
     let mut combined = crate::languages::typescript::parser::parse_source("", relative_path)?;
     for script in parser::script_blocks(source) {
         let mut info =

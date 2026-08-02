@@ -7,6 +7,8 @@ pub(crate) mod rust;
 mod svelte;
 pub(crate) mod typescript;
 
+pub(crate) use svelte::parse_module_source as parse_svelte_module_source;
+
 use crate::domain::{
     LanguageScanner, ScanConfig, ScanReport, SkippedFile, Symbol, SymbolKind, Visibility,
 };

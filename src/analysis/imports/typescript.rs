@@ -1,5 +1,5 @@
 use super::{add_file_edge, add_importer, FileEdges, Importers};
-use crate::domain::{Language, ScanReport, Visibility};
+use crate::domain::{Language, ScanReport, Symbol, Visibility};
 use crate::languages::ecmascript::resolver;
 use crate::languages::typescript::parser;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -8,7 +8,9 @@ use std::path::Path;
 pub(crate) fn collect_importers(
     root_dir: &Path,
     symbol_index: &HashMap<Language, HashMap<String, HashMap<String, String>>>,
+    public_symbols: &[&Symbol],
     importers: &mut Importers,
+    signature_dependencies: &mut HashSet<String>,
     file_edges: &mut FileEdges,
     no_default_ignore: bool,
 ) {
@@ -56,6 +58,16 @@ pub(crate) fn collect_importers(
 
     let mut export_cache: HashMap<(String, String), Vec<String>> = HashMap::new();
     let mut all_cache: HashMap<String, Vec<String>> = HashMap::new();
+
+    if let Some(symbols_by_file) = symbols_by_file {
+        signature_dependencies.extend(collect_signature_dependencies(
+            root_dir,
+            public_symbols,
+            &modules,
+            symbols_by_file,
+            &mut export_cache,
+        ));
+    }
 
     for (file, info) in &modules {
         for import in &info.imports {
@@ -177,7 +189,15 @@ pub(crate) fn collect_package_consumers(
         }
 
         let importer = crate::paths::normalize_relative_path(path, consumer_root);
-        let Ok(info) = parser::parse_source(&source, &importer) else {
+        let info = if path
+            .extension()
+            .is_some_and(|extension| extension == "svelte")
+        {
+            crate::languages::parse_svelte_module_source(&importer, &source)
+        } else {
+            parser::parse_source(&source, &importer)
+        };
+        let Ok(info) = info else {
             continue;
         };
         for import in &info.imports {
@@ -292,8 +312,69 @@ fn mark_all_package_symbols(
 fn is_ecmascript_source(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|extension| extension.to_str()),
-        Some("ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs")
+        Some("ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "svelte")
     )
+}
+
+fn collect_signature_dependencies(
+    root_dir: &Path,
+    public_symbols: &[&Symbol],
+    modules: &HashMap<String, ModuleInfo>,
+    symbols_by_file: &HashMap<String, HashMap<String, String>>,
+    export_cache: &mut HashMap<(String, String), Vec<String>>,
+) -> HashSet<String> {
+    let mut dependencies = HashSet::new();
+
+    for symbol in public_symbols
+        .iter()
+        .filter(|symbol| symbol.language == Language::TypeScript)
+    {
+        let references = crate::languages::typescript::referenced_identifiers(symbol);
+        if let Some(candidates) = symbols_by_file.get(&symbol.file_path) {
+            dependencies.extend(
+                candidates
+                    .iter()
+                    .filter(|(name, id)| references.contains(*name) && **id != symbol.id)
+                    .map(|(_, id)| id.clone()),
+            );
+        }
+
+        let Some(info) = modules.get(&symbol.file_path) else {
+            continue;
+        };
+        for import in &info.imports {
+            let Some(target) =
+                resolve_ts_module(root_dir, &symbol.file_path, &import.source, modules)
+            else {
+                continue;
+            };
+            for binding in &import.bindings {
+                let imported = if binding.namespace {
+                    crate::languages::typescript::referenced_namespace_members(
+                        symbol,
+                        &binding.local,
+                    )
+                } else if references.contains(&binding.local) {
+                    BTreeSet::from([binding.imported.clone()])
+                } else {
+                    BTreeSet::new()
+                };
+                for name in imported {
+                    dependencies.extend(resolve_export(
+                        root_dir,
+                        &target,
+                        &name,
+                        modules,
+                        symbols_by_file,
+                        export_cache,
+                        &mut HashSet::new(),
+                    ));
+                }
+            }
+        }
+    }
+
+    dependencies
 }
 
 struct ModuleInfo {

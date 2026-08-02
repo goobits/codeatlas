@@ -54,12 +54,14 @@ a positive integer to allow more parallel build work.
 Run `codeatlas <command> --help` for command-specific options.
 
 `audit --consumer-root <path>` and `ci --consumer-root <path>` count static
-JavaScript and TypeScript imports, re-exports, and literal dynamic imports of
+JavaScript, TypeScript, and Svelte imports, re-exports, and literal dynamic imports of
 the scanned package from an additional source tree. The scan is opt-in so a
 package-local audit stays bounded; candidate files are filtered by the package
 name before parsing. Namespace, default, and dynamically imported package
 modules are handled conservatively because the exact member used may be
-runtime-dependent.
+runtime-dependent. Public symbols required by another exported TypeScript
+signature are treated as supporting API dependencies instead of duplicate
+unused-public findings.
 
 An explicit command is required. Repository-wide scan settings belong in
 `codeatlas.json`; the former top-level flag interface has been removed.

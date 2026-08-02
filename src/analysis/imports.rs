@@ -12,11 +12,13 @@ pub(crate) type FileEdges = HashSet<FileEdge>;
 pub(crate) struct UsageAnalysis {
     importers: Importers,
     dynamic_references: HashSet<String>,
+    signature_dependencies: HashSet<String>,
 }
 
 impl UsageAnalysis {
     pub(crate) fn is_referenced(&self, symbol_id: &str) -> bool {
         self.dynamic_references.contains(symbol_id)
+            || self.signature_dependencies.contains(symbol_id)
             || self
                 .importers
                 .get(symbol_id)
@@ -31,6 +33,7 @@ pub(crate) fn build_importers(
 ) -> (UsageAnalysis, FileEdges) {
     let mut importers = HashMap::new();
     let mut dynamic_references = HashSet::new();
+    let mut signature_dependencies = HashSet::new();
     let mut file_edges = HashSet::new();
 
     let public_symbols: Vec<&Symbol> = report
@@ -59,7 +62,9 @@ pub(crate) fn build_importers(
     typescript::collect_importers(
         root_dir,
         &symbol_index,
+        &public_symbols,
         &mut importers,
+        &mut signature_dependencies,
         &mut file_edges,
         no_default_ignore,
     );
@@ -68,6 +73,7 @@ pub(crate) fn build_importers(
         UsageAnalysis {
             importers,
             dynamic_references,
+            signature_dependencies,
         },
         file_edges,
     )

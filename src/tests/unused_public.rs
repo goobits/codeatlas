@@ -36,11 +36,12 @@ fn unused_public_typescript() {
     let root = fixture_root("ts");
     let unused = collect_unused_ids(&root, "ts");
     assert!(unused.contains("ts:src/lib.ts:fn#unused"));
+    assert!(unused.contains("ts:src/lib.ts:fn#acceptsSupport"));
     assert!(!unused.contains("ts:src/lib.ts:fn#used"));
+    assert!(!unused.contains("ts:src/lib.ts:interface#SupportOptions"));
 }
 
-#[test]
-fn unused_public_typescript_counts_explicit_package_consumers() {
+fn package_consumer_report(file_name: &str, source: &str) -> crate::domain::ScanReport {
     let root = fixture_root("ts");
     let config = ScanConfig {
         include_types: true,
@@ -64,14 +65,21 @@ fn unused_public_typescript_counts_explicit_package_consumers() {
         std::process::id()
     ));
     fs::create_dir_all(&consumer_root).expect("consumer fixture directory");
-    fs::write(
-        consumer_root.join("consumer.ts"),
-        "import { unused } from '@fixture/codeatlas-ts';\nvoid unused;\n",
-    )
-    .expect("consumer fixture");
+    fs::write(consumer_root.join(file_name), source).expect("consumer fixture");
 
     analysis::annotate_package_consumers(&mut report, &mut importers, &consumer_root, false);
     analysis::annotate_unused_public(&mut report, &importers, false);
+
+    fs::remove_dir_all(consumer_root).expect("remove consumer fixture");
+    report
+}
+
+#[test]
+fn unused_public_typescript_counts_explicit_package_consumers() {
+    let report = package_consumer_report(
+        "consumer.ts",
+        "import { unused } from '@fixture/codeatlas-ts';\nvoid unused;\n",
+    );
 
     assert!(!report
         .unused_public
@@ -80,7 +88,22 @@ fn unused_public_typescript_counts_explicit_package_consumers() {
     assert!(report.imports.iter().any(|usage| {
         usage.id == "ts:src/lib.ts:fn#unused" && usage.importers == ["consumer.ts".to_string()]
     }));
-    fs::remove_dir_all(consumer_root).expect("remove consumer fixture");
+}
+
+#[test]
+fn unused_public_typescript_counts_svelte_package_consumers() {
+    let report = package_consumer_report(
+        "Consumer.svelte",
+        "<script lang=\"ts\">\nimport { unused } from '@fixture/codeatlas-ts';\nvoid unused;\n</script>\n",
+    );
+
+    assert!(!report
+        .unused_public
+        .iter()
+        .any(|entry| entry.id == "ts:src/lib.ts:fn#unused"));
+    assert!(report.imports.iter().any(|usage| {
+        usage.id == "ts:src/lib.ts:fn#unused" && usage.importers == ["Consumer.svelte".to_string()]
+    }));
 }
 
 #[test]

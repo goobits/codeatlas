@@ -1,6 +1,8 @@
 mod parser;
 pub(super) mod reachability;
 
+pub(crate) use reachability::parse_source as parse_module_source;
+
 use crate::domain::{Language, Symbol};
 use crate::languages::definition::LanguageDefinition;
 use anyhow::Result;
