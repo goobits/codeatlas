@@ -213,6 +213,7 @@ pub(crate) fn run(
         &target.contract,
         contract.mode(),
         options.profile,
+        seed,
         &expected_non_success_operations,
     ) {
         Ok(summary) => {

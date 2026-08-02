@@ -1,7 +1,7 @@
 use super::{
     evidence::{RedactionPolicy, REDACTED},
     junit::render,
-    sanitize_events, set_private_dir,
+    sanitize_events, set_private_dir, summarize,
     summary::{
         is_reported_server_error, summarize_reader, summarize_reader_with_expected_non_success,
     },
@@ -26,6 +26,31 @@ fn reports_every_fuzz_response_in_the_server_error_range() {
     assert!(is_reported_server_error(503));
     assert!(is_reported_server_error(599));
     assert!(!is_reported_server_error(600));
+}
+
+#[test]
+fn preserves_the_exact_managed_seed_when_event_json_is_lossy() {
+    let directory = TestReportDirectory::new();
+    let event_path = directory.0.join(EVENTS_FILENAME);
+    fs::write(
+        &event_path,
+        "{\"Initialize\":{\"seed\":6.120375554226922e33}}\n",
+    )
+    .expect("lossy seed event");
+    let seed = 6_120_375_554_226_921_864_643_509_329_822_053_u128;
+
+    let report = summarize(
+        &event_path,
+        "local",
+        "fixture-api",
+        HttpFuzzContractMode::OpenApi,
+        "stateful",
+        seed,
+        &BTreeSet::new(),
+    )
+    .expect("lossy event should summarize with the managed seed");
+
+    assert_eq!(report.seed, Some(seed.to_string()));
 }
 
 impl TestReportDirectory {
