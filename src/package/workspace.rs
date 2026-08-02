@@ -58,6 +58,7 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
     } else {
         None
     };
+    let workspace_root_selected = root_name.is_some() && patterns.matches(".");
 
     let mut builder = ignore::WalkBuilder::new(&root);
     builder
@@ -149,7 +150,7 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
             .cmp(&right.report_root)
             .then_with(|| left.name.cmp(&right.name))
     });
-    if members.is_empty() {
+    if members.is_empty() && !workspace_root_selected {
         anyhow::bail!(
             "No pnpm workspace packages matched scope {}",
             scope.display()

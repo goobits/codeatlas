@@ -514,10 +514,12 @@ contracts.
 					{
 						"path": "src/platform/db/migrations.ts",
 						"transaction": "always",
-						"psql_meta_commands": "reject"
+						"psql_meta_commands": "reject",
+						"recursive": false
 					}
 				],
 				"query_roots": ["src"],
+				"query_exclude_paths": ["src/integration"],
 				"source_complete": true,
 				"lint": {
 					"pg_version": "17"
@@ -537,15 +539,35 @@ contracts.
 
 Bootstrap and migration sources may be SQL files or directories. JavaScript and
 TypeScript bootstrap files expose static schema SQL bindings; migration files
-contain static `{ name, sql }` entries. Static SQL can be resolved through
+contain static `{ name, sql }` entries or project-relative `{ id, file }`
+manifests whose referenced files end in `.sql`. Static SQL can be resolved through
 relative imports and local workspace package exports. Calls that pass static
 bindings through a runner's `bootstrapSql` property are discovered in runtime
-order. Query roots inventory SQL files and SQL passed to supported database
-calls such as `query`, `execute`, and the common pg-promise methods. Safe
-pg-promise named value parameters are normalized for PostgreSQL preparation;
-identifier, raw, list, and runtime interpolation remain explicit dynamic
-boundaries and are never executed. Reports contain locations, counts, and
-SHA-256 digests—not raw SQL.
+order. Statically composed template migrations are resolved when every
+interpolation is a local or workspace binding. Query roots inventory production
+SQL files, PostgreSQL tagged templates, and SQL passed to supported database
+calls such as `query`, `execute`, Prisma's parameterized `$queryRaw` and
+`$executeRaw` tags, and the common pg-promise methods; conventional test sources
+are excluded. Safe tagged-template values and pg-promise named value parameters
+are normalized for PostgreSQL preparation. Identifier helpers, raw fragments,
+lists, and unresolved interpolation remain explicit dynamic boundaries and are
+never executed. Aliased, conditional, and nested tagged fragments—and templates
+that mix tagged values with explicit PostgreSQL placeholders—are also kept
+dynamic rather than being misrepresented as prepared queries. Reports contain
+locations, counts, and SHA-256 digests—not raw SQL.
+
+Use `query_exclude_paths` to partition known files or directories out of a
+broad query root. Exclusions resolve relative to the configuration file, must
+exist inside a configured query root, and can then be assigned as query roots
+of a different contract. A contract with `depends_on` may intentionally omit
+bootstrap and migration sources when it only validates integration queries
+against schema owned by its dependency chain.
+
+Directory sources remain recursive by default for backward compatibility. Set
+`"recursive": false` when the production runner reads only direct files; this
+keeps independently owned nested migration domains from being flattened
+accidentally while existing contracts continue to inventory what they did
+before this option existed.
 
 Use `depends_on` when one independently tracked migration contract must be
 replayed before another. CodeAtlas rejects missing or cyclic dependencies and
@@ -643,6 +665,7 @@ workflows are needed:
             "GET /health",
             "POST /widgets/{id}"
           ],
+          "expected_non_success_operations": ["GET /health"],
           "environment": {
             "NODE_ENV": "test",
             "PORT": "3443"
@@ -765,7 +788,9 @@ accepts intentional lifecycle statuses such as `503 Service Unavailable` and a
 framework-level `400 Bad Request` when its request model cannot represent the
 method. An explicit OpenAPI contract retains declared-status conformance plus
 strict `405 Method Not Allowed` and `Allow` header conformance. Readiness
-probes still run before fuzz cases.
+probes still run before fuzz cases. Source-transport runs also disable
+schema-health warnings because their generated transport document intentionally
+omits domain schemas and fixture values.
 `standard` generates 75 examples per operation and `thorough` generates 750.
 The additive `stateful` profile runs 25 scenarios against explicit OpenAPI
 Links, rejects speculative link inference, and fails when it does not traverse
@@ -785,6 +810,11 @@ operation-specific directories beneath the selected profile, so one targeted
 run does not erase evidence from another. Header values can be literal test
 values or come from the target environment with `value_env`; do not commit real
 secrets.
+`expected_non_success_operations` declares target-persona operations whose
+valid requests should be denied, such as outsider authorization probes. Every
+entry must remain inside that target's operation boundary. A retained positive
+4xx then satisfies positive coverage, while a run with only invalid generated
+requests still fails a zero-tolerance `max_operations_without_success` gate.
 CodeAtlas injects these headers through its private Schemathesis hook rather
 than exposing their values in process arguments. Hook configuration lives in a
 unique owner-only file for the run, is removed when its owner exits normally,

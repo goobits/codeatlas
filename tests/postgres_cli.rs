@@ -47,22 +47,131 @@ fn inventory_uses_explicit_runner_semantics_without_leaking_sql() {
     assert_eq!(migration["psqlMetaCommands"], "strip");
     assert_eq!(migration["directives"][0]["command"], "connect");
     assert_eq!(migration["directives"][0]["line"], 1);
-    assert_eq!(migrations.len(), 4);
+    assert_eq!(migrations.len(), 6);
     assert!(migrations
         .iter()
         .any(|migration| migration["name"] == "000_bootstrap_audit.sql"));
     assert!(migrations.iter().any(|migration| {
         migration["name"] == "002_imported.sql" && migration["path"] == "embedded/schema.ts"
     }));
+    let queries = report["contracts"][0]["queries"]
+        .as_array()
+        .expect("queries array");
+    assert_eq!(queries.len(), 13);
     assert_eq!(
-        report["contracts"][0]["queries"]
-            .as_array()
-            .expect("queries array")
-            .len(),
-        2
+        queries
+            .iter()
+            .filter(|query| query["dynamic"] == true)
+            .count(),
+        6
+    );
+    assert!(migrations
+        .iter()
+        .any(|migration| migration["name"] == "004_recursive.sql"));
+    assert!(!migrations
+        .iter()
+        .any(|migration| migration["name"] == "999_not_owned.sql"));
+    assert_eq!(
+        queries
+            .iter()
+            .filter(|query| query["parameterCount"] == 1 && query["dynamic"] == false)
+            .count(),
+        5
     );
     assert!(!String::from_utf8_lossy(&output.stdout).contains("fixture_database"));
     assert!(!String::from_utf8_lossy(&output.stdout).contains("CREATE TABLE"));
+}
+
+#[test]
+fn inventory_partitions_dependency_backed_query_contracts() {
+    let directory = TestDirectory::create("codeatlas-postgres-query-contracts");
+    fs::create_dir_all(directory.path().join("migrations")).expect("migration directory");
+    fs::create_dir_all(directory.path().join("src")).expect("source directory");
+    fs::write(
+        directory.path().join("migrations/001_schema.sql"),
+        "CREATE TABLE records (id BIGINT PRIMARY KEY);",
+    )
+    .expect("schema migration");
+    fs::write(
+        directory.path().join("src/core.ts"),
+        "declare const db: { query(sql: string): unknown };\nvoid db.query('SELECT id FROM records WHERE id = $1');\n",
+    )
+    .expect("core query source");
+    fs::write(
+        directory.path().join("src/bridge.ts"),
+        "declare const db: { query(sql: string): unknown };\nvoid db.query('SELECT id FROM records ORDER BY id');\n",
+    )
+    .expect("bridge query source");
+    fs::write(
+        directory.path().join("codeatlas.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "root": ".",
+            "package_exports": false,
+            "postgres": {
+                "contracts": [
+                    {
+                        "id": "core-postgres",
+                        "migration_sources": [{
+                            "path": "migrations",
+                            "transaction": "always",
+                            "psql_meta_commands": "reject"
+                        }],
+                        "query_roots": ["src"],
+                        "query_exclude_paths": ["src/bridge.ts"],
+                        "source_complete": true
+                    },
+                    {
+                        "id": "bridge-postgres",
+                        "depends_on": ["core-postgres"],
+                        "query_roots": ["src/bridge.ts"],
+                        "source_complete": true
+                    }
+                ]
+            }
+        }))
+        .expect("config JSON"),
+    )
+    .expect("CodeAtlas config");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+        .args([
+            "postgres",
+            "inventory",
+            directory
+                .path()
+                .to_str()
+                .expect("fixture path should be UTF-8"),
+        ])
+        .output()
+        .expect("CodeAtlas PostgreSQL inventory should start");
+    assert!(
+        output.status.success(),
+        "PostgreSQL query partition inventory failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("PostgreSQL inventory should be JSON");
+    let contracts = report["contracts"].as_array().expect("contracts array");
+    let core = contracts
+        .iter()
+        .find(|contract| contract["id"] == "core-postgres")
+        .expect("core contract");
+    let bridge = contracts
+        .iter()
+        .find(|contract| contract["id"] == "bridge-postgres")
+        .expect("bridge contract");
+    assert_eq!(core["queries"].as_array().map(Vec::len), Some(1));
+    assert_eq!(core["queries"][0]["path"], "src/core.ts");
+    assert_eq!(bridge["queries"].as_array().map(Vec::len), Some(1));
+    assert_eq!(bridge["queries"][0]["path"], "src/bridge.ts");
+    assert!(bridge
+        .get("diagnostics")
+        .and_then(serde_json::Value::as_array)
+        .is_none_or(|diagnostics| diagnostics
+            .iter()
+            .all(|finding| finding["code"] != "schema-source-missing")));
 }
 
 #[test]

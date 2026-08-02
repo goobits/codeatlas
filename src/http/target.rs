@@ -52,6 +52,7 @@ pub(crate) struct ResolvedHttpFuzzTarget {
     pub server: Option<ResolvedHttpFuzzServer>,
     pub request_adapter: Option<ResolvedHttpFuzzCommand>,
     pub operation_selection: ResolvedHttpFuzzOperationSelection,
+    pub expected_non_success_operations: Vec<HttpFuzzOperation>,
     pub positive_coverage: HttpFuzzPositiveCoverageConfig,
     pub suppress_health_checks: Vec<HttpFuzzHealthCheck>,
     pub suppress_warnings: bool,
@@ -411,6 +412,27 @@ impl ProjectConfig {
                 ResolvedHttpFuzzOperationSelection::Contract
             }
         };
+        let mut expected_non_success_names = BTreeSet::new();
+        let expected_non_success_operations = target
+            .expected_non_success_operations
+            .iter()
+            .map(|operation| {
+                let operation = parse_http_fuzz_operation(operation).with_context(|| {
+                    format!(
+                        "Invalid expected non-success operation in HTTP fuzz target {}",
+                        target.id
+                    )
+                })?;
+                if !expected_non_success_names.insert(operation.name.clone()) {
+                    anyhow::bail!(
+                        "HTTP fuzz target {} repeats expected non-success operation {}",
+                        target.id,
+                        operation.name
+                    );
+                }
+                Ok(operation)
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         let mut headers = Vec::with_capacity(target.headers.len());
         for header in &target.headers {
@@ -482,6 +504,7 @@ impl ProjectConfig {
             server,
             request_adapter,
             operation_selection,
+            expected_non_success_operations,
             positive_coverage: target.positive_coverage.clone(),
             suppress_health_checks: target.suppress_health_checks.clone(),
             suppress_warnings: target.suppress_warnings,

@@ -16,7 +16,14 @@
 					{
 						"path": "migrations",
 						"transaction": "always",
-						"psql_meta_commands": "strip"
+						"psql_meta_commands": "strip",
+						"recursive": false
+					},
+					{
+						"path": "recursive-migrations",
+						"transaction": "always",
+						"psql_meta_commands": "reject",
+						"recursive": true
 					},
 					{
 						"path": "embedded/migrations.ts",
