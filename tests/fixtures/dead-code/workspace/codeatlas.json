@@ -1,0 +1,16 @@
+{
+  "projects": [
+    {
+      "id": "workspace-root",
+      "root": ".",
+      "languages": ["ts"],
+      "require_complete": true,
+      "contexts": {
+        "root-runtime": {
+          "role": "production",
+          "entrypoints": ["shared/browserRuntime.ts"]
+        }
+      }
+    }
+  ]
+}

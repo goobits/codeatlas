@@ -268,7 +268,9 @@ entries, including concrete files exposed through wildcard subpath exports.
 Local source paths in npm `start` and `serve` lifecycle scripts also become
 production roots in an `npm-package-runtime` context, as do `main` entrypoints
 declared by `wrangler.toml`, `wrangler.json`, or `wrangler.jsonc`. Source entrypoints passed
-to common bundler CLIs (`esbuild`, Rollup, and webpack) are production roots;
+to common bundler CLIs (`esbuild`, Rollup, and webpack) are production roots,
+as are static `entry`, `entryPoints`, and `input` sources in conventional
+esbuild, Rollup, tsup, Vite, and webpack config modules;
 other package-script source paths become tooling roots, including maintained
 scripts under normally ignored `build` directories. Local scripts referenced by conventional
 `index.html` files become production browser roots; scripts referenced by test
@@ -290,10 +292,15 @@ entrypoint selects them; scanning a fixture directory as the project root still
 works normally.
 
 `dead-code --workspace` preserves package ownership while applying the matching
-local project from each member's `codeatlas.json`. When the workspace root is
-also a package, its non-member source is scanned as one non-overlapping root
-project; member roots remain excluded from it. Packages can therefore own their
-exceptional roots without duplicating one workspace-wide configuration.
+local project from each member's `codeatlas.json`. Projects declared in the
+workspace-root `codeatlas.json` may add settings for the root package or an
+exact discovered member root; unmatched roots fail configuration. When the
+workspace root is also a package, its non-member source is scanned as one
+non-overlapping root project; member roots remain excluded from it. Packages
+can therefore own their exceptional roots without duplicating one
+workspace-wide configuration. Nested pnpm workspaces are expanded recursively,
+so packages embedded in a workspace member retain their own ownership instead
+of being folded into the parent package's source graph.
 Explicit aggregate projects follow the same ownership rule: when a nested
 project root contains `codeatlas.json`, CodeAtlas inherits that root's
 languages, contexts, assumptions, Rust settings, ignore policy, and

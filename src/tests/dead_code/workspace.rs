@@ -43,12 +43,18 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     let projects = project
         .workspace_analysis_projects()
         .expect("workspace projects");
-    assert_eq!(projects.len(), 4);
+    assert_eq!(projects.len(), 5);
     let workspace_root = projects
         .iter()
         .find(|project| project.id.0 == "@fixture/root")
         .expect("workspace root project");
     assert_eq!(workspace_root.report_root, ".");
+    assert_eq!(workspace_root.languages, ["ts"]);
+    assert!(workspace_root.require_complete);
+    assert_eq!(
+        workspace_root.contexts["root-runtime"].role,
+        ContextRole::Production
+    );
     assert!(workspace_root
         .excluded_roots
         .iter()
@@ -58,10 +64,17 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
         .find(|project| project.id.0 == "@fixture/b")
         .expect("configured workspace package");
     assert_eq!(configured_b.languages, ["js", "ts"]);
+    assert!(configured_b
+        .excluded_roots
+        .iter()
+        .any(|root| root.ends_with("packages/b/tools/helper")));
     assert_eq!(
         configured_b.contexts["workspace-tool"].role,
         ContextRole::Tooling
     );
+    assert!(projects
+        .iter()
+        .any(|project| project.id.0 == "@fixture/b-helper"));
     let graph = languages::reachability::build_source_graph(&projects).expect("workspace graph");
 
     let package_a = ProjectId("@fixture/a".to_string());

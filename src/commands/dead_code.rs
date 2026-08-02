@@ -42,9 +42,6 @@ fn analyze(
     workspace: bool,
     config_path: Option<&Path>,
 ) -> Result<i32> {
-    if workspace && config_path.is_some() {
-        anyhow::bail!("`dead-code --workspace` does not accept `--config`");
-    }
     let project = load_project(path, config_path)?;
     let projects = if workspace {
         project.workspace_analysis_projects()?

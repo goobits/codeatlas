@@ -47,12 +47,28 @@ pub(super) fn add_discovered_contexts(
     }
 
     if !project.contexts.contains_key(PACKAGE_RUNTIME_CONTEXT) {
-        let roots = crate::package::discover_runtime_entrypoints(&project.root)?
+        let mut roots = crate::package::discover_runtime_entrypoints(&project.root)?
             .into_iter()
             .chain(crate::package::discover_bundled_entrypoints(&project.root)?)
             .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, &path))
             .filter_map(|key| modules.get(&key).map(|module| module.file.clone()))
-            .collect();
+            .collect::<BTreeSet<_>>();
+        for config in modules
+            .values()
+            .filter(|module| module.project == project.id && is_bundler_config_module(&module.path))
+        {
+            roots.extend(
+                config
+                    .info
+                    .reachability
+                    .configured_runtime_entrypoints
+                    .iter()
+                    .filter_map(|path| {
+                        resolver.resolve_project_entrypoint_or_unique_suffix(&project.id, path)
+                    })
+                    .filter_map(|key| modules.get(&key).map(|module| module.file.clone())),
+            );
+        }
         add_discovered_context(
             graph,
             project,
@@ -175,6 +191,21 @@ pub(super) fn add_discovered_contexts(
         )?;
     }
     Ok(())
+}
+
+fn is_bundler_config_module(path: &str) -> bool {
+    let Some(name) = Path::new(path).file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    [
+        "esbuild.config.",
+        "rollup.config.",
+        "tsup.config.",
+        "vite.config.",
+        "webpack.config.",
+    ]
+    .iter()
+    .any(|prefix| name.starts_with(prefix))
 }
 
 #[derive(Default)]

@@ -43,7 +43,8 @@ pub(crate) fn discover(request: SourceDiscoveryRequest<'_>) -> SourceDiscovery {
         .git_exclude(false)
         .require_git(is_git_repository)
         .filter_entry(move |entry| {
-            !excluded_roots.iter().any(|root| entry.path() == root)
+            !is_nested_repository(entry.depth(), entry.file_type(), entry.path())
+                && !excluded_roots.iter().any(|root| entry.path() == root)
                 && should_descend(
                     entry.depth(),
                     entry
@@ -73,6 +74,10 @@ pub(crate) fn discover(request: SourceDiscoveryRequest<'_>) -> SourceDiscovery {
     }
     discovery.files.sort();
     discovery
+}
+
+fn is_nested_repository(depth: usize, file_type: Option<std::fs::FileType>, path: &Path) -> bool {
+    depth > 0 && file_type.is_some_and(|file_type| file_type.is_dir()) && path.join(".git").exists()
 }
 
 fn should_descend(
@@ -241,6 +246,36 @@ mod tests {
 
         assert!(paths.contains(&"visible.ts".to_string()));
         assert!(!paths.contains(&"ignored/unreachable.ts".to_string()));
+    }
+
+    #[test]
+    fn discovery_stops_at_nested_repository_boundaries() {
+        let temporary = TemporaryProject::new();
+        let nested = temporary.path().join("nested-repository");
+        std::fs::create_dir_all(&nested).expect("nested repository");
+        std::fs::write(nested.join(".git"), "gitdir: ../git/modules/nested\n")
+            .expect("nested repository marker");
+        std::fs::write(nested.join("private.ts"), "export const private = true;\n")
+            .expect("nested source");
+        std::fs::write(
+            temporary.path().join("visible.ts"),
+            "export const visible = true;\n",
+        )
+        .expect("visible source");
+
+        let paths = discover(SourceDiscoveryRequest {
+            root: temporary.path(),
+            patterns: &[],
+            excluded_roots: &[],
+            no_default_ignore: false,
+        })
+        .files
+        .into_iter()
+        .map(|path| crate::paths::normalize_relative_path(&path, temporary.path()))
+        .collect::<Vec<_>>();
+
+        assert!(paths.contains(&"visible.ts".to_string()));
+        assert!(!paths.contains(&"nested-repository/private.ts".to_string()));
     }
 
     #[test]

@@ -5,17 +5,24 @@ use swc_core::ecma::visit::{Visit, VisitWith};
 
 pub(super) struct ConfiguredSources {
     pub(super) test_entrypoints: BTreeSet<String>,
+    pub(super) runtime_entrypoints: BTreeSet<String>,
     pub(super) aliases: BTreeMap<String, BTreeSet<String>>,
 }
 
 pub(super) fn collect(module: &Module) -> ConfiguredSources {
     let mut source_bindings = StaticConfiguredSourceBindingCollector::default();
     module.visit_with(&mut source_bindings);
+    let source_bindings = source_bindings.unique();
     let mut tests = ConfiguredTestEntrypointCollector {
-        bindings: source_bindings.unique(),
+        bindings: source_bindings.clone(),
         ..Default::default()
     };
     module.visit_with(&mut tests);
+    let mut runtime = ConfiguredRuntimeEntrypointCollector {
+        bindings: source_bindings,
+        ..Default::default()
+    };
+    module.visit_with(&mut runtime);
 
     let mut string_bindings = StaticStringBindingCollector::default();
     module.visit_with(&mut string_bindings);
@@ -27,7 +34,26 @@ pub(super) fn collect(module: &Module) -> ConfiguredSources {
 
     ConfiguredSources {
         test_entrypoints: tests.paths,
+        runtime_entrypoints: runtime.paths,
         aliases: aliases.aliases,
+    }
+}
+
+#[derive(Default)]
+struct ConfiguredRuntimeEntrypointCollector {
+    paths: BTreeSet<String>,
+    bindings: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl Visit for ConfiguredRuntimeEntrypointCollector {
+    fn visit_key_value_prop(&mut self, property: &KeyValueProp) {
+        if matches!(
+            prop_name_string(&property.key).as_deref(),
+            Some("entry" | "entryPoints" | "input")
+        ) {
+            collect_configured_source_paths(&property.value, &self.bindings, &mut self.paths);
+        }
+        property.visit_children_with(self);
     }
 }
 
@@ -171,6 +197,7 @@ fn collect_configured_source_paths(
 #[derive(Default)]
 struct StaticConfiguredSourceBindingCollector {
     bindings: BTreeMap<String, Option<BTreeSet<String>>>,
+    external_package_paths: BTreeSet<String>,
 }
 
 impl StaticConfiguredSourceBindingCollector {
@@ -185,15 +212,27 @@ impl StaticConfiguredSourceBindingCollector {
 impl Visit for StaticConfiguredSourceBindingCollector {
     fn visit_var_declarator(&mut self, declaration: &VarDeclarator) {
         if let Pat::Ident(identifier) = &declaration.name {
+            let name = identifier.id.sym.to_string();
+            if self.bindings.contains_key(&name) {
+                self.bindings.insert(name.clone(), None);
+                self.external_package_paths.remove(&name);
+                declaration.visit_children_with(self);
+                return;
+            }
+            let external_package_path = declaration.init.as_deref().is_some_and(|expression| {
+                derives_from_external_package_path(expression, &self.external_package_paths)
+            });
             let mut paths = BTreeSet::new();
-            if let Some(expression) = declaration.init.as_deref() {
-                collect_configured_source_paths(expression, &BTreeMap::new(), &mut paths);
+            if !external_package_path {
+                if let Some(expression) = declaration.init.as_deref() {
+                    collect_configured_source_paths(expression, &BTreeMap::new(), &mut paths);
+                }
             }
             let paths = (!paths.is_empty()).then_some(paths);
-            self.bindings
-                .entry(identifier.id.sym.to_string())
-                .and_modify(|existing| *existing = None)
-                .or_insert(paths);
+            if external_package_path {
+                self.external_package_paths.insert(name.clone());
+            }
+            self.bindings.insert(name, paths);
         }
         declaration.visit_children_with(self);
     }
@@ -370,6 +409,7 @@ fn is_static_path_constructor_call(call: &CallExpr) -> bool {
 #[derive(Default)]
 struct StaticStringBindingCollector {
     bindings: BTreeMap<String, Option<BTreeSet<String>>>,
+    external_package_paths: BTreeSet<String>,
 }
 
 impl StaticStringBindingCollector {
@@ -384,18 +424,79 @@ impl StaticStringBindingCollector {
 impl Visit for StaticStringBindingCollector {
     fn visit_var_declarator(&mut self, declaration: &VarDeclarator) {
         if let Pat::Ident(identifier) = &declaration.name {
-            let values = declaration
-                .init
-                .as_deref()
-                .map(|expression| static_strings(expression, &self.unique_bindings()))
-                .filter(|values| !values.is_empty());
-            self.bindings
-                .entry(identifier.id.sym.to_string())
-                .and_modify(|existing| *existing = None)
-                .or_insert(values);
+            let name = identifier.id.sym.to_string();
+            if self.bindings.contains_key(&name) {
+                self.bindings.insert(name.clone(), None);
+                self.external_package_paths.remove(&name);
+                declaration.visit_children_with(self);
+                return;
+            }
+            let external_package_path = declaration.init.as_deref().is_some_and(|expression| {
+                derives_from_external_package_path(expression, &self.external_package_paths)
+            });
+            let values = (!external_package_path)
+                .then(|| {
+                    declaration
+                        .init
+                        .as_deref()
+                        .map(|expression| static_strings(expression, &self.unique_bindings()))
+                        .filter(|values| !values.is_empty())
+                })
+                .flatten();
+            if external_package_path {
+                self.external_package_paths.insert(name.clone());
+            }
+            self.bindings.insert(name, values);
         }
         declaration.visit_children_with(self);
     }
+}
+
+fn derives_from_external_package_path(
+    expression: &Expr,
+    external_package_paths: &BTreeSet<String>,
+) -> bool {
+    match expression {
+        Expr::Ident(identifier) => external_package_paths.contains(identifier.sym.as_ref()),
+        Expr::Call(call) if is_package_resolve_call(call) => true,
+        Expr::Call(call) if is_path_derivation_call(call) => call.args.iter().any(|argument| {
+            derives_from_external_package_path(&argument.expr, external_package_paths)
+        }),
+        _ => false,
+    }
+}
+
+fn is_package_resolve_call(call: &CallExpr) -> bool {
+    let Callee::Expr(callee) = &call.callee else {
+        return false;
+    };
+    let Expr::Member(member) = &**callee else {
+        return false;
+    };
+    matches!(&*member.obj, Expr::Ident(identifier) if identifier.sym == "require")
+        && matches!(
+            &member.prop,
+            MemberProp::Ident(identifier) if identifier.sym == "resolve"
+        )
+}
+
+fn is_path_derivation_call(call: &CallExpr) -> bool {
+    let Callee::Expr(callee) = &call.callee else {
+        return false;
+    };
+    let name = match &**callee {
+        Expr::Ident(identifier) => Some(identifier.sym.as_ref()),
+        Expr::Member(member) => match &member.prop {
+            MemberProp::Ident(identifier) => Some(identifier.sym.as_ref()),
+            MemberProp::Computed(computed) => match &*computed.expr {
+                Expr::Lit(Lit::Str(string)) => Some(string.value.as_ref()),
+                _ => None,
+            },
+            MemberProp::PrivateName(_) => None,
+        },
+        _ => None,
+    };
+    matches!(name, Some("dirname" | "fileURLToPath" | "join" | "resolve"))
 }
 
 impl StaticStringBindingCollector {

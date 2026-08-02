@@ -12,7 +12,7 @@ pub(crate) struct PackageWorkspace {
     pub members: Vec<PackageWorkspaceMember>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct PackageWorkspaceMember {
     pub name: String,
     pub root: PathBuf,
@@ -112,6 +112,37 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
             report_root,
         });
     }
+    let mut nested_roots = Vec::new();
+    for member in &members {
+        if nested_workspace_owns_descendants(&member.root)? {
+            nested_roots.push(member.root.clone());
+        }
+    }
+    for nested_root in nested_roots {
+        let nested = discover(&nested_root)?;
+        if nested.root != nested_root {
+            anyhow::bail!(
+                "Nested pnpm workspace at {} resolved to unexpected root {}",
+                nested_root.display(),
+                nested.root.display()
+            );
+        }
+        for mut member in nested.members {
+            member.report_root = crate::paths::normalize_relative_path(&member.root, &root);
+            if members.iter().any(|existing| existing.root == member.root) {
+                continue;
+            }
+            if let Some(previous) = names.insert(member.name.clone(), member.root.clone()) {
+                anyhow::bail!(
+                    "Duplicate workspace package name {:?}: {} and {}",
+                    member.name,
+                    previous.display(),
+                    member.root.display()
+                );
+            }
+            members.push(member);
+        }
+    }
     members.sort_by(|left, right| {
         left.report_root
             .cmp(&right.report_root)
@@ -128,6 +159,30 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
         root_name,
         members,
     })
+}
+
+fn nested_workspace_owns_descendants(root: &Path) -> Result<bool> {
+    let manifest_path = root.join("pnpm-workspace.yaml");
+    if !manifest_path.is_file() {
+        return Ok(false);
+    }
+    let source = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Could not read {}", manifest_path.display()))?;
+    let manifest: PnpmWorkspaceManifest = serde_yaml::from_str(&source)
+        .with_context(|| format!("Invalid pnpm workspace at {}", manifest_path.display()))?;
+    Ok(manifest
+        .packages
+        .iter()
+        .any(|pattern| workspace_pattern_owns_descendants(pattern)))
+}
+
+fn workspace_pattern_owns_descendants(pattern: &str) -> bool {
+    let pattern = pattern.trim();
+    !pattern.starts_with('!')
+        && !pattern.is_empty()
+        && pattern != "."
+        && pattern != "./"
+        && !pattern.starts_with("../")
 }
 
 fn read_package_name(path: &Path) -> Result<Option<String>> {
@@ -182,5 +237,19 @@ impl WorkspacePatterns {
 
     fn matches(&self, path: &str) -> bool {
         self.include.is_match(path) && !self.exclude.is_match(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::workspace_pattern_owns_descendants;
+
+    #[test]
+    fn only_positive_nested_workspace_patterns_own_descendants() {
+        assert!(workspace_pattern_owns_descendants("tools/*"));
+        assert!(workspace_pattern_owns_descendants("./tools/*"));
+        assert!(!workspace_pattern_owns_descendants("!tools/ignored"));
+        assert!(!workspace_pattern_owns_descendants("."));
+        assert!(!workspace_pattern_owns_descendants("../shared/*"));
     }
 }

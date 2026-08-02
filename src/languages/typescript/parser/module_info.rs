@@ -60,6 +60,7 @@ pub(crate) struct ReachabilityFacts {
     pub symbol_references: BTreeMap<String, BTreeSet<String>>,
     pub dynamic_dependencies: Vec<DynamicDependency>,
     pub configured_test_entrypoints: BTreeSet<String>,
+    pub configured_runtime_entrypoints: BTreeSet<String>,
     pub configured_aliases: BTreeMap<String, BTreeSet<String>>,
     pub declaration_only: bool,
 }
@@ -177,6 +178,7 @@ pub(super) fn collect_reachability_facts(
     let configured = configured_sources::collect(module);
     facts.dynamic_dependencies = dependencies::collect(module, source_map);
     facts.configured_test_entrypoints = configured.test_entrypoints;
+    facts.configured_runtime_entrypoints = configured.runtime_entrypoints;
     facts.configured_aliases = configured.aliases;
     facts.declaration_only = is_declaration_only(module);
     facts

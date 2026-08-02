@@ -219,12 +219,20 @@ export class Filter {
 import path from "node:path"
 
 const sharedMock = path.resolve(__dirname, "./tests/mocks/shared.ts")
+const installedRoot = path.dirname(require.resolve("installed-package"))
+const installedAdapter = path.join(installedRoot, "adapters", "zod4.js")
 
 export default {
+    build: {
+        lib: {
+            entry: path.resolve(__dirname, "./src/runtime.ts")
+        }
+    },
     resolve: {
         alias: {
             "$app/environment": path.resolve(__dirname, "./tests/mocks/environment.ts"),
-            "@zip.js/zip.js": resolveInstalledPackageEntry("@zip.js/zip.js")
+            "@zip.js/zip.js": resolveInstalledPackageEntry("@zip.js/zip.js"),
+            "@installed-adapter": installedAdapter
         }
     },
     test: {
@@ -256,6 +264,14 @@ export default {
             ["./tests/mocks/shared.ts".to_string()]
                 .into_iter()
                 .collect()
+        );
+        assert!(!info
+            .reachability
+            .configured_aliases
+            .contains_key("@installed-adapter"));
+        assert_eq!(
+            info.reachability.configured_runtime_entrypoints,
+            ["./src/runtime.ts".to_string()].into_iter().collect()
         );
     }
 

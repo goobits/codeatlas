@@ -14,6 +14,7 @@ use std::path::Path;
 type ProjectSelection<'a> = (&'a ResolvedAnalysisProject, BTreeSet<SourceLanguage>);
 type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.ecmascript";
+const OPAQUE_VENDOR_BYTES: u64 = 256 * 1024;
 
 mod contexts;
 pub(crate) mod resolver;
@@ -164,9 +165,35 @@ fn is_opaque_vendor_source(source_path: &Path, path: &str) -> bool {
     {
         return false;
     }
+    if source_path
+        .metadata()
+        .ok()
+        .is_some_and(|metadata| metadata.len() >= OPAQUE_VENDOR_BYTES)
+    {
+        return true;
+    }
     std::fs::read_to_string(source_path)
         .ok()
         .is_some_and(|source| source.lines().any(|line| line.len() >= 8_192))
+}
+
+#[cfg(test)]
+mod opaque_vendor_tests {
+    use super::{is_opaque_vendor_source, OPAQUE_VENDOR_BYTES};
+    use std::fs;
+
+    #[test]
+    fn large_vendor_bundles_are_opaque_even_when_pretty_printed() {
+        let root =
+            std::env::temp_dir().join(format!("codeatlas-large-vendor-{}", std::process::id()));
+        let path = root.join("src/vendor/bundle.js");
+        fs::create_dir_all(path.parent().expect("vendor parent")).expect("vendor directory");
+        fs::write(&path, vec![b'\n'; OPAQUE_VENDOR_BYTES as usize]).expect("large vendor bundle");
+
+        assert!(is_opaque_vendor_source(&path, "src/vendor/bundle.js"));
+
+        fs::remove_dir_all(root).expect("temporary vendor cleanup");
+    }
 }
 
 fn add_symbols(

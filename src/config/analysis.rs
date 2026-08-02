@@ -158,11 +158,11 @@ impl ProjectConfig {
     }
 
     pub(crate) fn workspace_analysis_projects(&self) -> Result<Vec<ResolvedAnalysisProject>> {
-        if !self.config.projects.is_empty() {
-            anyhow::bail!(
-                "`dead-code --workspace` cannot be combined with configured analysis projects"
-            );
-        }
+        let configured = if self.config.projects.is_empty() {
+            Vec::new()
+        } else {
+            self.analysis_projects()?
+        };
         let workspace = crate::package::discover_workspace(&self.root)?;
         let mut resolved = Vec::with_capacity(
             workspace.members.len() + usize::from(workspace.root_name.is_some()),
@@ -200,6 +200,23 @@ impl ProjectConfig {
             };
             self.merge_local_analysis_settings(&mut project)?;
             resolved.push(project);
+        }
+        let aggregate_config = self
+            .config_path
+            .clone()
+            .unwrap_or_else(|| self.config_base().join("codeatlas.json"));
+        for owned in configured {
+            let project = resolved
+                .iter_mut()
+                .find(|project| project.root == owned.root)
+                .with_context(|| {
+                    format!(
+                        "Workspace analysis project {} from {} must match the workspace root or a discovered package root",
+                        owned.id.0,
+                        aggregate_config.display()
+                    )
+                })?;
+            merge_analysis_settings(project, owned, &aggregate_config)?;
         }
         self.add_http_contexts(&mut resolved)?;
         self.add_postgres_contexts(&mut resolved)?;

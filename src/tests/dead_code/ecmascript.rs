@@ -45,6 +45,10 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
         &ProjectId("ecmascript".to_string()),
         "src/bundledRuntime.ts"
     )));
+    assert!(runtime_context.roots.contains(&NodeId::file(
+        &ProjectId("ecmascript".to_string()),
+        "src/configuredRuntime.ts"
+    )));
     let tooling_context = graph
         .contexts
         .values()
