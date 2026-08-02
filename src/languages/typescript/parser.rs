@@ -416,4 +416,30 @@ const source = read("+page.svelte")
                         == DynamicDependencyTarget::Literal("+page.svelte".to_string())
             }));
     }
+
+    #[test]
+    fn existence_probes_do_not_create_source_dependencies() {
+        let info = parse_source(
+            r#"
+existsSync(new URL("./legacy.ts", import.meta.url))
+fs.existsSync(new URL("./also-legacy.ts", import.meta.url))
+const runtimeUrl = new URL("./worker.ts", import.meta.url)
+void runtimeUrl
+"#,
+            "src/boundary.test.ts",
+        )
+        .expect("module info");
+        let runtime_urls = info
+            .reachability
+            .dynamic_dependencies
+            .iter()
+            .filter(|dependency| dependency.kind == DynamicDependencyKind::RuntimeUrl)
+            .map(|dependency| dependency.target.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            runtime_urls,
+            [DynamicDependencyTarget::Literal("./worker.ts".to_string())]
+        );
+    }
 }

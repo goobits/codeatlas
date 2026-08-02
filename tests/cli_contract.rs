@@ -28,6 +28,14 @@ fn assert_success(output: &Output, label: &str) {
     );
 }
 
+fn write(directory: &TestDirectory, relative: &str, content: &str) {
+    let path = directory.path().join(relative);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("fixture parent should be created");
+    }
+    fs::write(path, content).expect("fixture should be written");
+}
+
 #[test]
 fn scan_writes_machine_readable_json_to_the_requested_directory() {
     let output_directory = TestDirectory::create("codeatlas-cli-contract");
@@ -126,4 +134,119 @@ fn dead_code_check_fails_closed_for_required_incomplete_projects() {
         .expect("findings should be an array")
         .iter()
         .all(|finding| finding["gates"] == false));
+}
+
+#[test]
+fn workspace_public_api_baselines_are_compact_deterministic_and_exact() {
+    let workspace = TestDirectory::create("codeatlas-cli-contract");
+    write(
+        &workspace,
+        "pnpm-workspace.yaml",
+        "packages:\n  - packages/*\n",
+    );
+    write(
+        &workspace,
+        "package.json",
+        r#"{"name":"fixture-workspace","private":true}"#,
+    );
+    write(
+        &workspace,
+        "packages/sdk/package.json",
+        r#"{
+            "name": "@example/sdk",
+            "version": "1.0.0",
+            "type": "module",
+            "exports": {
+                ".": "./src/index.ts",
+                "./admin": "./src/admin.ts"
+            }
+        }"#,
+    );
+    write(
+        &workspace,
+        "packages/sdk/src/index.ts",
+        "export interface PublicAPI { readonly ready: boolean }\n",
+    );
+    write(
+        &workspace,
+        "packages/sdk/src/admin.ts",
+        "export interface PublicAPI { readonly admin: boolean }\n",
+    );
+    let baseline_path = workspace.path().join("public-api.json");
+    let workspace_path = workspace.path().to_str().expect("workspace UTF-8");
+    let baseline_arg = baseline_path.to_str().expect("baseline UTF-8");
+
+    let baseline = run(&[
+        "ci",
+        workspace_path,
+        "--workspace",
+        "--baseline",
+        baseline_arg,
+        "--fail-unused",
+        "false",
+    ]);
+    assert_success(&baseline, "workspace baseline");
+    let baseline_bytes = fs::read(&baseline_path).expect("baseline output");
+    assert!(baseline_bytes.len() < 5_000, "baseline should stay compact");
+    let baseline: Value = serde_json::from_slice(&baseline_bytes).expect("baseline should be JSON");
+    assert_eq!(baseline["format"], "codeatlas.public-api-baseline");
+    assert_eq!(baseline["schema_version"], 1);
+    assert_eq!(baseline["workspace"], true);
+    assert_eq!(baseline["packages"].as_array().map(Vec::len), Some(1));
+    assert_eq!(baseline["packages"][0]["name"], "@example/sdk");
+    assert!(baseline["packages"][0]["symbols"]
+        .as_array()
+        .expect("symbols")
+        .iter()
+        .any(|symbol| symbol["export_path"] == "@example/sdk/admin"));
+
+    let unchanged = run(&[
+        "diff",
+        baseline_arg,
+        workspace_path,
+        "--workspace",
+        "--exact",
+    ]);
+    assert_success(&unchanged, "unchanged exact workspace diff");
+
+    write(
+        &workspace,
+        "packages/sdk/src/index.ts",
+        "export interface PublicAPI { readonly ready: boolean }\nexport const added = true\n",
+    );
+    let additive = run(&["diff", baseline_arg, workspace_path, "--workspace"]);
+    assert_success(&additive, "additive compatibility diff");
+    let exact = run(&[
+        "diff",
+        baseline_arg,
+        workspace_path,
+        "--workspace",
+        "--exact",
+    ]);
+    assert_eq!(exact.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&exact.stdout).contains("Policy:   exact"));
+}
+
+#[test]
+fn diff_reads_released_full_scan_baselines() {
+    let output_directory = TestDirectory::create("codeatlas-cli-contract");
+    let fixture = fixture("docs");
+    let output_path = output_directory.path().to_str().expect("output UTF-8");
+    let scan = run(&[
+        "scan",
+        fixture.to_str().expect("fixture UTF-8"),
+        "--format",
+        "json",
+        "--out",
+        output_path,
+    ]);
+    assert_success(&scan, "released scan baseline");
+
+    let baseline = output_directory.path().join("atlas.json");
+    let diff = run(&[
+        "diff",
+        baseline.to_str().expect("baseline UTF-8"),
+        fixture.to_str().expect("fixture UTF-8"),
+    ]);
+    assert_success(&diff, "legacy baseline diff");
 }

@@ -107,6 +107,8 @@ pub(crate) enum DeadCodeFindingKind {
     TestOnly,
     ToolingOnly,
     UnreferencedPublic,
+    UnexportedWorkspaceImport,
+    WorkspaceSourceBypass,
     UnresolvedInternalEdge,
     DynamicBoundary,
 }
@@ -119,6 +121,8 @@ impl DeadCodeFindingKind {
             Self::TestOnly => "test_only",
             Self::ToolingOnly => "tooling_only",
             Self::UnreferencedPublic => "unreferenced_public",
+            Self::UnexportedWorkspaceImport => "unexported_workspace_import",
+            Self::WorkspaceSourceBypass => "workspace_source_bypass",
             Self::UnresolvedInternalEdge => "unresolved_internal_edge",
             Self::DynamicBoundary => "dynamic_boundary",
         }
@@ -128,7 +132,11 @@ impl DeadCodeFindingKind {
         confidence == FindingConfidence::High
             && matches!(
                 self,
-                Self::UnreachableFile | Self::UnusedPrivateSymbol | Self::UnresolvedInternalEdge
+                Self::UnreachableFile
+                    | Self::UnusedPrivateSymbol
+                    | Self::UnexportedWorkspaceImport
+                    | Self::WorkspaceSourceBypass
+                    | Self::UnresolvedInternalEdge
             )
     }
 }

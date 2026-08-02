@@ -397,14 +397,14 @@ fn connect_module(
             }
         }
     }
-    for targets in module.info.reachability.configured_aliases.values() {
+    for (specifier, targets) in &module.info.reachability.configured_aliases {
         for target in targets {
-            let resolution = resolver.resolve_configured_entrypoint(module, target);
+            let resolution = resolver.resolve_configured_alias(module, specifier, target);
             if resolution.resolved().is_some() {
                 connect_module_resolution(
                     graph,
                     module,
-                    target,
+                    specifier,
                     &resolution,
                     SourceEdgeKind::ModuleDependency,
                     None,
@@ -547,22 +547,38 @@ fn connect_module_resolution(
     kind: SourceEdgeKind,
     span: Option<crate::domain::Span>,
 ) {
-    let target = match resolution {
-        Resolution::Resolved(key) | Resolution::ResolvedResource(key) => graph
-            .nodes
-            .get(&NodeId::file(&key.0, &key.1))
-            .map(|_| EdgeTarget::Node(NodeId::file(&key.0, &key.1)))
-            .unwrap_or_else(|| EdgeTarget::UnresolvedInternal(specifier.to_string())),
-        Resolution::External(value) => EdgeTarget::External(value.clone()),
-        Resolution::UnresolvedInternal(value) => EdgeTarget::UnresolvedInternal(value.clone()),
-        Resolution::Unscanned(value) => EdgeTarget::Unsupported(value.clone()),
-        Resolution::DynamicUnknown(value) => EdgeTarget::DynamicUnknown(value.clone()),
-        Resolution::Unsupported(value) => EdgeTarget::Unsupported(value.clone()),
+    let (target, observed_kind) = match resolution {
+        Resolution::Resolved(key) | Resolution::ResolvedResource(key) => (
+            graph
+                .nodes
+                .get(&NodeId::file(&key.0, &key.1))
+                .map(|_| EdgeTarget::Node(NodeId::file(&key.0, &key.1)))
+                .unwrap_or_else(|| EdgeTarget::UnresolvedInternal(specifier.to_string())),
+            kind,
+        ),
+        Resolution::WorkspaceSource(key) => (
+            graph
+                .nodes
+                .get(&NodeId::file(&key.0, &key.1))
+                .map(|_| EdgeTarget::Node(NodeId::file(&key.0, &key.1)))
+                .unwrap_or_else(|| EdgeTarget::UnresolvedInternal(specifier.to_string())),
+            SourceEdgeKind::WorkspaceSourceBypass,
+        ),
+        Resolution::External(value) => (EdgeTarget::External(value.clone()), kind),
+        Resolution::UnexportedWorkspace(value) => {
+            (EdgeTarget::UnexportedWorkspace(value.clone()), kind)
+        }
+        Resolution::UnresolvedInternal(value) => {
+            (EdgeTarget::UnresolvedInternal(value.clone()), kind)
+        }
+        Resolution::Unscanned(value) => (EdgeTarget::Unsupported(value.clone()), kind),
+        Resolution::DynamicUnknown(value) => (EdgeTarget::DynamicUnknown(value.clone()), kind),
+        Resolution::Unsupported(value) => (EdgeTarget::Unsupported(value.clone()), kind),
     };
     graph.edges.insert(SourceEdge {
         from: module.file.clone(),
         to: target,
-        kind,
+        kind: observed_kind,
         bindings: Vec::new(),
         evidence: SourceEvidence::new(&module.path, span.clone(), EXTRACTOR),
     });
@@ -593,7 +609,11 @@ fn connect_module_resolution(
                 module.path
             ),
         ),
-        _ => (None, String::new()),
+        Resolution::UnexportedWorkspace(_)
+        | Resolution::WorkspaceSource(_)
+        | Resolution::Resolved(_)
+        | Resolution::ResolvedResource(_)
+        | Resolution::External(_) => (None, String::new()),
     };
     if let Some(boundary_kind) = boundary_kind {
         graph.record_boundary(

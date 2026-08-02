@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 pub(super) enum Resolution {
     Resolved(ModuleKey),
     ResolvedResource(ModuleKey),
+    WorkspaceSource(ModuleKey),
     External(String),
+    UnexportedWorkspace(String),
     UnresolvedInternal(String),
     Unscanned(String),
     DynamicUnknown(String),
@@ -21,7 +23,7 @@ pub(super) enum Resolution {
 impl Resolution {
     pub(super) fn resolved(&self) -> Option<&ModuleKey> {
         match self {
-            Self::Resolved(key) => Some(key),
+            Self::Resolved(key) | Self::WorkspaceSource(key) => Some(key),
             _ => None,
         }
     }
@@ -126,14 +128,14 @@ impl ModuleResolver {
         if is_relative_specifier(specifier) {
             if specifier.starts_with('/') {
                 if let Some(resolved) = self.resolve_workspace_absolute(specifier) {
-                    return Resolution::Resolved(resolved);
+                    return source_resolution(module, resolved);
                 }
                 if self.is_unscanned_workspace_absolute(module, specifier) {
                     return Resolution::Unscanned(specifier.to_string());
                 }
             }
             if let Some(resolved) = self.resolve_relative(module, specifier) {
-                return Resolution::Resolved(resolved);
+                return source_resolution(module, resolved);
             }
             return if unsupported_relative_specifier(specifier) {
                 Resolution::Unsupported(specifier.to_string())
@@ -162,18 +164,20 @@ impl ModuleResolver {
         if let Some(resolved) = self.resolve_sveltekit_lib(module, source_specifier) {
             return Resolution::Resolved(resolved);
         }
-        if let Some(resolved) = self.resolve_alias(module, source_specifier) {
-            return Resolution::Resolved(resolved);
-        }
-        if let Some(resolution) = self.resolve_workspace_package(source_specifier) {
+        if let Some(resolution) = self.resolve_workspace_package(module, source_specifier) {
             return resolution;
+        }
+        if let Some(resolved) = self.resolve_alias(module, source_specifier) {
+            return source_resolution(module, resolved);
         }
         Resolution::External(specifier.to_string())
     }
 
     fn resolve_resource(&self, module: &Module, specifier: &str) -> Resolution {
         match self.resolve(module, source_path_specifier(specifier)) {
-            Resolution::Resolved(key) => Resolution::ResolvedResource(key),
+            Resolution::Resolved(key) | Resolution::WorkspaceSource(key) => {
+                Resolution::ResolvedResource(key)
+            }
             _ => Resolution::External(specifier.to_string()),
         }
     }
@@ -443,14 +447,24 @@ impl ModuleResolver {
         PackageImportResolution::NotDeclared
     }
 
-    fn resolve_workspace_package(&self, specifier: &str) -> Option<Resolution> {
+    fn resolve_workspace_package(&self, module: &Module, specifier: &str) -> Option<Resolution> {
         let (package_name, public_path) = crate::package::split_package_specifier(specifier)?;
         let package = self.packages.get(&package_name)?;
         let Some(source) = package.exports.get(&public_path) else {
+            if package.project == module.project {
+                return Some(
+                    self.resolve_project_path(
+                        &package.project,
+                        Path::new(public_path.trim_start_matches("./")),
+                    )
+                    .map(Resolution::Resolved)
+                    .unwrap_or_else(|| Resolution::UnresolvedInternal(specifier.to_string())),
+                );
+            }
             return Some(if is_generated_package_export(Path::new(&public_path)) {
                 Resolution::Unscanned(specifier.to_string())
             } else {
-                Resolution::UnresolvedInternal(specifier.to_string())
+                Resolution::UnexportedWorkspace(specifier.to_string())
             });
         };
         if let Some(resolved) = self.resolve_project_path(&package.project, Path::new(source)) {
@@ -527,19 +541,42 @@ impl ModuleResolver {
         if let Some(resolved) =
             self.resolve_project_entrypoint_or_unique_suffix(&module.project, source)
         {
-            return Resolution::Resolved(resolved);
+            return source_resolution(module, resolved);
         }
         let workspace_path = format!("/{}", source.trim_start_matches('/'));
         if let Some(resolved) = self.resolve_workspace_absolute(&workspace_path) {
-            return Resolution::Resolved(resolved);
+            return source_resolution(module, resolved);
         }
         if let Some(resolved) = self.resolve_unique_workspace_suffix(source) {
-            return Resolution::Resolved(resolved);
+            return source_resolution(module, resolved);
         }
         if self.is_unscanned_configured_entrypoint(module, source) {
             return Resolution::Unscanned(path.to_string());
         }
         Resolution::UnresolvedInternal(path.to_string())
+    }
+
+    pub(super) fn resolve_configured_alias(
+        &self,
+        module: &Module,
+        specifier: &str,
+        path: &str,
+    ) -> Resolution {
+        let configured = self.resolve_configured_entrypoint(module, path);
+        let exported = self.resolve_workspace_package(module, specifier);
+        if matches!(
+            (configured.resolved(), exported.as_ref().and_then(Resolution::resolved)),
+            (Some(configured), Some(exported)) if configured == exported
+        ) {
+            Resolution::Resolved(
+                configured
+                    .resolved()
+                    .expect("matched configured target")
+                    .clone(),
+            )
+        } else {
+            configured
+        }
     }
 
     fn is_unscanned_configured_entrypoint(&self, module: &Module, source: &str) -> bool {
@@ -588,7 +625,7 @@ impl ModuleResolver {
         let source_specifier = source_path_specifier(prefix);
         if source_specifier != prefix && is_relative_specifier(source_specifier) {
             if let Some(resolved) = self.resolve_relative(module, source_specifier) {
-                return vec![Resolution::Resolved(resolved)];
+                return vec![source_resolution(module, resolved)];
             }
             return if unsupported_relative_specifier(&combined) {
                 vec![Resolution::Unsupported(combined)]
@@ -603,7 +640,7 @@ impl ModuleResolver {
             .module_specifiers(module, prefix.starts_with('/'))
             .into_iter()
             .filter(|(specifier, _)| specifier.starts_with(prefix) && specifier.ends_with(suffix))
-            .map(|(_, key)| Resolution::Resolved(key))
+            .map(|(_, key)| source_resolution(module, key))
             .collect::<Vec<_>>();
         if matches.is_empty() {
             vec![Resolution::UnresolvedInternal(format!("{prefix}*{suffix}"))]
@@ -627,7 +664,7 @@ impl ModuleResolver {
             .module_specifiers(module, pattern.starts_with('/'))
             .into_iter()
             .filter(|(specifier, _)| matcher.is_match(specifier))
-            .map(|(_, key)| Resolution::Resolved(key))
+            .map(|(_, key)| source_resolution(module, key))
             .collect::<Vec<_>>();
         if matches.is_empty() {
             vec![Resolution::External(format!("glob:{pattern}"))]
@@ -742,6 +779,14 @@ enum PackageImportResolution {
     DeclaredButMissing,
     External(String),
     NotDeclared,
+}
+
+fn source_resolution(module: &Module, target: ModuleKey) -> Resolution {
+    if target.0 == module.project {
+        Resolution::Resolved(target)
+    } else {
+        Resolution::WorkspaceSource(target)
+    }
 }
 
 fn unsupported_relative_specifier(specifier: &str) -> bool {

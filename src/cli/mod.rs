@@ -129,6 +129,9 @@ enum Command {
         /// Output JSON baseline to this file
         #[arg(long)]
         baseline: Option<PathBuf>,
+        /// Discover public packages from the nearest pnpm workspace
+        #[arg(long)]
+        workspace: bool,
     },
 
     /// Generate Mermaid diagram
@@ -167,6 +170,12 @@ enum Command {
         /// Path to scan (default: current directory)
         #[arg(default_value = ".")]
         path: PathBuf,
+        /// Discover public packages from the nearest pnpm workspace
+        #[arg(long)]
+        workspace: bool,
+        /// Fail on additive changes as well as breaking changes
+        #[arg(long)]
+        exact: bool,
     },
 }
 
@@ -215,7 +224,7 @@ pub(crate) fn run() -> i32 {
             out.as_deref(),
             config_path.as_deref(),
         ),
-        Command::Architecture { command } => command.run(),
+        Command::Architecture { command } => command.run(config_path.as_deref()),
         Command::Http { command } => command.run(config_path.as_deref()),
         Command::Postgres { command } => command.run(config_path.as_deref()),
         Command::Ci {
@@ -223,11 +232,13 @@ pub(crate) fn run() -> i32 {
             consumer_root,
             fail_unused,
             baseline,
+            workspace,
         } => commands::run_ci(
             &path,
             consumer_root.as_deref(),
             fail_unused,
             baseline,
+            workspace,
             config_path.as_deref(),
         ),
         Command::Map { path, out } => commands::run_map(&path, out, config_path.as_deref()),
@@ -245,9 +256,12 @@ pub(crate) fn run() -> i32 {
             title.as_deref(),
             config_path.as_deref(),
         ),
-        Command::Diff { baseline, path } => {
-            commands::diff::run(&baseline, &path, config_path.as_deref())
-        }
+        Command::Diff {
+            baseline,
+            path,
+            workspace,
+            exact,
+        } => commands::diff::run(&baseline, &path, workspace, exact, config_path.as_deref()),
     }
 }
 
@@ -294,6 +308,27 @@ mod tests {
             ".",
         ])
         .is_ok());
+        assert!(Cli::try_parse_from(["codeatlas", "dead-code", "packages", "--workspace"]).is_ok());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "ci",
+            ".",
+            "--workspace",
+            "--baseline",
+            "public-api.json",
+            "--fail-unused",
+            "false"
+        ])
+        .is_ok());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "diff",
+            "public-api.json",
+            ".",
+            "--workspace",
+            "--exact"
+        ])
+        .is_ok());
     }
 
     #[test]
@@ -326,5 +361,19 @@ mod tests {
             "architecture/root.atlas.yaml",
         ])
         .is_err());
+    }
+
+    #[test]
+    fn parses_vcs_neutral_source_conformance() {
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "architecture",
+            "source-check",
+            "architecture/root.atlas.yaml",
+            "--repository",
+            ".",
+            "--check",
+        ])
+        .is_ok());
     }
 }

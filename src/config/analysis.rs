@@ -224,6 +224,50 @@ impl ProjectConfig {
         Ok(resolved)
     }
 
+    pub(crate) fn workspace_source_projects(&self) -> Result<Vec<ResolvedAnalysisProject>> {
+        let workspace = crate::package::discover_workspace(&self.root)?;
+        let mut resolved = Vec::with_capacity(
+            workspace.members.len() + usize::from(workspace.root_name.is_some()),
+        );
+        if self.root == workspace.root {
+            if let Some(root_name) = workspace.root_name {
+                resolved.push(ResolvedAnalysisProject {
+                    id: crate::domain::source_graph::ProjectId(root_name),
+                    root: workspace.root,
+                    report_root: ".".to_string(),
+                    languages: self.config.languages.clone(),
+                    contexts: BTreeMap::new(),
+                    assume_reachable: Vec::new(),
+                    require_complete: false,
+                    no_default_ignore: self.config.no_default_ignore,
+                    rust: RustAnalysisConfig::default(),
+                    workspace_member: true,
+                    excluded_roots: Vec::new(),
+                });
+            }
+        }
+        resolved.extend(
+            workspace
+                .members
+                .into_iter()
+                .map(|member| ResolvedAnalysisProject {
+                    id: crate::domain::source_graph::ProjectId(member.name),
+                    root: member.root,
+                    report_root: member.report_root,
+                    languages: Vec::new(),
+                    contexts: BTreeMap::new(),
+                    assume_reachable: Vec::new(),
+                    require_complete: false,
+                    no_default_ignore: self.config.no_default_ignore,
+                    rust: RustAnalysisConfig::default(),
+                    workspace_member: true,
+                    excluded_roots: Vec::new(),
+                }),
+        );
+        add_nested_project_boundaries(&mut resolved);
+        Ok(resolved)
+    }
+
     fn default_analysis_contexts(&self) -> BTreeMap<String, AnalysisContextConfig> {
         if self.config.entrypoints.is_empty() {
             BTreeMap::new()

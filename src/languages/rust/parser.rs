@@ -404,6 +404,19 @@ impl<'ast> Visit<'ast> for ReferenceCollector {
             syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated
                 .parse2(item.tokens.clone());
         if let Ok(expressions) = expressions {
+            if let Some(index) = format_string_expression_index(&name) {
+                if let Some(syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(literal),
+                    ..
+                })) = expressions.iter().nth(index)
+                {
+                    self.paths.extend(
+                        format_capture_identifiers(&literal.value())
+                            .into_iter()
+                            .map(|identifier| vec![identifier]),
+                    );
+                }
+            }
             for expression in &expressions {
                 self.visit_expr(expression);
             }
@@ -449,6 +462,67 @@ impl<'ast> Visit<'ast> for ReferenceCollector {
             });
         }
         syn::visit::visit_macro(self, item);
+    }
+}
+
+fn format_string_expression_index(macro_name: &str) -> Option<usize> {
+    match macro_name {
+        "anyhow" | "bail" | "eprint" | "eprintln" | "format" | "format_args" | "panic"
+        | "print" | "println" | "todo" | "unreachable" => Some(0),
+        "assert" | "ensure" | "write" | "writeln" => Some(1),
+        "assert_eq" | "assert_ne" => Some(2),
+        _ => None,
+    }
+}
+
+fn format_capture_identifiers(format_string: &str) -> BTreeSet<String> {
+    let bytes = format_string.as_bytes();
+    let mut identifiers = BTreeSet::new();
+    let mut cursor = 0;
+    while cursor < bytes.len() {
+        if bytes[cursor] != b'{' {
+            cursor += 1;
+            continue;
+        }
+        if bytes.get(cursor + 1) == Some(&b'{') {
+            cursor += 2;
+            continue;
+        }
+        let start = cursor + 1;
+        let Some(relative_end) = bytes[start..].iter().position(|byte| *byte == b'}') else {
+            break;
+        };
+        let end = start + relative_end;
+        collect_format_field_identifiers(&format_string[start..end], &mut identifiers);
+        cursor = end + 1;
+    }
+    identifiers
+}
+
+fn collect_format_field_identifiers(field: &str, identifiers: &mut BTreeSet<String>) {
+    let argument_end = field.find([':', '!']).unwrap_or(field.len());
+    insert_rust_identifier(field[..argument_end].trim(), identifiers);
+
+    let Some((_, specification)) = field.split_once(':') else {
+        return;
+    };
+    for (dollar, _) in specification.match_indices('$') {
+        let prefix = &specification[..dollar];
+        let start = prefix
+            .char_indices()
+            .rev()
+            .find_map(|(index, character)| {
+                (!character.is_alphanumeric() && character != '_' && character != '#')
+                    .then_some(index + character.len_utf8())
+            })
+            .unwrap_or(0);
+        insert_rust_identifier(&prefix[start..], identifiers);
+    }
+}
+
+fn insert_rust_identifier(candidate: &str, identifiers: &mut BTreeSet<String>) {
+    if let Ok(identifier) = syn::parse_str::<syn::Ident>(candidate) {
+        identifiers.insert(identifier.to_string());
     }
 }
 
@@ -1204,7 +1278,7 @@ fn collect_uses(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_module_info;
+    use super::{format_capture_identifiers, parse_module_info};
     use std::collections::BTreeSet;
     use std::path::Path;
 
@@ -1350,5 +1424,27 @@ mod tests {
             .any(|module| module.name == "tests" && module.inline && module.test_only));
         assert!(info.reachability.symbol_paths["smoke"]
             .contains(&vec!["TestHelper".to_string(), "prepare".to_string()]));
+    }
+
+    #[test]
+    fn reachability_tracks_implicit_format_string_captures() {
+        let source = r#"
+            const TOKEN_PREFIX: &str = "access.v1";
+
+            fn token(width: usize) -> String {
+                format!("{TOKEN_PREFIX:>width$} {{escaped}}")
+            }
+        "#;
+        let info =
+            parse_module_info(Path::new("src/lib.rs"), Path::new("."), source).expect("Rust facts");
+        let paths = &info.reachability.symbol_paths["token"];
+        assert!(paths.contains(&vec!["TOKEN_PREFIX".to_string()]));
+        assert!(paths.contains(&vec!["width".to_string()]));
+        assert!(!paths.contains(&vec!["escaped".to_string()]));
+
+        assert_eq!(
+            format_capture_identifiers("{value:?} {value:>width$} {{literal}} {0}"),
+            BTreeSet::from(["value".to_string(), "width".to_string()])
+        );
     }
 }
