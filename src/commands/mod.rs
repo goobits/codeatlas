@@ -71,8 +71,8 @@ fn audit(path: &Path, consumer_root: Option<&Path>, config_path: Option<&Path>) 
         analysis::annotate_package_consumers(
             &mut report,
             &mut importers,
+            &project.root,
             consumer_root,
-            project.config.no_default_ignore,
         );
     }
     analysis::annotate_unused_public(&mut report, &importers, project.config.no_default_ignore);

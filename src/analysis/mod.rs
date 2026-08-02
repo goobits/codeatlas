@@ -30,10 +30,10 @@ pub(crate) fn annotate_unused_public(
 pub(crate) fn annotate_package_consumers(
     report: &mut ScanReport,
     usage: &mut imports::UsageAnalysis,
+    package_root: &Path,
     consumer_root: &Path,
-    no_default_ignore: bool,
 ) {
-    imports::collect_package_consumers(report, usage, consumer_root, no_default_ignore);
+    imports::collect_package_consumers(report, usage, package_root, consumer_root);
     report.imports = imports::to_import_usage(usage);
 }
 

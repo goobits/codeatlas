@@ -51,7 +51,7 @@ enum Command {
         /// Path to scan
         #[arg(default_value = ".")]
         path: PathBuf,
-        /// Additional source tree whose package imports count as consumers
+        /// External source tree whose maintained package imports count as consumers
         #[arg(long)]
         consumer_root: Option<PathBuf>,
     },
@@ -120,7 +120,7 @@ enum Command {
         /// Path to scan
         #[arg(default_value = ".")]
         path: PathBuf,
-        /// Additional source tree whose package imports count as consumers
+        /// External source tree whose maintained package imports count as consumers
         #[arg(long)]
         consumer_root: Option<PathBuf>,
         /// Fail if any unused public exports exist

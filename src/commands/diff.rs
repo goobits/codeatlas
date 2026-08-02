@@ -183,6 +183,7 @@ fn scan_report(
 ) -> Result<(ScanReport, Vec<String>)> {
     let config = build_scan_config(project, false, None)?;
     let mut report = scan_project(project, &config)?;
+    annotate_report(&mut report, project)?;
     if audit_unused {
         let mut importers = crate::analysis::annotate_imports(
             &mut report,
@@ -193,8 +194,8 @@ fn scan_report(
             crate::analysis::annotate_package_consumers(
                 &mut report,
                 &mut importers,
+                &project.root,
                 consumer_root,
-                project.config.no_default_ignore,
             );
         }
         crate::analysis::annotate_unused_public(
@@ -203,7 +204,6 @@ fn scan_report(
             project.config.no_default_ignore,
         );
     }
-    annotate_report(&mut report, project)?;
     let unused_public = report
         .unused_public
         .iter()

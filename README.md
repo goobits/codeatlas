@@ -55,10 +55,12 @@ Run `codeatlas <command> --help` for command-specific options.
 
 `audit --consumer-root <path>` and `ci --consumer-root <path>` count static
 JavaScript, TypeScript, and Svelte imports, re-exports, and literal dynamic imports of
-the scanned package from an additional source tree. The scan is opt-in so a
-package-local audit stays bounded; candidate files are filtered by the package
-name before parsing. Namespace, default, and dynamically imported package
-modules are handled conservatively because the exact member used may be
+the scanned package from an external source tree. Maintained test and tooling
+directories are included; the audited package itself, hidden directories,
+dependencies, generated builds, and coverage output are excluded. The scan is
+opt-in so a package-local audit stays bounded, and candidate files are filtered
+by the package name before parsing. Namespace, default, and dynamically imported
+package modules are handled conservatively because the exact member used may be
 runtime-dependent. Public symbols required by another exported TypeScript
 signature are treated as supporting API dependencies instead of duplicate
 unused-public findings.

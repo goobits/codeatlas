@@ -24,6 +24,14 @@ pub(crate) fn is_ignored_dir(name: &str, no_default_ignore: bool) -> bool {
     !no_default_ignore && (name.starts_with('.') || is_ignored_part(name))
 }
 
+pub(crate) fn is_ignored_consumer_dir(name: &str) -> bool {
+    name.starts_with('.')
+        || matches!(
+            name,
+            "target" | "node_modules" | "dist" | "build" | "coverage"
+        )
+}
+
 pub(crate) fn is_ignored_path(path: &str, no_default_ignore: bool) -> bool {
     !no_default_ignore && path.split('/').any(is_ignored_part)
 }
@@ -41,7 +49,7 @@ pub(crate) fn source_argument(token: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_ignored_path, source_argument};
+    use super::{is_ignored_consumer_dir, is_ignored_path, source_argument};
 
     #[test]
     fn default_ignores_match_complete_path_segments() {
@@ -74,5 +82,15 @@ mod tests {
         );
         assert_eq!(source_argument("/tmp/server.ts"), None);
         assert_eq!(source_argument("README.md"), None);
+    }
+
+    #[test]
+    fn consumer_scans_include_maintained_tests_and_skip_generated_trees() {
+        assert!(!is_ignored_consumer_dir("tests"));
+        assert!(!is_ignored_consumer_dir("__tests__"));
+        assert!(!is_ignored_consumer_dir("tools"));
+        assert!(is_ignored_consumer_dir("node_modules"));
+        assert!(is_ignored_consumer_dir("dist"));
+        assert!(is_ignored_consumer_dir(".git"));
     }
 }

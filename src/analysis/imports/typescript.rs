@@ -152,22 +152,31 @@ pub(crate) fn collect_importers(
 
 pub(crate) fn collect_package_consumers(
     report: &ScanReport,
+    package_root: &Path,
     consumer_root: &Path,
     importers: &mut Importers,
-    no_default_ignore: bool,
 ) {
     let (symbols_by_export, package_names) = package_symbol_index(report);
     if symbols_by_export.is_empty() {
         return;
     }
 
-    let walker = walkdir::WalkDir::new(consumer_root).into_iter();
+    let consumer_root = consumer_root
+        .canonicalize()
+        .unwrap_or_else(|_| consumer_root.to_path_buf());
+    let package_root = package_root
+        .canonicalize()
+        .unwrap_or_else(|_| package_root.to_path_buf());
+    let walker = walkdir::WalkDir::new(&consumer_root).into_iter();
     for entry in walker.filter_entry(|entry| {
         if entry.depth() == 0 {
             return true;
         }
+        if entry.path().starts_with(&package_root) {
+            return false;
+        }
         let name = entry.file_name().to_string_lossy();
-        !crate::source_policy::is_ignored_dir(&name, no_default_ignore)
+        !crate::source_policy::is_ignored_consumer_dir(&name)
     }) {
         let entry = match entry {
             Ok(entry) => entry,
@@ -188,7 +197,7 @@ pub(crate) fn collect_package_consumers(
             continue;
         }
 
-        let importer = crate::paths::normalize_relative_path(path, consumer_root);
+        let importer = crate::paths::normalize_relative_path(path, &consumer_root);
         let info = if path
             .extension()
             .is_some_and(|extension| extension == "svelte")

@@ -82,14 +82,14 @@ pub(crate) fn build_importers(
 pub(crate) fn collect_package_consumers(
     report: &ScanReport,
     usage: &mut UsageAnalysis,
+    package_root: &Path,
     consumer_root: &Path,
-    no_default_ignore: bool,
 ) {
     typescript::collect_package_consumers(
         report,
+        package_root,
         consumer_root,
         &mut usage.importers,
-        no_default_ignore,
     );
 }
 
