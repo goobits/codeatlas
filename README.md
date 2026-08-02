@@ -9,6 +9,8 @@ claiming certainty when the source graph is incomplete.
 
 ```bash
 npx @goobits/codeatlas scan .
+npx @goobits/codeatlas scan packages/example --scope source --all --format json
+npx @goobits/codeatlas lexicon packages/example --format json
 npx @goobits/codeatlas audit .
 npx @goobits/codeatlas audit packages/example --consumer-root .
 npx @goobits/codeatlas ci . --workspace --fail-unused false --baseline public-api.json
@@ -39,7 +41,8 @@ a positive integer to allow more parallel build work.
 
 | Command        | Purpose                                                                                |
 | -------------- | -------------------------------------------------------------------------------------- |
-| `scan`         | Show the public surface as a tree, Mermaid, or versioned JSON report                   |
+| `scan`         | Show package API reachability or maintained source as a tree, Mermaid, or versioned JSON report |
+| `lexicon`      | Report deterministic source-name collisions, structural aliases, repeated helpers, and terms |
 | `audit`        | Report public exports with no detected local or explicitly scanned package consumers    |
 | `dead-code`    | Classify source reachability, context-only code, and uncertain boundaries              |
 | `context`      | Return a bounded source graph slice for exact files or symbols                         |
@@ -67,6 +70,24 @@ unused-public findings.
 
 An explicit command is required. Repository-wide scan settings belong in
 `codeatlas.json`; the former top-level flag interface has been removed.
+
+`scan --scope api` is the default and follows configured entrypoints or
+discovered package exports. `scan --scope source` removes that reachability
+filter while preserving package export annotations, so `export_paths` still
+distinguishes importable API from implementation-only symbols. Add `--all` when
+the report should also include internal and private declarations. Source scans
+honor repository ignore rules and exclude conventional test, dependency, and
+generated-output directories unless the project explicitly disables default
+ignores.
+
+`lexicon` always inspects maintained source with internal and private symbols
+included. Its advisory report flags exact same-name/different-shape concepts,
+different-name/same-shape type candidates, and same-name/same-signature helper
+families. Repeated identifier terms provide a deterministic vocabulary index;
+no fuzzy or probabilistic naming guesses are used. Package exposure is derived
+only from each symbol's `export_paths`, so an exported declaration in an
+implementation-only file is not mislabeled as public API. Use text for a short
+review or JSON for the complete term and public-symbol inventory.
 
 ## Declared Architecture
 

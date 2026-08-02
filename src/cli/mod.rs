@@ -1,7 +1,8 @@
 use crate::commands;
 use crate::commands::dead_code::DeadCodeFormat;
 use crate::commands::docs::DocsFormat;
-use crate::commands::OutputFormat;
+use crate::commands::lexicon::LexiconFormat;
+use crate::commands::{OutputFormat, ScanScope};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -41,7 +42,23 @@ enum Command {
         /// Include private/internal symbols
         #[arg(long)]
         all: bool,
+        /// Choose package API reachability or all maintained source files
+        #[arg(long, value_enum, default_value_t = ScanScope::Api)]
+        scope: ScanScope,
         /// Output directory instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
+
+    /// Find deterministic naming collisions, aliases, and duplicate symbol families
+    Lexicon {
+        /// Path to scan
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = LexiconFormat::Text)]
+        format: LexiconFormat,
+        /// Write the report to a file instead of stdout
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
@@ -188,8 +205,12 @@ pub(crate) fn run() -> i32 {
             path,
             format,
             all,
+            scope,
             out,
-        } => commands::run_scan(&path, format, all, out, config_path.as_deref()),
+        } => commands::run_scan(&path, format, all, scope, out, config_path.as_deref()),
+        Command::Lexicon { path, format, out } => {
+            commands::lexicon::run(&path, format, out.as_deref(), config_path.as_deref())
+        }
         Command::Audit {
             path,
             consumer_root,
@@ -274,6 +295,9 @@ mod tests {
     fn requires_an_explicit_command() {
         assert!(Cli::try_parse_from(["codeatlas"]).is_err());
         assert!(Cli::try_parse_from(["codeatlas", "scan", "."]).is_ok());
+        assert!(
+            Cli::try_parse_from(["codeatlas", "scan", ".", "--scope", "source", "--all"]).is_ok()
+        );
         assert!(Cli::try_parse_from([
             "codeatlas",
             "http",
@@ -281,6 +305,14 @@ mod tests {
             ".",
             "--openapi",
             "openapi.json"
+        ])
+        .is_ok());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "lexicon",
+            "packages/example",
+            "--format",
+            "json"
         ])
         .is_ok());
         assert!(Cli::try_parse_from([

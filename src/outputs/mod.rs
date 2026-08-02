@@ -3,6 +3,7 @@ pub(crate) mod context_slice;
 pub(crate) mod dead_code;
 pub(crate) mod html;
 pub(crate) mod json;
+pub(crate) mod lexicon;
 pub(crate) mod markdown;
 pub(crate) mod mermaid;
 pub(crate) mod reference;

@@ -11,6 +11,7 @@ mod domain;
 mod external_tool;
 mod http;
 mod languages;
+mod lexicon;
 mod outputs;
 mod package;
 mod paths;
