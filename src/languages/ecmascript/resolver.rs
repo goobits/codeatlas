@@ -39,6 +39,7 @@ struct ProjectResolution {
     root: PathBuf,
     report_root: String,
     workspace_root: Option<PathBuf>,
+    workspace_member: bool,
     aliases: AliasConfig,
     package_imports: BTreeMap<String, BTreeMap<String, String>>,
 }
@@ -92,6 +93,7 @@ impl ModuleResolver {
                     root: project.root.clone(),
                     report_root: project.report_root.clone(),
                     workspace_root: infer_workspace_root(&project.root, &project.report_root),
+                    workspace_member: project.workspace_member,
                     aliases: load_alias_config(
                         &project.root,
                         modules
@@ -128,14 +130,14 @@ impl ModuleResolver {
         if is_relative_specifier(specifier) {
             if specifier.starts_with('/') {
                 if let Some(resolved) = self.resolve_workspace_absolute(specifier) {
-                    return source_resolution(module, resolved);
+                    return self.source_resolution(module, resolved);
                 }
                 if self.is_unscanned_workspace_absolute(module, specifier) {
                     return Resolution::Unscanned(specifier.to_string());
                 }
             }
             if let Some(resolved) = self.resolve_relative(module, specifier) {
-                return source_resolution(module, resolved);
+                return self.source_resolution(module, resolved);
             }
             return if unsupported_relative_specifier(specifier) {
                 Resolution::Unsupported(specifier.to_string())
@@ -168,7 +170,7 @@ impl ModuleResolver {
             return resolution;
         }
         if let Some(resolved) = self.resolve_alias(module, source_specifier) {
-            return source_resolution(module, resolved);
+            return self.source_resolution(module, resolved);
         }
         Resolution::External(specifier.to_string())
     }
@@ -541,14 +543,14 @@ impl ModuleResolver {
         if let Some(resolved) =
             self.resolve_project_entrypoint_or_unique_suffix(&module.project, source)
         {
-            return source_resolution(module, resolved);
+            return self.source_resolution(module, resolved);
         }
         let workspace_path = format!("/{}", source.trim_start_matches('/'));
         if let Some(resolved) = self.resolve_workspace_absolute(&workspace_path) {
-            return source_resolution(module, resolved);
+            return self.source_resolution(module, resolved);
         }
         if let Some(resolved) = self.resolve_unique_workspace_suffix(source) {
-            return source_resolution(module, resolved);
+            return self.source_resolution(module, resolved);
         }
         if self.is_unscanned_configured_entrypoint(module, source) {
             return Resolution::Unscanned(path.to_string());
@@ -625,7 +627,7 @@ impl ModuleResolver {
         let source_specifier = source_path_specifier(prefix);
         if source_specifier != prefix && is_relative_specifier(source_specifier) {
             if let Some(resolved) = self.resolve_relative(module, source_specifier) {
-                return vec![source_resolution(module, resolved)];
+                return vec![self.source_resolution(module, resolved)];
             }
             return if unsupported_relative_specifier(&combined) {
                 vec![Resolution::Unsupported(combined)]
@@ -640,7 +642,7 @@ impl ModuleResolver {
             .module_specifiers(module, prefix.starts_with('/'))
             .into_iter()
             .filter(|(specifier, _)| specifier.starts_with(prefix) && specifier.ends_with(suffix))
-            .map(|(_, key)| source_resolution(module, key))
+            .map(|(_, key)| self.source_resolution(module, key))
             .collect::<Vec<_>>();
         if matches.is_empty() {
             vec![Resolution::UnresolvedInternal(format!("{prefix}*{suffix}"))]
@@ -664,7 +666,7 @@ impl ModuleResolver {
             .module_specifiers(module, pattern.starts_with('/'))
             .into_iter()
             .filter(|(specifier, _)| matcher.is_match(specifier))
-            .map(|(_, key)| source_resolution(module, key))
+            .map(|(_, key)| self.source_resolution(module, key))
             .collect::<Vec<_>>();
         if matches.is_empty() {
             vec![Resolution::External(format!("glob:{pattern}"))]
@@ -738,9 +740,23 @@ impl ModuleResolver {
         }
         None
     }
+
+    fn source_resolution(&self, module: &Module, target: ModuleKey) -> Resolution {
+        let target_is_workspace_member = self
+            .projects
+            .get(&target.0)
+            .is_some_and(|project| project.workspace_member);
+        source_resolution(&module.project, target, target_is_workspace_member)
+    }
 }
 
 fn infer_workspace_root(project_root: &Path, report_root: &str) -> Option<PathBuf> {
+    if let Some(root) = project_root
+        .ancestors()
+        .find(|ancestor| ancestor.join("pnpm-workspace.yaml").is_file())
+    {
+        return Some(root.to_path_buf());
+    }
     if report_root.is_empty() || report_root == "." {
         return Some(project_root.to_path_buf());
     }
@@ -781,8 +797,12 @@ enum PackageImportResolution {
     NotDeclared,
 }
 
-fn source_resolution(module: &Module, target: ModuleKey) -> Resolution {
-    if target.0 == module.project {
+fn source_resolution(
+    source_project: &ProjectId,
+    target: ModuleKey,
+    target_is_workspace_member: bool,
+) -> Resolution {
+    if &target.0 == source_project || !target_is_workspace_member {
         Resolution::Resolved(target)
     } else {
         Resolution::WorkspaceSource(target)
@@ -1203,6 +1223,40 @@ mod tests {
         assert_eq!(
             config.paths["@fixture/aliased-shared"],
             ["../../b/src/aliasShared.ts"]
+        );
+    }
+
+    #[test]
+    fn source_bypasses_gate_only_for_discovered_workspace_members() {
+        let source = ProjectId("desktop".to_string());
+        let shared = (
+            ProjectId("shared-runtime".to_string()),
+            "index.ts".to_string(),
+        );
+
+        assert!(matches!(
+            source_resolution(&source, shared.clone(), false),
+            Resolution::Resolved(_)
+        ));
+        assert!(matches!(
+            source_resolution(&source, shared, true),
+            Resolution::WorkspaceSource(_)
+        ));
+        assert!(matches!(
+            source_resolution(&source, (source.clone(), "local.ts".to_string()), true),
+            Resolution::Resolved(_)
+        ));
+    }
+
+    #[test]
+    fn workspace_root_prefers_the_nearest_manifest_over_report_layout() {
+        let workspace_root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dead-code/workspace");
+        let project_root = workspace_root.join("packages/a/src");
+
+        assert_eq!(
+            infer_workspace_root(&project_root, "."),
+            Some(workspace_root)
         );
     }
 }
