@@ -94,6 +94,10 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
     )));
     assert!(declaration_context.roots.contains(&NodeId::file(
         &ProjectId("ecmascript".to_string()),
+        "src/Component.d.svelte.ts"
+    )));
+    assert!(declaration_context.roots.contains(&NodeId::file(
+        &ProjectId("ecmascript".to_string()),
         "src/ambient.ts"
     )));
     let report = dead_code::analyze(&graph).expect("dead-code report");
@@ -120,6 +124,7 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
     assert!(!report.findings.iter().any(|finding| {
         finding.gates
             && (finding.path == "src/styles.d.ts"
+                || finding.path == "src/Component.d.svelte.ts"
                 || (finding.path == "vitest.config.ts" && finding.message.contains("\".\"")))
     }));
 

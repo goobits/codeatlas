@@ -177,7 +177,8 @@ pub(super) fn add_discovered_contexts(
             .values()
             .filter(|module| {
                 module.project == project.id
-                    && (module.path.ends_with(".d.ts") || module.info.reachability.declaration_only)
+                    && (super::resolver::is_declaration_file(Path::new(&module.path))
+                        || module.info.reachability.declaration_only)
             })
             .map(|module| module.file.clone())
             .collect();
