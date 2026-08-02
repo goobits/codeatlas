@@ -3,6 +3,7 @@
 const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
+const { requireExternalCargoTarget } = require('./storage.js')
 
 const allowedBumps = new Set(['patch', 'minor', 'major', 'premajor', 'preminor', 'prepatch', 'prerelease'])
 const bump = process.argv[2] || 'patch'
@@ -142,8 +143,10 @@ const resolveNextVersion = () => {
 }
 
 const main = () => {
+	requireExternalCargoTarget()
 	if (!fs.existsSync(nodeModulesPath)) {
-		run('pnpm', ['install', '--ignore-workspace'])
+		console.error('Dependencies are missing. Install them before releasing CodeAtlas.')
+		process.exit(1)
 	}
 
 	if (repoDirty()) {

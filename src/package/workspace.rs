@@ -50,6 +50,7 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
     } else {
         None
     };
+    let workspace_root_selected = root_name.is_some() && patterns.matches(".");
 
     let (mut members, mut names) =
         retry_once_on_not_found(|| discover_direct_members(&root, &scope, &patterns))?;
@@ -89,7 +90,7 @@ pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
             .cmp(&right.report_root)
             .then_with(|| left.name.cmp(&right.name))
     });
-    if members.is_empty() {
+    if members.is_empty() && !workspace_root_selected {
         anyhow::bail!(
             "No pnpm workspace packages matched scope {}",
             scope.display()
@@ -294,7 +295,10 @@ impl WorkspacePatterns {
 
 #[cfg(test)]
 mod tests {
-    use super::{nearest_root, retry_once_on_not_found, workspace_pattern_owns_descendants};
+    use super::{
+        nearest_root, retry_once_on_not_found, workspace_pattern_owns_descendants,
+        PnpmWorkspaceManifest,
+    };
     use anyhow::Context;
     use std::path::Path;
 
@@ -334,5 +338,20 @@ mod tests {
 
         assert_eq!(value, "complete");
         assert_eq!(attempts, 2);
+    }
+
+    #[test]
+    fn pnpm_workspace_package_patterns_are_optional() {
+        let manifest: PnpmWorkspaceManifest = serde_yaml::from_str(
+            r#"
+allowBuilds:
+  esbuild: true
+overrides:
+  vite: 8.0.16
+"#,
+        )
+        .expect("settings-only workspace manifest");
+
+        assert!(manifest.packages.is_empty());
     }
 }

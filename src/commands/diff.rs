@@ -119,11 +119,22 @@ fn create_workspace_baseline(
     let workspace = crate::package::discover_workspace(&project.root)?;
     let mut reports = Vec::new();
     let mut unused_public = Vec::new();
+    let mut members = workspace
+        .members
+        .into_iter()
+        .map(|member| (member.name, member.root, member.report_root))
+        .collect::<Vec<_>>();
+    if project.root == workspace.root {
+        if let Some(root_name) = workspace.root_name {
+            members.push((root_name, workspace.root, ".".to_string()));
+        }
+    }
+    members.sort_by(|left, right| left.2.cmp(&right.2).then_with(|| left.0.cmp(&right.0)));
 
-    for member in workspace.members {
-        let member_config_path = member.root.join("codeatlas.json");
+    for (member_name, member_root, report_root) in members {
+        let member_config_path = member_root.join("codeatlas.json");
         let member_project = load_project(
-            &member.root,
+            &member_root,
             member_config_path
                 .is_file()
                 .then_some(member_config_path.as_path()),
@@ -143,7 +154,7 @@ fn create_workspace_baseline(
             && member_project.config.languages.is_empty()
         {
             reports.push((
-                member.report_root,
+                report_root,
                 ScanReport {
                     package: Some(package),
                     ..ScanReport::default()
@@ -153,13 +164,13 @@ fn create_workspace_baseline(
         }
 
         let (report, member_unused) = scan_report(&member_project, audit_unused, consumer_root)
-            .with_context(|| format!("Could not scan workspace package {}", member.name))?;
+            .with_context(|| format!("Could not scan workspace package {member_name}"))?;
         unused_public.extend(
             member_unused
                 .into_iter()
-                .map(|unused| format!("{}::{unused}", member.name)),
+                .map(|unused| format!("{member_name}::{unused}")),
         );
-        reports.push((member.report_root, report));
+        reports.push((report_root, report));
     }
 
     if reports.is_empty() {

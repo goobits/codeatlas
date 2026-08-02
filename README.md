@@ -542,11 +542,13 @@ contracts.
 
 Bootstrap and migration sources may be SQL files or directories. JavaScript and
 TypeScript bootstrap files expose static schema SQL bindings; migration files
-contain static `{ name, sql }` entries. Static SQL can be resolved through
+contain static `{ name, sql }` entries or project-relative `{ id, file }`
+manifests whose referenced files end in `.sql`. Static SQL can be resolved through
 relative imports and local workspace package exports. Calls that pass static
 bindings through a runner's `bootstrapSql` property are discovered in runtime
 order. Query roots inventory SQL files and SQL passed to supported database
-calls such as `query`, `execute`, and the common pg-promise methods. Safe
+calls such as `query`, `execute`, Prisma's parameterized `$queryRaw` and
+`$executeRaw` tags, and the common pg-promise methods. Safe
 pg-promise named value parameters are normalized for PostgreSQL preparation;
 identifier, raw, list, and runtime interpolation remain explicit dynamic
 boundaries and are never executed. Reports contain locations, counts, and
@@ -870,7 +872,9 @@ Local verification has three intentional layers:
   a live fixture. It may provision the pinned Python toolchain on first use, so
   it stays out of the default test loop.
 - `pnpm run self:check` dogfoods CodeAtlas's dead-code analysis against its own
-  source and writes the detailed report to `target/codeatlas-self-check.json`.
+  source and writes the detailed report to
+  `$CARGO_TARGET_DIR/codeatlas-self-check.json`. The Cargo target must be an
+  absolute path outside and disjoint from the checkout.
 
 `pnpm check` composes the default tests with architecture-spec validation, Rust
 formatting and linting, the dogfood scan, and the package-content check. Only

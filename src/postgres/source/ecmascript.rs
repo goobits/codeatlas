@@ -78,7 +78,15 @@ pub(super) fn extract(root: &Path, paths: &[PathBuf]) -> Result<ExtractedSource>
             }
         }
         for migration in facts.migrations {
-            match resolver.resolve(&display, &migration.sql, &mut HashSet::new())? {
+            let resolved = match &migration.source {
+                MigrationCandidateSource::Sql(sql) => {
+                    resolver.resolve(&display, sql, &mut HashSet::new())?
+                }
+                MigrationCandidateSource::ProjectFile(path) => {
+                    resolve_project_sql_file(root, path)?
+                }
+            };
+            match resolved {
                 Some(sql) if !sql.dynamic && looks_like_sql(&sql.text) => {
                     extracted.migrations.push(EmbeddedMigration {
                         name: migration.name,
@@ -150,8 +158,14 @@ struct BootstrapCandidate {
 #[derive(Clone)]
 struct MigrationCandidate {
     name: String,
-    sql: SqlExpression,
+    source: MigrationCandidateSource,
     line: u32,
+}
+
+#[derive(Clone)]
+enum MigrationCandidateSource {
+    Sql(SqlExpression),
+    ProjectFile(String),
 }
 
 #[derive(Clone)]
@@ -228,7 +242,7 @@ impl<'a> StaticSqlResolver<'a> {
                 self.root.join(candidate).is_file()
             })
         {
-            return Ok(Some(relative));
+            return Ok(is_ecmascript_source(Path::new(&relative)).then_some(relative));
         }
         let Some(dependency) = crate::package::resolve_dependency(self.root, specifier) else {
             return Ok(None);
@@ -247,13 +261,20 @@ impl<'a> StaticSqlResolver<'a> {
             return Ok(None);
         };
         let target = dependency.root.join(&export.source_path);
-        if !target.is_file() {
+        if !target.is_file() || !is_ecmascript_source(&target) {
             return Ok(None);
         }
         Ok(Some(crate::paths::normalize_relative_path(
             &target, self.root,
         )))
     }
+}
+
+fn is_ecmascript_source(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|value| value.to_str()),
+        Some("js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx")
+    )
 }
 
 struct ModuleCollector {
@@ -340,6 +361,29 @@ impl ModuleCollector {
             );
         }
         self.static_sql(text, template.span, !template.exprs.is_empty())
+    }
+
+    fn parameterized_template_sql(&self, template: &Tpl) -> StaticSql {
+        if template
+            .exprs
+            .iter()
+            .any(|expression| is_explicit_sql_fragment(expression))
+        {
+            return self.template_sql(template);
+        }
+        let mut text = String::new();
+        for (index, quasi) in template.quasis.iter().enumerate() {
+            if index > 0 {
+                text.push_str(&format!("${index}"));
+            }
+            text.push_str(
+                quasi
+                    .cooked
+                    .as_ref()
+                    .map_or_else(|| quasi.raw.as_ref(), |cooked| cooked.as_ref()),
+            );
+        }
+        self.static_sql(text, template.span, false)
     }
 
     fn static_sql(&self, text: String, span: Span, dynamic: bool) -> StaticSql {
@@ -477,7 +521,9 @@ impl Visit for ModuleCollector {
 
     fn visit_object_lit(&mut self, object: &ObjectLit) {
         let mut name = None;
+        let mut id = None;
         let mut sql = None;
+        let mut file = None;
         let mut bootstraps = Vec::new();
         for property in &object.props {
             let PropOrSpread::Prop(property) = property else {
@@ -486,7 +532,9 @@ impl Visit for ModuleCollector {
             match &**property {
                 Prop::KeyValue(property) => match property_name(&property.key).as_deref() {
                     Some("name") => name = literal_string(&property.value),
+                    Some("id") => id = literal_string(&property.value),
                     Some("sql") => sql = self.sql_expression(&property.value),
+                    Some("file") => file = literal_string(&property.value),
                     Some("bootstrapSql") => {
                         bootstraps.extend(self.bootstrap_candidates(&property.value));
                     }
@@ -502,7 +550,15 @@ impl Visit for ModuleCollector {
             let line = self.source_map.lookup_char_pos(object.span.lo).line;
             self.migrations.push(MigrationCandidate {
                 name,
-                sql,
+                source: MigrationCandidateSource::Sql(sql),
+                line: u32::try_from(line).unwrap_or(u32::MAX),
+            });
+        }
+        if let (Some(id), Some(file)) = (id, file) {
+            let line = self.source_map.lookup_char_pos(object.span.lo).line;
+            self.migrations.push(MigrationCandidate {
+                name: id,
+                source: MigrationCandidateSource::ProjectFile(file),
                 line: u32::try_from(line).unwrap_or(u32::MAX),
             });
         }
@@ -521,6 +577,15 @@ impl Visit for ModuleCollector {
             }
         }
         call.visit_children_with(self);
+    }
+
+    fn visit_tagged_tpl(&mut self, template: &TaggedTpl) {
+        if expression_method_name(&template.tag).is_some_and(is_parameterized_sql_tag) {
+            self.queries.push(SqlExpression::Value(
+                self.parameterized_template_sql(&template.tpl),
+            ));
+        }
+        template.visit_children_with(self);
     }
 }
 
@@ -578,7 +643,11 @@ fn call_method_name(call: &CallExpr) -> Option<&str> {
     let Callee::Expr(callee) = &call.callee else {
         return None;
     };
-    let Expr::Member(member) = &**callee else {
+    expression_method_name(callee)
+}
+
+fn expression_method_name(expression: &Expr) -> Option<&str> {
+    let Expr::Member(member) = unwrap_expression(expression) else {
         return None;
     };
     match &member.prop {
@@ -594,8 +663,56 @@ fn call_method_name(call: &CallExpr) -> Option<&str> {
 fn is_sql_call_method(name: &str) -> bool {
     matches!(
         name,
-        "query" | "execute" | "none" | "any" | "many" | "one" | "oneOrNone" | "result"
+        "query"
+            | "execute"
+            | "none"
+            | "any"
+            | "many"
+            | "one"
+            | "oneOrNone"
+            | "result"
+            | "$queryRaw"
+            | "$executeRaw"
+            | "$queryRawUnsafe"
+            | "$executeRawUnsafe"
     )
+}
+
+fn is_parameterized_sql_tag(name: &str) -> bool {
+    matches!(name, "$queryRaw" | "$executeRaw")
+}
+
+fn is_explicit_sql_fragment(expression: &Expr) -> bool {
+    if let Expr::TaggedTpl(template) = unwrap_expression(expression) {
+        return expression_method_name(&template.tag)
+            .is_some_and(|name| matches!(name, "raw" | "join" | "sql"));
+    }
+    let Expr::Call(call) = unwrap_expression(expression) else {
+        return false;
+    };
+    call_method_name(call).is_some_and(|name| matches!(name, "raw" | "join" | "sql"))
+}
+
+fn resolve_project_sql_file(root: &Path, configured: &str) -> Result<Option<StaticSql>> {
+    let relative = Path::new(configured);
+    if relative.is_absolute() {
+        anyhow::bail!("Embedded migration file must be project-relative: {configured}");
+    }
+    let canonical_root = root.canonicalize()?;
+    let canonical = root.join(relative).canonicalize()?;
+    if canonical.strip_prefix(&canonical_root).is_err() {
+        anyhow::bail!("Embedded migration file escapes the project root: {configured}");
+    }
+    if canonical.extension().and_then(|value| value.to_str()) != Some("sql") {
+        return Ok(None);
+    }
+    Ok(Some(StaticSql {
+        text: std::fs::read_to_string(&canonical)?,
+        path: crate::paths::normalize_relative_path(&canonical, &canonical_root),
+        line: 1,
+        column: 1,
+        dynamic: false,
+    }))
 }
 
 fn looks_like_sql(source: &str) -> bool {
@@ -632,7 +749,7 @@ pub(super) fn sql_keyword(source: &str) -> Option<&str> {
         .unwrap_or_default();
     [
         "select", "insert", "update", "delete", "with", "create", "alter", "drop", "truncate",
-        "grant", "revoke", "do", "set", "begin", "commit", "rollback",
+        "grant", "revoke", "do", "set", "lock", "begin", "commit", "rollback",
     ]
     .into_iter()
     .find(|candidate| keyword.eq_ignore_ascii_case(candidate))
@@ -649,6 +766,7 @@ mod tests {
             "-- migration\nCREATE TABLE users(id bigint);"
         ));
         assert!(looks_like_sql("/* query */ SELECT 1"));
+        assert!(looks_like_sql("LOCK TABLE users IN ACCESS EXCLUSIVE MODE"));
         assert!(!looks_like_sql("query failed"));
     }
 
@@ -659,19 +777,38 @@ mod tests {
             &root,
             &[
                 root.join("migrations.ts"),
+                root.join("manifest.ts"),
                 root.join("queries.ts"),
                 root.join("runner.ts"),
             ],
         )
         .expect("embedded PostgreSQL source");
 
-        assert_eq!(source.migrations.len(), 2);
+        assert_eq!(source.migrations.len(), 3);
         assert_eq!(source.migrations[0].name, "001_inline.sql");
         assert_eq!(source.migrations[1].name, "002_imported.sql");
         assert_eq!(source.migrations[1].sql.path, "schema.ts");
+        assert_eq!(source.migrations[2].name, "003_file.sql");
+        assert_eq!(source.migrations[2].sql.path, "003_file.sql");
+        assert_eq!(source.unresolved_migrations.len(), 1);
+        assert_eq!(source.unresolved_migrations[0].name, "004_dynamic.ts");
         assert_eq!(source.bootstraps.len(), 1);
         assert_eq!(source.bootstraps[0].name, "IMPORTED_SCHEMA_SQL");
-        assert_eq!(source.queries.len(), 2);
+        assert_eq!(source.queries.len(), 6);
+        let parameterized = source
+            .queries
+            .iter()
+            .filter(|query| {
+                query.sql.text.contains("prisma_users") && query.sql.text.contains("$1")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(parameterized.len(), 2);
+        assert!(parameterized.iter().all(|query| !query.sql.dynamic));
+        assert!(source.queries.iter().any(|query| {
+            query.sql.text.contains("prisma_users WHERE")
+                && query.sql.text.contains("$codeatlas_1_")
+                && query.sql.dynamic
+        }));
         let dynamic = source
             .queries
             .iter()
