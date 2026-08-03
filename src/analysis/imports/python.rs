@@ -10,6 +10,7 @@ pub(crate) fn collect_importers(
     symbol_index: &HashMap<Language, HashMap<String, HashMap<String, String>>>,
     importers: &mut Importers,
     dynamic_references: &mut HashSet<String>,
+    signature_dependencies: &mut HashSet<String>,
     file_edges: &mut FileEdges,
     no_default_ignore: bool,
 ) {
@@ -31,7 +32,13 @@ pub(crate) fn collect_importers(
     };
 
     for (file, info) in &modules {
-        record_local_references(file, info, symbols_by_file, dynamic_references);
+        record_local_references(
+            file,
+            info,
+            symbols_by_file,
+            dynamic_references,
+            signature_dependencies,
+        );
         process_imports(file, info, &mut resolution, importers, file_edges);
     }
     record_project_entrypoints(
@@ -48,6 +55,8 @@ fn load_modules(
 ) -> (HashMap<String, ModuleInfo>, HashMap<String, String>) {
     let mut modules: HashMap<String, ModuleInfo> = HashMap::new();
     let mut module_by_name: HashMap<String, String> = HashMap::new();
+    let source_roots =
+        crate::package::discover_python_source_roots(root_dir).unwrap_or_else(|_| Vec::new());
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
     for entry in walker.filter_entry(|e| {
@@ -76,7 +85,13 @@ fn load_modules(
         };
 
         let relative = crate::paths::normalize_relative_path(path, root_dir);
-        let module_name = resolver::module_name_from_path(&relative);
+        let relative_path = Path::new(&relative);
+        let module_path = source_roots
+            .iter()
+            .find_map(|source_root| relative_path.strip_prefix(source_root).ok())
+            .unwrap_or(relative_path);
+        let module_name =
+            resolver::module_name_from_path(&crate::paths::normalize_path(module_path));
         module_by_name.insert(module_name.clone(), relative.clone());
 
         let info = match parser::parse_module_info(path, root_dir, &source) {
@@ -91,6 +106,7 @@ fn load_modules(
                 imports: info.imports,
                 dynamic_entrypoints: info.reachability.dynamic_entrypoints,
                 top_level_references: info.reachability.top_level_references,
+                annotation_references: info.reachability.annotation_references,
                 module_name,
                 package: relative.ends_with("/__init__.py") || relative == "__init__.py",
                 file_path: relative,
@@ -254,6 +270,7 @@ struct ModuleInfo {
     imports: Vec<parser::PythonImport>,
     dynamic_entrypoints: std::collections::BTreeSet<String>,
     top_level_references: std::collections::BTreeSet<String>,
+    annotation_references: std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
     module_name: String,
     file_path: String,
     package: bool,
@@ -264,6 +281,7 @@ fn record_local_references(
     module: &ModuleInfo,
     symbols_by_file: Option<&HashMap<String, HashMap<String, String>>>,
     dynamic_references: &mut HashSet<String>,
+    signature_dependencies: &mut HashSet<String>,
 ) {
     let Some(symbols) = symbols_by_file.and_then(|symbols| symbols.get(file)) else {
         return;
@@ -278,6 +296,11 @@ fn record_local_references(
             dynamic_references.insert(symbol_id.clone());
         }
     }
+    for name in module.annotation_references.values().flatten() {
+        if let Some(symbol_id) = symbols.get(name) {
+            signature_dependencies.insert(symbol_id.clone());
+        }
+    }
 }
 
 fn record_project_entrypoints(
@@ -289,29 +312,9 @@ fn record_project_entrypoints(
     let Some(symbols_by_file) = symbols_by_file else {
         return;
     };
-    let Ok(source) = std::fs::read_to_string(root_dir.join("pyproject.toml")) else {
+    let Ok(entrypoints) = crate::package::discover_python_entrypoints(root_dir) else {
         return;
     };
-    let Ok(document) = toml::from_str::<toml::Value>(&source) else {
-        return;
-    };
-    let mut entrypoints = Vec::new();
-    if let Some(project) = document.get("project").and_then(toml::Value::as_table) {
-        for table in ["scripts", "gui-scripts"]
-            .into_iter()
-            .filter_map(|name| project.get(name).and_then(toml::Value::as_table))
-        {
-            entrypoints.extend(table.values().filter_map(toml::Value::as_str));
-        }
-    }
-    if let Some(scripts) = document
-        .get("tool")
-        .and_then(|tool| tool.get("poetry"))
-        .and_then(|poetry| poetry.get("scripts"))
-        .and_then(toml::Value::as_table)
-    {
-        entrypoints.extend(scripts.values().filter_map(toml::Value::as_str));
-    }
     for entrypoint in entrypoints {
         let Some((module, symbol)) = entrypoint.split_once(':') else {
             continue;

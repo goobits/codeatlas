@@ -49,6 +49,7 @@ pub(crate) fn build_importers(
         &symbol_index,
         &mut importers,
         &mut dynamic_references,
+        &mut signature_dependencies,
         &mut file_edges,
         no_default_ignore,
     );

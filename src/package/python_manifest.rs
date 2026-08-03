@@ -4,15 +4,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
 pub(crate) fn discover(root_dir: &Path) -> Result<Option<PackageInfo>> {
-    let manifest_path = root_dir.join("pyproject.toml");
-    if !manifest_path.is_file() {
+    let Some(manifest) = read_manifest(root_dir)? else {
         return Ok(None);
-    }
-
-    let source = std::fs::read_to_string(&manifest_path)
-        .with_context(|| format!("Could not read {}", manifest_path.display()))?;
-    let manifest: toml::Value =
-        toml::from_str(&source).with_context(|| format!("Invalid {}", manifest_path.display()))?;
+    };
     let Some(project) = manifest.get("project").and_then(toml::Value::as_table) else {
         return Ok(None);
     };
@@ -71,17 +65,78 @@ pub(crate) fn discover(root_dir: &Path) -> Result<Option<PackageInfo>> {
 }
 
 pub(crate) fn source_roots(root_dir: &Path) -> Result<Vec<PathBuf>> {
-    let manifest_path = root_dir.join("pyproject.toml");
-    let roots = if manifest_path.is_file() {
-        let source = std::fs::read_to_string(&manifest_path)
-            .with_context(|| format!("Could not read {}", manifest_path.display()))?;
-        let manifest: toml::Value = toml::from_str(&source)
-            .with_context(|| format!("Invalid {}", manifest_path.display()))?;
+    let roots = if let Some(manifest) = read_manifest(root_dir)? {
         setuptools_layout(root_dir, &manifest).0
     } else {
         conventional_source_roots(root_dir)
     };
     Ok(ordered_source_roots(roots))
+}
+
+pub(crate) fn discover_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
+    let Some(manifest) = read_manifest(root_dir)? else {
+        return Ok(Vec::new());
+    };
+    Ok(entrypoints_from_manifest(&manifest))
+}
+
+fn read_manifest(root_dir: &Path) -> Result<Option<toml::Value>> {
+    let manifest_path = root_dir.join("pyproject.toml");
+    if !manifest_path.is_file() {
+        return Ok(None);
+    }
+    let source = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Could not read {}", manifest_path.display()))?;
+    let manifest =
+        toml::from_str(&source).with_context(|| format!("Invalid {}", manifest_path.display()))?;
+    Ok(Some(manifest))
+}
+
+fn entrypoints_from_manifest(manifest: &toml::Value) -> Vec<String> {
+    let mut entrypoints = Vec::new();
+    if let Some(project) = manifest.get("project").and_then(toml::Value::as_table) {
+        for table in ["scripts", "gui-scripts"]
+            .into_iter()
+            .filter_map(|name| project.get(name).and_then(toml::Value::as_table))
+        {
+            extend_entrypoints(table.values(), &mut entrypoints);
+        }
+        if let Some(groups) = project.get("entry-points").and_then(toml::Value::as_table) {
+            for group in groups.values().filter_map(toml::Value::as_table) {
+                extend_entrypoints(group.values(), &mut entrypoints);
+            }
+        }
+    }
+    if let Some(poetry) = manifest.get("tool").and_then(|tool| tool.get("poetry")) {
+        if let Some(scripts) = poetry.get("scripts").and_then(toml::Value::as_table) {
+            extend_entrypoints(scripts.values(), &mut entrypoints);
+        }
+        if let Some(groups) = poetry.get("plugins").and_then(toml::Value::as_table) {
+            for group in groups.values().filter_map(toml::Value::as_table) {
+                extend_entrypoints(group.values(), &mut entrypoints);
+            }
+        }
+    }
+    entrypoints.sort();
+    entrypoints.dedup();
+    entrypoints
+}
+
+fn extend_entrypoints<'a>(
+    values: impl IntoIterator<Item = &'a toml::Value>,
+    entrypoints: &mut Vec<String>,
+) {
+    entrypoints.extend(values.into_iter().filter_map(|value| {
+        value
+            .as_str()
+            .or_else(|| {
+                value
+                    .as_table()
+                    .and_then(|table| table.get("reference"))
+                    .and_then(toml::Value::as_str)
+            })
+            .map(str::to_string)
+    }));
 }
 
 fn setuptools_layout(
@@ -190,7 +245,7 @@ fn is_public_import_path(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::portable_relative_path;
+    use super::{entrypoints_from_manifest, portable_relative_path};
 
     #[test]
     fn configured_source_roots_cannot_escape_the_project() {
@@ -198,5 +253,35 @@ mod tests {
         assert!(portable_relative_path("./src").is_some());
         assert!(portable_relative_path("../shared").is_none());
         assert!(portable_relative_path("/tmp/shared").is_none());
+    }
+
+    #[test]
+    fn project_and_poetry_entrypoints_have_one_normalized_owner() {
+        let manifest = toml::from_str(
+            r#"
+                [project.scripts]
+                cli = "pkg.cli:main"
+
+                [project.entry-points."pkg.plugins"]
+                pep-plugin = "pkg.plugins:PepPlugin"
+
+                [tool.poetry.scripts]
+                poetry-cli = { reference = "pkg.poetry:main", type = "console" }
+
+                [tool.poetry.plugins."pkg.plugins"]
+                poetry-plugin = "pkg.plugins:PoetryPlugin"
+            "#,
+        )
+        .expect("Python manifest fixture");
+
+        assert_eq!(
+            entrypoints_from_manifest(&manifest),
+            [
+                "pkg.cli:main",
+                "pkg.plugins:PepPlugin",
+                "pkg.plugins:PoetryPlugin",
+                "pkg.poetry:main",
+            ]
+        );
     }
 }

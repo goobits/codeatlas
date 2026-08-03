@@ -6,5 +6,14 @@ version = "0.1.0"
 fixture-cli = "pkg.api:public_func"
 fixture-admin = "pkg.api:cli_only"
 
+[project.entry-points."fixture.plugins"]
+fixture-plugin = "pkg.api:plugin_only"
+
+[tool.poetry.scripts]
+fixture-poetry = "pkg.api:poetry_script_only"
+
+[tool.poetry.plugins."fixture.plugins"]
+fixture-poetry-plugin = "pkg.api:poetry_plugin_only"
+
 [tool.setuptools.packages.find]
 where = ["."]

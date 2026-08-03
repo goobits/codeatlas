@@ -9,6 +9,10 @@ use rustpython_parser::source_code::LineIndex;
 use rustpython_parser::text_size::TextRange;
 use std::collections::BTreeSet;
 
+mod annotations;
+
+use annotations::AnnotationReferences;
+
 pub(super) fn collect(
     suite: &[ast::Stmt],
     source: &str,
@@ -19,9 +23,14 @@ pub(super) fn collect(
         match statement {
             ast::Stmt::FunctionDef(function) => {
                 collect_callable_reachability(
-                    &function.name,
-                    &function.body,
-                    &function.decorator_list,
+                    CallableDefinition {
+                        name: &function.name,
+                        arguments: &function.args,
+                        body: &function.body,
+                        decorators: &function.decorator_list,
+                        returns: function.returns.as_deref(),
+                        type_parameters: &function.type_params,
+                    },
                     source,
                     line_index,
                     &mut facts,
@@ -29,9 +38,14 @@ pub(super) fn collect(
             }
             ast::Stmt::AsyncFunctionDef(function) => {
                 collect_callable_reachability(
-                    &function.name,
-                    &function.body,
-                    &function.decorator_list,
+                    CallableDefinition {
+                        name: &function.name,
+                        arguments: &function.args,
+                        body: &function.body,
+                        decorators: &function.decorator_list,
+                        returns: function.returns.as_deref(),
+                        type_parameters: &function.type_params,
+                    },
                     source,
                     line_index,
                     &mut facts,
@@ -46,6 +60,7 @@ pub(super) fn collect(
                 for statement in &class.body {
                     body.visit_stmt(statement.clone());
                 }
+                collect_type_parameter_annotations(&class.type_params, &mut body);
                 merge_symbol_collector(&mut facts, owner, body);
 
                 let mut definition = ReferenceCollector::new(None, source, line_index);
@@ -76,30 +91,87 @@ pub(super) fn collect(
     facts
 }
 
+struct CallableDefinition<'a> {
+    name: &'a ast::Identifier,
+    arguments: &'a ast::Arguments,
+    body: &'a [ast::Stmt],
+    decorators: &'a [ast::Expr],
+    returns: Option<&'a ast::Expr>,
+    type_parameters: &'a [ast::TypeParam],
+}
+
 fn collect_callable_reachability(
-    name: &ast::Identifier,
-    body: &[ast::Stmt],
-    decorators: &[ast::Expr],
+    definition: CallableDefinition<'_>,
     source: &str,
     line_index: &LineIndex,
     facts: &mut PythonReachabilityFacts,
 ) {
-    let owner = name.as_str().to_string();
-    if has_unknown_decorator(decorators) {
+    let owner = definition.name.as_str().to_string();
+    if has_unknown_decorator(definition.decorators) {
         facts.dynamic_entrypoints.insert(owner.clone());
     }
-    let mut callable = ReferenceCollector::new(Some(owner.clone()), source, line_index);
-    for statement in body {
-        callable.visit_stmt(statement.clone());
+    let mut references = ReferenceCollector::new(Some(owner.clone()), source, line_index);
+    collect_argument_annotations(definition.arguments, &mut references);
+    if let Some(returns) = definition.returns {
+        references.record_annotation(returns);
     }
-    merge_symbol_collector(facts, owner, callable);
+    collect_type_parameter_annotations(definition.type_parameters, &mut references);
+    for statement in definition.body {
+        references.visit_stmt(statement.clone());
+    }
+    merge_symbol_collector(facts, owner, references);
 
-    let mut definition = ReferenceCollector::new(None, source, line_index);
-    for decorator in decorators {
-        definition.visit_expr(decorator.clone());
+    let mut top_level = ReferenceCollector::new(None, source, line_index);
+    collect_argument_defaults(definition.arguments, &mut top_level);
+    for decorator in definition.decorators {
+        top_level.visit_expr(decorator.clone());
     }
-    record_unknown_decorators(decorators, source, line_index, &mut definition);
-    merge_top_level_collector(facts, definition);
+    record_unknown_decorators(definition.decorators, source, line_index, &mut top_level);
+    merge_top_level_collector(facts, top_level);
+}
+
+fn collect_argument_annotations(
+    arguments: &ast::Arguments,
+    collector: &mut ReferenceCollector<'_>,
+) {
+    for argument in arguments
+        .posonlyargs
+        .iter()
+        .chain(&arguments.args)
+        .chain(&arguments.kwonlyargs)
+        .map(|argument| &argument.def)
+        .chain(arguments.vararg.iter().map(Box::as_ref))
+        .chain(arguments.kwarg.iter().map(Box::as_ref))
+    {
+        if let Some(annotation) = argument.annotation.as_deref() {
+            collector.record_annotation(annotation);
+        }
+    }
+}
+
+fn collect_argument_defaults(arguments: &ast::Arguments, collector: &mut ReferenceCollector<'_>) {
+    for default in arguments
+        .posonlyargs
+        .iter()
+        .chain(&arguments.args)
+        .chain(&arguments.kwonlyargs)
+        .filter_map(|argument| argument.default.as_deref())
+    {
+        collector.visit_expr(default.clone());
+    }
+}
+
+fn collect_type_parameter_annotations(
+    type_parameters: &[ast::TypeParam],
+    collector: &mut ReferenceCollector<'_>,
+) {
+    for type_parameter in type_parameters {
+        if let ast::TypeParam::TypeVar(type_variable) = type_parameter {
+            if let Some(bound) = type_variable.bound.as_deref() {
+                collector.record_annotation(bound);
+            }
+        }
+    }
 }
 
 fn merge_symbol_collector(
@@ -107,11 +179,22 @@ fn merge_symbol_collector(
     owner: String,
     collector: ReferenceCollector<'_>,
 ) {
+    let annotation_names = collector.annotation_names.clone();
     facts
         .symbol_references
         .entry(owner.clone())
         .or_default()
-        .extend(collector.names);
+        .extend(
+            collector
+                .names
+                .into_iter()
+                .chain(annotation_names.iter().cloned()),
+        );
+    facts
+        .annotation_references
+        .entry(owner.clone())
+        .or_default()
+        .extend(annotation_names);
     facts
         .symbol_qualified_references
         .entry(owner)
@@ -128,7 +211,12 @@ fn merge_top_level_collector(
     facts: &mut PythonReachabilityFacts,
     collector: ReferenceCollector<'_>,
 ) {
-    facts.top_level_references.extend(collector.names);
+    facts.top_level_references.extend(
+        collector
+            .names
+            .into_iter()
+            .chain(collector.annotation_names),
+    );
     facts
         .top_level_qualified_references
         .extend(collector.qualified_names);
@@ -142,6 +230,7 @@ fn merge_top_level_collector(
 struct ReferenceCollector<'a> {
     owner: Option<String>,
     names: BTreeSet<String>,
+    annotation_names: BTreeSet<String>,
     qualified_names: BTreeSet<String>,
     scoped_imports: Vec<PythonScopedImport>,
     dynamic_dependencies: Vec<PythonDynamicDependency>,
@@ -155,6 +244,7 @@ impl<'a> ReferenceCollector<'a> {
         Self {
             owner,
             names: BTreeSet::new(),
+            annotation_names: BTreeSet::new(),
             qualified_names: BTreeSet::new(),
             scoped_imports: Vec::new(),
             dynamic_dependencies: Vec::new(),
@@ -175,6 +265,21 @@ impl<'a> ReferenceCollector<'a> {
             span: self.span(range),
             message: message.into(),
         });
+    }
+
+    fn record_annotation(&mut self, expression: &ast::Expr) {
+        let references = AnnotationReferences::collect(expression);
+        self.annotation_names
+            .extend(references.names.iter().cloned());
+        self.qualified_names.extend(references.qualified_names);
+        if references.unresolved {
+            self.uncertainties.push(PythonUncertainty {
+                owner: self.owner.clone(),
+                kind: PythonUncertaintyKind::Reflection,
+                span: self.span(expression.range()),
+                message: "A string Python annotation could not be resolved completely.".to_string(),
+            });
+        }
     }
 }
 
@@ -230,6 +335,11 @@ impl Visitor for ReferenceCollector<'_> {
             }
         }
         self.generic_visit_expr_attribute(node);
+    }
+
+    fn visit_stmt_ann_assign(&mut self, node: ast::StmtAnnAssign) {
+        self.record_annotation(&node.annotation);
+        self.generic_visit_stmt_ann_assign(node);
     }
 
     fn visit_stmt_assign(&mut self, node: ast::StmtAssign) {
