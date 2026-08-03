@@ -50,7 +50,7 @@ pub(crate) fn render_text(report: &LexiconReport) -> String {
         output.push_str("  none\n");
     }
     for family in &report.duplicate_families {
-        output.push_str(&format!("- {} — {}\n", family.name, family.signature));
+        output.push_str(&format!("- {}: {}\n", family.name, family.signature));
         for symbol in &family.symbols {
             output.push_str(&format_symbol(symbol, "  "));
         }
@@ -63,7 +63,7 @@ pub(crate) fn render_text(report: &LexiconReport) -> String {
     for term in report.terms.iter().take(30) {
         let names = summarize_names(&term.names);
         output.push_str(&format!(
-            "- {}: {} symbols ({} package-exposed) — {}\n",
+            "- {}: {} symbols ({} package-exposed), {}\n",
             term.term, term.symbol_count, term.public_symbol_count, names
         ));
     }
@@ -103,7 +103,7 @@ fn format_symbol(symbol: &LexiconSymbol, indent: &str) -> String {
         format!("exported as {}", symbol.export_paths.join(", "))
     };
     format!(
-        "{indent}{}:{} — {} ({exposure})\n",
+        "{indent}{}:{}, {} ({exposure})\n",
         symbol.file_path, symbol.name, symbol.signature
     )
 }

@@ -7,6 +7,7 @@ struct ModuleInfo {
     exports: Option<Vec<String>>,
     imports: Vec<parser::PythonImport>,
     module_name: String,
+    package: bool,
 }
 
 pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
@@ -81,6 +82,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
                         exports,
                         imports: info.imports,
                         module_name,
+                        package: relative.ends_with("/__init__.py") || relative == "__init__.py",
                     },
                 );
             }
@@ -137,7 +139,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         };
         let mut current_allowed = std::collections::HashSet::new();
         let defined = defined_symbol_names(&info.symbols);
-        let import_map = resolver::import_name_map(&info.imports, &info.module_name);
+        let import_map = resolver::import_name_map(&info.imports, &info.module_name, info.package);
 
         for name in export_names {
             if name == "*" {

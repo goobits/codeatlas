@@ -64,12 +64,13 @@ fn source_only_inventory_reports_pages_and_bounded_node_endpoints() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "http",
-            "inventory",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture root should be UTF-8"),
+            "scan",
+            "http",
             "--out",
             report_path.to_str().expect("report path should be UTF-8"),
         ])
@@ -125,12 +126,13 @@ fn source_only_inventory_reports_pages_and_bounded_node_endpoints() {
 
     let baseline = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "http",
-            "baseline",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture root should be UTF-8"),
+            "baseline",
+            "http",
         ])
         .output()
         .expect("CodeAtlas schema-free baseline should start");
@@ -203,11 +205,12 @@ fn mixed_schema_and_source_contracts_share_baseline_commands() {
         .expect("baseline path should be UTF-8");
     run_codeatlas(
         &[
+            "--root",
+            root,
             "--config",
             config_path,
-            "http",
             "baseline",
-            root,
+            "http",
             "--out",
             baseline_path,
         ],
@@ -225,19 +228,29 @@ fn mixed_schema_and_source_contracts_share_baseline_commands() {
 
     run_codeatlas(
         &[
+            "--root",
+            root,
             "--config",
             config_path,
-            "http",
             "check",
-            root,
-            "--baseline",
+            "http",
+            "--against",
             baseline_path,
         ],
         "mixed HTTP check",
     );
 
     let diff = run_codeatlas(
-        &["--config", config_path, "http", "diff", baseline_path, root],
+        &[
+            "--root",
+            root,
+            "--config",
+            config_path,
+            "diff",
+            "http",
+            "--against",
+            baseline_path,
+        ],
         "mixed HTTP diff",
     );
     let diff_report: serde_json::Value =
@@ -317,14 +330,15 @@ fn target_provider_starts_fetches_and_stops_its_server() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "--config",
-            config_path.to_str().expect("config path should be UTF-8"),
-            "http",
-            "check",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture root should be UTF-8"),
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "check",
+            "http",
             "--out",
             report_path.to_str().expect("report path should be UTF-8"),
         ])
@@ -554,14 +568,15 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "--config",
-            config_path.to_str().expect("config path should be UTF-8"),
-            "http",
-            "fuzz",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture root should be UTF-8"),
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "fuzz",
+            "http",
             "--target",
             "fixture-local",
             "--max-examples",
@@ -714,14 +729,15 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
 
     let stateful_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "--config",
-            config_path.to_str().expect("config path should be UTF-8"),
-            "http",
-            "fuzz",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture root should be UTF-8"),
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "fuzz",
+            "http",
             "--target",
             "fixture-local",
             "--profile",
@@ -759,14 +775,15 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
 
     let focused_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "--config",
-            config_path.to_str().expect("config path should be UTF-8"),
-            "http",
-            "fuzz",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture root should be UTF-8"),
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "fuzz",
+            "http",
             "--target",
             "fixture-local",
             "--max-examples",
@@ -799,14 +816,15 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
 
     let source_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "--config",
-            config_path.to_str().expect("config path should be UTF-8"),
-            "http",
-            "fuzz",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture root should be UTF-8"),
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "fuzz",
+            "http",
             "--target",
             "fixture-source-local",
             "--max-examples",
@@ -848,14 +866,15 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
 
     let denied_source_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "--config",
-            config_path.to_str().expect("config path should be UTF-8"),
-            "http",
-            "fuzz",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture root should be UTF-8"),
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "fuzz",
+            "http",
             "--target",
             "fixture-source-denied-local",
             "--max-examples",
@@ -892,14 +911,15 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
 
     let unsafe_source_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "--config",
-            config_path.to_str().expect("config path should be UTF-8"),
-            "http",
-            "fuzz",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture root should be UTF-8"),
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "fuzz",
+            "http",
             "--target",
             "fixture-source-unsafe-local",
             "--max-examples",
@@ -933,14 +953,15 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
 
     let server_error_output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "--config",
-            config_path.to_str().expect("config path should be UTF-8"),
-            "http",
-            "fuzz",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture root should be UTF-8"),
+            "--config",
+            config_path.to_str().expect("config path should be UTF-8"),
+            "fuzz",
+            "http",
             "--target",
             "fixture-server-error-local",
             "--max-examples",

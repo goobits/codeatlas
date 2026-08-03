@@ -160,7 +160,7 @@ pub(crate) fn conform(
             },
             generated_at: request.as_of.clone(),
             source_inputs,
-            generation_command: "codeatlas architecture conform".to_owned(),
+            generation_command: "codeatlas check architecture observation".to_owned(),
             manual_editing: "prohibited".to_owned(),
         },
         vocabulary: vocabulary.identity(),

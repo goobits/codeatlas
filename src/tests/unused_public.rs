@@ -111,7 +111,7 @@ fn unused_public_typescript_counts_svelte_package_consumers() {
 }
 
 #[test]
-fn baseline_consumer_scan_uses_exports_without_counting_the_audited_package() {
+fn public_usage_scan_uses_exports_without_counting_the_audited_package() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system clock")
@@ -148,18 +148,17 @@ fn baseline_consumer_scan_uses_exports_without_counting_the_audited_package() {
     )
     .expect("external consumer test");
 
-    let scan =
-        commands::diff::create_baseline(&package_root, false, true, Some(&consumer_root), None)
-            .expect("baseline scan");
+    let scan = commands::usage_public_report(&package_root, Some(&consumer_root), None)
+        .expect("public usage scan");
 
     assert!(!scan
         .unused_public
         .iter()
-        .any(|id| id.ends_with("fn#externallyUsed")));
+        .any(|entry| entry.id.ends_with("fn#externallyUsed")));
     assert!(scan
         .unused_public
         .iter()
-        .any(|id| id.ends_with("fn#boundaryOnly")));
+        .any(|entry| entry.id.ends_with("fn#boundaryOnly")));
 
     fs::remove_dir_all(consumer_root).expect("remove baseline consumer fixture");
 }
@@ -171,6 +170,28 @@ fn unused_public_python() {
     assert!(unused.contains("py:pkg/api.py:def#unused_func"));
     assert!(!unused.contains("py:pkg/api.py:def#public_func"));
     assert!(!unused.contains("py:pkg/api.py:def#registered_func"));
+    assert!(!unused.contains("py:pkg/api.py:class#CatModel"));
+    assert!(!unused.contains("py:pkg/api.py:class#DogModel"));
+    assert!(!unused.contains("py:pkg/api.py:def#cli_only"));
+}
+
+#[test]
+fn python_usage_maps_relative_submodule_imports() {
+    let root = fixture_root("py-relative");
+    let config = ScanConfig {
+        include_types: true,
+        include_private: false,
+        entrypoints: None,
+        no_default_ignore: false,
+    };
+    let scanners = languages::get_scanners(Some(vec!["py".to_string()]));
+    let mut report = languages::scan_all(&root, &config, scanners);
+    analysis::annotate_imports(&mut report, &root, false);
+
+    assert!(report
+        .file_edges
+        .iter()
+        .any(|edge| { edge.from == "pkg/consumer.py" && edge.to == "pkg/api.py" }));
 }
 
 #[test]

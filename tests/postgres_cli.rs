@@ -13,9 +13,10 @@ fn inventory_uses_explicit_runner_semantics_without_leaking_sql() {
         .join("postgres");
     let output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "postgres",
-            "inventory",
+            "--root",
             fixture.to_str().expect("fixture path should be UTF-8"),
+            "scan",
+            "postgres",
         ])
         .output()
         .expect("CodeAtlas PostgreSQL inventory should start");
@@ -135,12 +136,13 @@ fn inventory_partitions_dependency_backed_query_contracts() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "postgres",
-            "inventory",
+            "--root",
             directory
                 .path()
                 .to_str()
                 .expect("fixture path should be UTF-8"),
+            "scan",
+            "postgres",
         ])
         .output()
         .expect("CodeAtlas PostgreSQL inventory should start");
@@ -188,9 +190,10 @@ fn managed_postgres_smoke_covers_replay_baseline_diff_and_cleanup() {
 
     let baseline = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "postgres",
-            "baseline",
+            "--root",
             fixture.to_str().expect("fixture path should be UTF-8"),
+            "baseline",
+            "postgres",
             "--out",
             baseline_path
                 .to_str()
@@ -208,12 +211,14 @@ fn managed_postgres_smoke_covers_replay_baseline_diff_and_cleanup() {
 
     let diff = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
         .args([
-            "postgres",
+            "--root",
+            fixture.to_str().expect("fixture path should be UTF-8"),
             "diff",
+            "postgres",
+            "--against",
             baseline_path
                 .to_str()
                 .expect("baseline path should be UTF-8"),
-            fixture.to_str().expect("fixture path should be UTF-8"),
             "--out",
             diff_path.to_str().expect("diff path should be UTF-8"),
         ])

@@ -67,15 +67,29 @@ fn scan(
     Ok(0)
 }
 
-pub(crate) fn run_audit(
+pub(crate) fn run_usage_public(
     path: &Path,
     consumer_root: Option<&Path>,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(audit(path, consumer_root, config_path))
+    exit_code(usage_public(path, consumer_root, config_path))
 }
 
-fn audit(path: &Path, consumer_root: Option<&Path>, config_path: Option<&Path>) -> Result<i32> {
+fn usage_public(
+    path: &Path,
+    consumer_root: Option<&Path>,
+    config_path: Option<&Path>,
+) -> Result<i32> {
+    let report = usage_public_report(path, consumer_root, config_path)?;
+    println!("{}", outputs::audit::render(&report));
+    Ok(0)
+}
+
+pub(crate) fn usage_public_report(
+    path: &Path,
+    consumer_root: Option<&Path>,
+    config_path: Option<&Path>,
+) -> Result<ScanReport> {
     validate_consumer_root(consumer_root)?;
     let project = load_project(path, config_path)?;
     let config = build_scan_config(&project, false, None)?;
@@ -92,82 +106,7 @@ fn audit(path: &Path, consumer_root: Option<&Path>, config_path: Option<&Path>) 
         );
     }
     analysis::annotate_unused_public(&mut report, &importers, project.config.no_default_ignore);
-
-    println!("{}", outputs::audit::render(&report));
-    Ok(if report.unused_public.is_empty() {
-        0
-    } else {
-        std::cmp::min(report.unused_public.len() as i32, 125)
-    })
-}
-
-pub(crate) fn run_ci(
-    path: &Path,
-    consumer_root: Option<&Path>,
-    fail_unused: bool,
-    baseline: Option<PathBuf>,
-    workspace: bool,
-    config_path: Option<&Path>,
-) -> i32 {
-    exit_code(ci(
-        path,
-        consumer_root,
-        fail_unused,
-        baseline,
-        workspace,
-        config_path,
-    ))
-}
-
-fn ci(
-    path: &Path,
-    consumer_root: Option<&Path>,
-    fail_unused: bool,
-    baseline: Option<PathBuf>,
-    workspace: bool,
-    config_path: Option<&Path>,
-) -> Result<i32> {
-    validate_consumer_root(consumer_root)?;
-    let scan = diff::create_baseline(path, workspace, fail_unused, consumer_root, config_path)?;
-
-    if let Some(baseline_path) = baseline {
-        let json = diff::render_baseline(&scan.baseline)?;
-        output::write_file(&baseline_path, &json)?;
-        eprintln!("Baseline written to {}", baseline_path.display());
-    }
-
-    let issue_count = scan.unused_public.len();
-    if issue_count == 0 {
-        println!(
-            "No issues found. {} public API symbols across {} package(s).",
-            scan.baseline.symbol_count(),
-            scan.baseline.packages.len()
-        );
-        Ok(0)
-    } else {
-        println!("{} unused public export(s) found.", issue_count);
-        for unused in &scan.unused_public {
-            println!("  - {unused}");
-        }
-        println!("\nRun 'codeatlas audit' for fix suggestions.");
-        Ok(1)
-    }
-}
-
-pub(crate) fn run_map(path: &Path, out: Option<PathBuf>, config_path: Option<&Path>) -> i32 {
-    exit_code(map(path, out, config_path))
-}
-
-fn map(path: &Path, out: Option<PathBuf>, config_path: Option<&Path>) -> Result<i32> {
-    let project = load_project(path, config_path)?;
-    let config = build_scan_config(&project, false, None)?;
-    let mut report = scan_project(&project, &config)?;
-    analysis::annotate_imports(&mut report, &project.root, project.config.no_default_ignore);
-    annotate_report(&mut report, &project)?;
-
-    let rendered = outputs::mermaid::render(&report);
-    output::write_text_or_print(&rendered, out.as_deref(), "Mermaid diagram")?;
-    Ok(0)
+    Ok(report)
 }
 
 pub(super) fn build_scan_config(
