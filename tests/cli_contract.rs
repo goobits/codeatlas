@@ -178,7 +178,7 @@ fn lexicon_reports_source_collisions_without_mislabeling_public_exposure() {
     let report: Value =
         serde_json::from_slice(&output.stdout).expect("lexicon report should be JSON");
 
-    assert_eq!(report["schema_version"], 1);
+    assert_eq!(report["schema_version"], 2);
     assert_eq!(report["name_collisions"][0]["name"], "SurfaceState");
     let public_symbols = report["public_symbols"]
         .as_array()
