@@ -1,6 +1,10 @@
 use super::model::{
-    DuplicateFamily, LexiconReport, LexiconStats, LexiconSymbol, NameCollision, ShapeAlias,
-    ShapeGroup, TermUsage, LEXICON_SCHEMA_VERSION,
+    LexiconReport, LexiconStats, LexiconSymbol, NameCollision, ShapeAlias, ShapeGroup, TermUsage,
+    LEXICON_SCHEMA_VERSION,
+};
+use super::symbols::{
+    collect_identifier_terms, normalize_signature, normalize_whitespace, project_symbol,
+    sort_symbols,
 };
 use crate::domain::{ScanReport, Symbol, SymbolKind};
 use std::collections::{BTreeMap, BTreeSet};
@@ -23,14 +27,19 @@ pub(crate) fn analyze(scan: &ScanReport) -> LexiconReport {
 
     let name_collisions = find_name_collisions(&symbols);
     let shape_aliases = find_shape_aliases(&symbols);
-    let duplicate_families = find_duplicate_families(&symbols);
+    let callable_candidates = super::callables::find_callable_candidates(
+        symbols
+            .iter()
+            .filter(|view| view.top_level && view.symbol.kind == SymbolKind::Function)
+            .map(|view| view.symbol),
+    );
     let terms = collect_terms(&symbols);
     let mut public_symbols = symbols
         .iter()
         .filter(|view| !view.symbol.export_paths.is_empty())
-        .map(|view| symbol_reference(view.symbol))
+        .map(|view| project_symbol(view.symbol))
         .collect::<Vec<_>>();
-    sort_symbol_references(&mut public_symbols);
+    sort_symbols(&mut public_symbols);
 
     LexiconReport {
         schema_version: LEXICON_SCHEMA_VERSION,
@@ -41,12 +50,12 @@ pub(crate) fn analyze(scan: &ScanReport) -> LexiconReport {
             public_symbols: public_symbols.len(),
             name_collisions: name_collisions.len(),
             shape_aliases: shape_aliases.len(),
-            duplicate_families: duplicate_families.len(),
+            callable_candidates: callable_candidates.len(),
             repeated_terms: terms.len(),
         },
         name_collisions,
         shape_aliases,
-        duplicate_families,
+        callable_candidates,
         terms,
         public_symbols,
     }
@@ -74,7 +83,7 @@ fn find_name_collisions(symbols: &[SymbolView<'_>]) -> Vec<NameCollision> {
             .or_default()
             .entry(symbol_shape(view.symbol))
             .or_default()
-            .push(symbol_reference(view.symbol));
+            .push(project_symbol(view.symbol));
     }
 
     candidates
@@ -93,7 +102,7 @@ fn find_name_collisions(symbols: &[SymbolView<'_>]) -> Vec<NameCollision> {
                 shapes: shapes
                     .into_iter()
                     .map(|(shape, mut symbols)| {
-                        sort_symbol_references(&mut symbols);
+                        sort_symbols(&mut symbols);
                         ShapeGroup { shape, symbols }
                     })
                     .collect(),
@@ -113,7 +122,7 @@ fn find_shape_aliases(symbols: &[SymbolView<'_>]) -> Vec<ShapeAlias> {
             .or_default()
             .entry(view.symbol.name.clone())
             .or_default()
-            .push(symbol_reference(view.symbol));
+            .push(project_symbol(view.symbol));
     }
 
     let mut aliases = candidates
@@ -124,7 +133,7 @@ fn find_shape_aliases(symbols: &[SymbolView<'_>]) -> Vec<ShapeAlias> {
             }
             let names = by_name.keys().cloned().collect::<Vec<_>>();
             let mut symbols = by_name.into_values().flatten().collect::<Vec<_>>();
-            sort_symbol_references(&mut symbols);
+            sort_symbols(&mut symbols);
             Some(ShapeAlias {
                 shape,
                 names,
@@ -140,48 +149,10 @@ fn find_shape_aliases(symbols: &[SymbolView<'_>]) -> Vec<ShapeAlias> {
     aliases
 }
 
-fn find_duplicate_families(symbols: &[SymbolView<'_>]) -> Vec<DuplicateFamily> {
-    let mut candidates = BTreeMap::<(String, String), Vec<LexiconSymbol>>::new();
-    for view in symbols
-        .iter()
-        .filter(|view| view.top_level && view.symbol.kind == SymbolKind::Function)
-    {
-        candidates
-            .entry((
-                view.symbol.name.clone(),
-                normalize_signature(&view.symbol.signature, &view.symbol.name),
-            ))
-            .or_default()
-            .push(symbol_reference(view.symbol));
-    }
-
-    candidates
-        .into_iter()
-        .filter_map(|((name, _shape), mut symbols)| {
-            let files = symbols
-                .iter()
-                .map(|symbol| symbol.file_path.as_str())
-                .collect::<BTreeSet<_>>();
-            if files.len() < 2 {
-                return None;
-            }
-            sort_symbol_references(&mut symbols);
-            Some(DuplicateFamily {
-                name,
-                signature: symbols
-                    .first()
-                    .map(|symbol| normalize_whitespace(&symbol.signature))
-                    .unwrap_or_default(),
-                symbols,
-            })
-        })
-        .collect()
-}
-
 fn collect_terms(symbols: &[SymbolView<'_>]) -> Vec<TermUsage> {
     let mut terms = BTreeMap::<String, TermAccumulator>::new();
     for view in symbols {
-        for term in identifier_terms(&view.symbol.name) {
+        for term in collect_identifier_terms(&view.symbol.name) {
             let usage = terms.entry(term).or_default();
             usage.symbol_ids.insert(view.symbol.id.clone());
             if !view.symbol.export_paths.is_empty() {
@@ -248,73 +219,6 @@ fn symbol_shape(symbol: &Symbol) -> String {
         normalize_signature(&symbol.signature, &symbol.name),
         children.join(";")
     )
-}
-
-fn normalize_signature(signature: &str, name: &str) -> String {
-    normalize_whitespace(&signature.replacen(name, "$name", 1))
-}
-
-fn normalize_whitespace(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn identifier_terms(name: &str) -> Vec<String> {
-    let characters = name.chars().collect::<Vec<_>>();
-    let mut terms = Vec::new();
-    let mut current = String::new();
-
-    for (index, character) in characters.iter().copied().enumerate() {
-        if !character.is_alphanumeric() {
-            push_term(&mut terms, &mut current);
-            continue;
-        }
-        let previous = index.checked_sub(1).and_then(|index| characters.get(index));
-        let next = characters.get(index + 1);
-        let starts_word = character.is_uppercase()
-            && !current.is_empty()
-            && (previous
-                .is_some_and(|character| character.is_lowercase() || character.is_ascii_digit())
-                || previous.is_some_and(|character| character.is_uppercase())
-                    && next.is_some_and(|character| character.is_lowercase()));
-        if starts_word {
-            push_term(&mut terms, &mut current);
-        }
-        current.extend(character.to_lowercase());
-    }
-    push_term(&mut terms, &mut current);
-    terms
-}
-
-fn push_term(terms: &mut Vec<String>, current: &mut String) {
-    if current.len() >= 3
-        && !current.chars().all(|character| character.is_ascii_digit())
-        && !matches!(current.as_str(), "and" | "for" | "from" | "the" | "with")
-    {
-        terms.push(std::mem::take(current));
-    } else {
-        current.clear();
-    }
-}
-
-fn symbol_reference(symbol: &Symbol) -> LexiconSymbol {
-    let mut export_paths = symbol.export_paths.clone();
-    export_paths.sort();
-    export_paths.dedup();
-    LexiconSymbol {
-        id: symbol.id.clone(),
-        name: symbol.name.clone(),
-        kind: symbol.kind,
-        visibility: symbol.visibility,
-        language: symbol.language,
-        package: symbol.package.clone(),
-        file_path: symbol.file_path.clone(),
-        signature: normalize_whitespace(&symbol.signature),
-        export_paths,
-    }
-}
-
-fn sort_symbol_references(symbols: &mut [LexiconSymbol]) {
-    symbols.sort_by(|left, right| left.id.cmp(&right.id));
 }
 
 #[cfg(test)]
@@ -418,7 +322,7 @@ mod tests {
             alias.names.contains(&"FluidPaintPlane".to_string())
                 && alias.names.contains(&"FluidRetainedPlane".to_string())
         }));
-        assert_eq!(report.duplicate_families[0].name, "isRecord");
+        assert_eq!(report.callable_candidates[0].names, ["isRecord"]);
         assert_eq!(report.public_symbols.len(), 1);
         assert_eq!(
             report.public_symbols[0].export_paths,

@@ -1,7 +1,7 @@
-use crate::domain::{Language, SymbolKind, Visibility};
+use crate::domain::{EvidenceClass, Language, SymbolKind, Visibility};
 use serde::Serialize;
 
-pub(crate) const LEXICON_SCHEMA_VERSION: u32 = 1;
+pub(crate) const LEXICON_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct LexiconReport {
@@ -10,7 +10,7 @@ pub(crate) struct LexiconReport {
     pub stats: LexiconStats,
     pub name_collisions: Vec<NameCollision>,
     pub shape_aliases: Vec<ShapeAlias>,
-    pub duplicate_families: Vec<DuplicateFamily>,
+    pub callable_candidates: Vec<CallableCandidate>,
     pub terms: Vec<TermUsage>,
     pub public_symbols: Vec<LexiconSymbol>,
 }
@@ -22,7 +22,7 @@ pub(crate) struct LexiconStats {
     pub public_symbols: usize,
     pub name_collisions: usize,
     pub shape_aliases: usize,
-    pub duplicate_families: usize,
+    pub callable_candidates: usize,
     pub repeated_terms: usize,
 }
 
@@ -40,10 +40,23 @@ pub(crate) struct ShapeAlias {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub(crate) struct DuplicateFamily {
-    pub name: String,
-    pub signature: String,
+pub(crate) struct CallableCandidate {
+    pub kind: CallableCandidateKind,
+    pub evidence_class: EvidenceClass,
+    pub contract_shape: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub shared_terms: Vec<String>,
+    pub names: Vec<String>,
     pub symbols: Vec<LexiconSymbol>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CallableCandidateKind {
+    ExactSignature,
+    SharedContractShape,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

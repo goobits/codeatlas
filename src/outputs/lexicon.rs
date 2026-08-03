@@ -1,4 +1,5 @@
-use crate::lexicon::{LexiconReport, LexiconSymbol};
+use crate::domain::EvidenceClass;
+use crate::lexicon::{CallableCandidateKind, LexiconReport, LexiconSymbol};
 
 pub(crate) fn render_text(report: &LexiconReport) -> String {
     let mut output = String::new();
@@ -43,15 +44,31 @@ pub(crate) fn render_text(report: &LexiconReport) -> String {
     }
 
     output.push_str(&format!(
-        "\nDuplicate families ({})\n",
-        report.duplicate_families.len()
+        "\nCallable candidates ({})\n",
+        report.callable_candidates.len()
     ));
-    if report.duplicate_families.is_empty() {
+    if report.callable_candidates.is_empty() {
         output.push_str("  none\n");
     }
-    for family in &report.duplicate_families {
-        output.push_str(&format!("- {}: {}\n", family.name, family.signature));
-        for symbol in &family.symbols {
+    for candidate in &report.callable_candidates {
+        let scope = candidate
+            .scope
+            .as_deref()
+            .map(|scope| format!("; {scope}"))
+            .unwrap_or_default();
+        let terms = if candidate.shared_terms.is_empty() {
+            String::new()
+        } else {
+            format!("; terms {}", candidate.shared_terms.join(", "))
+        };
+        output.push_str(&format!(
+            "- [{}; {}{scope}{terms}] {}: {}\n",
+            resolve_evidence_name(candidate.evidence_class),
+            resolve_candidate_kind_name(candidate.kind),
+            candidate.names.join(" / "),
+            candidate.contract_shape
+        ));
+        for symbol in &candidate.symbols {
             output.push_str(&format_symbol(symbol, "  "));
         }
     }
@@ -74,6 +91,21 @@ pub(crate) fn render_text(report: &LexiconReport) -> String {
         ));
     }
     output
+}
+
+fn resolve_evidence_name(evidence: EvidenceClass) -> &'static str {
+    match evidence {
+        EvidenceClass::Direct => "direct evidence",
+        EvidenceClass::Inferred => "inferred",
+        EvidenceClass::BoundaryLimited => "boundary limited",
+    }
+}
+
+fn resolve_candidate_kind_name(kind: CallableCandidateKind) -> &'static str {
+    match kind {
+        CallableCandidateKind::ExactSignature => "exact signature",
+        CallableCandidateKind::SharedContractShape => "shared typed contract",
+    }
 }
 
 fn summarize_names(names: &[String]) -> String {
