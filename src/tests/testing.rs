@@ -103,6 +103,24 @@ fn impact_and_witnesses_separate_observed_declared_and_fallback_evidence() {
         ChangedPathResolution::WorkspaceFallback
     );
 
+    let workspace_control =
+        testing::analyze_impact(&graph, &projects, &root, &[PathBuf::from("tsconfig.json")])
+            .expect("workspace control fallback");
+    assert_eq!(
+        workspace_control.changed[0].resolution,
+        ChangedPathResolution::WorkspaceFallback
+    );
+    assert_eq!(
+        workspace_control.projects.len(),
+        graph
+            .contexts
+            .values()
+            .filter(|context| context.role == crate::domain::source_graph::ContextRole::Test)
+            .map(|context| &context.project)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+    );
+
     let witnesses = testing::analyze_witnesses(&graph, &projects).expect("testing witnesses");
     let brush = witnesses
         .public_api

@@ -25,8 +25,11 @@ pub(super) enum TestingCommand {
         #[arg(default_value = ".")]
         path: PathBuf,
         /// Repository-relative changed path; repeat for a set
-        #[arg(long, required = true)]
+        #[arg(long, required_unless_present = "working_tree")]
         changed: Vec<PathBuf>,
+        /// Discover staged, unstaged, and untracked paths from Git
+        #[arg(long, conflicts_with = "changed")]
+        working_tree: bool,
         /// Discover package projects from the nearest pnpm workspace
         #[arg(long)]
         workspace: bool,
@@ -66,12 +69,14 @@ impl TestingCommand {
             Self::Impact {
                 path,
                 changed,
+                working_tree,
                 workspace,
                 format,
                 out,
             } => testing::run_impact(
                 &path,
                 &changed,
+                working_tree,
                 workspace,
                 format,
                 out.as_deref(),

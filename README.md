@@ -485,6 +485,7 @@ codeatlas testing inventory . --workspace --format json
 codeatlas testing impact . --workspace \
   --changed packages/brush/src/model.ts \
   --changed packages/paint/src/canvas.ts
+codeatlas testing impact . --workspace --working-tree
 codeatlas testing witnesses . --workspace --format json
 ```
 
@@ -500,7 +501,11 @@ declared project or source subject, or a conservative project/workspace
 fallback. New, deleted, manifest, and unsupported paths fall back instead of
 being presented as exact static selections. `selection_complete` is false when
 any fallback was necessary. Changed paths are repository-relative, and
-`--changed` can be repeated.
+`--changed` can be repeated. `--working-tree` derives the changed set from
+Git's staged, unstaged, and untracked paths; it remains read-only and cannot be
+combined with explicit `--changed` arguments. Root workspace manifests,
+toolchain files, lockfiles, and language project configs use workspace fallback
+because they can affect every project.
 
 `testing witnesses` evaluates public symbols reached from production
 `public_surface` contexts. An observed witness identifies the exact test context

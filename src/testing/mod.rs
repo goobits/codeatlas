@@ -2,11 +2,13 @@ mod impact;
 mod inventory;
 mod model;
 mod witnesses;
+mod working_tree;
 
 pub(crate) use impact::analyze as analyze_impact;
 pub(crate) use inventory::analyze as analyze_inventory;
 pub(crate) use model::*;
 pub(crate) use witnesses::analyze as analyze_witnesses;
+pub(crate) use working_tree::paths as git_working_tree_paths;
 
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
 use crate::domain::source_graph::{NodeId, SourceContext, SourceGraph, SourceNode};

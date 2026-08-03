@@ -391,13 +391,24 @@ fn is_workspace_control_path(path: &str) -> bool {
     matches!(
         path,
         "Cargo.lock"
+            | "Cargo.toml"
             | "codeatlas.json"
+            | "deno.json"
+            | "deno.jsonc"
             | "package-lock.json"
             | "package.json"
+            | "Pipfile.lock"
+            | "poetry.lock"
             | "pnpm-lock.yaml"
             | "pnpm-workspace.yaml"
+            | "pyproject.toml"
+            | "rust-toolchain"
+            | "rust-toolchain.toml"
+            | "tsconfig.json"
+            | "uv.lock"
             | "yarn.lock"
-    )
+    ) || (path.starts_with("tsconfig.") && path.ends_with(".json"))
+        || (path.starts_with("requirements") && path.ends_with(".txt"))
 }
 
 fn render_diagnostics(
