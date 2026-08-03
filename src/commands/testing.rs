@@ -62,6 +62,7 @@ fn impact(
     let (mut projects, repository_root) = load_projects(path, workspace, config_path)?;
     if let Some(family) = exact_changed_source_family(&repository_root, changed) {
         projects.retain(|project| project_supports_family(project, family));
+        apply_exact_source_family(&mut projects, family);
     }
     let graph = languages::reachability::build_source_graph(&projects)?;
     let report = testing::analyze_impact(&graph, &projects, &repository_root, changed)?;
@@ -178,9 +179,30 @@ fn project_supports_family(project: &ResolvedAnalysisProject, family: SourceFami
         })
 }
 
+fn apply_exact_source_family(projects: &mut [ResolvedAnalysisProject], family: SourceFamily) {
+    for project in projects
+        .iter_mut()
+        .filter(|project| project.languages.is_empty() && project.contexts.is_empty())
+    {
+        project.languages = match family {
+            SourceFamily::Ecmascript => vec!["js", "svelte", "ts"],
+            SourceFamily::Python => vec!["py"],
+            SourceFamily::Rust if project.root.join("Cargo.toml").is_file() => vec!["rs"],
+            SourceFamily::Rust => Vec::new(),
+        }
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{source_family, SourceFamily};
+    use super::{apply_exact_source_family, source_family, SourceFamily};
+    use crate::config::ResolvedAnalysisProject;
+    use crate::domain::source_graph::ProjectId;
+    use std::collections::BTreeMap;
+    use std::fs;
     use std::path::Path;
 
     #[test]
@@ -198,5 +220,55 @@ mod tests {
             Some(SourceFamily::Python)
         ));
         assert!(source_family(Path::new("package.json")).is_none());
+    }
+
+    #[test]
+    fn exact_ecmascript_impact_avoids_a_separate_language_discovery_pass() {
+        let mut projects = vec![project(Path::new("example"))];
+
+        apply_exact_source_family(&mut projects, SourceFamily::Ecmascript);
+
+        assert_eq!(projects[0].languages, ["js", "svelte", "ts"]);
+    }
+
+    #[test]
+    fn exact_python_and_rust_impact_preserve_language_boundaries() {
+        let fixture =
+            std::env::temp_dir().join(format!("codeatlas-testing-family-{}", std::process::id()));
+        let cargo = fixture.join("cargo");
+        let plain = fixture.join("plain");
+        fs::create_dir_all(&cargo).expect("Cargo fixture directory");
+        fs::create_dir_all(&plain).expect("plain fixture directory");
+        fs::write(
+            cargo.join("Cargo.toml"),
+            "[package]\nname='fixture'\nversion='0.1.0'\n",
+        )
+        .expect("Cargo fixture manifest");
+
+        let mut python = vec![project(&plain)];
+        apply_exact_source_family(&mut python, SourceFamily::Python);
+        assert_eq!(python[0].languages, ["py"]);
+
+        let mut rust = vec![project(&cargo), project(&plain)];
+        apply_exact_source_family(&mut rust, SourceFamily::Rust);
+        assert_eq!(rust[0].languages, ["rs"]);
+        assert!(rust[1].languages.is_empty());
+        fs::remove_dir_all(fixture).expect("remove family fixture");
+    }
+
+    fn project(root: &Path) -> ResolvedAnalysisProject {
+        ResolvedAnalysisProject {
+            id: ProjectId(root.display().to_string()),
+            root: root.to_path_buf(),
+            report_root: root.display().to_string(),
+            languages: Vec::new(),
+            contexts: BTreeMap::new(),
+            assume_reachable: Vec::new(),
+            require_complete: false,
+            no_default_ignore: false,
+            rust: Default::default(),
+            workspace_member: true,
+            excluded_roots: Vec::new(),
+        }
     }
 }
