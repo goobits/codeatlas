@@ -48,6 +48,7 @@ pub(super) fn collect_project_modules(
         &combined_patterns,
     );
     let mut html_sources = Vec::new();
+    let mut module_directories = BTreeSet::new();
     for warning in discovery.warnings {
         graph.record_boundary(
             &project.id,
@@ -85,6 +86,12 @@ pub(super) fn collect_project_modules(
         };
         if !languages.contains(&language) {
             continue;
+        }
+        if let Some(directory) = source_path
+            .parent()
+            .and_then(|parent| parent.strip_prefix(&project.root).ok())
+        {
+            module_directories.insert(directory.to_path_buf());
         }
 
         let path = crate::paths::normalize_relative_path(&source_path, &project.root);
@@ -153,10 +160,15 @@ pub(super) fn collect_project_modules(
             },
         );
     }
+    let package_directories = module_directories
+        .into_iter()
+        .filter(|directory| project.root.join(directory).join("package.json").is_file())
+        .collect();
     Ok(ProjectEvidence {
         runtime_entrypoints,
         tooling_entrypoints,
         html_sources,
+        package_directories,
     })
 }
 

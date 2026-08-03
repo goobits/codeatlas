@@ -167,7 +167,7 @@ pub(super) fn add_discovered_contexts(
             .values()
             .filter(|module| {
                 module.project == project.id
-                    && (is_project_tooling_module(&project.root, &module.path)
+                    && (is_project_tooling_module(module, &evidence.package_directories)
                         || (medusa_project && is_medusa_tooling_module(&module.path)))
             })
             .map(|module| module.file.clone())
@@ -427,21 +427,24 @@ pub(super) fn is_conventional_tooling_module(path: &str) -> bool {
     is_tooling_module_name(path)
 }
 
-fn is_project_tooling_module(root: &Path, path: &str) -> bool {
-    if std::fs::read(root.join(path)).is_ok_and(|source| source.starts_with(b"#!")) {
+fn is_project_tooling_module(
+    module: &Module,
+    package_directories: &BTreeSet<std::path::PathBuf>,
+) -> bool {
+    if module.info.has_shebang {
         return true;
     }
-    if is_conventional_tooling_module(path) {
+    if is_conventional_tooling_module(&module.path) {
         return true;
     }
-    let path = Path::new(path);
+    let path = Path::new(&module.path);
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
     let Some(parent) = path.parent() else {
         return false;
     };
-    is_tooling_module_name(name) && root.join(parent).join("package.json").is_file()
+    is_tooling_module_name(name) && package_directories.contains(parent)
 }
 
 fn is_medusa_project(

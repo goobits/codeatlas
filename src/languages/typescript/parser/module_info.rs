@@ -52,6 +52,7 @@ pub(crate) struct TypeScriptModuleInfo {
     pub exports: ExportInfo,
     pub imports: Vec<ImportInfo>,
     pub reachability: ReachabilityFacts,
+    pub has_shebang: bool,
 }
 
 #[derive(Debug, Clone, Default)]

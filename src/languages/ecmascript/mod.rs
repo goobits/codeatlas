@@ -15,6 +15,7 @@ struct ProjectEvidence {
     runtime_entrypoints: Vec<String>,
     tooling_entrypoints: Vec<String>,
     html_sources: Vec<PathBuf>,
+    package_directories: BTreeSet<PathBuf>,
 }
 
 mod collection;
