@@ -197,24 +197,7 @@ fn is_opaque_vendor_source(source_path: &Path, path: &str) -> bool {
 }
 
 #[cfg(test)]
-mod opaque_vendor_tests {
-    use super::{is_opaque_vendor_source, OPAQUE_VENDOR_BYTES};
-    use std::fs;
-
-    #[test]
-    fn large_vendor_bundles_are_opaque_even_when_pretty_printed() {
-        let root =
-            std::env::temp_dir().join(format!("codeatlas-large-vendor-{}", std::process::id()));
-        let path = root.join("src/vendor/bundle.js");
-        fs::create_dir_all(path.parent().expect("vendor parent")).expect("vendor directory");
-        fs::write(&path, vec![b'\n'; OPAQUE_VENDOR_BYTES as usize]).expect("large vendor bundle");
-
-        assert!(is_opaque_vendor_source(&path, "src/vendor/bundle.js"));
-
-        fs::remove_dir_all(root).expect("temporary vendor cleanup");
-    }
-}
-
+mod opaque_vendor_tests;
 fn add_symbols(
     graph: &mut SourceGraph,
     project: &ResolvedAnalysisProject,
@@ -776,25 +759,4 @@ fn source_symbol_kind(kind: SymbolKind) -> SourceSymbolKind {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::contexts::{is_conventional_test_module, is_conventional_tooling_module};
-
-    #[test]
-    fn conventional_test_detection_excludes_test_helpers() {
-        assert!(is_conventional_test_module("src/example.test.ts"));
-        assert!(is_conventional_test_module("tests/example.spec.js"));
-        assert!(is_conventional_test_module("src/Example.test.svelte"));
-        assert!(!is_conventional_test_module("src/__tests__/support.ts"));
-        assert!(!is_conventional_test_module("src/contest.ts"));
-        assert!(!is_conventional_test_module("src/example.test.d.ts"));
-    }
-
-    #[test]
-    fn conventional_tooling_detection_is_limited_to_root_config_modules() {
-        assert!(is_conventional_tooling_module("vitest.config.ts"));
-        assert!(is_conventional_tooling_module("playwright.config.mjs"));
-        assert!(is_conventional_tooling_module("gulpfile.js"));
-        assert!(!is_conventional_tooling_module("src/runtime.config.ts"));
-        assert!(!is_conventional_tooling_module("vitest.config.json"));
-    }
-}
+mod tests;
