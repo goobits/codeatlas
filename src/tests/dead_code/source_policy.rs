@@ -104,6 +104,8 @@ fn dependencies_of_unreferenced_public_symbols_do_not_gate_deletion() {
         Some("publicHelper"),
     );
     assert_eq!(helper.confidence, FindingConfidence::Medium);
+    assert_eq!(helper.evidence_class, EvidenceClass::BoundaryLimited);
+    assert_eq!(helper.source_disposition, SourceDisposition::Maintained);
     assert!(!helper.gates);
     assert!(helper.message.contains("external consumers"));
     let helper_file_finding = finding(
@@ -121,6 +123,7 @@ fn dependencies_of_unreferenced_public_symbols_do_not_gate_deletion() {
         Some("unusedPrivate"),
     );
     assert_eq!(unused.confidence, FindingConfidence::High);
+    assert_eq!(unused.evidence_class, EvidenceClass::Inferred);
     assert!(unused.gates);
 }
 
@@ -151,6 +154,7 @@ fn excluded_generated_sources_are_uncertain_instead_of_missing() {
         })
         .expect("generated source boundary");
     assert_ne!(boundary.confidence, FindingConfidence::High);
+    assert_eq!(boundary.evidence_class, EvidenceClass::BoundaryLimited);
     assert!(!boundary.gates);
     assert!(!report
         .findings
@@ -210,6 +214,7 @@ fn unresolved_internal_edges_remain_high_confidence_gates() {
         .find(|finding| finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge)
         .expect("unresolved internal import");
     assert_eq!(unresolved.confidence, FindingConfidence::High);
+    assert_eq!(unresolved.evidence_class, EvidenceClass::Direct);
     assert!(unresolved.gates);
 }
 
@@ -324,7 +329,10 @@ fn dead_code_json_is_canonical_and_schema_versioned() {
     let first = outputs::dead_code::render_json(&report).expect("first JSON");
     let second = outputs::dead_code::render_json(&report).expect("second JSON");
     assert_eq!(first, second);
-    assert!(first.contains("\"schema_version\": 4"));
+    assert!(first.contains("\"schema_version\": 5"));
+    assert!(first.contains("\"evidence_class\""));
+    assert!(first.contains("\"source_disposition\""));
+    assert!(first.contains("\"completeness_reasons\""));
     assert!(first.contains("\"id\": \"dead-code/"));
     assert!(first.contains("\"node_id\": \""));
     assert!(first.contains("\"root_contexts\""));

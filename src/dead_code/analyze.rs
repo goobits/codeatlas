@@ -1,5 +1,6 @@
+use super::classification::{build_finding, FindingDetails};
 use super::model::{
-    DeadCodeFinding, DeadCodeFindingKind, DeadCodeProjectSummary, DeadCodeReport,
+    DeadCodeCompletenessReason, DeadCodeFindingKind, DeadCodeProjectSummary, DeadCodeReport,
     DeadCodeRootContext,
 };
 use crate::analysis::reachability::{
@@ -9,7 +10,6 @@ use crate::domain::source_graph::{
     BoundaryKind, ContextRole, EdgeTarget, FindingConfidence, NodeId, SourceEdgeKind,
     SourceEvidence, SourceGraph, SourceLanguage, SourceNode, SourceVisibility,
 };
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
@@ -51,6 +51,17 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             project: project.id.0.clone(),
             root: project.root.clone(),
             completeness: project.completeness,
+            completeness_reasons: graph
+                .boundaries
+                .iter()
+                .filter(|boundary| boundary.project == project.id)
+                .map(|boundary| DeadCodeCompletenessReason {
+                    kind: boundary.kind,
+                    effect: boundary.effect,
+                    message: boundary.message.clone(),
+                    evidence: boundary.evidence.clone(),
+                })
+                .collect(),
             require_complete: false,
             files: graph
                 .nodes
@@ -87,7 +98,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         let roles = reachability.roles(node_id);
         if contexts.is_empty() {
             unreachable_files.insert(node_id.clone());
-            report.findings.push(finding(
+            report.findings.push(build_finding(
                 DeadCodeFindingKind::UnreachableFile,
                 FindingDetails {
                     project: file.project.0.clone(),
@@ -118,7 +129,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 continue;
             }
             let kind = context_only_kind(&roles);
-            report.findings.push(finding(
+            report.findings.push(build_finding(
                 kind,
                 FindingDetails {
                     project: file.project.0.clone(),
@@ -196,7 +207,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             } else {
                 message.to_string()
             };
-            report.findings.push(finding(
+            report.findings.push(build_finding(
                 kind,
                 FindingDetails {
                     project: symbol.project.0.clone(),
@@ -242,7 +253,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             ),
             SourceVisibility::Unknown => continue,
         };
-        report.findings.push(finding(
+        report.findings.push(build_finding(
             kind,
             FindingDetails {
                 project: symbol.project.0.clone(),
@@ -310,7 +321,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
             _ => continue,
         };
         represented_boundaries.insert((project.clone(), edge.from.clone(), kind));
-        let mut boundary_finding = finding(
+        let mut boundary_finding = build_finding(
             kind,
             FindingDetails {
                 project: project.0.clone(),
@@ -368,7 +379,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         } else {
             project_confidence(graph, &boundary.project)
         };
-        report.findings.push(finding(
+        report.findings.push(build_finding(
             kind,
             FindingDetails {
                 project: boundary.project.0.clone(),
@@ -455,72 +466,6 @@ fn public_dependency_nodes(graph: &SourceGraph) -> BTreeSet<NodeId> {
         }
     }
     dependencies
-}
-
-struct FindingDetails {
-    project: String,
-    node_id: Option<NodeId>,
-    path: String,
-    symbol: Option<String>,
-    language: Option<SourceLanguage>,
-    contexts: Vec<String>,
-    root_contexts: Vec<DeadCodeRootContext>,
-    roles: BTreeSet<ContextRole>,
-    confidence: FindingConfidence,
-    evidence: SourceEvidence,
-    message: String,
-    identity_detail: Option<String>,
-}
-
-fn finding(kind: DeadCodeFindingKind, details: FindingDetails) -> DeadCodeFinding {
-    let id = stable_finding_id(kind, &details);
-    DeadCodeFinding {
-        id,
-        kind,
-        project: details.project,
-        node_id: details.node_id,
-        path: details.path,
-        symbol: details.symbol,
-        language: details.language,
-        contexts: details.contexts,
-        root_contexts: details.root_contexts,
-        roles: details.roles,
-        confidence: details.confidence,
-        evidence: details.evidence,
-        message: details.message,
-        gates: kind.gates_at(details.confidence),
-    }
-}
-
-fn stable_finding_id(kind: DeadCodeFindingKind, details: &FindingDetails) -> String {
-    let mut digest = Sha256::new();
-    digest.update(b"atlas.codeatlas.dev/dead-code-finding/v1\0");
-    for value in [
-        kind.as_str(),
-        details.project.as_str(),
-        details
-            .node_id
-            .as_ref()
-            .map(|node| node.0.as_str())
-            .unwrap_or(""),
-        details.path.as_str(),
-        details.symbol.as_deref().unwrap_or(""),
-        details.evidence.extractor.as_str(),
-        details.identity_detail.as_deref().unwrap_or(""),
-    ] {
-        digest.update((value.len() as u64).to_le_bytes());
-        digest.update(value.as_bytes());
-    }
-    match &details.evidence.span {
-        Some(span) => {
-            digest.update([1]);
-            for position in [span.start_line, span.start_col, span.end_line, span.end_col] {
-                digest.update(position.to_le_bytes());
-            }
-        }
-        None => digest.update([0]),
-    }
-    format!("dead-code/{}/{:x}", kind.as_str(), digest.finalize())
 }
 
 fn root_context_labels(

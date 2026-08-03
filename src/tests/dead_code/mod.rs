@@ -12,6 +12,7 @@ use crate::domain::source_graph::{
     SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceProject,
     SourceSymbol, SourceSymbolKind, SourceVisibility,
 };
+use crate::domain::{EvidenceClass, SourceDisposition};
 use crate::{dead_code, languages, outputs};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
