@@ -10,6 +10,11 @@ type ProjectSelection<'a> = (&'a ResolvedAnalysisProject, BTreeSet<SourceLanguag
 type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.ecmascript";
 
+struct ProjectEntrypoints {
+    runtime: Vec<String>,
+    tooling: Vec<String>,
+}
+
 mod collection;
 mod connections;
 mod contexts;
@@ -26,6 +31,7 @@ pub(crate) fn collect_projects(
         .into_iter()
         .collect::<BTreeMap<_, _>>();
     let mut modules = BTreeMap::new();
+    let mut project_entrypoints = BTreeMap::new();
     let collected = projects
         .par_iter()
         .map(|(project, languages)| {
@@ -40,16 +46,16 @@ pub(crate) fn collect_projects(
                 )
                 .map_err(anyhow::Error::from)?;
             let mut local_modules = BTreeMap::new();
-            collection::collect_project_modules(
+            let entrypoints = collection::collect_project_modules(
                 &mut local_graph,
                 project,
                 languages,
                 &mut local_modules,
             )?;
-            Ok((project.id.clone(), local_graph, local_modules))
+            Ok((project.id.clone(), local_graph, local_modules, entrypoints))
         })
         .collect::<Result<Vec<_>>>()?;
-    for (project, local_graph, local_modules) in collected {
+    for (project, local_graph, local_modules, entrypoints) in collected {
         let completeness = local_graph.projects[&project].completeness;
         let registered = graph
             .projects
@@ -67,6 +73,7 @@ pub(crate) fn collect_projects(
         graph.edges.extend(local_graph.edges);
         graph.boundaries.extend(local_graph.boundaries);
         modules.extend(local_modules);
+        project_entrypoints.insert(project, entrypoints);
     }
     let resolver = ModuleResolver::new(projects, &modules)?;
     let keys = modules.keys().cloned().collect::<Vec<_>>();
@@ -85,6 +92,7 @@ pub(crate) fn collect_projects(
             project,
             &modules,
             &resolver,
+            &project_entrypoints[&project.id],
             project_uses_vitest
                 .get(&project.id)
                 .copied()

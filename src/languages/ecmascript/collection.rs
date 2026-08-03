@@ -1,4 +1,4 @@
-use super::{contexts, Module, ModuleKey, EXTRACTOR};
+use super::{contexts, Module, ModuleKey, ProjectEntrypoints, EXTRACTOR};
 use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, SourceEdge, SourceEdgeKind,
@@ -18,15 +18,19 @@ pub(super) fn collect_project_modules(
     project: &ResolvedAnalysisProject,
     languages: &BTreeSet<SourceLanguage>,
     modules: &mut BTreeMap<ModuleKey, Module>,
-) -> Result<()> {
+) -> Result<ProjectEntrypoints> {
+    let mut runtime_entrypoints = crate::package::discover_runtime_entrypoints(&project.root)?;
+    runtime_entrypoints.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
+    runtime_entrypoints.sort();
+    runtime_entrypoints.dedup();
+    let tooling_entrypoints = crate::package::discover_tooling_entrypoints(&project.root)?;
     let mut discovery_patterns = if project.contexts.contains_key(contexts::TEST_CONTEXT) {
         Vec::new()
     } else {
         vec![contexts::TEST_DISCOVERY_PATTERN.to_string()]
     };
-    discovery_patterns.extend(crate::package::discover_runtime_entrypoints(&project.root)?);
-    discovery_patterns.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
-    discovery_patterns.extend(crate::package::discover_tooling_entrypoints(&project.root)?);
+    discovery_patterns.extend(runtime_entrypoints.iter().cloned());
+    discovery_patterns.extend(tooling_entrypoints.iter().cloned());
     discovery_patterns.sort();
     discovery_patterns.dedup();
     let discovery =
@@ -115,7 +119,10 @@ pub(super) fn collect_project_modules(
             },
         );
     }
-    Ok(())
+    Ok(ProjectEntrypoints {
+        runtime: runtime_entrypoints,
+        tooling: tooling_entrypoints,
+    })
 }
 
 fn is_opaque_vendor_source(source_path: &Path, path: &str) -> bool {

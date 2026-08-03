@@ -1,5 +1,5 @@
 use super::resolver::ModuleResolver;
-use super::{Module, ModuleKey};
+use super::{Module, ModuleKey, ProjectEntrypoints};
 use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
     ContextId, ContextRole, ContextScope, NodeId, SourceContext, SourceGraph,
@@ -25,6 +25,7 @@ pub(super) fn add_discovered_contexts(
     project: &ResolvedAnalysisProject,
     modules: &BTreeMap<ModuleKey, Module>,
     resolver: &ModuleResolver,
+    entrypoints: &ProjectEntrypoints,
     project_uses_vitest: bool,
 ) -> Result<()> {
     let html_entrypoints = discover_html_entrypoints(project, resolver);
@@ -48,12 +49,11 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if !project.contexts.contains_key(PACKAGE_RUNTIME_CONTEXT) {
-        let mut roots = crate::package::discover_runtime_entrypoints(&project.root)?
-            .into_iter()
-            .chain(crate::package::discover_bundled_entrypoints(&project.root)?)
-            .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, &path))
+        let mut roots = entrypoints
+            .runtime
+            .iter()
+            .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, path))
             .filter_map(|key| modules.get(&key).map(|module| module.file.clone()))
             .collect::<BTreeSet<_>>();
         for config in modules
@@ -81,7 +81,6 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if !project.contexts.contains_key(BROWSER_RUNTIME_CONTEXT)
         && !html_entrypoints.production.is_empty()
     {
@@ -113,7 +112,6 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if medusa_project && !project.contexts.contains_key(MEDUSA_RUNTIME_CONTEXT) {
         let roots = modules
             .values()
@@ -129,7 +127,6 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if !project.contexts.contains_key(TEST_CONTEXT) {
         let mut roots = modules
             .values()
@@ -164,7 +161,6 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if !project.contexts.contains_key(TOOLING_CONTEXT) {
         let mut roots = modules
             .values()
@@ -176,9 +172,10 @@ pub(super) fn add_discovered_contexts(
             .map(|module| module.file.clone())
             .collect::<BTreeSet<_>>();
         roots.extend(
-            crate::package::discover_tooling_entrypoints(&project.root)?
-                .into_iter()
-                .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, &path))
+            entrypoints
+                .tooling
+                .iter()
+                .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, path))
                 .filter_map(|key| modules.get(&key).map(|module| module.file.clone())),
         );
         add_discovered_context(
@@ -190,7 +187,6 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if !project.contexts.contains_key(DECLARATION_CONTEXT) {
         let roots = modules
             .values()
