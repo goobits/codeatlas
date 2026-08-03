@@ -60,18 +60,26 @@ pub(super) fn collect_project_modules(
         );
     }
     for source_path in discovery.files {
-        if source_path
+        let is_html = source_path
             .extension()
             .and_then(|extension| extension.to_str())
-            == Some("html")
-            && crate::source_discovery::is_visible_with_patterns(
+            == Some("html");
+        if is_html {
+            if crate::source_discovery::is_visible_with_patterns(
                 &project.root,
                 &source_path,
                 project.no_default_ignore,
                 &html_patterns,
-            )
-        {
-            html_sources.push(source_path.clone());
+            ) {
+                html_sources.push(source_path);
+            }
+            continue;
+        }
+        let Some(language) = source_language(&source_path) else {
+            continue;
+        };
+        if !languages.contains(&language) {
+            continue;
         }
         if !crate::source_discovery::is_visible_with_patterns(
             &project.root,
@@ -79,12 +87,6 @@ pub(super) fn collect_project_modules(
             project.no_default_ignore,
             &module_patterns,
         ) {
-            continue;
-        }
-        let Some(language) = source_language(&source_path) else {
-            continue;
-        };
-        if !languages.contains(&language) {
             continue;
         }
         if let Some(directory) = source_path
