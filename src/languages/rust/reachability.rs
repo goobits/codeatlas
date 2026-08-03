@@ -1,10 +1,9 @@
 use super::parser;
 use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
-    AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, EdgeTarget, NodeId,
-    ProjectId, SourceBinding, SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence,
-    SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceSymbol, SourceSymbolKind,
-    SourceVisibility,
+    AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, ProjectId, SourceBinding, SourceEdge,
+    SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
+    SourceSymbol, SourceSymbolKind, SourceVisibility,
 };
 use crate::domain::{Symbol, SymbolKind, Visibility};
 use anyhow::{Context, Result};
@@ -12,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use cargo::CargoLayout;
+use contexts::add_cargo_contexts;
 use resolver::{
     module_declaration_base, module_file_candidates, Resolution, ResolvedRustPath, RustResolver,
     UseResolution,
@@ -21,28 +21,57 @@ type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.rust";
 
 mod cargo;
+mod contexts;
 mod resolver;
 
 pub(crate) fn collect_projects(
     graph: &mut SourceGraph,
     projects: &[&ResolvedAnalysisProject],
 ) -> Result<()> {
-    for project in projects {
-        collect_project(graph, project)?;
+    let workers = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .min(8);
+    let mut layouts = Vec::with_capacity(projects.len());
+    for chunk in projects.chunks(workers) {
+        let loaded = std::thread::scope(|scope| {
+            let handles = chunk
+                .iter()
+                .map(|project| {
+                    let project = *project;
+                    (project, scope.spawn(move || CargoLayout::load(project)))
+                })
+                .collect::<Vec<_>>();
+            handles
+                .into_iter()
+                .map(|(project, handle)| {
+                    let cargo = handle.join().map_err(|_| {
+                        anyhow::anyhow!("Cargo metadata worker panicked for {}", project.id)
+                    })??;
+                    Ok((project, cargo))
+                })
+                .collect::<Result<Vec<_>>>()
+        })?;
+        layouts.extend(loaded);
+    }
+    for (project, cargo) in layouts {
+        collect_project(graph, project, &cargo)?;
     }
     Ok(())
 }
 
-fn collect_project(graph: &mut SourceGraph, project: &ResolvedAnalysisProject) -> Result<()> {
-    let cargo = CargoLayout::load(project)?;
+fn collect_project(
+    graph: &mut SourceGraph,
+    project: &ResolvedAnalysisProject,
+    cargo: &CargoLayout,
+) -> Result<()> {
     let mut modules = BTreeMap::new();
-    collect_modules(graph, project, &cargo, &mut modules)?;
-    let resolver = RustResolver::new(&cargo, &modules);
+    collect_modules(graph, project, cargo, &mut modules)?;
+    let resolver = RustResolver::new(cargo, &modules);
 
     for module in modules.values() {
-        connect_module(graph, module, &resolver, &cargo);
+        connect_module(graph, module, &resolver, cargo);
     }
-    add_cargo_contexts(graph, project, &cargo, &modules)?;
+    add_cargo_contexts(graph, project, cargo, &modules)?;
     Ok(())
 }
 
@@ -678,94 +707,6 @@ fn reference_sources(module: &Module, local: &str) -> BTreeSet<NodeId> {
     sources
 }
 
-fn add_cargo_contexts(
-    graph: &mut SourceGraph,
-    project: &ResolvedAnalysisProject,
-    cargo: &CargoLayout,
-    modules: &BTreeMap<ModuleKey, Module>,
-) -> Result<()> {
-    for target in cargo.targets() {
-        let path = crate::paths::normalize_relative_path(&target.root, &project.root);
-        let key = (project.id.clone(), path);
-        let Some(module) = modules.get(&key) else {
-            graph.record_boundary(
-                &project.id,
-                None,
-                BoundaryKind::UnresolvedInternal,
-                AnalysisCompleteness::Partial,
-                format!("Cargo target {} source was not parsed", target.name),
-                SourceEvidence::new("Cargo.toml", None, EXTRACTOR),
-            );
-            continue;
-        };
-        let name = format!(
-            "cargo-{}-{}-{}",
-            target.package,
-            target.role.name(),
-            target.name
-        );
-        let mut roots = BTreeSet::from([module.file.clone()]);
-        if target.role == ContextRole::Test {
-            roots.extend(
-                module
-                    .info
-                    .reachability
-                    .test_symbols
-                    .iter()
-                    .filter_map(|name| module.symbols.get(name))
-                    .flatten()
-                    .cloned(),
-            );
-        } else if !target.library {
-            if let Some(main) = module.symbols.get("main") {
-                roots.extend(main.iter().cloned());
-            }
-        }
-        graph
-            .add_context(SourceContext {
-                id: ContextId::new(&project.id, &name),
-                project: project.id.clone(),
-                name,
-                role: target.role,
-                scope: if target.library {
-                    ContextScope::PublicSurface
-                } else {
-                    ContextScope::Runtime
-                },
-                roots,
-            })
-            .map_err(anyhow::Error::from)?;
-    }
-    let test_roots = modules
-        .values()
-        .filter(|module| !cargo.is_integration_test_source(&project.root.join(&module.path)))
-        .flat_map(|module| {
-            module
-                .info
-                .reachability
-                .test_symbols
-                .iter()
-                .filter_map(|name| module.symbols.get(name))
-                .flatten()
-                .cloned()
-        })
-        .collect::<BTreeSet<_>>();
-    if !test_roots.is_empty() {
-        let name = "cargo-unit-tests".to_string();
-        graph
-            .add_context(SourceContext {
-                id: ContextId::new(&project.id, &name),
-                project: project.id.clone(),
-                name,
-                role: ContextRole::Test,
-                scope: ContextScope::Runtime,
-                roots: test_roots,
-            })
-            .map_err(anyhow::Error::from)?;
-    }
-    Ok(())
-}
-
 fn connect_resolution(
     graph: &mut SourceGraph,
     module: &Module,
@@ -810,19 +751,5 @@ fn source_symbol_kind(kind: SymbolKind) -> SourceSymbolKind {
         SymbolKind::Const => SourceSymbolKind::Constant,
         SymbolKind::TypeAlias => SourceSymbolKind::TypeAlias,
         _ => SourceSymbolKind::Other,
-    }
-}
-
-trait ContextRoleName {
-    fn name(self) -> &'static str;
-}
-
-impl ContextRoleName for ContextRole {
-    fn name(self) -> &'static str {
-        match self {
-            ContextRole::Production => "production",
-            ContextRole::Test => "test",
-            ContextRole::Tooling => "tooling",
-        }
     }
 }
