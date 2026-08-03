@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
-use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use globset::{GlobBuilder, GlobMatcher, GlobSet, GlobSetBuilder};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub(crate) struct PackageWorkspace {
@@ -108,6 +109,8 @@ fn discover_direct_members(
     scope: &Path,
     patterns: &WorkspacePatterns,
 ) -> Result<(Vec<PackageWorkspaceMember>, BTreeMap<String, PathBuf>)> {
+    let filter_root = root.to_path_buf();
+    let descent_patterns = Arc::clone(&patterns.descent);
     let mut builder = ignore::WalkBuilder::new(root);
     builder
         .hidden(false)
@@ -115,13 +118,17 @@ fn discover_direct_members(
         .git_global(false)
         .git_exclude(false)
         .require_git(false)
-        .filter_entry(|entry| {
-            entry.depth() == 0
-                || !entry.file_type().is_some_and(|kind| kind.is_dir())
-                || !crate::source_policy::is_ignored_dir(
-                    &entry.file_name().to_string_lossy(),
-                    false,
-                )
+        .filter_entry(move |entry| {
+            if entry.depth() == 0 || !entry.file_type().is_some_and(|kind| kind.is_dir()) {
+                return true;
+            }
+            if crate::source_policy::is_ignored_dir(&entry.file_name().to_string_lossy(), false) {
+                return false;
+            }
+            let relative = crate::paths::normalize_relative_path(entry.path(), &filter_root);
+            descent_patterns
+                .iter()
+                .any(|pattern| pattern.may_descend(&relative))
         });
 
     let mut members = Vec::new();
@@ -253,12 +260,14 @@ fn read_package_name(path: &Path) -> Result<Option<String>> {
 struct WorkspacePatterns {
     include: GlobSet,
     exclude: GlobSet,
+    descent: Arc<[WorkspaceDescentPattern]>,
 }
 
 impl WorkspacePatterns {
     fn compile(patterns: &[String]) -> Result<Self> {
         let mut include = GlobSetBuilder::new();
         let mut exclude = GlobSetBuilder::new();
+        let mut descent = Vec::new();
         let mut include_count = 0;
         for pattern in patterns {
             let (negative, pattern) = pattern
@@ -276,6 +285,7 @@ impl WorkspacePatterns {
                 exclude.add(glob);
             } else {
                 include.add(glob);
+                descent.push(WorkspaceDescentPattern::compile(pattern));
                 include_count += 1;
             }
         }
@@ -285,6 +295,7 @@ impl WorkspacePatterns {
         Ok(Self {
             include: include.build()?,
             exclude: exclude.build()?,
+            descent: descent.into(),
         })
     }
 
@@ -293,11 +304,55 @@ impl WorkspacePatterns {
     }
 }
 
+struct WorkspaceDescentPattern {
+    segments: Vec<GlobMatcher>,
+    recursive: Option<usize>,
+}
+
+impl WorkspaceDescentPattern {
+    fn compile(pattern: &str) -> Self {
+        let source_segments = pattern.split('/').collect::<Vec<_>>();
+        let segments = source_segments
+            .iter()
+            .map(|segment| {
+                GlobBuilder::new(segment)
+                    .literal_separator(true)
+                    .build()
+                    .map(|glob| glob.compile_matcher())
+            })
+            .collect::<Result<Vec<_>, _>>();
+        match segments {
+            Ok(segments) => Self {
+                segments,
+                recursive: source_segments.iter().position(|segment| *segment == "**"),
+            },
+            Err(_) => Self {
+                segments: Vec::new(),
+                recursive: Some(0),
+            },
+        }
+    }
+
+    fn may_descend(&self, path: &str) -> bool {
+        let components = path.split('/').collect::<Vec<_>>();
+        if self.recursive.is_none() && components.len() > self.segments.len() {
+            return false;
+        }
+        let compared = self.recursive.map_or(components.len(), |recursive| {
+            components.len().min(recursive)
+        });
+        components[..compared]
+            .iter()
+            .zip(&self.segments)
+            .all(|(component, segment)| segment.is_match(component))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         nearest_root, retry_once_on_not_found, workspace_pattern_owns_descendants,
-        PnpmWorkspaceManifest,
+        PnpmWorkspaceManifest, WorkspacePatterns,
     };
     use anyhow::Context;
     use std::path::Path;
@@ -309,6 +364,35 @@ mod tests {
         assert!(!workspace_pattern_owns_descendants("!tools/ignored"));
         assert!(!workspace_pattern_owns_descendants("."));
         assert!(!workspace_pattern_owns_descendants("../shared/*"));
+    }
+
+    #[test]
+    fn workspace_walk_descends_only_toward_positive_package_patterns() {
+        let patterns = WorkspacePatterns::compile(&[
+            "packages/*".to_string(),
+            "packages/@goobits/*/packages/*".to_string(),
+            "tools/**/packages/*".to_string(),
+            "!packages/@goobits/docs-engine/**".to_string(),
+        ])
+        .expect("workspace patterns");
+        let may_descend = |path: &str| {
+            patterns
+                .descent
+                .iter()
+                .any(|pattern| pattern.may_descend(path))
+        };
+
+        assert!(may_descend("packages"));
+        assert!(may_descend("packages/core"));
+        assert!(!may_descend("packages/core/src"));
+        assert!(may_descend("packages/@goobits/auth/packages/contracts"));
+        assert!(!may_descend(
+            "packages/@goobits/auth/packages/contracts/src"
+        ));
+        assert!(may_descend("tools/codeatlas/nested/packages"));
+        assert!(!may_descend("apps"));
+        assert!(patterns.matches("packages/core"));
+        assert!(!patterns.matches("packages/@goobits/docs-engine/site"));
     }
 
     #[test]
