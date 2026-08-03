@@ -9,6 +9,7 @@ mod context_slice;
 mod dead_code;
 mod domain;
 mod external_tool;
+mod filesystem;
 mod http;
 mod languages;
 mod lexicon;

@@ -180,15 +180,7 @@ fn retry_once_on_not_found<T>(mut operation: impl FnMut() -> Result<T>) -> Resul
 }
 
 fn is_not_found(error: &anyhow::Error) -> bool {
-    error.chain().any(|source| {
-        source
-            .downcast_ref::<std::io::Error>()
-            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-            || source
-                .downcast_ref::<ignore::Error>()
-                .and_then(ignore::Error::io_error)
-                .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-    })
+    error.chain().any(crate::filesystem::is_not_found)
 }
 
 pub(crate) fn nearest_root(scope: &Path) -> Result<Option<PathBuf>> {

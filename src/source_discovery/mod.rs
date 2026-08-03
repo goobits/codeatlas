@@ -21,6 +21,15 @@ pub(crate) struct SourceDiscoveryRequest<'a> {
 }
 
 pub(crate) fn discover(request: SourceDiscoveryRequest<'_>) -> SourceDiscovery {
+    discover_once(&request, true).unwrap_or_else(|| {
+        discover_once(&request, false).expect("the final source discovery attempt is retained")
+    })
+}
+
+fn discover_once(
+    request: &SourceDiscoveryRequest<'_>,
+    retry_transient_not_found: bool,
+) -> Option<SourceDiscovery> {
     let patterns = request
         .patterns
         .iter()
@@ -69,11 +78,14 @@ pub(crate) fn discover(request: SourceDiscoveryRequest<'_>) -> SourceDiscovery {
                 discovery.files.push(entry.into_path());
             }
             Ok(_) => {}
+            Err(error) if retry_transient_not_found && crate::filesystem::is_not_found(&error) => {
+                return None;
+            }
             Err(error) => discovery.warnings.push(error.to_string()),
         }
     }
     discovery.files.sort();
-    discovery
+    Some(discovery)
 }
 
 pub(crate) fn is_visible_with_patterns(
