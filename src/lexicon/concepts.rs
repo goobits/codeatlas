@@ -1,7 +1,7 @@
 //! Matches observed symbol terms against an immutable conceptual lexicon policy.
 
 use super::concept_policy::{
-    concept_ids_for_terms, LexiconPolicy, PolicySuppression, SourcedRelation,
+    resolve_concept_ids_for_terms, LexiconPolicy, PolicySuppression, SourcedRelation,
 };
 use super::model::{
     AppliedSuppression, ConceptCandidate, ConceptCandidateConfidence, ConceptCandidateRule,
@@ -9,7 +9,7 @@ use super::model::{
     ConceptSuppressionKind, ConceptTermUsage, ConceptualAnalysis, LexiconSymbol,
     SuggestedSuppression, SuppressedConceptCandidate,
 };
-use super::provider::{canonical_term_pair, ProviderRelationKind};
+use super::provider::{canonicalize_term_pair, ProviderRelationKind};
 use super::symbols::project_symbol;
 use crate::config::LexiconProviderTier;
 use crate::domain::Symbol;
@@ -33,7 +33,7 @@ pub(super) fn analyze_concepts(
         if !terms.iter().all(|term| usages.contains_key(term)) {
             continue;
         }
-        let concept_ids = concept_ids_for_terms(terms, &policy.term_owners);
+        let concept_ids = resolve_concept_ids_for_terms(terms, &policy.term_owners);
         if concept_ids.len() == 1
             && terms
                 .iter()
@@ -46,10 +46,10 @@ pub(super) fn analyze_concepts(
             .get(terms)
             .map_or(&[][..], Vec::as_slice);
         let evidence = relation_evidence(domain_relations, general_relations);
-        let rule = relation_rule(domain_relations);
+        let rule = resolve_relation_rule(domain_relations);
         if let Some(suppression) = find_suppression(terms, &concept_ids, policy) {
             suppressed_candidates.push(SuppressedConceptCandidate {
-                id: candidate_id(rule, terms, &concept_ids),
+                id: derive_candidate_id(rule, terms, &concept_ids),
                 terms: terms.clone(),
                 candidate_rule: rule,
                 evidence,
@@ -81,16 +81,16 @@ pub(super) fn analyze_concepts(
             ConceptCandidateConfidence::Advisory
         };
         candidates.push(ConceptCandidate {
-            id: candidate_id(rule, terms, &concept_ids),
+            id: derive_candidate_id(rule, terms, &concept_ids),
             terms: terms.clone(),
             concept_ids: concept_ids.clone(),
             rule,
-            reason: domain_reason(rule, terms),
+            reason: format_domain_reason(rule, terms),
             tier: ConceptCandidateTier::Domain,
             confidence,
             preferred_terms,
             evidence,
-            usages: usages_for_terms(terms, &usages),
+            usages: collect_usages_for_terms(terms, &usages),
             suggested_suppression: Some(suggest_suppression(terms, &concept_ids)),
         });
     }
@@ -163,18 +163,18 @@ fn collect_project_candidates(
         ] {
             for term in terms.iter().filter(|term| usages.contains_key(*term)) {
                 let preferred = &concept.preferred_terms[0];
-                let pair = canonical_term_pair(term, preferred);
+                let pair = canonicalize_term_pair(term, preferred);
                 let evidence_relation = match rule {
                     ConceptCandidateRule::ExactAlias => ConceptEvidenceRelation::ExactAlias,
                     ConceptCandidateRule::RetiredTerm => ConceptEvidenceRelation::RetiredTerm,
                     _ => unreachable!("project rules are closed"),
                 };
                 candidates.push(ConceptCandidate {
-                    id: candidate_id(rule, &pair, std::slice::from_ref(&concept.id)),
+                    id: derive_candidate_id(rule, &pair, std::slice::from_ref(&concept.id)),
                     terms: pair.clone(),
                     concept_ids: vec![concept.id.clone()],
                     rule,
-                    reason: project_reason(rule, term, &concept.id),
+                    reason: format_project_reason(rule, term, &concept.id),
                     tier: ConceptCandidateTier::Project,
                     confidence: ConceptCandidateConfidence::Authoritative,
                     preferred_terms: concept.preferred_terms.clone(),
@@ -186,7 +186,7 @@ fn collect_project_candidates(
                         subject: term.clone(),
                         object: preferred.clone(),
                     }],
-                    usages: usages_for_terms(&pair, usages),
+                    usages: collect_usages_for_terms(&pair, usages),
                     suggested_suppression: None,
                 });
             }
@@ -227,7 +227,7 @@ fn relation_evidence(
     evidence
 }
 
-fn relation_rule(relations: &[SourcedRelation]) -> ConceptCandidateRule {
+fn resolve_relation_rule(relations: &[SourcedRelation]) -> ConceptCandidateRule {
     if relations
         .iter()
         .any(|relation| relation.relation.relation == ProviderRelationKind::PreferentialEquivalent)
@@ -244,7 +244,7 @@ fn find_suppression<'a>(
     policy: &'a LexiconPolicy,
 ) -> Option<&'a PolicySuppression> {
     if concept_ids.len() == 2 {
-        let pair = canonical_term_pair(&concept_ids[0], &concept_ids[1]);
+        let pair = canonicalize_term_pair(&concept_ids[0], &concept_ids[1]);
         if let Some(suppression) = policy.distinct_concepts.get(&pair) {
             return Some(suppression);
         }
@@ -272,7 +272,7 @@ fn suggest_suppression(terms: &[String; 2], concept_ids: &[String]) -> Suggested
     }
 }
 
-fn usages_for_terms(
+fn collect_usages_for_terms(
     terms: &[String; 2],
     usages: &BTreeMap<String, Vec<LexiconSymbol>>,
 ) -> Vec<ConceptTermUsage> {
@@ -287,7 +287,7 @@ fn usages_for_terms(
         .collect()
 }
 
-fn project_reason(rule: ConceptCandidateRule, term: &str, concept_id: &str) -> String {
+fn format_project_reason(rule: ConceptCandidateRule, term: &str, concept_id: &str) -> String {
     match rule {
         ConceptCandidateRule::ExactAlias => format!(
             "Project policy declares {term:?} an exact alias of concept {concept_id:?}."
@@ -299,7 +299,7 @@ fn project_reason(rule: ConceptCandidateRule, term: &str, concept_id: &str) -> S
     }
 }
 
-fn domain_reason(rule: ConceptCandidateRule, terms: &[String; 2]) -> String {
+fn format_domain_reason(rule: ConceptCandidateRule, terms: &[String; 2]) -> String {
     match rule {
         ConceptCandidateRule::DomainPreferentialEquivalent => format!(
             "Pinned domain evidence prefers one label for {:?} and {:?}; project policy remains authoritative.",
@@ -313,10 +313,14 @@ fn domain_reason(rule: ConceptCandidateRule, terms: &[String; 2]) -> String {
     }
 }
 
-fn candidate_id(rule: ConceptCandidateRule, terms: &[String; 2], concept_ids: &[String]) -> String {
+fn derive_candidate_id(
+    rule: ConceptCandidateRule,
+    terms: &[String; 2],
+    concept_ids: &[String],
+) -> String {
     let mut digest = Sha256::new();
     digest.update(b"codeatlas.lexicon-candidate/v1\0");
-    digest.update(rule_name(rule).as_bytes());
+    digest.update(resolve_rule_name(rule).as_bytes());
     for value in terms.iter().chain(concept_ids) {
         digest.update(b"\0");
         digest.update(value.as_bytes());
@@ -324,7 +328,7 @@ fn candidate_id(rule: ConceptCandidateRule, terms: &[String; 2], concept_ids: &[
     format!("sha256:{:x}", digest.finalize())
 }
 
-fn rule_name(rule: ConceptCandidateRule) -> &'static str {
+fn resolve_rule_name(rule: ConceptCandidateRule) -> &'static str {
     match rule {
         ConceptCandidateRule::ExactAlias => "exact_alias",
         ConceptCandidateRule::RetiredTerm => "retired_term",

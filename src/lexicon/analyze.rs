@@ -5,7 +5,7 @@ use super::model::{
     LEXICON_SCHEMA_VERSION,
 };
 use super::symbols::{
-    collect_identifier_terms, normalize_signature, normalize_whitespace, project_symbol,
+    is_reportable_identifier_term, normalize_signature, normalize_whitespace, project_symbol,
     sort_symbols, tokenize_identifier,
 };
 use crate::domain::{ScanReport, Symbol, SymbolKind};
@@ -170,8 +170,12 @@ fn find_shape_aliases(symbols: &[SymbolView<'_>]) -> Vec<ShapeAlias> {
 fn collect_terms(symbols: &[SymbolView<'_>]) -> Vec<TermUsage> {
     let mut terms = BTreeMap::<String, TermAccumulator>::new();
     for view in symbols {
-        for term in collect_identifier_terms(&view.symbol.name) {
-            let usage = terms.entry(term).or_default();
+        for term in view
+            .tokens
+            .iter()
+            .filter(|term| is_reportable_identifier_term(term))
+        {
+            let usage = terms.entry(term.clone()).or_default();
             usage.symbol_ids.insert(view.symbol.id.clone());
             if !view.symbol.export_paths.is_empty() {
                 usage.public_symbol_ids.insert(view.symbol.id.clone());

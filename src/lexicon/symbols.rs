@@ -32,13 +32,6 @@ pub(super) fn sort_symbols(symbols: &mut [LexiconSymbol]) {
     symbols.sort_by(|left, right| left.id.cmp(&right.id));
 }
 
-pub(super) fn collect_identifier_terms(name: &str) -> BTreeSet<String> {
-    tokenize_identifier(name)
-        .into_iter()
-        .filter(|term| is_reportable_identifier_term(term))
-        .collect()
-}
-
 pub(super) fn collect_identifier_concept_terms(name: &str) -> BTreeSet<String> {
     let mut terms = tokenize_identifier(name);
     if !terms.is_empty() {
@@ -85,7 +78,7 @@ fn push_identifier_token(terms: &mut Vec<String>, current: &mut String) {
     }
 }
 
-fn is_reportable_identifier_term(term: &str) -> bool {
+pub(super) fn is_reportable_identifier_term(term: &str) -> bool {
     term.len() >= 3
         && !term.chars().all(|character| character.is_ascii_digit())
         && !matches!(term, "and" | "for" | "from" | "the" | "with")

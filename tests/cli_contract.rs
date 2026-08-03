@@ -37,7 +37,7 @@ fn write(directory: &TestDirectory, relative: &str, content: &str) {
     fs::write(path, content).expect("fixture should be written");
 }
 
-fn sha256(content: &str) -> String {
+fn compute_sha256(content: &str) -> String {
     format!("sha256:{:x}", Sha256::digest(content.as_bytes()))
 }
 
@@ -266,7 +266,7 @@ fn lexicon_policy_owns_terms_and_exact_suppressions_override_advisory_sources() 
                     "coverage": "filtered",
                     "version": "1",
                     "path": "evidence/domain.json",
-                    "sha256": sha256(domain),
+                    "sha256": compute_sha256(domain),
                     "license": "CC0-1.0",
                     "attribution": "CodeAtlas test fixture",
                     "url": "https://example.com/domain"
@@ -278,7 +278,7 @@ fn lexicon_policy_owns_terms_and_exact_suppressions_override_advisory_sources() 
                     "coverage": "filtered",
                     "version": "1",
                     "path": "evidence/general.json",
-                    "sha256": sha256(general),
+                    "sha256": compute_sha256(general),
                     "license": "CC-BY-4.0",
                     "attribution": "CodeAtlas test fixture",
                     "url": "https://example.com/general"

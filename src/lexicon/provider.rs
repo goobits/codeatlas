@@ -29,8 +29,8 @@ pub(super) struct ProviderRelation {
 }
 
 impl ProviderRelation {
-    pub(super) fn terms(&self) -> [String; 2] {
-        canonical_term_pair(&self.subject, &self.object)
+    pub(super) fn resolve_term_pair(&self) -> [String; 2] {
+        canonicalize_term_pair(&self.subject, &self.object)
     }
 }
 
@@ -332,7 +332,7 @@ pub(super) fn normalize_term(value: &str) -> Result<String> {
     Ok(normalized)
 }
 
-pub(super) fn canonical_term_pair(left: &str, right: &str) -> [String; 2] {
+pub(super) fn canonicalize_term_pair(left: &str, right: &str) -> [String; 2] {
     if left <= right {
         [left.to_string(), right.to_string()]
     } else {
@@ -359,7 +359,10 @@ mod tests {
 
         assert_eq!(records, 5);
         assert_eq!(relations.len(), 2);
-        assert_eq!(relations[0].terms(), ["language model", "language models"]);
+        assert_eq!(
+            relations[0].resolve_term_pair(),
+            ["language model", "language models"]
+        );
         assert_eq!(relations[1].subject, "ai");
         assert_eq!(relations[1].object, "artificial intelligence");
         assert_eq!(

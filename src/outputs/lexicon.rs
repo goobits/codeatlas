@@ -130,8 +130,8 @@ fn render_conceptual_analysis(report: &LexiconReport, output: &mut String) {
             "- {}@{} ({tier}, {}, {})\n  {} · {} indexed / {} supported / {} records\n  {} · {} · {}\n",
             source.id,
             source.version,
-            provider_format_label(source.format),
-            provider_coverage_label(source.coverage),
+            resolve_provider_format_label(source.format),
+            resolve_provider_coverage_label(source.coverage),
             source.sha256,
             source.relations_indexed,
             source.relations_loaded,
@@ -176,7 +176,7 @@ fn render_conceptual_analysis(report: &LexiconReport, output: &mut String) {
             "- {} / {} [{}]\n  {}\n",
             candidate.terms[0],
             candidate.terms[1],
-            suppression_label(candidate.suppression.kind),
+            resolve_suppression_label(candidate.suppression.kind),
             candidate.suppression.reason
         ));
     }
@@ -193,8 +193,8 @@ fn render_candidate(candidate: &ConceptCandidate, output: &mut String) {
         "- {} / {} [{} · {}]\n  {}\n",
         candidate.terms[0],
         candidate.terms[1],
-        candidate_rule_label(candidate.rule),
-        confidence_label(candidate.confidence),
+        resolve_candidate_rule_label(candidate.rule),
+        resolve_confidence_label(candidate.confidence),
         candidate.reason
     ));
     if !candidate.preferred_terms.is_empty() {
@@ -211,7 +211,7 @@ fn render_candidate(candidate: &ConceptCandidate, output: &mut String) {
                 "{}@{}:{}",
                 evidence.source_id,
                 evidence.source_version,
-                evidence_relation_label(evidence.relation)
+                resolve_evidence_relation_label(evidence.relation)
             )
         })
         .collect::<Vec<_>>()
@@ -225,7 +225,7 @@ fn render_candidate(candidate: &ConceptCandidate, output: &mut String) {
     }
 }
 
-fn candidate_rule_label(rule: ConceptCandidateRule) -> &'static str {
+fn resolve_candidate_rule_label(rule: ConceptCandidateRule) -> &'static str {
     match rule {
         ConceptCandidateRule::ExactAlias => "exact alias",
         ConceptCandidateRule::RetiredTerm => "retired term",
@@ -234,7 +234,7 @@ fn candidate_rule_label(rule: ConceptCandidateRule) -> &'static str {
     }
 }
 
-fn confidence_label(confidence: ConceptCandidateConfidence) -> &'static str {
+fn resolve_confidence_label(confidence: ConceptCandidateConfidence) -> &'static str {
     match confidence {
         ConceptCandidateConfidence::Authoritative => "authoritative",
         ConceptCandidateConfidence::StrongAdvisory => "strong advisory",
@@ -243,28 +243,28 @@ fn confidence_label(confidence: ConceptCandidateConfidence) -> &'static str {
     }
 }
 
-fn suppression_label(kind: ConceptSuppressionKind) -> &'static str {
+fn resolve_suppression_label(kind: ConceptSuppressionKind) -> &'static str {
     match kind {
         ConceptSuppressionKind::DistinctFrom => "distinct from",
         ConceptSuppressionKind::NeverSuggest => "never suggest",
     }
 }
 
-fn provider_format_label(format: LexiconProviderFormat) -> &'static str {
+fn resolve_provider_format_label(format: LexiconProviderFormat) -> &'static str {
     match format {
         LexiconProviderFormat::CsoCsv => "cso_csv",
         LexiconProviderFormat::RelationsJsonV1 => "relations_json_v1",
     }
 }
 
-fn provider_coverage_label(coverage: LexiconProviderCoverage) -> &'static str {
+fn resolve_provider_coverage_label(coverage: LexiconProviderCoverage) -> &'static str {
     match coverage {
         LexiconProviderCoverage::Complete => "complete",
         LexiconProviderCoverage::Filtered => "filtered",
     }
 }
 
-fn evidence_relation_label(relation: ConceptEvidenceRelation) -> &'static str {
+fn resolve_evidence_relation_label(relation: ConceptEvidenceRelation) -> &'static str {
     match relation {
         ConceptEvidenceRelation::ExactAlias => "exact_alias",
         ConceptEvidenceRelation::RetiredTerm => "retired_term",

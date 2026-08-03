@@ -4,7 +4,7 @@
 //! the resulting immutable policy and cannot reinterpret source precedence.
 
 use super::model::{ConceptSuppressionKind, ConceptualAnalysisMode, LexiconSource};
-use super::provider::{canonical_term_pair, load_provider, normalize_term, ProviderRelation};
+use super::provider::{canonicalize_term_pair, load_provider, normalize_term, ProviderRelation};
 use crate::config::{LexiconConfig, LexiconProviderTier};
 use anyhow::{bail, Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,6 +15,7 @@ const MAX_CONCEPT_TERMS: usize = 100_000;
 const MAX_DISTINCT_CONCEPTS: usize = 50_000;
 const MAX_NEVER_SUGGEST: usize = 50_000;
 const MAX_PROVIDERS: usize = 16;
+const MAX_PROVIDER_RELATIONS_TOTAL: usize = 500_000;
 
 #[derive(Debug)]
 pub(crate) struct LexiconPolicy {
@@ -194,14 +195,14 @@ fn load_concepts(config: &LexiconConfig, policy: &mut LexiconPolicy) -> Result<(
                 );
             }
             validate_reason(&distinct.reason, "distinct_from")?;
-            let pair = canonical_term_pair(&concept.id, &distinct.concept);
+            let pair = canonicalize_term_pair(&concept.id, &distinct.concept);
             insert_suppression(
                 &mut policy.distinct_concepts,
                 pair,
                 PolicySuppression {
                     kind: ConceptSuppressionKind::DistinctFrom,
                     reason: distinct.reason.trim().to_string(),
-                    concept_ids: canonical_strings(&concept.id, &distinct.concept),
+                    concept_ids: canonicalize_string_pair(&concept.id, &distinct.concept),
                 },
             )?;
         }
@@ -247,8 +248,8 @@ fn load_suppressions(config: &LexiconConfig, policy: &mut LexiconPolicy) -> Resu
         if left == right {
             bail!("never_suggest terms must be distinct after normalization");
         }
-        let pair = canonical_term_pair(&left, &right);
-        let owners = concept_ids_for_terms(&pair, &policy.term_owners);
+        let pair = canonicalize_term_pair(&left, &right);
+        let owners = resolve_concept_ids_for_terms(&pair, &policy.term_owners);
         if owners.len() == 1
             && pair
                 .iter()
@@ -260,7 +261,7 @@ fn load_suppressions(config: &LexiconConfig, policy: &mut LexiconPolicy) -> Resu
             );
         }
         if owners.len() == 2 {
-            let concept_pair = canonical_term_pair(&owners[0], &owners[1]);
+            let concept_pair = canonicalize_term_pair(&owners[0], &owners[1]);
             if policy.distinct_concepts.contains_key(&concept_pair) {
                 bail!(
                     "never_suggest pair {:?} duplicates an existing distinct_from rule",
@@ -310,25 +311,29 @@ fn load_providers(
             .then_with(|| left.id.cmp(&right.id))
     });
     let mut provider_ids = BTreeSet::new();
-    let mut loaded = Vec::with_capacity(configured.len());
-    for provider in configured {
+    for provider in &configured {
         if !provider_ids.insert(provider.id.clone()) {
             bail!("Duplicate lexicon provider id {:?}", provider.id);
         }
         if provider.id == "project.lexicon" {
             bail!("Lexicon provider id project.lexicon is reserved");
         }
-        loaded.push(
-            load_provider(provider, config_base)
-                .with_context(|| format!("Could not load lexicon provider {}", provider.id))?,
-        );
     }
 
-    for provider in loaded {
+    let mut total_relations = 0usize;
+    for provider in configured {
+        let provider = load_provider(provider, config_base)
+            .with_context(|| format!("Could not load lexicon provider {}", provider.id))?;
         let relations_loaded = provider.relations.len();
+        total_relations = total_relations.saturating_add(relations_loaded);
+        if total_relations > MAX_PROVIDER_RELATIONS_TOTAL {
+            bail!(
+                "Lexicon providers exceed the {MAX_PROVIDER_RELATIONS_TOTAL} total relation limit"
+            );
+        }
         let mut relations_indexed = 0usize;
         for relation in provider.relations {
-            let terms = relation.terms();
+            let terms = relation.resolve_term_pair();
             if provider.config.tier == LexiconProviderTier::General
                 && !policy.domain_relations.contains_key(&terms)
             {
@@ -384,7 +389,7 @@ fn load_providers(
     Ok(())
 }
 
-pub(super) fn concept_ids_for_terms(
+pub(super) fn resolve_concept_ids_for_terms(
     terms: &[String; 2],
     owners: &BTreeMap<String, TermOwner>,
 ) -> Vec<String> {
@@ -440,8 +445,8 @@ fn validate_reason(value: &str, label: &str) -> Result<()> {
     Ok(())
 }
 
-fn canonical_strings(left: &str, right: &str) -> Vec<String> {
-    canonical_term_pair(left, right).into_iter().collect()
+fn canonicalize_string_pair(left: &str, right: &str) -> Vec<String> {
+    canonicalize_term_pair(left, right).into_iter().collect()
 }
 
 #[cfg(test)]
