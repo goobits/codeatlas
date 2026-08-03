@@ -95,12 +95,15 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     let package_b = ProjectId("@fixture/b".to_string());
     let docs_project = ProjectId("@fixture/docs".to_string());
     let root_docs = NodeId::file(&docs_project, "index.ts");
+    let a_config = NodeId::file(&package_a, "svelte.config.js");
     let a_entry = NodeId::file(&package_a, "src/index.ts");
+    let a_i18n = NodeId::file(&package_a, "src/i18n/messages.ts");
     let b_entry = NodeId::file(&package_b, "src/index.ts");
     let b_absolute = NodeId::file(&package_b, "src/absolute.ts");
     let b_feature = NodeId::file(&package_b, "src/features/feature.ts");
     let b_alias = NodeId::file(&package_b, "src/aliasShared.ts");
     let b_docs_meta = NodeId::file(&package_b, "docs/meta/demo.ts");
+    let b_i18n = NodeId::file(&package_b, "src/i18n/index.ts");
     let b_shared = NodeId::file(&package_b, "src/sharedRuntime.ts");
     let b_alias_factory = NodeId::file(&package_b, "src/workspaceAliases.ts");
     let b_canvas_shim = NodeId::file(&package_b, "src/canvasBrowserShim.js");
@@ -108,6 +111,12 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
         edge.from == a_entry
             && edge.kind == SourceEdgeKind::ModuleDependency
             && edge.to == EdgeTarget::Node(b_entry.clone())
+    }));
+    assert!(graph.nodes.contains_key(&a_config));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.from == a_entry
+            && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.to == EdgeTarget::Node(a_i18n.clone())
     }));
     assert!(graph.edges.iter().any(|edge| {
         edge.from == a_entry
@@ -129,6 +138,10 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
             && edge.kind == SourceEdgeKind::WorkspaceSourceBypass
             && edge.to == EdgeTarget::Node(b_alias.clone())
     }));
+    assert!(!graph
+        .edges
+        .iter()
+        .any(|edge| { edge.from == a_config && edge.to == EdgeTarget::Node(b_i18n.clone()) }));
     let glob_edges = graph
         .edges
         .iter()

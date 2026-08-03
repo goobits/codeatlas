@@ -431,6 +431,9 @@ imports remain visible as uncertainty advisories. Declared package imports into
 conventional generated roots such as `dist`, `build`, and `pkg` are handled the
 same way when those outputs have not been built. A genuinely missing in-project
 source import remains a high-confidence gate.
+Configured directory aliases stay scoped to their owning project when they do
+not expose an index module; they never suffix-match an unrelated workspace
+member.
 
 The versioned dead-code report distinguishes unreachable private code,
 test-only files and symbols, tooling-only code, unreferenced public APIs,
@@ -438,9 +441,10 @@ unresolved internal edges, and dynamic boundaries. A symbol in a
 production-reachable file can therefore be reported as test-only when only test
 roots reach that symbol. Context roots themselves are omitted from these
 context-only findings to avoid listing every test file and test function.
-Only high-confidence unreachable files, unused private symbols, and unresolved
-internal imports can fail `dead-code --check`. Public APIs without repository
-consumers remain advisory because external consumers may exist.
+Only high-confidence unreachable files, unused private symbols, unresolved
+internal imports, and member-to-member package-export violations can fail
+`dead-code --check`. Public APIs without repository consumers remain advisory
+because external consumers may exist.
 Set `require_complete` on a project only after its supported source and dynamic
 boundaries are fully modeled. Report-only runs continue to preserve honest
 partial or unsupported evidence; `dead-code --check` additionally fails closed

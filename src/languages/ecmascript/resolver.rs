@@ -575,7 +575,18 @@ impl ModuleResolver {
         specifier: &str,
         path: &str,
     ) -> Resolution {
-        let configured = self.resolve_configured_entrypoint(module, path);
+        let source = source_path_specifier(path);
+        let configured = if !Path::new(source).is_absolute()
+            && self.projects.get(&module.project).is_some_and(|project| {
+                project.root.join(source).is_dir()
+                    && self
+                        .resolve_project_entrypoint(&module.project, source)
+                        .is_none()
+            }) {
+            Resolution::Unscanned(path.to_string())
+        } else {
+            self.resolve_configured_entrypoint(module, path)
+        };
         let exported = self.resolve_workspace_package(module, specifier);
         if matches!(
             (configured.resolved(), exported.as_ref().and_then(Resolution::resolved)),
