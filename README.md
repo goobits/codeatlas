@@ -601,6 +601,49 @@ Package exports are enabled by default. TypeScript declaration or JavaScript
 export targets are mapped back to maintained source when the project's
 TypeScript output configuration makes that mapping exact.
 
+## Source Index
+
+Source-graph analysis uses a bounded external index by default. Set
+`CODEATLAS_SOURCE_INDEX=0`, `false`, or `off` to disable it.
+
+| Variable | Behavior |
+| --- | --- |
+| `CODEATLAS_SOURCE_INDEX_DIR` | Overrides the index root. The path must be absolute and disjoint from every analyzed project. |
+| `CODEATLAS_CACHE_DIR` | Supplies the cache base when no source-index root is set. Otherwise CodeAtlas uses the platform or XDG cache location. |
+| `CODEATLAS_SOURCE_INDEX_MAX_BYTES` | Sets the byte limit. The default is 512 MiB; accepted values range from 16 MiB through 16 GiB. |
+| `CODEATLAS_METRICS=1` | Writes one source-index metrics record as JSON to stderr after each source-graph analysis. |
+
+The default index root is `codeatlas/source-index/v1` below the selected cache
+base. CodeAtlas rejects a root that contains an analyzed project or is contained
+by one.
+
+The whole-graph key covers resolved project configuration, maintained source
+and control-file contents, the source-graph schema, and the analysis algorithm.
+An unchanged key reuses the complete graph. Content-addressed parser facts are
+also reused per file. A changed key still rebuilds the global graph, but that
+rebuild can reuse eligible facts for unchanged files.
+
+Corrupt entries and entries with an invalid format or algorithm version are
+removed and rebuilt. There is no legacy cache reader. Successful reads refresh
+the entry's eviction timestamp, and pruning removes the least recently used
+entries after each run when the configured limit is exceeded.
+
+The metrics record reports graph and parser-fact hits and misses, input files
+and bytes, writes and written bytes, current and maximum cache bytes,
+`elapsed_ms`, RSS when available, and any untracked inputs.
+
+Local release-build measurements for the initial implementation were:
+
+| Workload | Cold | Warm | Output |
+| --- | ---: | ---: | --- |
+| CodeAtlas self-inspection | 22.525 s | 0.254 s | Identical SHA-256 |
+| Goobits code check | 119.070 s | 11.199 s | Identical SHA-256 |
+
+These measurements show that identical warm reruns are fast for the measured
+checkouts. They are not universal performance guarantees. Changed runs reuse
+eligible parser facts but still rebuild the global graph, so their speedup is
+smaller and workload-dependent.
+
 ## Evidence Posture
 
 CodeAtlas distinguishes direct structural evidence, inferred reachability, and
