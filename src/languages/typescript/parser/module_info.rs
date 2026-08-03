@@ -10,6 +10,7 @@ use exports::export_name_to_string;
 mod configured_sources;
 mod dependencies;
 mod exports;
+mod import_meta_globs;
 
 #[derive(Clone)]
 pub(crate) struct ExportName {
@@ -77,8 +78,14 @@ pub(crate) struct DynamicDependency {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DynamicDependencyTarget {
     Literal(String),
-    Pattern { prefix: String, suffix: String },
-    Glob(String),
+    Pattern {
+        prefix: String,
+        suffix: String,
+    },
+    GlobSet {
+        includes: Vec<String>,
+        excludes: Vec<String>,
+    },
     Unknown,
 }
 

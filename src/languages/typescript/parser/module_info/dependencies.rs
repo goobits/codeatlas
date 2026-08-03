@@ -121,6 +121,11 @@ impl Visit for DynamicDependencyCollector {
                     .map(|argument| dependency_targets(&argument.expr, kind, &self.static_bindings))
                     .unwrap_or_else(|| vec![DynamicDependencyTarget::Unknown])
             };
+            let targets = if kind == DynamicDependencyKind::ImportMetaGlob {
+                super::import_meta_globs::group_targets(targets)
+            } else {
+                targets
+            };
             self.dependencies.extend(
                 targets
                     .into_iter()
@@ -251,7 +256,9 @@ fn runtime_path_targets_source_module(target: &DynamicDependencyTarget) -> bool 
     let path = match target {
         DynamicDependencyTarget::Literal(path) => path.as_str(),
         DynamicDependencyTarget::Pattern { suffix, .. } => suffix.as_str(),
-        DynamicDependencyTarget::Glob(_) | DynamicDependencyTarget::Unknown => return false,
+        DynamicDependencyTarget::GlobSet { .. } | DynamicDependencyTarget::Unknown => {
+            return false;
+        }
     };
     matches!(
         Path::new(path)
@@ -339,7 +346,10 @@ fn dependency_targets(
             .cloned()
             .unwrap_or_else(|| vec![DynamicDependencyTarget::Unknown]),
         Expr::Lit(Lit::Str(value)) => vec![if kind == DynamicDependencyKind::ImportMetaGlob {
-            DynamicDependencyTarget::Glob(value.value.to_string())
+            DynamicDependencyTarget::GlobSet {
+                includes: vec![value.value.to_string()],
+                excludes: Vec::new(),
+            }
         } else {
             DynamicDependencyTarget::Literal(value.value.to_string())
         }],

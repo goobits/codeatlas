@@ -214,7 +214,12 @@ fn dynamic_dependency_label(target: &parser::DynamicDependencyTarget) -> String 
         parser::DynamicDependencyTarget::Pattern { prefix, suffix } => {
             format!("{prefix}*{suffix}")
         }
-        parser::DynamicDependencyTarget::Glob(pattern) => pattern.clone(),
+        parser::DynamicDependencyTarget::GlobSet { includes, excludes } => includes
+            .iter()
+            .cloned()
+            .chain(excludes.iter().map(|pattern| format!("!{pattern}")))
+            .collect::<Vec<_>>()
+            .join(", "),
         parser::DynamicDependencyTarget::Unknown => "<dynamic expression>".to_string(),
     }
 }
