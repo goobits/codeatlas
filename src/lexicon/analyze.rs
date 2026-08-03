@@ -1,10 +1,12 @@
+use super::concept_policy::LexiconPolicy;
+use super::concepts::{analyze_concepts, ConceptObservation};
 use super::model::{
     LexiconReport, LexiconStats, LexiconSymbol, NameCollision, ShapeAlias, ShapeGroup, TermUsage,
     LEXICON_SCHEMA_VERSION,
 };
 use super::symbols::{
     collect_identifier_terms, normalize_signature, normalize_whitespace, project_symbol,
-    sort_symbols,
+    sort_symbols, tokenize_identifier,
 };
 use crate::domain::{ScanReport, Symbol, SymbolKind};
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,6 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 struct SymbolView<'a> {
     symbol: &'a Symbol,
     top_level: bool,
+    tokens: Vec<String>,
 }
 
 #[derive(Default)]
@@ -21,7 +24,7 @@ struct TermAccumulator {
     names: BTreeSet<String>,
 }
 
-pub(crate) fn analyze(scan: &ScanReport) -> LexiconReport {
+pub(crate) fn analyze(scan: &ScanReport, policy: &LexiconPolicy) -> LexiconReport {
     let mut symbols = Vec::new();
     collect_symbols(&scan.symbols, true, &mut symbols);
 
@@ -34,6 +37,14 @@ pub(crate) fn analyze(scan: &ScanReport) -> LexiconReport {
             .map(|view| view.symbol),
     );
     let terms = collect_terms(&symbols);
+    let observations = symbols
+        .iter()
+        .map(|view| ConceptObservation {
+            symbol: view.symbol,
+            tokens: &view.tokens,
+        })
+        .collect::<Vec<_>>();
+    let conceptual_analysis = analyze_concepts(&observations, policy);
     let mut public_symbols = symbols
         .iter()
         .filter(|view| !view.symbol.export_paths.is_empty())
@@ -52,11 +63,14 @@ pub(crate) fn analyze(scan: &ScanReport) -> LexiconReport {
             shape_aliases: shape_aliases.len(),
             callable_candidates: callable_candidates.len(),
             repeated_terms: terms.len(),
+            concept_candidates: conceptual_analysis.candidates.len(),
+            suppressed_concept_candidates: conceptual_analysis.suppressed_candidates.len(),
         },
         name_collisions,
         shape_aliases,
         callable_candidates,
         terms,
+        conceptual_analysis,
         public_symbols,
     }
 }
@@ -67,7 +81,11 @@ fn collect_symbols<'a>(
     collected: &mut Vec<SymbolView<'a>>,
 ) {
     for symbol in symbols {
-        collected.push(SymbolView { symbol, top_level });
+        collected.push(SymbolView {
+            symbol,
+            top_level,
+            tokens: tokenize_identifier(&symbol.name),
+        });
         collect_symbols(&symbol.children, false, collected);
     }
 }
@@ -225,6 +243,7 @@ fn symbol_shape(symbol: &Symbol) -> String {
 mod tests {
     use super::analyze;
     use crate::domain::{Language, ScanReport, Symbol, SymbolKind, Visibility};
+    use crate::lexicon::concept_policy::LexiconPolicy;
 
     fn symbol(
         file_path: &str,
@@ -255,7 +274,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_collisions_aliases_duplicate_helpers_and_real_public_exposure() {
+    fn reports_collisions_aliases_callable_candidates_and_real_public_exposure() {
         let mut public_surface = symbol(
             "src/public.ts",
             "FluidSurfaceState",
@@ -315,7 +334,7 @@ mod tests {
             ..ScanReport::default()
         };
 
-        let report = analyze(&scan);
+        let report = analyze(&scan, &LexiconPolicy::default());
 
         assert_eq!(report.name_collisions[0].name, "FluidSurfaceState");
         assert!(report.shape_aliases.iter().any(|alias| {

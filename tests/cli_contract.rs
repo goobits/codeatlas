@@ -2,6 +2,7 @@ mod support;
 
 use self::support::TestDirectory;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -34,6 +35,10 @@ fn write(directory: &TestDirectory, relative: &str, content: &str) {
         fs::create_dir_all(parent).expect("fixture parent should be created");
     }
     fs::write(path, content).expect("fixture should be written");
+}
+
+fn sha256(content: &str) -> String {
+    format!("sha256:{:x}", Sha256::digest(content.as_bytes()))
 }
 
 #[test]
@@ -180,6 +185,7 @@ fn lexicon_reports_source_collisions_without_mislabeling_public_exposure() {
 
     assert_eq!(report["schema_version"], 2);
     assert!(report["callable_candidates"].is_array());
+    assert!(report["conceptual_analysis"].is_object());
     assert!(report.get("duplicate_families").is_none());
     assert_eq!(report["name_collisions"][0]["name"], "SurfaceState");
     let public_symbols = report["public_symbols"]
@@ -191,6 +197,214 @@ fn lexicon_reports_source_collisions_without_mislabeling_public_exposure() {
     assert!(public_symbols
         .iter()
         .all(|symbol| { symbol["export_paths"][0] == "@example/lexicon" }));
+}
+
+#[test]
+fn lexicon_policy_owns_terms_and_exact_suppressions_override_advisory_sources() {
+    let project = TestDirectory::create("codeatlas-cli-concept-lexicon");
+    write(
+        &project,
+        "src/index.ts",
+        r#"
+            export interface RequestHandler {}
+            export interface RequestController {}
+            export interface RequestProcessor {}
+            export interface EventListener {}
+            export interface LanguageModel {}
+            export interface LanguageModels {}
+            export interface DatabaseRecord {}
+            export interface TableRow {}
+            export interface JobQueue {}
+            export interface SourceLine {}
+        "#,
+    );
+    let domain = r#"{
+        "schema_version": 1,
+        "relations": [
+            {"subject":"handler", "relation":"related_equivalent", "object":"listener"},
+            {"subject":"language model", "relation":"related_equivalent", "object":"language models"},
+            {"subject":"record", "relation":"related_equivalent", "object":"row"},
+            {"subject":"controller", "relation":"related_equivalent", "object":"handler"}
+        ]
+    }"#;
+    let general = r#"{
+        "schema_version": 1,
+        "relations": [
+            {"subject":"language models", "relation":"synonym", "object":"language model"},
+            {"subject":"queue", "relation":"synonym", "object":"line"}
+        ]
+    }"#;
+    write(&project, "evidence/domain.json", domain);
+    write(&project, "evidence/general.json", general);
+    let config = serde_json::json!({
+        "lexicon": {
+            "concepts": [
+                {
+                    "id": "request_handler",
+                    "preferred_terms": ["handler"],
+                    "exact_aliases": ["controller"],
+                    "retired_terms": ["processor"],
+                    "distinct_from": [{
+                        "concept": "event_listener",
+                        "reason": "Handlers own requests; listeners observe events."
+                    }]
+                },
+                {
+                    "id": "event_listener",
+                    "preferred_terms": ["listener"]
+                }
+            ],
+            "never_suggest": [{
+                "terms": ["record", "row"],
+                "reason": "A record is a domain value; a row is storage."
+            }],
+            "providers": [
+                {
+                    "id": "domain-test",
+                    "tier": "domain",
+                    "format": "relations_json_v1",
+                    "coverage": "filtered",
+                    "version": "1",
+                    "path": "evidence/domain.json",
+                    "sha256": sha256(domain),
+                    "license": "CC0-1.0",
+                    "attribution": "CodeAtlas test fixture",
+                    "url": "https://example.com/domain"
+                },
+                {
+                    "id": "general-test",
+                    "tier": "general",
+                    "format": "relations_json_v1",
+                    "coverage": "filtered",
+                    "version": "1",
+                    "path": "evidence/general.json",
+                    "sha256": sha256(general),
+                    "license": "CC-BY-4.0",
+                    "attribution": "CodeAtlas test fixture",
+                    "url": "https://example.com/general"
+                }
+            ]
+        }
+    });
+    write(
+        &project,
+        "codeatlas.json",
+        &serde_json::to_string_pretty(&config).expect("config JSON"),
+    );
+
+    let args = [
+        "--root",
+        project
+            .path()
+            .to_str()
+            .expect("project path should be UTF-8"),
+        "lexicon",
+        "code",
+        "--format",
+        "json",
+    ];
+    let output = run(&args);
+    assert_success(&output, "concept lexicon report");
+    let repeated = run(&args);
+    assert_success(&repeated, "repeated concept lexicon report");
+    assert_eq!(output.stdout, repeated.stdout);
+    let report: Value = serde_json::from_slice(&output.stdout).expect("lexicon JSON");
+    let analysis = &report["conceptual_analysis"];
+    assert_eq!(analysis["mode"], "domain_with_general_corroboration");
+    assert_eq!(analysis["sources"][1]["relations_loaded"], 2);
+    assert_eq!(analysis["sources"][1]["relations_indexed"], 1);
+
+    let candidates = analysis["candidates"]
+        .as_array()
+        .expect("candidates should be an array");
+    assert!(candidates.iter().any(|candidate| {
+        candidate["terms"] == serde_json::json!(["controller", "handler"])
+            && candidate["rule"] == "exact_alias"
+            && candidate["confidence"] == "authoritative"
+    }));
+    assert!(candidates.iter().any(|candidate| {
+        candidate["terms"] == serde_json::json!(["handler", "processor"])
+            && candidate["rule"] == "retired_term"
+    }));
+    let language_model = candidates
+        .iter()
+        .find(|candidate| {
+            candidate["terms"] == serde_json::json!(["language model", "language models"])
+        })
+        .expect("domain candidate");
+    assert_eq!(language_model["confidence"], "corroborated_advisory");
+    assert_eq!(language_model["evidence"].as_array().map(Vec::len), Some(2));
+    assert_eq!(
+        language_model["suggested_suppression"]["kind"],
+        "never_suggest"
+    );
+    assert!(language_model["usages"][0]["symbols"][0]["span"].is_object());
+    assert!(!candidates
+        .iter()
+        .any(|candidate| { candidate["terms"] == serde_json::json!(["line", "queue"]) }));
+
+    let suppressed = analysis["suppressed_candidates"]
+        .as_array()
+        .expect("suppressions should be an array");
+    assert!(suppressed.iter().any(|candidate| {
+        candidate["terms"] == serde_json::json!(["handler", "listener"])
+            && candidate["suppression"]["kind"] == "distinct_from"
+    }));
+    assert!(suppressed.iter().any(|candidate| {
+        candidate["terms"] == serde_json::json!(["record", "row"])
+            && candidate["suppression"]["kind"] == "never_suggest"
+    }));
+}
+
+#[test]
+fn lexicon_rejects_provider_bytes_that_do_not_match_the_manifest_digest() {
+    let project = TestDirectory::create("codeatlas-cli-lexicon-digest");
+    write(
+        &project,
+        "src/index.ts",
+        "export interface LanguageModel {}\n",
+    );
+    write(
+        &project,
+        "evidence/domain.json",
+        r#"{"schema_version":1,"relations":[]}"#,
+    );
+    let config = serde_json::json!({
+        "lexicon": {
+            "providers": [{
+                "id": "domain-test",
+                "tier": "domain",
+                "format": "relations_json_v1",
+                "coverage": "filtered",
+                "version": "1",
+                "path": "evidence/domain.json",
+                "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "license": "CC0-1.0",
+                "attribution": "CodeAtlas test fixture",
+                "url": "https://example.com/domain"
+            }]
+        }
+    });
+    write(
+        &project,
+        "codeatlas.json",
+        &serde_json::to_string_pretty(&config).expect("config JSON"),
+    );
+
+    let output = run(&[
+        "--root",
+        project
+            .path()
+            .to_str()
+            .expect("project path should be UTF-8"),
+        "lexicon",
+        "code",
+        "--format",
+        "json",
+    ]);
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("digest mismatch"));
 }
 
 #[test]

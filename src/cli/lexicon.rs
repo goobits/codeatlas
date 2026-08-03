@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Subcommand)]
 pub(super) enum LexiconSubject {
-    /// Find code naming collisions, aliases, and duplicate symbol families
+    /// Find naming collisions, declared terms, and sourced conceptual overlap
     Code {
         /// Preserve package ownership while scanning the nearest pnpm workspace
         #[arg(long)]
