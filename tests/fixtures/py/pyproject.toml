@@ -4,6 +4,7 @@ version = "0.1.0"
 
 [project.scripts]
 fixture-cli = "pkg.api:public_func"
+fixture-admin = "pkg.api:cli_only"
 
 [tool.setuptools.packages.find]
 where = ["."]

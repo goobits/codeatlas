@@ -95,7 +95,7 @@ fn generate(
         })?;
         if current != rendered {
             anyhow::bail!(
-                "API documentation is stale at {}. Run codeatlas docs without --check.",
+                "API documentation is stale at {}. Run codeatlas docs code without --check.",
                 output_path.display()
             );
         }

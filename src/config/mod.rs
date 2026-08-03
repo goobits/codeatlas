@@ -98,6 +98,7 @@ pub(crate) struct ProjectConfig {
     pub config: CodeAtlasConfig,
     pub config_dir: PathBuf,
     pub config_path: Option<PathBuf>,
+    pub(crate) validated_analysis_projects: Option<Vec<ResolvedAnalysisProject>>,
 }
 
 impl ProjectConfig {
@@ -139,14 +140,15 @@ impl ProjectConfig {
             format!("CodeAtlas project root does not exist: {}", root.display())
         })?;
 
-        let project = Self {
+        let mut project = Self {
             root,
             config,
             config_dir,
             config_path,
+            validated_analysis_projects: None,
         };
         if !project.config.projects.is_empty() {
-            project.analysis_projects()?;
+            project.validated_analysis_projects = Some(project.analysis_projects()?);
         }
         Ok(project)
     }

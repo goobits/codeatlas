@@ -25,12 +25,17 @@ pub(crate) fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<crate:
 }
 
 pub(crate) fn parse_module_info(file_path: &Path, root_dir: &Path) -> Result<TypeScriptModuleInfo> {
-    let (module, source_map) = parse_syntax_tree(file_path)?;
+    let (module, source_map, has_shebang) = parse_syntax_tree_with_metadata(file_path)?;
     let relative_path = pathdiff::diff_paths(file_path, root_dir)
         .unwrap_or(file_path.to_path_buf())
         .to_string_lossy()
         .to_string();
-    Ok(build_module_info(module, source_map, relative_path))
+    Ok(build_module_info(
+        module,
+        source_map,
+        relative_path,
+        has_shebang,
+    ))
 }
 
 pub(crate) fn parse_source(source: &str, relative_path: &str) -> Result<TypeScriptModuleInfo> {
@@ -48,6 +53,7 @@ pub(crate) fn parse_source(source: &str, relative_path: &str) -> Result<TypeScri
         module,
         source_map,
         relative_path.to_string(),
+        source.starts_with("#!"),
     ))
 }
 
@@ -55,6 +61,7 @@ fn build_module_info(
     module: Module,
     source_map: Lrc<SourceMap>,
     relative_path: String,
+    has_shebang: bool,
 ) -> TypeScriptModuleInfo {
     let mut visitor = SymbolVisitor {
         symbols: Vec::new(),
@@ -77,6 +84,7 @@ fn build_module_info(
         exports,
         imports: collect_imports(&module),
         reachability,
+        has_shebang,
     }
 }
 
@@ -106,10 +114,16 @@ fn consolidate_overloads(symbols: &mut Vec<crate::domain::Symbol>) {
 }
 
 pub(crate) fn parse_syntax_tree(file_path: &Path) -> Result<(Module, Lrc<SourceMap>)> {
+    let (module, source_map, _) = parse_syntax_tree_with_metadata(file_path)?;
+    Ok((module, source_map))
+}
+
+fn parse_syntax_tree_with_metadata(file_path: &Path) -> Result<(Module, Lrc<SourceMap>, bool)> {
     let source_map: Lrc<SourceMap> = Default::default();
     let file = source_map.load_file(file_path)?;
+    let has_shebang = file.src.starts_with("#!");
     let module = parse_source_file(file, source_map.clone(), syntax_for_path(file_path))?;
-    Ok((module, source_map))
+    Ok((module, source_map, has_shebang))
 }
 
 fn parse_source_file(
@@ -158,6 +172,20 @@ fn syntax_for_path(path: &Path) -> Syntax {
 #[cfg(test)]
 mod tests {
     use super::{parse_source, DynamicDependencyKind, DynamicDependencyTarget};
+
+    #[test]
+    fn records_file_level_shebangs_during_parsing() {
+        let script = parse_source(
+            "#!/usr/bin/env node\nexport const runnable = true\n",
+            "bin/tool.ts",
+        )
+        .expect("script module info");
+        let module = parse_source("export const library = true\n", "src/library.ts")
+            .expect("library module info");
+
+        assert!(script.has_shebang);
+        assert!(!module.has_shebang);
+    }
 
     #[test]
     fn http_calls_do_not_pollute_public_symbol_scans() {
@@ -259,6 +287,7 @@ export default {
             .into_iter()
             .collect()
         );
+        assert!(info.reachability.configures_tests);
         assert_eq!(
             info.reachability.configured_aliases["shared"],
             ["./tests/mocks/shared.ts".to_string()]
@@ -273,6 +302,25 @@ export default {
             info.reachability.configured_runtime_entrypoints,
             ["./src/runtime.ts".to_string()].into_iter().collect()
         );
+    }
+
+    #[test]
+    fn production_vite_config_does_not_claim_test_configuration() {
+        let info = parse_source(
+            r#"
+export default {
+    build: {
+        lib: {
+            entry: "./src/index.ts"
+        }
+    }
+}
+"#,
+            "vite.config.ts",
+        )
+        .expect("module info");
+
+        assert!(!info.reachability.configures_tests);
     }
 
     #[test]
@@ -306,6 +354,43 @@ export default {
             ["./src/shared".to_string()].into_iter().collect()
         );
         assert_eq!(info.imports[1].source, "./metadata.json");
+    }
+
+    #[test]
+    fn config_reachability_extracts_alias_resolver_maps_without_metadata_aliases() {
+        let info = parse_source(
+            r#"
+export default {
+    settings: {
+        resolver: {
+            alias: {
+                map: [
+                    ["@domains", "./src/domains"],
+                    ["@shared", "./src/shared"]
+                ],
+                extensions: [".js", ".ts"]
+            }
+        }
+    }
+}
+"#,
+            "eslint.config.js",
+        )
+        .expect("module info");
+
+        assert_eq!(
+            info.reachability.configured_aliases["@domains"],
+            ["./src/domains".to_string()].into_iter().collect()
+        );
+        assert_eq!(
+            info.reachability.configured_aliases["@shared"],
+            ["./src/shared".to_string()].into_iter().collect()
+        );
+        assert!(!info.reachability.configured_aliases.contains_key("map"));
+        assert!(!info
+            .reachability
+            .configured_aliases
+            .contains_key("extensions"));
     }
 
     #[test]

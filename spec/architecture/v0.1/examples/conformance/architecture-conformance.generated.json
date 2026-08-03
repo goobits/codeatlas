@@ -16,7 +16,7 @@
       "spec/architecture/v0.1/examples/policy-exception/architecture-policy.atlas.yaml",
       "spec/architecture/v0.1/examples/tabby-shelly/architecture.atlas.yaml"
     ],
-    "generationCommand": "codeatlas architecture conform",
+    "generationCommand": "codeatlas check architecture observation",
     "manualEditing": "prohibited"
   },
   "vocabulary": {

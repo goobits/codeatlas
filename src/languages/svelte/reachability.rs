@@ -18,6 +18,7 @@ pub(crate) fn parse_source(relative_path: &str, source: &str) -> Result<TypeScri
         offset_module_info(&mut info, script.start_line.saturating_sub(1));
         merge_module_info(&mut combined, info);
     }
+    combined.has_shebang = source.starts_with("#!");
     Ok(combined)
 }
 

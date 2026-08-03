@@ -8,25 +8,20 @@ claiming certainty when the source graph is incomplete.
 ## Quick Start
 
 ```bash
-npx @goobits/codeatlas scan .
-npx @goobits/codeatlas scan packages/example --scope source --all --format json
-npx @goobits/codeatlas lexicon packages/example --format json
-npx @goobits/codeatlas audit .
-npx @goobits/codeatlas audit packages/example --consumer-root .
-npx @goobits/codeatlas ci . --workspace --fail-unused false --baseline public-api.json
-npx @goobits/codeatlas diff public-api.json . --workspace --exact
-npx @goobits/codeatlas dead-code . --format json
-npx @goobits/codeatlas dead-code packages --workspace --format json
-npx @goobits/codeatlas testing inventory . --workspace
-npx @goobits/codeatlas testing impact . --workspace --changed packages/example/src/index.ts
-npx @goobits/codeatlas testing witnesses . --workspace
-npx @goobits/codeatlas context . --target src/main.rs
-npx @goobits/codeatlas architecture compile architecture/root.atlas.yaml --source-root .
-npx @goobits/codeatlas architecture source-check architecture/root.atlas.yaml --source-root . --repository . --check
-npx @goobits/codeatlas architecture providers architecture/root.atlas.yaml --source-root . --capability example.capability.context
-npx @goobits/codeatlas docs . --out docs/API-Reference.md
-npx @goobits/codeatlas docs . --format html --out docs/API-Reference.html
-npx @goobits/codeatlas postgres inventory .
+codeatlas --root . scan code
+codeatlas --root packages/example scan code --scope source --all --format json
+codeatlas --root . usage code --scope public
+codeatlas --root . usage code --format json
+codeatlas --root . check code --workspace
+codeatlas --root . baseline code --workspace --out public-api.json
+codeatlas --root . diff code --against public-api.json --workspace --exact
+codeatlas --root . tests impact --workspace --changed packages/example/src/index.ts
+codeatlas --root . inspect code src/main.rs
+codeatlas compile architecture architecture/root.atlas.yaml --source-root .
+codeatlas --root . check architecture source architecture/root.atlas.yaml --source-root .
+codeatlas inspect architecture capability:example.capability.context architecture/root.atlas.yaml
+codeatlas --root . docs code --out docs/API-Reference.md
+codeatlas --root . scan postgres
 ```
 
 Use `CODEATLAS_BINARY_PATH` to run a locally built binary through the npm
@@ -42,25 +37,50 @@ a positive integer to allow more parallel build work.
 
 ## Commands
 
-| Command        | Purpose                                                                                |
-| -------------- | -------------------------------------------------------------------------------------- |
-| `scan`         | Show package API reachability or maintained source as a tree, Mermaid, or versioned JSON report |
-| `lexicon`      | Report deterministic source-name collisions, structural aliases, repeated helpers, and terms |
-| `audit`        | Report public exports with no detected local or explicitly scanned package consumers    |
-| `dead-code`    | Classify source reachability, context-only code, and uncertain boundaries              |
-| `testing`      | Inventory tests, select affected suites, and report public API witnesses               |
-| `context`      | Return a bounded source graph slice for exact files or symbols                         |
-| `architecture` | Compile declarations, query provider approvals, observe bindings, and evaluate conformance |
-| `ci`           | Write a compact public API baseline and fail on configured audit findings              |
-| `diff`         | Compare public APIs with compatibility or exact drift policy                           |
-| `map`          | Generate a Mermaid dependency diagram                                                  |
-| `docs`         | Generate deterministic Markdown or searchable HTML from public exports and source docs |
-| `http`         | Inventory source routes, check/diff OpenAPI contracts, and run schema or transport fuzzing |
-| `postgres`     | Discover, lint, replay, prepare, inventory, and diff PostgreSQL contracts               |
+| Command | Purpose |
+| --- | --- |
+| `scan code|http|postgres` | Discover current code, HTTP, or PostgreSQL evidence |
+| `check code|http|postgres|architecture` | Apply static rules and contract checks |
+| `baseline code|http|postgres` | Save reviewed canonical comparison evidence |
+| `diff code|http|postgres` | Compare current evidence with a baseline |
+| `usage code` | Classify code reachability or public consumers |
+| `inspect code|architecture` | Explain one exact target and its bounded neighborhood |
+| `lexicon code` | Report deterministic naming collisions, aliases, and repeated terms |
+| `tests inventory|impact|witnesses` | Inventory tests, select affected suites, and report witnesses |
+| `docs code` | Generate deterministic Markdown or searchable HTML API documentation |
+| `fuzz http` | Exercise HTTP contracts with generated requests |
+| `test postgres` | Replay migrations and prepare queries in an isolated database |
+| `init postgres` | Discover and optionally write PostgreSQL configuration |
+| `compile architecture` | Validate and normalize architecture declarations |
+| `observe architecture` | Generate reproducible source-binding evidence |
 
 Run `codeatlas <command> --help` for command-specific options.
 
-`audit --consumer-root <path>` and `ci --consumer-root <path>` count static
+### Capability boundaries
+
+CodeAtlas reports support per capability instead of claiming that every domain
+has the same operations.
+
+| Evidence | JavaScript/TypeScript | Svelte | Python | Rust |
+| --- | --- | --- | --- | --- |
+| Public API scan and docs | yes | yes | yes | yes |
+| Source reachability, usage, context, and test impact | yes | yes | yes | yes |
+| Static HTTP route inventory | yes | yes | yes | yes |
+| Static PostgreSQL application-query extraction | yes | no | no | no |
+
+HTTP fuzzing is contract and transport based once an OpenAPI or supported
+source-transport contract and runtime target are configured. PostgreSQL live
+testing is database-contract execution, not fuzzing. CodeAtlas does not claim
+runtime proof for in-process APIs.
+
+Python usage evidence includes relative package imports, top-level model and
+union references, decorators that may register symbols dynamically, and
+`pyproject.toml` CLI entrypoints. Reflection and non-literal imports remain
+visible uncertainty boundaries. `scan code --format mermaid` currently renders
+one selected repository root; a combined focused multi-project Mermaid view is
+a future capability rather than an implicit merge of unrelated package models.
+
+`usage code --scope public --consumer-root <path>` counts static
 JavaScript, TypeScript, and Svelte imports, re-exports, and literal dynamic imports of
 the scanned package from an external source tree. Maintained test and tooling
 directories are included; the audited package itself, hidden directories,
@@ -75,8 +95,8 @@ unused-public findings.
 An explicit command is required. Repository-wide scan settings belong in
 `codeatlas.json`; the former top-level flag interface has been removed.
 
-`scan --scope api` is the default and follows configured entrypoints or
-discovered package exports. `scan --scope source` removes that reachability
+`scan code --scope api` is the default and follows configured entrypoints or
+discovered package exports. `scan code --scope source` removes that reachability
 filter while preserving package export annotations, so `export_paths` still
 distinguishes importable API from implementation-only symbols. Add `--all` when
 the report should also include internal and private declarations. Source scans
@@ -84,7 +104,7 @@ honor repository ignore rules and exclude conventional test, dependency, and
 generated-output directories unless the project explicitly disables default
 ignores.
 
-`lexicon` always inspects maintained source with internal and private symbols
+`lexicon code` always inspects maintained source with internal and private symbols
 included. Its advisory report flags exact same-name/different-shape concepts,
 different-name/same-shape type candidates, and same-name/same-signature helper
 families. Repeated identifier terms provide a deterministic vocabulary index;
@@ -92,16 +112,19 @@ no fuzzy or probabilistic naming guesses are used. Package exposure is derived
 only from each symbol's `export_paths`, so an exported declaration in an
 implementation-only file is not mislabeled as public API. Use text for a short
 review or JSON for the complete term and public-symbol inventory.
+`lexicon code --workspace` scans maintained source once, partitions symbols by the
+nearest pnpm workspace package, and preserves workspace-relative paths, package
+ownership, and each package's public export paths in the aggregate report.
 
 ## Declared Architecture
 
-`architecture compile` accepts one or more root `ArchitectureModule` files,
+`compile architecture` accepts one or more root `ArchitectureModule` files,
 resolves exact digest-pinned local imports inside `--source-root`, validates the
 closed v0.1 vocabulary, and emits a deterministic normalized graph plus its
 generated lockfile.
 
 ```bash
-codeatlas architecture compile \
+codeatlas compile architecture \
   architecture/root.atlas.yaml \
   --source-root . \
   --mode governing \
@@ -118,10 +141,10 @@ hand.
 Query owner-approved provider classifications for one capability:
 
 ```bash
-codeatlas architecture providers \
+codeatlas inspect architecture \
+  capability:example.capability.context \
   architecture/root.atlas.yaml \
   --source-root . \
-  --capability example.capability.context \
   --approval-scope organization
 ```
 
@@ -133,10 +156,9 @@ eligibility, select a provider, or authorize invocation.
 Generate implementation evidence for accepted package and crate bindings:
 
 ```bash
-codeatlas architecture observe \
+codeatlas --root . observe architecture \
   architecture/root.atlas.yaml \
   --source-root . \
-  --repository . \
   --repository-id example.repository.source \
   --observation-id example.observation.current \
   --source-commit 0123456789abcdef0123456789abcdef01234567 \
@@ -147,13 +169,12 @@ codeatlas architecture observe \
 Compare the governing graph with that exact observation:
 
 ```bash
-codeatlas architecture conform \
+codeatlas check architecture observation \
   architecture/root.atlas.yaml \
   --source-root . \
   --observation .codeatlas/architecture-observation.json \
   --conformance-id example.conformance.current \
   --as-of 2026-07-23T00:00:00Z \
-  --check \
   --out .codeatlas/architecture-conformance.json
 ```
 
@@ -166,11 +187,9 @@ Check workspace imports against package exports and accepted dependency
 constraints without requiring a source commit or timestamp:
 
 ```bash
-codeatlas architecture source-check \
+codeatlas --root . check architecture source \
   architecture/root.atlas.yaml \
   --source-root . \
-  --repository . \
-  --check \
   --out .codeatlas/source-conformance.json
 ```
 
@@ -347,10 +366,16 @@ module scripts, become production browser roots; scripts referenced by test
 HTML and `test-harness.html` files become test roots. Conventional `*.test.*`,
 `*.spec.*`, and test-config files become runtime roots in an
 `ecmascript-tests` context.
+Plain `vite.config.*` files become test roots only when their package runs
+Vitest or the config declares a `test` section; production-only Vite configs
+remain tooling roots.
 Configured setup, teardown, and Svelte/Vite/Vitest alias replacement modules
 are followed from those configs, including static `path.resolve(...)` values,
-`alias`/`aliases` objects and arrays, and named replacement constants. Strings passed to
-unknown package-resolution helpers are not guessed to be source paths. Ambient
+`alias`/`aliases` objects and arrays, resolver `map` pairs, and named replacement
+constants. Alias targets must resolve relative to their owning project or name
+an exact workspace path; they are never guessed from a same-named sibling
+suffix. Strings passed to unknown package-resolution helpers are not guessed to
+be source paths. Ambient
 `.d.ts` and declaration-only TypeScript
 modules are classified as tooling declarations rather than runtime dead code.
 Files such as `__tests__/support.ts` are scanned and followed when imported,
@@ -361,7 +386,7 @@ names. Conventional nested fixture-data trees such as `tests/fixtures` and
 entrypoint selects them; scanning a fixture directory as the project root still
 works normally.
 
-`dead-code --workspace` preserves package ownership while applying the matching
+`usage code --workspace` and `check code --workspace` preserve package ownership while applying the matching
 local project from each member's `codeatlas.json`. Projects declared in the
 workspace-root `codeatlas.json` may add settings for the root package or an
 exact discovered member root. Other configured roots remain explicit projects
@@ -443,11 +468,11 @@ roots reach that symbol. Context roots themselves are omitted from these
 context-only findings to avoid listing every test file and test function.
 Only high-confidence unreachable files, unused private symbols, unresolved
 internal imports, and member-to-member package-export violations can fail
-`dead-code --check`. Public APIs without repository consumers remain advisory
+`check code`. Public APIs without repository consumers remain advisory
 because external consumers may exist.
 Set `require_complete` on a project only after its supported source and dynamic
-boundaries are fully modeled. Report-only runs continue to preserve honest
-partial or unsupported evidence; `dead-code --check` additionally fails closed
+boundaries are fully modeled. `usage code` preserves honest partial or
+unsupported evidence; `check code` additionally fails closed
 when any project carrying that requirement is not complete.
 
 The dead-code JSON contract is schema version 4. Project summaries include
@@ -455,16 +480,16 @@ per-language file counts and the explicit completeness requirement. Each
 finding includes a deterministic `id`, its exact `node_id` when one exists, and
 the named context roots that support its classification. Finding IDs are stable
 for the same structural source evidence and can drive bounded follow-up audits;
-`node_id` can be passed directly to `context`. Scan, architecture, context, and
-dead-code reports remain separate versioned contracts rather than one
+`node_id` can be passed directly to `inspect code`. Scan, architecture, context,
+and usage reports remain separate versioned contracts rather than one
 all-purpose report.
 
-Use `context` to retrieve only the nearby source facts needed for a task:
+Use `inspect code` to retrieve only the nearby source facts needed for a task:
 
 ```bash
-codeatlas context . \
-  --target core::src/architecture/compiler.rs#compile \
-  --target packages/web/src/routes.ts \
+codeatlas --root . inspect code \
+  core::src/architecture/compiler.rs#compile \
+  packages/web/src/routes.ts \
   --depth 2 \
   --max-nodes 128 \
   --out .codeatlas/context.json
@@ -485,21 +510,21 @@ Testing analysis is read-only: CodeAtlas inventories and selects tests but never
 executes package scripts or arbitrary repository commands.
 
 ```bash
-codeatlas testing inventory . --workspace --format json
-codeatlas testing impact . --workspace \
+codeatlas --root . tests inventory --workspace --format json
+codeatlas --root . tests impact --workspace \
   --changed packages/brush/src/model.ts \
   --changed packages/paint/src/canvas.ts
-codeatlas testing impact . --workspace
-codeatlas testing witnesses . --workspace --format json
+codeatlas --root . tests impact --workspace
+codeatlas --root . tests witnesses --workspace --format json
 ```
 
-`testing inventory` reports every analysis project, discovered test context and
+`tests inventory` reports every analysis project, discovered test context and
 root, test-related `package.json` script, recognized runner, conservative no-op
 or allows-empty script, and exact duplicate test command. Runner detection is
 evidence about a script string; it does not imply the command was executed
 successfully.
 
-`testing impact` follows the existing source graph from changed source to test
+`tests impact` follows the existing source graph from changed source to test
 contexts. Each selection says whether it came from an observed dependency, a
 declared project or source subject, or a conservative project/workspace
 fallback. New, deleted, manifest, and unsupported paths fall back instead of
@@ -511,7 +536,7 @@ and untracked paths; it remains read-only. Root workspace manifests,
 toolchain files, lockfiles, and language project configs use workspace fallback
 because they can affect every project.
 
-`testing witnesses` evaluates public symbols reached from production
+`tests witnesses` evaluates public symbols reached from production
 `public_surface` contexts. An observed witness identifies the exact test context
 and root that statically reaches a symbol. A declaration remains visibly
 `declared_only` until CodeAtlas observes that path. Missing witnesses become
@@ -532,19 +557,17 @@ Write one deterministic baseline for every public package in the nearest pnpm
 workspace:
 
 ```bash
-codeatlas ci . \
+codeatlas --root . baseline code \
   --workspace \
-  --fail-unused false \
-  --baseline .codeatlas/baselines/public-api.json
+  --out .codeatlas/baselines/public-api.json
 ```
 
 Fail on additions, removals, export moves, signature changes, or visibility
 changes:
 
 ```bash
-codeatlas diff \
-  .codeatlas/baselines/public-api.json \
-  . \
+codeatlas --root . diff code \
+  --against .codeatlas/baselines/public-api.json \
   --workspace \
   --exact
 ```
@@ -558,21 +581,21 @@ are retained as a sorted fingerprint set.
 
 Without `--exact`, additions are reported but only removals and contract
 changes fail. Exact mode is intended for repositories that require every API
-change to update a reviewed baseline. `diff` continues to read full scan-report
-baselines written by released CodeAtlas 0.7 versions.
+change to update a reviewed baseline. Baseline creation is explicit and
+`check` never updates reviewed evidence.
 
 ## Documentation Checks
 
 Generate the canonical reference:
 
 ```bash
-codeatlas docs --config codeatlas.json
+codeatlas --root . --config codeatlas.json docs code
 ```
 
 Fail CI when the committed reference is missing or stale:
 
 ```bash
-codeatlas docs --config codeatlas.json --check
+codeatlas --root . --config codeatlas.json docs code --check
 ```
 
 `diff` identifies each public binding by package, export path, kind, and
@@ -587,7 +610,7 @@ does not carry legacy baseline readers.
 
 ## PostgreSQL Contracts
 
-PostgreSQL analysis is a separate versioned domain. `postgres init <path>`
+PostgreSQL analysis is a separate versioned domain. `init postgres`
 discovers conservative PostgreSQL evidence and prints a proposed explicit
 contract; add `--write` to insert that property into `codeatlas.json` without
 reformatting the rest of the file. Discovery requires PostgreSQL-specific SQL
@@ -648,10 +671,10 @@ calls such as `query`, `execute`, Prisma's parameterized `$queryRaw` and
 are excluded. Safe tagged-template values and pg-promise named value parameters
 are normalized for PostgreSQL preparation. Identifier helpers, raw fragments,
 lists, and unresolved interpolation remain explicit dynamic boundaries and are
-never executed. Aliased, conditional, and nested tagged fragments—and templates
-that mix tagged values with explicit PostgreSQL placeholders—are also kept
+never executed. Aliased, conditional, and nested tagged fragments, plus templates
+that mix tagged values with explicit PostgreSQL placeholders, are also kept
 dynamic rather than being misrepresented as prepared queries. Reports contain
-locations, counts, and SHA-256 digests—not raw SQL.
+locations, counts, and SHA-256 digests, not raw SQL.
 
 Use `query_exclude_paths` to partition known files or directories out of a
 broad query root. Exclusions resolve relative to the configuration file, must
@@ -678,22 +701,22 @@ as psql-owned. Live replay refuses psql-owned directives rather than guessing
 their side effects.
 
 ```bash
-codeatlas postgres init .
-codeatlas postgres init . --write
-codeatlas postgres inventory . --out postgres-inventory.json
-codeatlas postgres check . --out postgres-check.json
+codeatlas --root . init postgres
+codeatlas --root . init postgres --write
+codeatlas --root . scan postgres --out postgres-inventory.json
+codeatlas --root . check postgres --out postgres-check.json
 
 export ACCOUNTS_CODEATLAS_POSTGRES_URL='postgresql://postgres:password@127.0.0.1:5432/postgres'
-codeatlas postgres test . --target accounts-local --out postgres-test.json
-codeatlas postgres baseline . --target accounts-local --out postgres-baseline.json
-codeatlas postgres diff postgres-baseline.json . --target accounts-local --out postgres-diff.json
+codeatlas --root . test postgres --target accounts-local --out postgres-test.json
+codeatlas --root . baseline postgres --target accounts-local --out postgres-baseline.json
+codeatlas --root . diff postgres --against postgres-baseline.json --target accounts-local --out postgres-diff.json
 ```
 
-`postgres check` runs the exact Squawk version shipped with the CodeAtlas npm
+`check postgres` runs the exact Squawk version shipped with the CodeAtlas npm
 package. Squawk warnings stay visible but do not force unsafe edits to applied
 migration history. A baseline records their structured identities, and a diff
 gates newly introduced warnings while reporting resolved warnings as
-informational. Squawk errors still gate immediately. `postgres test`
+informational. Squawk errors still gate immediately. `test postgres`
 additionally requires `psql` and an admin URL supplied only through the
 configured environment variable. It creates a bounded, uniquely named database
 from `template0`, replays the selected contract and its dependencies with their
@@ -715,7 +738,7 @@ constraint only, avoiding duplicate changes in the report.
 ## HTTP Contracts
 
 HTTP contracts are a separate, versioned domain rather than part of the public
-symbol scan. `http inventory <path>` works without configuration or an OpenAPI
+symbol scan. `scan http` works without configuration or an OpenAPI
 document: it reports statically detected pages and HTTP endpoints, marks
 endpoints as schema-missing, excludes conventional test sources, and stops at
 nested project manifests. SvelteKit pages and server handlers, Medusa file-based
@@ -810,17 +833,17 @@ are exact keys rather than globs. Operation filters apply after path filters
 and may include `PAGE /path` inventory entries as well as HTTP endpoint methods.
 
 ```bash
-codeatlas http inventory . --out source-routes.json
-codeatlas http inventory --config codeatlas.json --out http-inventory.json
-codeatlas http baseline --config codeatlas.json --out http-baseline.json
-codeatlas http check --config codeatlas.json
-codeatlas http check --config codeatlas.json --baseline http-baseline.json
-codeatlas http diff http-baseline.json --config codeatlas.json
-codeatlas http fuzz --config codeatlas.json --target public-local
-codeatlas http fuzz --config codeatlas.json --target public-local --profile stateful
-codeatlas http fuzz --config codeatlas.json --target public-local --profile thorough
-codeatlas http fuzz --config codeatlas.json --target public-local --seed 42
-codeatlas http fuzz --config codeatlas.json --target public-local --operation "POST /widgets/{id}"
+codeatlas --root . scan http --out source-routes.json
+codeatlas --root . --config codeatlas.json scan http --out http-inventory.json
+codeatlas --root . --config codeatlas.json baseline http --out http-baseline.json
+codeatlas --root . --config codeatlas.json check http
+codeatlas --root . --config codeatlas.json check http --against http-baseline.json
+codeatlas --root . --config codeatlas.json diff http --against http-baseline.json
+codeatlas --root . --config codeatlas.json fuzz http --target public-local
+codeatlas --root . --config codeatlas.json fuzz http --target public-local --profile stateful
+codeatlas --root . --config codeatlas.json fuzz http --target public-local --profile thorough
+codeatlas --root . --config codeatlas.json fuzz http --target public-local --seed 42
+codeatlas --root . --config codeatlas.json fuzz http --target public-local --operation "POST /widgets/{id}"
 ```
 
 `openapi` accepts a file path shorthand or a provider object with `kind` set to
@@ -837,8 +860,8 @@ rejects credentials, non-HTTP schemes, and ambiguous fuzz base URLs containing
 queries or fragments; provider URLs and headers are passed to the managed
 fetcher over standard input rather than exposed in process arguments.
 
-Without OpenAPI, `http check` emits one non-gating schema-missing warning while
-retaining the source inventory. `http fuzz` automatically turns discovered
+Without OpenAPI, `check http` emits one non-gating schema-missing warning while
+retaining the source inventory. `fuzz http` automatically turns discovered
 endpoints into a temporary source-transport contract after the target declares
 its operation ownership. Use a reviewed string array to freeze an exact
 allowlist, or `"operations": "contract"` to follow every endpoint retained by
@@ -849,21 +872,21 @@ fields, query parameters, authentication rules, or response schemas. Source-tran
 reports are labeled `contractMode: "source_transport"`; the stateful profile
 remains exclusive to explicit OpenAPI contracts. Curated source-transport
 operations receive the same retained-evidence and positive-coverage gates as
-curated OpenAPI operations. In a mixed configuration, `http baseline` stores
-only schema-backed contracts, and `http diff` and baseline comparison ignore
+curated OpenAPI operations. In a mixed configuration, `baseline http` stores
+only schema-backed contracts, and `diff http` and baseline comparison ignore
 new source-only contracts. A baselined contract that loses its schema remains a
 breaking change. Baseline creation fails when no schema-backed contract exists.
 
-With OpenAPI, `http check` also reports malformed path parameters, undefined security
+With OpenAPI, `check http` also reports malformed path parameters, undefined security
 schemes, missing success/error responses, missing request/response schemas,
 unconstrained object or array shapes, and JavaScript regex flags accidentally
 serialized into OpenAPI patterns. Static source evidence names the detector
 that found a route; it does not claim that a generic `createRoute` call belongs
-to a particular framework. `http baseline` stores only the normalized
+to a particular framework. `baseline http` stores only the normalized
 behavioral contract, keeping source locations and tool metadata out of long-term
 snapshots.
 
-`http fuzz` manages a content-addressed Schemathesis toolchain in the CodeAtlas
+`fuzz http` manages a content-addressed Schemathesis toolchain in the CodeAtlas
 cache. Its source-owned requirements lock pins every transitive package and
 requires package hashes, so a fresh machine cannot silently resolve a different
 fuzzer stack. Managed provisioning requires Python 3.10 or newer; set
@@ -962,8 +985,8 @@ budget. Projects retain only their domain-owned
 runtime fixture, optional explicit OpenAPI contract and Links, adapter, and
 target configuration.
 
-For complete standard and thorough runs—and focused runs backed by a configured
-target allowlist—`positive_coverage` turns that evidence into a regression
+For complete standard and thorough runs, plus focused runs backed by a configured
+target allowlist, `positive_coverage` turns that evidence into a regression
 gate. Set
 `max_operations_without_success` to the current reviewed floor and ratchet it
 down as contract examples and local fixtures improve; a newly uncovered

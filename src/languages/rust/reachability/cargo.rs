@@ -69,7 +69,13 @@ impl CargoLayout {
                 .parent()
                 .context("Cargo package manifest has no parent")?
                 .as_std_path()
-                .to_path_buf();
+                .canonicalize()
+                .with_context(|| {
+                    format!("Could not resolve Cargo package root for {}", package.name)
+                })?;
+            if !package_root.starts_with(&project.root) {
+                continue;
+            }
             packages.push(CargoPackage {
                 name: package.name.clone(),
                 root: package_root,
@@ -110,6 +116,12 @@ impl CargoLayout {
 
     pub(super) fn is_target_root(&self, path: &Path) -> bool {
         self.targets.iter().any(|target| target.root == path)
+    }
+
+    pub(super) fn is_integration_test_source(&self, path: &Path) -> bool {
+        self.targets
+            .iter()
+            .any(|target| target.role == ContextRole::Test && path.starts_with(&target.module_base))
     }
 
     pub(super) fn cfg_is_covered(&self, package: Option<&str>, expression: &str) -> bool {
@@ -203,5 +215,50 @@ fn target_module_base(root: &Path, modules_beside_root: bool) -> PathBuf {
         root.parent().unwrap_or_else(|| Path::new("")).to_path_buf()
     } else {
         root.parent().unwrap_or_else(|| Path::new("")).join(stem)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CargoLayout;
+    use crate::config::ResolvedAnalysisProject;
+    use crate::domain::source_graph::ProjectId;
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    #[test]
+    fn workspace_member_metadata_stays_inside_the_configured_project() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/dead-code/rust/crates/helper")
+            .canonicalize()
+            .expect("fixture workspace member root");
+        let project = ResolvedAnalysisProject {
+            id: ProjectId("helper-rust".to_string()),
+            root: root.clone(),
+            report_root: "crates/helper".to_string(),
+            languages: vec!["rs".to_string()],
+            contexts: BTreeMap::new(),
+            assume_reachable: Vec::new(),
+            require_complete: false,
+            no_default_ignore: false,
+            rust: Default::default(),
+            workspace_member: true,
+            excluded_roots: Vec::new(),
+        };
+
+        let layout = CargoLayout::load(&project).expect("member cargo layout");
+
+        assert_eq!(
+            layout
+                .packages
+                .iter()
+                .map(|package| package.name.as_str())
+                .collect::<Vec<_>>(),
+            ["helper-crate"]
+        );
+        assert!(layout
+            .targets
+            .iter()
+            .all(|target| { target.package == "helper-crate" && target.root.starts_with(&root) }));
     }
 }

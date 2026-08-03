@@ -141,7 +141,7 @@ pub(crate) fn render(report: &ScanReport) -> String {
     // Tip for more info
     output.push_str(&format!(
         "\n{}\n",
-        "Tip: Use 'codeatlas map' for visual dependency diagram".dimmed()
+        "Tip: Use 'codeatlas scan code --format mermaid' for a dependency diagram".dimmed()
     ));
 
     output

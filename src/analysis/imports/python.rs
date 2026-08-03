@@ -31,9 +31,15 @@ pub(crate) fn collect_importers(
     };
 
     for (file, info) in &modules {
-        record_dynamic_references(file, info, symbols_by_file, dynamic_references);
+        record_local_references(file, info, symbols_by_file, dynamic_references);
         process_imports(file, info, &mut resolution, importers, file_edges);
     }
+    record_project_entrypoints(
+        root_dir,
+        &module_by_name,
+        symbols_by_file,
+        dynamic_references,
+    );
 }
 
 fn load_modules(
@@ -84,7 +90,9 @@ fn load_modules(
                 exports: info.exports,
                 imports: info.imports,
                 dynamic_entrypoints: info.reachability.dynamic_entrypoints,
+                top_level_references: info.reachability.top_level_references,
                 module_name,
+                package: relative.ends_with("/__init__.py") || relative == "__init__.py",
                 file_path: relative,
             },
         );
@@ -110,14 +118,29 @@ fn process_imports(
 ) {
     for import in &info.imports {
         if import.module.is_empty() && import.level > 0 {
-            let base_module = resolver::resolve_module_name("", &info.module_name, import.level);
+            let base_module =
+                resolver::resolve_module_name("", &info.module_name, import.level, info.package);
             if let Some(target_file) = resolution.module_by_name.get(&base_module) {
-                // Always track file edge
                 add_file_edge(file_edges, file, target_file);
-
-                // Track symbol-level imports if we have public symbols
-                if let Some(symbols_by_file) = resolution.symbols_by_file {
-                    for (idx, name) in import.names.iter().enumerate() {
+            }
+            if let Some(symbols_by_file) = resolution.symbols_by_file {
+                for (idx, name) in import.names.iter().enumerate() {
+                    let submodule = if base_module.is_empty() {
+                        name.clone()
+                    } else {
+                        format!("{base_module}.{name}")
+                    };
+                    if let Some(target_file) = resolution.module_by_name.get(&submodule) {
+                        add_file_edge(file_edges, file, target_file);
+                        let symbol_ids = resolve_all_exports(
+                            target_file,
+                            resolution.modules,
+                            symbols_by_file,
+                            resolution.export_cache,
+                            resolution.all_cache,
+                        );
+                        add_importers(importers, file, symbol_ids);
+                    } else if let Some(target_file) = resolution.module_by_name.get(&base_module) {
                         let export_name = import
                             .aliases
                             .get(idx)
@@ -146,6 +169,7 @@ fn process_imports(
                 &import.module,
                 &info.module_name,
                 import.level,
+                info.package,
             ))
         };
 
@@ -229,11 +253,13 @@ struct ModuleInfo {
     exports: Option<Vec<String>>,
     imports: Vec<parser::PythonImport>,
     dynamic_entrypoints: std::collections::BTreeSet<String>,
+    top_level_references: std::collections::BTreeSet<String>,
     module_name: String,
     file_path: String,
+    package: bool,
 }
 
-fn record_dynamic_references(
+fn record_local_references(
     file: &str,
     module: &ModuleInfo,
     symbols_by_file: Option<&HashMap<String, HashMap<String, String>>>,
@@ -245,6 +271,60 @@ fn record_dynamic_references(
     for name in &module.dynamic_entrypoints {
         if let Some(symbol_id) = symbols.get(name) {
             dynamic_references.insert(symbol_id.clone());
+        }
+    }
+    for name in &module.top_level_references {
+        if let Some(symbol_id) = symbols.get(name) {
+            dynamic_references.insert(symbol_id.clone());
+        }
+    }
+}
+
+fn record_project_entrypoints(
+    root_dir: &Path,
+    module_by_name: &HashMap<String, String>,
+    symbols_by_file: Option<&HashMap<String, HashMap<String, String>>>,
+    dynamic_references: &mut HashSet<String>,
+) {
+    let Some(symbols_by_file) = symbols_by_file else {
+        return;
+    };
+    let Ok(source) = std::fs::read_to_string(root_dir.join("pyproject.toml")) else {
+        return;
+    };
+    let Ok(document) = toml::from_str::<toml::Value>(&source) else {
+        return;
+    };
+    let mut entrypoints = Vec::new();
+    if let Some(project) = document.get("project").and_then(toml::Value::as_table) {
+        for table in ["scripts", "gui-scripts"]
+            .into_iter()
+            .filter_map(|name| project.get(name).and_then(toml::Value::as_table))
+        {
+            entrypoints.extend(table.values().filter_map(toml::Value::as_str));
+        }
+    }
+    if let Some(scripts) = document
+        .get("tool")
+        .and_then(|tool| tool.get("poetry"))
+        .and_then(|poetry| poetry.get("scripts"))
+        .and_then(toml::Value::as_table)
+    {
+        entrypoints.extend(scripts.values().filter_map(toml::Value::as_str));
+    }
+    for entrypoint in entrypoints {
+        let Some((module, symbol)) = entrypoint.split_once(':') else {
+            continue;
+        };
+        let Some(file) = module_by_name.get(module) else {
+            continue;
+        };
+        let symbol = symbol.split('.').next().unwrap_or(symbol);
+        if let Some(id) = symbols_by_file
+            .get(file)
+            .and_then(|symbols| symbols.get(symbol))
+        {
+            dynamic_references.insert(id.clone());
         }
     }
 }
@@ -320,7 +400,7 @@ fn resolve_export(
 
     let mut ids = Vec::new();
     if let Some(info) = modules.get(file) {
-        let import_map = resolver::import_name_map(&info.imports, &info.module_name);
+        let import_map = resolver::import_name_map(&info.imports, &info.module_name, info.package);
         if let Some((module_name, imported)) = import_map.name_map.get(name) {
             if let Some(target) = modules
                 .values()

@@ -7,6 +7,7 @@ pub(super) struct ConfiguredSources {
     pub(super) test_entrypoints: BTreeSet<String>,
     pub(super) runtime_entrypoints: BTreeSet<String>,
     pub(super) aliases: BTreeMap<String, BTreeSet<String>>,
+    pub(super) configures_tests: bool,
 }
 
 pub(super) fn collect(module: &Module) -> ConfiguredSources {
@@ -36,6 +37,7 @@ pub(super) fn collect(module: &Module) -> ConfiguredSources {
         test_entrypoints: tests.paths,
         runtime_entrypoints: runtime.paths,
         aliases: aliases.aliases,
+        configures_tests: tests.configures_tests,
     }
 }
 
@@ -61,6 +63,7 @@ impl Visit for ConfiguredRuntimeEntrypointCollector {
 struct ConfiguredTestEntrypointCollector {
     paths: BTreeSet<String>,
     bindings: BTreeMap<String, BTreeSet<String>>,
+    configures_tests: bool,
 }
 
 impl Visit for ConfiguredTestEntrypointCollector {
@@ -70,6 +73,9 @@ impl Visit for ConfiguredTestEntrypointCollector {
             PropName::Str(string) => string.value.as_ref(),
             _ => "",
         };
+        if key == "test" {
+            self.configures_tests = true;
+        }
         if matches!(key, "alias" | "aliases") {
             collect_configured_alias_source_paths(&property.value, &self.bindings, &mut self.paths);
         } else if matches!(
@@ -94,6 +100,18 @@ fn collect_configured_alias_source_paths(
             }
         }
         Expr::Object(object) => {
+            if object.props.iter().any(|property| {
+                let PropOrSpread::Prop(property) = property else {
+                    return false;
+                };
+                let Prop::KeyValue(property) = &**property else {
+                    return false;
+                };
+                prop_name_string(&property.key).as_deref() == Some("map")
+                    && collect_alias_map_source_paths(&property.value, bindings, paths)
+            }) {
+                return;
+            }
             for property in &object.props {
                 let PropOrSpread::Prop(property) = property else {
                     continue;
@@ -124,6 +142,16 @@ fn collect_configured_alias_source_paths(
         }
         _ => {}
     }
+}
+
+fn collect_alias_map_source_paths(
+    expression: &Expr,
+    bindings: &BTreeMap<String, BTreeSet<String>>,
+    paths: &mut BTreeSet<String>,
+) -> bool {
+    visit_alias_map_pairs(expression, |_, target| {
+        collect_configured_source_paths(target, bindings, paths);
+    })
 }
 
 fn collect_configured_source_paths(
@@ -266,6 +294,18 @@ fn collect_aliases(
 ) {
     match expression {
         Expr::Object(object) => {
+            if object.props.iter().any(|property| {
+                let PropOrSpread::Prop(property) = property else {
+                    return false;
+                };
+                let Prop::KeyValue(property) = &**property else {
+                    return false;
+                };
+                prop_name_string(&property.key).as_deref() == Some("map")
+                    && collect_alias_map(&property.value, bindings, aliases)
+            }) {
+                return;
+            }
             for property in &object.props {
                 let PropOrSpread::Prop(property) = property else {
                     continue;
@@ -292,6 +332,47 @@ fn collect_aliases(
         }
         _ => {}
     }
+}
+
+fn collect_alias_map(
+    expression: &Expr,
+    bindings: &BTreeMap<String, BTreeSet<String>>,
+    aliases: &mut BTreeMap<String, BTreeSet<String>>,
+) -> bool {
+    visit_alias_map_pairs(expression, |pattern, target| {
+        let patterns = static_strings(pattern, bindings);
+        let targets = static_strings(target, bindings);
+        if patterns.is_empty() || targets.is_empty() {
+            return;
+        }
+        for pattern in patterns {
+            aliases
+                .entry(pattern)
+                .or_default()
+                .extend(targets.iter().cloned());
+        }
+    })
+}
+
+fn visit_alias_map_pairs(expression: &Expr, mut visit: impl FnMut(&Expr, &Expr)) -> bool {
+    let Expr::Array(array) = expression else {
+        return false;
+    };
+    let mut found = false;
+    for element in array.elems.iter().flatten() {
+        let Expr::Array(pair) = &*element.expr else {
+            continue;
+        };
+        let Some(pattern) = pair.elems.first().and_then(Option::as_ref) else {
+            continue;
+        };
+        let Some(target) = pair.elems.get(1).and_then(Option::as_ref) else {
+            continue;
+        };
+        found = true;
+        visit(&pattern.expr, &target.expr);
+    }
+    found
 }
 
 fn collect_alias_descriptor(

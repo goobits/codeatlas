@@ -15,13 +15,22 @@ pub(crate) fn module_name_from_path(path: &str) -> String {
     }
 }
 
-pub(crate) fn resolve_module_name(module: &str, current_module: &str, level: usize) -> String {
+pub(crate) fn resolve_module_name(
+    module: &str,
+    current_module: &str,
+    level: usize,
+    current_is_package: bool,
+) -> String {
     if level == 0 {
         return module.to_string();
     }
     let mut parts = current_module.split('.').collect::<Vec<_>>();
-    let pop_count = level.saturating_sub(1).min(parts.len());
-    parts.truncate(parts.len() - pop_count);
+    if !current_is_package {
+        parts.pop();
+    }
+    for _ in 1..level {
+        parts.pop();
+    }
     match (parts.is_empty(), module.is_empty()) {
         (_, true) => parts.join("."),
         (true, false) => module.to_string(),
@@ -29,13 +38,18 @@ pub(crate) fn resolve_module_name(module: &str, current_module: &str, level: usi
     }
 }
 
-pub(crate) fn import_name_map(imports: &[PythonImport], current_module: &str) -> ImportResolution {
+pub(crate) fn import_name_map(
+    imports: &[PythonImport],
+    current_module: &str,
+    current_is_package: bool,
+) -> ImportResolution {
     let mut name_map = HashMap::new();
     let mut star_modules = Vec::new();
     for import in imports {
         if import.module.is_empty() {
             if import.level > 0 {
-                let module = resolve_module_name("", current_module, import.level);
+                let module =
+                    resolve_module_name("", current_module, import.level, current_is_package);
                 for (index, name) in import.names.iter().enumerate() {
                     let alias = import
                         .aliases
@@ -60,7 +74,12 @@ pub(crate) fn import_name_map(imports: &[PythonImport], current_module: &str) ->
             continue;
         }
 
-        let module = resolve_module_name(&import.module, current_module, import.level);
+        let module = resolve_module_name(
+            &import.module,
+            current_module,
+            import.level,
+            current_is_package,
+        );
         if import.is_star {
             star_modules.push(module);
             continue;
@@ -138,7 +157,15 @@ mod tests {
     fn module_identity_handles_packages_and_relative_imports() {
         assert_eq!(module_name_from_path("src/pkg/__init__.py"), "src.pkg");
         assert_eq!(
-            resolve_module_name("models", "src.pkg.api", 2),
+            resolve_module_name("models", "src.pkg.api", 1, false),
+            "src.pkg.models"
+        );
+        assert_eq!(
+            resolve_module_name("models", "src.pkg.api", 2, false),
+            "src.models"
+        );
+        assert_eq!(
+            resolve_module_name("models", "src.pkg", 1, true),
             "src.pkg.models"
         );
     }

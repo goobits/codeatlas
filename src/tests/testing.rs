@@ -122,6 +122,10 @@ fn impact_and_witnesses_separate_observed_declared_and_fallback_evidence() {
     );
 
     let witnesses = testing::analyze_witnesses(&graph, &projects).expect("testing witnesses");
+    assert!(witnesses
+        .detached_contexts
+        .iter()
+        .all(|context| context.project != "@fixture/docs"));
     let brush = witnesses
         .public_api
         .iter()

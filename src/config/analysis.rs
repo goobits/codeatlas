@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+mod workspace_boundaries;
+use workspace_boundaries::{add_nested_project_boundaries, remove_nested_workspace_contexts};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct AnalysisProjectConfig {
@@ -85,6 +88,9 @@ pub(crate) struct ResolvedAnalysisProject {
 
 impl ProjectConfig {
     pub(crate) fn analysis_projects(&self) -> Result<Vec<ResolvedAnalysisProject>> {
+        if let Some(projects) = &self.validated_analysis_projects {
+            return Ok(projects.clone());
+        }
         let configured = if self.config.projects.is_empty() {
             vec![AnalysisProjectConfig {
                 id: Some("default".to_string()),
@@ -621,105 +627,6 @@ fn add_inferred_context(
     Ok(())
 }
 
-fn add_nested_project_boundaries(projects: &mut [ResolvedAnalysisProject]) {
-    let roots = projects
-        .iter()
-        .map(|project| project.root.clone())
-        .collect::<Vec<_>>();
-    for project in projects {
-        project.excluded_roots = roots
-            .iter()
-            .filter(|root| **root != project.root && root.starts_with(&project.root))
-            .cloned()
-            .collect();
-        project.excluded_roots.sort();
-    }
-}
-
-fn remove_nested_workspace_contexts(projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
-    for project in projects {
-        if project.excluded_roots.is_empty() {
-            continue;
-        }
-        let mut nested_only = Vec::new();
-        for (name, context) in &project.contexts {
-            let matchers = context
-                .entrypoints
-                .iter()
-                .map(|pattern| {
-                    let normalized = pattern
-                        .strip_prefix("./")
-                        .unwrap_or(pattern)
-                        .replace('\\', "/");
-                    GlobBuilder::new(&normalized)
-                        .literal_separator(true)
-                        .build()
-                        .with_context(|| {
-                            format!(
-                                "Invalid source pattern {pattern:?} in context {name} for {}",
-                                project.id.0
-                            )
-                        })
-                        .map(|glob| glob.compile_matcher())
-                })
-                .collect::<Result<Vec<_>>>()?;
-            let discovery = crate::source_discovery::discover(
-                crate::source_discovery::SourceDiscoveryRequest {
-                    root: &project.root,
-                    patterns: &context.entrypoints,
-                    excluded_roots: &[],
-                    no_default_ignore: project.no_default_ignore,
-                },
-            );
-            if let Some(warning) = discovery.warnings.first() {
-                anyhow::bail!(
-                    "Could not inspect analysis context {name} in {}: {warning}",
-                    project.id.0
-                );
-            }
-            let matched = discovery
-                .files
-                .iter()
-                .filter(|source| {
-                    let relative = crate::paths::normalize_relative_path(source, &project.root);
-                    crate::source_policy::source_argument(&relative).is_some()
-                        && matchers.iter().any(|matcher| matcher.is_match(&relative))
-                })
-                .collect::<Vec<_>>();
-            let all_matches_are_nested = !matched.is_empty()
-                && matched.iter().all(|source| {
-                    project
-                        .excluded_roots
-                        .iter()
-                        .any(|excluded| source.starts_with(excluded))
-                });
-            let all_patterns_are_nested = matched.is_empty()
-                && context.entrypoints.iter().all(|pattern| {
-                    let normalized = pattern
-                        .strip_prefix("./")
-                        .unwrap_or(pattern)
-                        .replace('\\', "/");
-                    let prefix = normalized
-                        .find(['*', '?', '[', '{'])
-                        .map_or(normalized.as_str(), |index| &normalized[..index])
-                        .trim_end_matches('/');
-                    project.excluded_roots.iter().any(|excluded| {
-                        let relative =
-                            crate::paths::normalize_relative_path(excluded, &project.root);
-                        prefix == relative || prefix.starts_with(&format!("{relative}/"))
-                    })
-                });
-            if all_matches_are_nested || all_patterns_are_nested {
-                nested_only.push(name.clone());
-            }
-        }
-        for name in nested_only {
-            project.contexts.remove(&name);
-        }
-    }
-    Ok(())
-}
-
 fn derive_project_id(root: &Path, index: usize) -> String {
     root.file_name()
         .and_then(|name| name.to_str())
@@ -792,83 +699,4 @@ fn validate_test_subjects(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        validate_test_subjects, AnalysisContextConfig, AnalysisProjectConfig, TestSubjectConfig,
-    };
-    use crate::config::CodeAtlasConfig;
-    use crate::domain::source_graph::{ContextRole, ContextScope};
-
-    #[test]
-    fn config_reads_arbitrary_named_reachability_contexts() {
-        let config = serde_json::from_str::<CodeAtlasConfig>(
-            r#"{
-                "projects": [{
-                    "id": "web",
-                    "root": "packages/web",
-                    "languages": ["js", "ts"],
-                    "contexts": {
-                        "application": {
-                            "role": "production",
-                            "scope": "public_surface",
-                            "entrypoints": ["src/index.ts"]
-                        },
-                        "unit-tests": {
-                            "role": "test",
-                            "entrypoints": ["src/**/*.test.ts"],
-                            "subjects": [
-                                { "project": "web" },
-                                { "source": "src/brushes/**" }
-                            ]
-                        }
-                    },
-                    "assume_reachable": ["src/runtime/plugins/**/*.ts"]
-                }]
-            }"#,
-        )
-        .expect("reachability config");
-
-        let project = &config.projects[0];
-        assert_eq!(project.id.as_deref(), Some("web"));
-        assert_eq!(project.contexts["unit-tests"].role, ContextRole::Test);
-        assert_eq!(
-            project.contexts["application"].scope,
-            ContextScope::PublicSurface
-        );
-        assert_eq!(project.contexts["unit-tests"].scope, ContextScope::Runtime);
-        assert_eq!(
-            project.contexts["unit-tests"].subjects,
-            [
-                TestSubjectConfig::Project("web".to_string()),
-                TestSubjectConfig::Source("src/brushes/**".to_string())
-            ]
-        );
-        assert_eq!(project.assume_reachable, ["src/runtime/plugins/**/*.ts"]);
-
-        let round_trip =
-            serde_json::to_value(&config.projects).expect("serialize project configuration");
-        let decoded: Vec<AnalysisProjectConfig> =
-            serde_json::from_value(round_trip).expect("deserialize project configuration");
-        assert_eq!(
-            decoded[0].contexts["application"].role,
-            ContextRole::Production
-        );
-    }
-
-    #[test]
-    fn test_subjects_are_bounded_to_test_contexts_and_valid_globs() {
-        let production = AnalysisContextConfig {
-            role: ContextRole::Production,
-            subjects: vec![TestSubjectConfig::Project("web".to_string())],
-            ..AnalysisContextConfig::default()
-        };
-        assert!(validate_test_subjects("web", "application", &production).is_err());
-
-        let invalid_source = AnalysisContextConfig {
-            role: ContextRole::Test,
-            subjects: vec![TestSubjectConfig::Source("src/[".to_string())],
-            ..AnalysisContextConfig::default()
-        };
-        assert!(validate_test_subjects("web", "unit-tests", &invalid_source).is_err());
-    }
-}
+mod tests;

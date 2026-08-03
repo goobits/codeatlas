@@ -41,8 +41,10 @@ fn scan_writes_machine_readable_json_to_the_requested_directory() {
     let output_directory = TestDirectory::create("codeatlas-cli-contract");
     let fixture = fixture("ts");
     let output = run(&[
-        "scan",
+        "--root",
         fixture.to_str().expect("fixture path should be UTF-8"),
+        "scan",
+        "code",
         "--format",
         "json",
         "--out",
@@ -95,13 +97,23 @@ fn scan_source_scope_keeps_package_exposure_while_including_unreachable_source()
         .to_str()
         .expect("project path should be UTF-8");
 
-    let api = run(&["scan", project_path, "--format", "json", "--all"]);
+    let api = run(&[
+        "--root",
+        project_path,
+        "scan",
+        "code",
+        "--format",
+        "json",
+        "--all",
+    ]);
     assert_success(&api, "API-scope scan");
     let api: Value = serde_json::from_slice(&api.stdout).expect("API scan should be JSON");
 
     let source = run(&[
-        "scan",
+        "--root",
         project_path,
+        "scan",
+        "code",
         "--format",
         "json",
         "--scope",
@@ -152,11 +164,13 @@ fn lexicon_reports_source_collisions_without_mislabeling_public_exposure() {
         "export interface SurfaceState { texture: GPUTexture }\n",
     );
     let output = run(&[
-        "lexicon",
+        "--root",
         project
             .path()
             .to_str()
             .expect("project path should be UTF-8"),
+        "lexicon",
+        "code",
         "--format",
         "json",
     ]);
@@ -178,14 +192,54 @@ fn lexicon_reports_source_collisions_without_mislabeling_public_exposure() {
 }
 
 #[test]
+fn workspace_lexicon_preserves_package_ownership_and_public_exposure() {
+    let fixture = fixture("testing");
+    let config = fixture.join("codeatlas.json");
+    let output = run(&[
+        "--root",
+        fixture.to_str().expect("fixture path should be UTF-8"),
+        "lexicon",
+        "code",
+        "--workspace",
+        "--config",
+        config.to_str().expect("config path should be UTF-8"),
+        "--format",
+        "json",
+    ]);
+    assert_success(&output, "workspace lexicon report");
+    let report: Value =
+        serde_json::from_slice(&output.stdout).expect("workspace lexicon report should be JSON");
+
+    assert!(report["stats"]["public_symbols"].as_u64().unwrap_or(0) >= 2);
+    let public_symbols = report["public_symbols"]
+        .as_array()
+        .expect("public symbols should be an array");
+    assert!(public_symbols.iter().any(|symbol| {
+        symbol["name"] == "createBrush"
+            && symbol["package"] == "@fixture/brush"
+            && symbol["file_path"] == "packages/brush/src/brush.ts"
+            && symbol["export_paths"]
+                .as_array()
+                .is_some_and(|paths| paths.iter().any(|path| path == "@fixture/brush"))
+    }));
+    assert!(public_symbols.iter().any(|symbol| {
+        symbol["name"] == "defaultBrush"
+            && symbol["package"] == "@fixture/consumer"
+            && symbol["file_path"] == "packages/consumer/src/index.ts"
+    }));
+}
+
+#[test]
 fn dead_code_check_only_fails_when_gating_is_requested() {
     let output_directory = TestDirectory::create("codeatlas-cli-contract");
     let fixture = fixture("dead-code/ecmascript");
     let report_path = output_directory.path().join("report.json");
     let checked_report_path = output_directory.path().join("checked.json");
     let common = vec![
-        "dead-code",
+        "--root",
         fixture.to_str().expect("fixture path should be UTF-8"),
+        "usage",
+        "code",
         "--format",
         "json",
     ];
@@ -197,14 +251,18 @@ fn dead_code_check_only_fails_when_gating_is_requested() {
     let report = run(&report_args);
     assert_success(&report, "non-gating dead-code report");
 
-    let mut checked_args = common;
-    checked_args.extend([
+    let checked_args = vec![
+        "--root",
+        fixture.to_str().expect("fixture path should be UTF-8"),
+        "check",
+        "code",
+        "--format",
+        "json",
         "--out",
         checked_report_path
             .to_str()
             .expect("checked report path should be UTF-8"),
-        "--check",
-    ]);
+    ];
     let checked = run(&checked_args);
     assert_eq!(checked.status.code(), Some(1));
 
@@ -226,13 +284,14 @@ fn dead_code_check_fails_closed_for_required_incomplete_projects() {
     let fixture = fixture("dead-code/dynamic");
     let report_path = output_directory.path().join("required-complete.json");
     let output = run(&[
-        "dead-code",
+        "--root",
         fixture.to_str().expect("fixture path should be UTF-8"),
+        "check",
+        "code",
         "--format",
         "json",
         "--out",
         report_path.to_str().expect("report path should be UTF-8"),
-        "--check",
     ]);
     assert_eq!(output.status.code(), Some(1));
 
@@ -301,13 +360,13 @@ fn workspace_public_api_baselines_are_compact_deterministic_and_exact() {
     let baseline_arg = baseline_path.to_str().expect("baseline UTF-8");
 
     let baseline = run(&[
-        "ci",
+        "--root",
         workspace_path,
+        "baseline",
+        "code",
         "--workspace",
-        "--baseline",
+        "--out",
         baseline_arg,
-        "--fail-unused",
-        "false",
     ]);
     assert_success(&baseline, "workspace baseline");
     let baseline_bytes = fs::read(&baseline_path).expect("baseline output");
@@ -331,9 +390,12 @@ fn workspace_public_api_baselines_are_compact_deterministic_and_exact() {
     }));
 
     let unchanged = run(&[
-        "diff",
-        baseline_arg,
+        "--root",
         workspace_path,
+        "diff",
+        "code",
+        "--against",
+        baseline_arg,
         "--workspace",
         "--exact",
     ]);
@@ -344,12 +406,23 @@ fn workspace_public_api_baselines_are_compact_deterministic_and_exact() {
         "packages/sdk/src/index.ts",
         "export interface PublicAPI { readonly ready: boolean }\nexport const added = true\n",
     );
-    let additive = run(&["diff", baseline_arg, workspace_path, "--workspace"]);
+    let additive = run(&[
+        "--root",
+        workspace_path,
+        "diff",
+        "code",
+        "--against",
+        baseline_arg,
+        "--workspace",
+    ]);
     assert_success(&additive, "additive compatibility diff");
     let exact = run(&[
-        "diff",
-        baseline_arg,
+        "--root",
         workspace_path,
+        "diff",
+        "code",
+        "--against",
+        baseline_arg,
         "--workspace",
         "--exact",
     ]);
@@ -378,13 +451,13 @@ fn root_only_workspace_public_api_baselines_include_the_root_package() {
     );
     let baseline_path = workspace.path().join("public-api.json");
     let output = run(&[
-        "ci",
+        "--root",
         workspace.path().to_str().expect("workspace UTF-8"),
+        "baseline",
+        "code",
         "--workspace",
-        "--baseline",
+        "--out",
         baseline_path.to_str().expect("baseline UTF-8"),
-        "--fail-unused",
-        "false",
     ]);
     assert_success(&output, "root-only workspace baseline");
 
@@ -397,13 +470,15 @@ fn root_only_workspace_public_api_baselines_include_the_root_package() {
 }
 
 #[test]
-fn diff_reads_released_full_scan_baselines() {
+fn diff_rejects_scan_reports_instead_of_preserving_a_legacy_baseline_format() {
     let output_directory = TestDirectory::create("codeatlas-cli-contract");
     let fixture = fixture("docs");
     let output_path = output_directory.path().to_str().expect("output UTF-8");
     let scan = run(&[
-        "scan",
+        "--root",
         fixture.to_str().expect("fixture UTF-8"),
+        "scan",
+        "code",
         "--format",
         "json",
         "--out",
@@ -413,9 +488,15 @@ fn diff_reads_released_full_scan_baselines() {
 
     let baseline = output_directory.path().join("atlas.json");
     let diff = run(&[
-        "diff",
-        baseline.to_str().expect("baseline UTF-8"),
+        "--root",
         fixture.to_str().expect("fixture UTF-8"),
+        "diff",
+        "code",
+        "--against",
+        baseline.to_str().expect("baseline UTF-8"),
     ]);
-    assert_success(&diff, "legacy baseline diff");
+    assert!(!diff.status.success());
+    assert!(
+        String::from_utf8_lossy(&diff.stderr).contains("is not a CodeAtlas public API baseline")
+    );
 }

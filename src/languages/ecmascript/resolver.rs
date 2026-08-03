@@ -1,11 +1,22 @@
 use super::{Module, ModuleKey, ProjectSelection};
 use crate::domain::source_graph::ProjectId;
 use crate::languages::typescript::parser::DynamicDependencyTarget;
-use anyhow::{Context, Result};
-use globset::GlobBuilder;
-use serde_json::Value;
+use anyhow::Result;
+use config::{apply_alias_capture, load_alias_config, load_package_imports, match_alias};
+use paths::{
+    has_resource_query, infer_workspace_root, is_generated_package_export,
+    is_generated_source_path, is_non_source_specifier, is_relative_specifier, is_sveltekit_virtual,
+    module_candidates, nearest_sveltekit_source_root, source_path_specifier, source_resolution,
+    unsupported_relative_specifier, PackageImportResolution,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+
+mod config;
+mod paths;
+mod patterns;
+
+pub(crate) use paths::{is_declaration_file, resolve_relative_module};
 
 #[derive(Debug, Clone)]
 pub(super) enum Resolution {
@@ -560,9 +571,6 @@ impl ModuleResolver {
         if let Some(resolved) = self.resolve_workspace_absolute(&workspace_path) {
             return self.source_resolution(module, resolved);
         }
-        if let Some(resolved) = self.resolve_unique_workspace_suffix(source) {
-            return self.source_resolution(module, resolved);
-        }
         if self.is_unscanned_configured_entrypoint(module, source) {
             return Resolution::Unscanned(path.to_string());
         }
@@ -575,18 +583,7 @@ impl ModuleResolver {
         specifier: &str,
         path: &str,
     ) -> Resolution {
-        let source = source_path_specifier(path);
-        let configured = if !Path::new(source).is_absolute()
-            && self.projects.get(&module.project).is_some_and(|project| {
-                project.root.join(source).is_dir()
-                    && self
-                        .resolve_project_entrypoint(&module.project, source)
-                        .is_none()
-            }) {
-            Resolution::Unscanned(path.to_string())
-        } else {
-            self.resolve_configured_entrypoint(module, path)
-        };
+        let configured = self.resolve_configured_alias_target(module, path);
         let exported = self.resolve_workspace_package(module, specifier);
         if matches!(
             (configured.resolved(), exported.as_ref().and_then(Resolution::resolved)),
@@ -603,6 +600,35 @@ impl ModuleResolver {
         }
     }
 
+    fn resolve_configured_alias_target(&self, module: &Module, path: &str) -> Resolution {
+        let source = source_path_specifier(path);
+        if is_relative_specifier(source) {
+            let resolution = self.resolve(module, source);
+            if !matches!(resolution, Resolution::UnresolvedInternal(_)) {
+                return resolution;
+            }
+        } else if !source.starts_with('/') {
+            let resolution = self.resolve(module, source);
+            if matches!(
+                resolution,
+                Resolution::Resolved(_) | Resolution::WorkspaceSource(_)
+            ) {
+                return resolution;
+            }
+        }
+        if let Some(resolved) = self.resolve_project_entrypoint(&module.project, source) {
+            return self.source_resolution(module, resolved);
+        }
+        let workspace_path = format!("/{}", source.trim_start_matches('/'));
+        if let Some(resolved) = self.resolve_workspace_absolute(&workspace_path) {
+            return self.source_resolution(module, resolved);
+        }
+        if self.is_unscanned_configured_entrypoint(module, source) {
+            return Resolution::Unscanned(path.to_string());
+        }
+        Resolution::UnresolvedInternal(path.to_string())
+    }
+
     fn is_unscanned_configured_entrypoint(&self, module: &Module, source: &str) -> bool {
         let Some(project) = self.projects.get(&module.project) else {
             return false;
@@ -616,138 +642,6 @@ impl ModuleResolver {
         module_candidates(&raw)
             .into_iter()
             .any(|candidate| candidate.is_file())
-    }
-
-    fn resolve_unique_workspace_suffix(&self, specifier: &str) -> Option<ModuleKey> {
-        let suffixes = module_candidates(Path::new(
-            source_path_specifier(specifier).trim_start_matches("./"),
-        ))
-        .into_iter()
-        .map(|candidate| crate::paths::normalize_path(&candidate))
-        .filter(|suffix| !suffix.is_empty() && !suffix.starts_with("../"))
-        .collect::<BTreeSet<_>>();
-        let matches = self
-            .modules
-            .iter()
-            .filter(|(_, path)| {
-                suffixes
-                    .iter()
-                    .any(|suffix| path == suffix || path.ends_with(&format!("/{suffix}")))
-            })
-            .cloned()
-            .collect::<BTreeSet<_>>();
-        (matches.len() == 1)
-            .then(|| matches.into_iter().next())
-            .flatten()
-    }
-
-    fn resolve_pattern(&self, module: &Module, prefix: &str, suffix: &str) -> Vec<Resolution> {
-        let combined = format!("{prefix}{suffix}");
-        if is_non_source_specifier(&combined) {
-            return vec![Resolution::External(combined)];
-        }
-        let source_specifier = source_path_specifier(prefix);
-        if source_specifier != prefix && is_relative_specifier(source_specifier) {
-            if let Some(resolved) = self.resolve_relative(module, source_specifier) {
-                return vec![self.source_resolution(module, resolved)];
-            }
-            return if unsupported_relative_specifier(&combined) {
-                vec![Resolution::Unsupported(combined)]
-            } else {
-                vec![Resolution::UnresolvedInternal(format!("{prefix}*{suffix}"))]
-            };
-        }
-        if !is_bounded_local_pattern(prefix, suffix) {
-            return vec![Resolution::DynamicUnknown(format!("{prefix}*{suffix}"))];
-        }
-        let matches = self
-            .module_specifiers(module, prefix.starts_with('/'))
-            .into_iter()
-            .filter(|(specifier, _)| specifier.starts_with(prefix) && specifier.ends_with(suffix))
-            .map(|(_, key)| self.source_resolution(module, key))
-            .collect::<Vec<_>>();
-        if matches.is_empty() {
-            vec![Resolution::UnresolvedInternal(format!("{prefix}*{suffix}"))]
-        } else {
-            matches
-        }
-    }
-
-    fn resolve_glob(&self, module: &Module, pattern: &str) -> Vec<Resolution> {
-        if is_non_source_specifier(pattern) {
-            return vec![Resolution::External(format!("glob:{pattern}"))];
-        }
-        if !is_bounded_local_pattern(pattern, "") || pattern.starts_with('!') {
-            return vec![Resolution::DynamicUnknown(pattern.to_string())];
-        }
-        let matcher = match GlobBuilder::new(pattern).literal_separator(true).build() {
-            Ok(glob) => glob.compile_matcher(),
-            Err(_) => return vec![Resolution::DynamicUnknown(pattern.to_string())],
-        };
-        let matches = self
-            .module_specifiers(module, pattern.starts_with('/'))
-            .into_iter()
-            .filter(|(specifier, _)| matcher.is_match(specifier))
-            .map(|(_, key)| self.source_resolution(module, key))
-            .collect::<Vec<_>>();
-        if matches.is_empty() {
-            vec![Resolution::External(format!("glob:{pattern}"))]
-        } else {
-            matches
-        }
-    }
-
-    fn module_specifiers(
-        &self,
-        module: &Module,
-        package_absolute: bool,
-    ) -> Vec<(String, ModuleKey)> {
-        let base = if package_absolute {
-            self.nearest_package_directory(module).unwrap_or_default()
-        } else {
-            Path::new(&module.path)
-                .parent()
-                .unwrap_or_else(|| Path::new(""))
-                .to_path_buf()
-        };
-        let mut specifiers = self
-            .modules
-            .iter()
-            .filter(|(project, _)| project == &module.project)
-            .filter_map(|key| {
-                let relative = pathdiff::diff_paths(Path::new(&key.1), &base)?;
-                let normalized = crate::paths::normalize_path(&relative);
-                if package_absolute && normalized.starts_with("../") {
-                    return None;
-                }
-                let specifier = if package_absolute {
-                    format!("/{normalized}")
-                } else if normalized.starts_with("../") {
-                    normalized
-                } else {
-                    format!("./{normalized}")
-                };
-                Some((specifier, key.clone()))
-            })
-            .collect::<Vec<_>>();
-        if package_absolute {
-            let workspace_root = self
-                .projects
-                .get(&module.project)
-                .and_then(|project| project.workspace_root.as_ref());
-            if let Some(workspace_root) = workspace_root {
-                specifiers.extend(self.modules.iter().filter_map(|key| {
-                    let project = self.projects.get(&key.0)?;
-                    let absolute = project.root.join(&key.1);
-                    let relative = absolute.strip_prefix(workspace_root).ok()?;
-                    let normalized = crate::paths::normalize_path(relative);
-                    (!normalized.is_empty()).then(|| (format!("/{normalized}"), key.clone()))
-                }));
-            }
-        }
-        specifiers.sort();
-        specifiers.dedup();
-        specifiers
     }
 
     fn nearest_package_directory(&self, module: &Module) -> Option<PathBuf> {
@@ -772,530 +666,5 @@ impl ModuleResolver {
     }
 }
 
-fn infer_workspace_root(project_root: &Path, report_root: &str) -> Result<Option<PathBuf>> {
-    if let Some(root) = crate::package::nearest_workspace_root(project_root)? {
-        return Ok(Some(root));
-    }
-    if report_root.is_empty() || report_root == "." {
-        return Ok(Some(project_root.to_path_buf()));
-    }
-    let depth = Path::new(report_root)
-        .components()
-        .map(|component| match component {
-            std::path::Component::Normal(_) => Some(()),
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()
-        .map(|components| components.len());
-    let Some(depth) = depth else {
-        return Ok(None);
-    };
-    Ok(project_root.ancestors().nth(depth).map(Path::to_path_buf))
-}
-
-fn nearest_sveltekit_source_root(project_root: &Path, module_path: &str) -> PathBuf {
-    let path = Path::new(module_path);
-    for source_root in path.ancestors().filter(|ancestor| {
-        ancestor
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name == "src")
-    }) {
-        let app_root = source_root.parent().unwrap_or_else(|| Path::new(""));
-        if ["svelte.config.js", "svelte.config.ts", "svelte.config.mjs"]
-            .iter()
-            .any(|name| project_root.join(app_root).join(name).is_file())
-        {
-            return source_root.to_path_buf();
-        }
-    }
-    PathBuf::from("src")
-}
-
-enum PackageImportResolution {
-    Resolved(ModuleKey),
-    DeclaredButMissing,
-    External(String),
-    NotDeclared,
-}
-
-fn source_resolution(
-    source_project: &ProjectId,
-    target: ModuleKey,
-    target_is_workspace_member: bool,
-) -> Resolution {
-    if &target.0 == source_project || !target_is_workspace_member {
-        Resolution::Resolved(target)
-    } else {
-        Resolution::WorkspaceSource(target)
-    }
-}
-
-fn unsupported_relative_specifier(specifier: &str) -> bool {
-    let normalized = source_path_specifier(specifier);
-    let Some(extension) = Path::new(normalized)
-        .extension()
-        .and_then(|extension| extension.to_str())
-    else {
-        return false;
-    };
-    !matches!(
-        extension,
-        "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "svelte"
-    )
-}
-
-fn is_generated_source_path(path: &Path) -> bool {
-    path.components().any(|component| {
-        matches!(
-            component.as_os_str().to_str(),
-            Some(".svelte-kit" | "__generated__" | "generated" | "paraglide")
-        )
-    })
-}
-
-fn is_generated_package_export(path: &Path) -> bool {
-    is_generated_source_path(path)
-        || path.components().any(|component| {
-            matches!(
-                component.as_os_str().to_str(),
-                Some("build" | "dist" | "pkg" | "target")
-            )
-        })
-}
-
-fn is_sveltekit_virtual(specifier: &str) -> bool {
-    matches!(specifier, "$app" | "$env" | "$types")
-        || specifier.starts_with("$app/")
-        || specifier.starts_with("$env/")
-        || Path::new(specifier)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name == "$types" || name.starts_with("$types."))
-}
-
-fn is_relative_specifier(specifier: &str) -> bool {
-    matches!(specifier, "." | "..")
-        || specifier.starts_with("./")
-        || specifier.starts_with("../")
-        || specifier.starts_with('/')
-}
-
-fn is_non_source_specifier(specifier: &str) -> bool {
-    let normalized = source_path_specifier(specifier);
-    matches!(
-        Path::new(normalized)
-            .extension()
-            .and_then(|extension| extension.to_str()),
-        Some(
-            "css"
-                | "scss"
-                | "sass"
-                | "less"
-                | "styl"
-                | "json"
-                | "json5"
-                | "yaml"
-                | "yml"
-                | "toml"
-                | "svg"
-                | "png"
-                | "jpg"
-                | "jpeg"
-                | "gif"
-                | "webp"
-                | "avif"
-                | "woff"
-                | "woff2"
-                | "ttf"
-                | "glsl"
-                | "vert"
-                | "frag"
-                | "md"
-                | "mdx"
-                | "svx"
-        )
-    )
-}
-
-fn has_resource_query(specifier: &str) -> bool {
-    let Some((_, query)) = specifier.split_once('?') else {
-        return false;
-    };
-    query
-        .split('#')
-        .next()
-        .unwrap_or(query)
-        .split('&')
-        .filter_map(|parameter| parameter.split('=').next())
-        .any(|name| matches!(name, "compose" | "raw" | "url"))
-}
-
-fn source_path_specifier(specifier: &str) -> &str {
-    let query = specifier.find('?').unwrap_or(specifier.len());
-    let fragment = if specifier.starts_with('#') {
-        specifier.len()
-    } else {
-        specifier.find('#').unwrap_or(specifier.len())
-    };
-    &specifier[..query.min(fragment)]
-}
-
-fn is_bounded_local_pattern(prefix: &str, suffix: &str) -> bool {
-    let combined = format!("{prefix}{suffix}");
-    (prefix.starts_with("./") || prefix.starts_with("../") || prefix.starts_with('/'))
-        && !combined.contains('\0')
-        && !is_non_source_specifier(&combined)
-}
-
-fn load_alias_config<'a>(
-    root: &Path,
-    modules: impl Iterator<Item = &'a Module>,
-) -> Result<AliasConfig> {
-    let mut config = AliasConfig::default();
-    if let Some(path) = nearest_alias_config(root) {
-        let source = std::fs::read_to_string(&path)
-            .with_context(|| format!("Could not read {}", path.display()))?;
-        let value: Value = json5::from_str(&source)
-            .with_context(|| format!("Invalid TypeScript configuration at {}", path.display()))?;
-        let compiler = &value["compilerOptions"];
-        let config_root = path.parent().unwrap_or(root);
-        let absolute_base_url = config_root.join(compiler["baseUrl"].as_str().unwrap_or(""));
-        if compiler["baseUrl"].is_string() {
-            let relative = crate::paths::normalize_relative_path(&absolute_base_url, root);
-            config.base_url = PathBuf::from(if relative.is_empty() { "." } else { &relative });
-        }
-        if let Some(paths) = compiler["paths"].as_object() {
-            for (pattern, targets) in paths {
-                let targets = targets
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Value::as_str)
-                    .map(|target| {
-                        crate::paths::normalize_relative_path(&absolute_base_url.join(target), root)
-                    })
-                    .collect::<Vec<_>>();
-                if !targets.is_empty() {
-                    config.paths.insert(pattern.clone(), targets);
-                }
-            }
-        }
-    }
-
-    for module in modules.filter(|module| is_alias_config_module(&module.path)) {
-        for (pattern, targets) in &module.info.reachability.configured_aliases {
-            for target in targets {
-                add_configured_alias(&mut config.paths, pattern, target);
-            }
-        }
-    }
-    for targets in config.paths.values_mut() {
-        targets.sort();
-        targets.dedup();
-    }
-    Ok(config)
-}
-
-fn nearest_alias_config(root: &Path) -> Option<PathBuf> {
-    let package_root = root
-        .ancestors()
-        .find(|directory| directory.join("package.json").is_file())
-        .unwrap_or(root);
-    for directory in root.ancestors() {
-        for name in ["tsconfig.json", "jsconfig.json"] {
-            let candidate = directory.join(name);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-        if directory == package_root {
-            break;
-        }
-    }
-    None
-}
-
-fn add_configured_alias(paths: &mut BTreeMap<String, Vec<String>>, pattern: &str, target: &str) {
-    let target = crate::paths::normalize_path(Path::new(target));
-    paths
-        .entry(pattern.to_string())
-        .or_default()
-        .push(target.clone());
-    if !pattern.contains('*') {
-        paths
-            .entry(format!("{pattern}/*"))
-            .or_default()
-            .push(format!("{target}/*"));
-    }
-}
-
-fn is_alias_config_module(path: &str) -> bool {
-    let Some(name) = Path::new(path).file_name().and_then(|name| name.to_str()) else {
-        return false;
-    };
-    [
-        "svelte.config.",
-        "vite.config.",
-        "vitest.config.",
-        "webpack.config.",
-        "rollup.config.",
-    ]
-    .iter()
-    .any(|prefix| name.starts_with(prefix))
-}
-
-fn load_package_imports<'a>(
-    root: &Path,
-    module_paths: impl Iterator<Item = &'a str>,
-) -> Result<BTreeMap<String, BTreeMap<String, String>>> {
-    let mut directories = BTreeSet::new();
-    for module_path in module_paths {
-        let mut directory = Path::new(module_path).parent();
-        while let Some(current) = directory {
-            directories.insert(crate::paths::normalize_path(current));
-            directory = current.parent();
-        }
-    }
-
-    let mut package_imports = BTreeMap::new();
-    for directory in directories {
-        let manifest_path = root.join(&directory).join("package.json");
-        if !manifest_path.is_file() {
-            continue;
-        }
-        let source = std::fs::read_to_string(&manifest_path)
-            .with_context(|| format!("Could not read {}", manifest_path.display()))?;
-        let manifest: Value = serde_json::from_str(&source)
-            .with_context(|| format!("Invalid package manifest at {}", manifest_path.display()))?;
-        let imports = manifest["imports"]
-            .as_object()
-            .into_iter()
-            .flatten()
-            .filter_map(|(pattern, target)| {
-                first_string_target(target).map(|target| (pattern.clone(), target.to_string()))
-            })
-            .collect::<BTreeMap<_, _>>();
-        package_imports.insert(directory, imports);
-    }
-    Ok(package_imports)
-}
-
-fn first_string_target(value: &Value) -> Option<&str> {
-    match value {
-        Value::String(value) => Some(value),
-        Value::Array(values) => values.iter().find_map(first_string_target),
-        Value::Object(values) => [
-            "import",
-            "default",
-            "node",
-            "browser",
-            "development",
-            "production",
-            "types",
-        ]
-        .into_iter()
-        .find_map(|condition| values.get(condition).and_then(first_string_target))
-        .or_else(|| values.values().find_map(first_string_target)),
-        _ => None,
-    }
-}
-
-fn match_alias(pattern: &str, specifier: &str) -> Option<Option<String>> {
-    let Some((prefix, suffix)) = pattern.split_once('*') else {
-        return (pattern == specifier).then_some(None);
-    };
-    specifier
-        .strip_prefix(prefix)
-        .and_then(|value| value.strip_suffix(suffix))
-        .map(|capture| Some(capture.to_string()))
-}
-
-fn apply_alias_capture(target: &str, capture: Option<&str>) -> String {
-    capture
-        .map(|capture| target.replacen('*', capture, 1))
-        .unwrap_or_else(|| target.to_string())
-}
-
-pub(crate) fn is_declaration_file(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| {
-            name.ends_with(".d.ts")
-                || name.ends_with(".d.mts")
-                || name.ends_with(".d.cts")
-                || name.ends_with(".d.svelte.ts")
-        })
-}
-
-pub(crate) fn module_candidates(raw: &Path) -> Vec<PathBuf> {
-    module_candidates_with_declarations(raw, false)
-}
-
-pub(crate) fn module_candidates_with_declarations(
-    raw: &Path,
-    declarations_first: bool,
-) -> Vec<PathBuf> {
-    fn push_unique(output: &mut Vec<PathBuf>, seen: &mut BTreeSet<PathBuf>, path: PathBuf) {
-        if seen.insert(path.clone()) {
-            output.push(path);
-        }
-    }
-
-    let mut declarations = Vec::new();
-    let mut declaration_seen = BTreeSet::new();
-    if is_declaration_file(raw) {
-        push_unique(&mut declarations, &mut declaration_seen, raw.to_path_buf());
-    }
-    for extension in ["d.ts", "d.mts", "d.cts"] {
-        push_unique(
-            &mut declarations,
-            &mut declaration_seen,
-            raw.with_extension(extension),
-        );
-        push_unique(
-            &mut declarations,
-            &mut declaration_seen,
-            PathBuf::from(format!("{}.{}", raw.to_string_lossy(), extension)),
-        );
-    }
-    for filename in ["index.d.ts", "index.d.mts", "index.d.cts"] {
-        push_unique(&mut declarations, &mut declaration_seen, raw.join(filename));
-    }
-
-    let mut sources = Vec::new();
-    let mut source_seen = BTreeSet::new();
-    push_unique(&mut sources, &mut source_seen, raw.to_path_buf());
-    for extension in [
-        "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "svelte",
-    ] {
-        push_unique(
-            &mut sources,
-            &mut source_seen,
-            PathBuf::from(format!("{}.{}", raw.to_string_lossy(), extension)),
-        );
-        push_unique(
-            &mut sources,
-            &mut source_seen,
-            raw.with_extension(extension),
-        );
-    }
-    for filename in [
-        "index.ts",
-        "index.tsx",
-        "index.mts",
-        "index.cts",
-        "index.js",
-        "index.jsx",
-        "index.mjs",
-        "index.cjs",
-        "index.svelte",
-    ] {
-        push_unique(&mut sources, &mut source_seen, raw.join(filename));
-    }
-
-    if declarations_first {
-        declarations.extend(sources);
-        declarations
-    } else {
-        sources.extend(declarations);
-        sources
-    }
-}
-
-pub(crate) fn resolve_relative_module(
-    root_dir: &Path,
-    from_file: &str,
-    specifier: &str,
-    declarations_first: bool,
-    mut exists: impl FnMut(&str) -> bool,
-) -> Option<String> {
-    if !specifier.starts_with('.') {
-        return None;
-    }
-    let base = if root_dir.as_os_str().is_empty() {
-        Path::new(from_file).parent()?.to_path_buf()
-    } else {
-        root_dir.join(from_file).parent()?.to_path_buf()
-    };
-    for candidate in module_candidates_with_declarations(&base.join(specifier), declarations_first)
-    {
-        let relative = if root_dir.as_os_str().is_empty() {
-            crate::paths::normalize_path(&candidate)
-        } else {
-            crate::paths::normalize_relative_path(&candidate, root_dir)
-        };
-        if exists(&relative) {
-            return Some(relative);
-        }
-    }
-    None
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn recognizes_typescript_and_svelte_declaration_files() {
-        for path in [
-            "index.d.ts",
-            "index.d.mts",
-            "index.d.cts",
-            "Component.d.svelte.ts",
-        ] {
-            assert!(is_declaration_file(Path::new(path)), "{path}");
-        }
-        assert!(!is_declaration_file(Path::new("Component.svelte.ts")));
-        assert!(!is_declaration_file(Path::new("component.ts")));
-    }
-
-    #[test]
-    fn alias_config_inherits_from_the_nearest_package_root() {
-        let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/dead-code/workspace/packages/a");
-        let project_root = package_root.join("src");
-        let config = load_alias_config(&project_root, std::iter::empty::<&Module>())
-            .expect("ancestor alias config");
-
-        assert_eq!(config.base_url, PathBuf::from(".."));
-        assert_eq!(
-            config.paths["@fixture/aliased-shared"],
-            ["../../b/src/aliasShared.ts"]
-        );
-    }
-
-    #[test]
-    fn source_bypasses_gate_only_for_discovered_workspace_members() {
-        let source = ProjectId("desktop".to_string());
-        let shared = (
-            ProjectId("shared-runtime".to_string()),
-            "index.ts".to_string(),
-        );
-
-        assert!(matches!(
-            source_resolution(&source, shared.clone(), false),
-            Resolution::Resolved(_)
-        ));
-        assert!(matches!(
-            source_resolution(&source, shared, true),
-            Resolution::WorkspaceSource(_)
-        ));
-        assert!(matches!(
-            source_resolution(&source, (source.clone(), "local.ts".to_string()), true),
-            Resolution::Resolved(_)
-        ));
-    }
-
-    #[test]
-    fn workspace_root_prefers_the_nearest_manifest_over_report_layout() {
-        let workspace_root =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dead-code/workspace");
-        let project_root = workspace_root.join("packages/a/src");
-
-        assert_eq!(
-            infer_workspace_root(&project_root, ".").expect("workspace root"),
-            Some(workspace_root)
-        );
-    }
-}
+mod tests;

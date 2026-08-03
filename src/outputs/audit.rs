@@ -6,7 +6,7 @@ pub(crate) fn render(report: &ScanReport) -> String {
 
     output.push_str(&format!(
         "\n{}\n",
-        " CodeAtlas Audit ".on_blue().white().bold()
+        " CodeAtlas Public Usage ".on_blue().white().bold()
     ));
     output.push_str(&format!("{}\n\n", "=================".blue()));
 
@@ -78,17 +78,17 @@ pub(crate) fn render(report: &ScanReport) -> String {
     output.push_str(&format!(
         "  {} Run {} to verify fixes\n\n",
         "3.".dimmed(),
-        "codeatlas ci".cyan()
+        "codeatlas check code".cyan()
     ));
 
     output.push_str(&format!("{}\n", "Quick commands:".white().bold()));
     output.push_str(&format!(
         "  {}  See full public API\n",
-        "codeatlas scan".cyan()
+        "codeatlas scan code".cyan()
     ));
     output.push_str(&format!(
         "  {}   Generate architecture diagram\n",
-        "codeatlas map".cyan()
+        "codeatlas scan code --format mermaid".cyan()
     ));
 
     output

@@ -55,9 +55,10 @@ fn testing_commands_share_one_versioned_read_only_contract() {
     let fixture = fixture();
     let root = fixture.to_str().expect("fixture path should be UTF-8");
     let inventory = json(&run(&[
-        "testing",
-        "inventory",
+        "--root",
         root,
+        "tests",
+        "inventory",
         "--workspace",
         "--format",
         "json",
@@ -70,9 +71,10 @@ fn testing_commands_share_one_versioned_read_only_contract() {
         .any(|project| project["project"] == "@fixture/brush"));
 
     let impact = json(&run(&[
-        "testing",
-        "impact",
+        "--root",
         root,
+        "tests",
+        "impact",
         "--workspace",
         "--changed",
         "packages/brush/src/brush.ts",
@@ -87,9 +89,10 @@ fn testing_commands_share_one_versioned_read_only_contract() {
         .any(|project| project["project"] == "@fixture/brush"));
 
     let witnesses = json(&run(&[
-        "testing",
-        "witnesses",
+        "--root",
         root,
+        "tests",
+        "witnesses",
         "--workspace",
         "--format",
         "json",
@@ -141,9 +144,10 @@ fn testing_impact_can_discover_the_git_working_tree() {
     write(git_root, "outside.ts", "export const outside = 2\n");
 
     let output = json(&run(&[
-        "testing",
-        "impact",
+        "--root",
         root.to_str().expect("fixture path should be UTF-8"),
+        "tests",
+        "impact",
         "--format",
         "json",
     ]));

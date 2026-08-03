@@ -1,5 +1,5 @@
 use super::resolver::ModuleResolver;
-use super::{Module, ModuleKey};
+use super::{Module, ModuleKey, ProjectEvidence};
 use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
     ContextId, ContextRole, ContextScope, NodeId, SourceContext, SourceGraph,
@@ -19,14 +19,17 @@ pub(super) const TEST_CONTEXT: &str = "ecmascript-tests";
 const TOOLING_CONTEXT: &str = "ecmascript-tooling";
 const DECLARATION_CONTEXT: &str = "ecmascript-declarations";
 pub(super) const TEST_DISCOVERY_PATTERN: &str = "**/*.test.ts";
+pub(super) const HTML_DISCOVERY_PATTERN: &str = "**/*.html";
 
 pub(super) fn add_discovered_contexts(
     graph: &mut SourceGraph,
     project: &ResolvedAnalysisProject,
     modules: &BTreeMap<ModuleKey, Module>,
     resolver: &ModuleResolver,
+    evidence: &ProjectEvidence,
+    project_uses_vitest: bool,
 ) -> Result<()> {
-    let html_entrypoints = discover_html_entrypoints(project, resolver);
+    let html_entrypoints = discover_html_entrypoints(project, resolver, &evidence.html_sources);
     let medusa_project = is_medusa_project(project, modules);
     if !project.contexts.contains_key(PACKAGE_EXPORT_CONTEXT) {
         let roots = crate::package::discover_javascript(&project.root)?
@@ -47,12 +50,11 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if !project.contexts.contains_key(PACKAGE_RUNTIME_CONTEXT) {
-        let mut roots = crate::package::discover_runtime_entrypoints(&project.root)?
-            .into_iter()
-            .chain(crate::package::discover_bundled_entrypoints(&project.root)?)
-            .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, &path))
+        let mut roots = evidence
+            .runtime_entrypoints
+            .iter()
+            .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, path))
             .filter_map(|key| modules.get(&key).map(|module| module.file.clone()))
             .collect::<BTreeSet<_>>();
         for config in modules
@@ -80,7 +82,6 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if !project.contexts.contains_key(BROWSER_RUNTIME_CONTEXT)
         && !html_entrypoints.production.is_empty()
     {
@@ -112,7 +113,6 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if medusa_project && !project.contexts.contains_key(MEDUSA_RUNTIME_CONTEXT) {
         let roots = modules
             .values()
@@ -128,7 +128,6 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if !project.contexts.contains_key(TEST_CONTEXT) {
         let mut roots = modules
             .values()
@@ -137,10 +136,9 @@ pub(super) fn add_discovered_contexts(
             })
             .map(|module| module.file.clone())
             .collect::<BTreeSet<_>>();
-        for config in modules
-            .values()
-            .filter(|module| module.project == project.id && is_test_config_module(&module.path))
-        {
+        for config in modules.values().filter(|module| {
+            module.project == project.id && is_test_config_module(module, project_uses_vitest)
+        }) {
             roots.insert(config.file.clone());
             roots.extend(
                 config
@@ -164,21 +162,21 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if !project.contexts.contains_key(TOOLING_CONTEXT) {
         let mut roots = modules
             .values()
             .filter(|module| {
                 module.project == project.id
-                    && (is_project_tooling_module(&project.root, &module.path)
+                    && (is_project_tooling_module(module, &evidence.package_directories)
                         || (medusa_project && is_medusa_tooling_module(&module.path)))
             })
             .map(|module| module.file.clone())
             .collect::<BTreeSet<_>>();
         roots.extend(
-            crate::package::discover_tooling_entrypoints(&project.root)?
-                .into_iter()
-                .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, &path))
+            evidence
+                .tooling_entrypoints
+                .iter()
+                .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, path))
                 .filter_map(|key| modules.get(&key).map(|module| module.file.clone())),
         );
         add_discovered_context(
@@ -190,7 +188,6 @@ pub(super) fn add_discovered_contexts(
             roots,
         )?;
     }
-
     if !project.contexts.contains_key(DECLARATION_CONTEXT) {
         let roots = modules
             .values()
@@ -237,6 +234,7 @@ struct HtmlEntrypoints {
 fn discover_html_entrypoints(
     project: &ResolvedAnalysisProject,
     resolver: &ModuleResolver,
+    html_sources: &[std::path::PathBuf],
 ) -> HtmlEntrypoints {
     static SCRIPT_SOURCE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r#"(?is)<script\b[^>]*?\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))"#)
@@ -257,20 +255,13 @@ fn discover_html_entrypoints(
         .expect("valid inline module source expression")
     });
 
-    let discovery = crate::languages::reachability::discover_project_sources(
-        project,
-        &["**/*.html".to_string()],
-    );
     let mut entrypoints = HtmlEntrypoints::default();
-    for html_path in discovery.files {
-        if html_path.extension().and_then(|value| value.to_str()) != Some("html") {
-            continue;
-        }
-        let relative = crate::paths::normalize_relative_path(&html_path, &project.root);
+    for html_path in html_sources {
+        let relative = crate::paths::normalize_relative_path(html_path, &project.root);
         let Some(role) = html_entrypoint_role(&relative) else {
             continue;
         };
-        let Ok(source) = std::fs::read_to_string(&html_path) else {
+        let Ok(source) = std::fs::read_to_string(html_path) else {
             continue;
         };
         let mut sources = SCRIPT_SOURCE
@@ -401,16 +392,32 @@ pub(super) fn is_conventional_test_module(path: &str) -> bool {
     ) && (stem.ends_with(".test") || stem.ends_with(".spec") || stem.ends_with(".playwright"))
 }
 
-pub(super) fn is_test_config_module(path: &str) -> bool {
-    let Some(name) = Path::new(path).file_name().and_then(|name| name.to_str()) else {
+pub(super) fn is_test_config_module(module: &Module, project_uses_vitest: bool) -> bool {
+    let Some(name) = Path::new(&module.path)
+        .file_name()
+        .and_then(|name| name.to_str())
+    else {
         return false;
     };
     let name = name.to_ascii_lowercase();
     name.starts_with("vitest.config.")
-        || name.starts_with("vite.config.")
+        || (name.starts_with("vite.config.")
+            && (project_uses_vitest || module.info.reachability.configures_tests))
         || name.starts_with("jest.config.")
         || name.starts_with("playwright.config.")
         || (name.contains("playwright") && name.contains("config"))
+}
+
+pub(super) fn project_uses_vitest(project: &ResolvedAnalysisProject) -> Result<bool> {
+    Ok(crate::package::read_scripts(&project.root)?
+        .values()
+        .any(|command| {
+            command
+                .split(|character: char| {
+                    !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+                })
+                .any(|token| token.eq_ignore_ascii_case("vitest"))
+        }))
 }
 
 pub(super) fn is_conventional_tooling_module(path: &str) -> bool {
@@ -420,21 +427,24 @@ pub(super) fn is_conventional_tooling_module(path: &str) -> bool {
     is_tooling_module_name(path)
 }
 
-fn is_project_tooling_module(root: &Path, path: &str) -> bool {
-    if std::fs::read(root.join(path)).is_ok_and(|source| source.starts_with(b"#!")) {
+fn is_project_tooling_module(
+    module: &Module,
+    package_directories: &BTreeSet<std::path::PathBuf>,
+) -> bool {
+    if module.info.has_shebang {
         return true;
     }
-    if is_conventional_tooling_module(path) {
+    if is_conventional_tooling_module(&module.path) {
         return true;
     }
-    let path = Path::new(path);
+    let path = Path::new(&module.path);
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
     let Some(parent) = path.parent() else {
         return false;
     };
-    is_tooling_module_name(name) && root.join(parent).join("package.json").is_file()
+    is_tooling_module_name(name) && package_directories.contains(parent)
 }
 
 fn is_medusa_project(

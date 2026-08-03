@@ -17,18 +17,34 @@ pub(crate) fn discover_project_sources(
     project: &ResolvedAnalysisProject,
     additional_patterns: &[String],
 ) -> crate::source_discovery::SourceDiscovery {
+    let patterns = project_source_patterns(project, additional_patterns);
+    discover_project_sources_with_patterns(project, &patterns)
+}
+
+pub(crate) fn project_source_patterns(
+    project: &ResolvedAnalysisProject,
+    additional_patterns: &[String],
+) -> Vec<String> {
     let mut patterns = project
         .contexts
         .values()
         .flat_map(|context| context.entrypoints.iter().cloned())
         .chain(project.assume_reachable.iter().cloned())
         .chain(additional_patterns.iter().cloned())
+        .map(|pattern| crate::source_discovery::normalize_pattern(&pattern))
         .collect::<Vec<_>>();
     patterns.sort();
     patterns.dedup();
+    patterns
+}
+
+pub(crate) fn discover_project_sources_with_patterns(
+    project: &ResolvedAnalysisProject,
+    patterns: &[String],
+) -> crate::source_discovery::SourceDiscovery {
     crate::source_discovery::discover(crate::source_discovery::SourceDiscoveryRequest {
         root: &project.root,
-        patterns: &patterns,
+        patterns,
         excluded_roots: &project.excluded_roots,
         no_default_ignore: project.no_default_ignore,
     })

@@ -22,6 +22,21 @@ def unused_func():
     return 2
 
 
+class CatModel:
+    pass
+
+
+class DogModel:
+    pass
+
+
+PetModel = CatModel | DogModel
+
+
+def cli_only():
+    return 4
+
+
 def _register(function):
     return function
 

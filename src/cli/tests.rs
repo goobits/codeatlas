@@ -3,86 +3,58 @@ use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
 #[derive(Subcommand)]
-pub(super) enum TestingCommand {
+pub(super) enum TestsCommand {
     /// Inventory test contexts, package scripts, runners, and declarations
     Inventory {
-        /// Path to the repository or configured project set
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// Discover package projects from the nearest pnpm workspace
         #[arg(long)]
         workspace: bool,
-        /// Output format
         #[arg(short, long, value_enum, default_value_t = TestingFormat::Text)]
         format: TestingFormat,
-        /// Write the report to a file instead of stdout
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
     /// Select tests affected by repository-relative changed paths
     Impact {
-        /// Path to the repository or configured project set
-        #[arg(default_value = ".")]
-        path: PathBuf,
         /// Repository-relative changed path; repeat for a set; omit for Git changes
         #[arg(long)]
         changed: Vec<PathBuf>,
-        /// Discover package projects from the nearest pnpm workspace
         #[arg(long)]
         workspace: bool,
-        /// Output format
         #[arg(short, long, value_enum, default_value_t = TestingFormat::Text)]
         format: TestingFormat,
-        /// Write the report to a file instead of stdout
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
-    /// Report observed and declared test witnesses for public API symbols
+    /// Report observed and declared test witnesses for public APIs
     Witnesses {
-        /// Path to the repository or configured project set
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// Discover package projects from the nearest pnpm workspace
         #[arg(long)]
         workspace: bool,
-        /// Output format
         #[arg(short, long, value_enum, default_value_t = TestingFormat::Text)]
         format: TestingFormat,
-        /// Write the report to a file instead of stdout
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
 }
 
-impl TestingCommand {
-    pub(super) fn run(self, config_path: Option<&Path>) -> i32 {
+impl TestsCommand {
+    pub(super) fn run(self, root: &Path, config: Option<&Path>) -> i32 {
         match self {
             Self::Inventory {
-                path,
                 workspace,
                 format,
                 out,
-            } => testing::run_inventory(&path, workspace, format, out.as_deref(), config_path),
+            } => testing::run_inventory(root, workspace, format, out.as_deref(), config),
             Self::Impact {
-                path,
                 changed,
                 workspace,
                 format,
                 out,
-            } => testing::run_impact(
-                &path,
-                &changed,
-                workspace,
-                format,
-                out.as_deref(),
-                config_path,
-            ),
+            } => testing::run_impact(root, &changed, workspace, format, out.as_deref(), config),
             Self::Witnesses {
-                path,
                 workspace,
                 format,
                 out,
-            } => testing::run_witnesses(&path, workspace, format, out.as_deref(), config_path),
+            } => testing::run_witnesses(root, workspace, format, out.as_deref(), config),
         }
     }
 }

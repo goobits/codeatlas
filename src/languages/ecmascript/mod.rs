@@ -1,21 +1,25 @@
 use super::typescript::parser;
 use crate::config::ResolvedAnalysisProject;
-use crate::domain::source_graph::{
-    AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, ProjectId, SourceBinding, SourceEdge,
-    SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
-    SourceSymbol, SourceSymbolKind, SourceVisibility,
-};
-use crate::domain::{Symbol, SymbolKind};
+use crate::domain::source_graph::{NodeId, ProjectId, SourceGraph, SourceLanguage};
 use anyhow::Result;
-use resolver::{ModuleResolver, Resolution};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::path::Path;
+use rayon::prelude::*;
+use resolver::ModuleResolver;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 type ProjectSelection<'a> = (&'a ResolvedAnalysisProject, BTreeSet<SourceLanguage>);
 type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.ecmascript";
-const OPAQUE_VENDOR_BYTES: u64 = 256 * 1024;
 
+struct ProjectEvidence {
+    runtime_entrypoints: Vec<String>,
+    tooling_entrypoints: Vec<String>,
+    html_sources: Vec<PathBuf>,
+    package_directories: BTreeSet<PathBuf>,
+}
+
+mod collection;
+mod connections;
 mod contexts;
 pub(crate) mod resolver;
 
@@ -23,17 +27,80 @@ pub(crate) fn collect_projects(
     graph: &mut SourceGraph,
     projects: &[ProjectSelection<'_>],
 ) -> Result<()> {
+    let project_uses_vitest = projects
+        .par_iter()
+        .map(|(project, _)| Ok((project.id.clone(), contexts::project_uses_vitest(project)?)))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
     let mut modules = BTreeMap::new();
-    for (project, languages) in projects {
-        collect_project_modules(graph, project, languages, &mut modules)?;
+    let mut project_evidence = BTreeMap::new();
+    let collected = projects
+        .par_iter()
+        .map(|(project, languages)| {
+            let mut local_graph = SourceGraph::new();
+            local_graph
+                .add_project(
+                    graph
+                        .projects
+                        .get(&project.id)
+                        .cloned()
+                        .expect("ECMAScript project is registered before collection"),
+                )
+                .map_err(anyhow::Error::from)?;
+            let mut local_modules = BTreeMap::new();
+            let evidence = collection::collect_project_modules(
+                &mut local_graph,
+                project,
+                languages,
+                &mut local_modules,
+            )?;
+            Ok((project.id.clone(), local_graph, local_modules, evidence))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    for (project, local_graph, local_modules, evidence) in collected {
+        let completeness = local_graph.projects[&project].completeness;
+        let registered = graph
+            .projects
+            .get_mut(&project)
+            .expect("ECMAScript project stays registered while merging");
+        registered.completeness = registered.completeness.worst(completeness);
+        debug_assert!(local_graph
+            .nodes
+            .keys()
+            .all(|node| !graph.nodes.contains_key(node)));
+        debug_assert!(local_modules
+            .keys()
+            .all(|module| !modules.contains_key(module)));
+        graph.nodes.extend(local_graph.nodes);
+        graph.edges.extend(local_graph.edges);
+        graph.boundaries.extend(local_graph.boundaries);
+        modules.extend(local_modules);
+        project_evidence.insert(project, evidence);
     }
     let resolver = ModuleResolver::new(projects, &modules)?;
     let keys = modules.keys().cloned().collect::<Vec<_>>();
     for key in keys {
-        connect_module(graph, &key, &modules, &resolver)?;
+        connections::connect_module(
+            graph,
+            &key,
+            &modules,
+            &resolver,
+            project_uses_vitest.get(&key.0).copied().unwrap_or(false),
+        )?;
     }
     for (project, _) in projects {
-        contexts::add_discovered_contexts(graph, project, &modules, &resolver)?;
+        contexts::add_discovered_contexts(
+            graph,
+            project,
+            &modules,
+            &resolver,
+            &project_evidence[&project.id],
+            project_uses_vitest
+                .get(&project.id)
+                .copied()
+                .unwrap_or(false),
+        )?;
     }
     Ok(())
 }
@@ -46,735 +113,5 @@ struct Module {
     symbols: BTreeMap<String, BTreeSet<NodeId>>,
 }
 
-fn collect_project_modules(
-    graph: &mut SourceGraph,
-    project: &ResolvedAnalysisProject,
-    languages: &BTreeSet<SourceLanguage>,
-    modules: &mut BTreeMap<ModuleKey, Module>,
-) -> Result<()> {
-    let mut discovery_patterns = if project.contexts.contains_key(contexts::TEST_CONTEXT) {
-        Vec::new()
-    } else {
-        vec![contexts::TEST_DISCOVERY_PATTERN.to_string()]
-    };
-    discovery_patterns.extend(crate::package::discover_runtime_entrypoints(&project.root)?);
-    discovery_patterns.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
-    discovery_patterns.extend(crate::package::discover_tooling_entrypoints(&project.root)?);
-    discovery_patterns.sort();
-    discovery_patterns.dedup();
-    let discovery =
-        crate::languages::reachability::discover_project_sources(project, &discovery_patterns);
-    for warning in discovery.warnings {
-        graph.record_boundary(
-            &project.id,
-            None,
-            BoundaryKind::UnsupportedSyntax,
-            AnalysisCompleteness::Partial,
-            format!("Could not inspect source tree: {warning}"),
-            SourceEvidence::new(project.report_root.clone(), None, EXTRACTOR),
-        );
-    }
-    for source_path in discovery.files {
-        let Some(language) = source_language(&source_path) else {
-            continue;
-        };
-        if !languages.contains(&language) {
-            continue;
-        }
-
-        let path = crate::paths::normalize_relative_path(&source_path, &project.root);
-        let file = NodeId::file(&project.id, &path);
-        graph
-            .add_node(
-                file.clone(),
-                SourceNode::File(SourceFile {
-                    project: project.id.clone(),
-                    path: path.clone(),
-                    language,
-                }),
-            )
-            .map_err(anyhow::Error::from)?;
-
-        let info = match language {
-            SourceLanguage::Svelte => crate::languages::svelte::reachability::parse_module_info(
-                &source_path,
-                &project.root,
-            ),
-            _ => parser::parse_module_info(&source_path, &project.root),
-        };
-        let info = match info {
-            Ok(info) => info,
-            Err(error) => {
-                graph.record_boundary(
-                    &project.id,
-                    Some(file),
-                    BoundaryKind::UnsupportedSyntax,
-                    AnalysisCompleteness::Partial,
-                    format!("Could not parse {path}: {error}"),
-                    SourceEvidence::new(path, None, EXTRACTOR),
-                );
-                continue;
-            }
-        };
-        let opaque_vendor = is_opaque_vendor_source(&source_path, &path);
-        if opaque_vendor {
-            graph.record_boundary(
-                &project.id,
-                Some(file.clone()),
-                BoundaryKind::UnsupportedSyntax,
-                AnalysisCompleteness::Complete,
-                format!(
-                    "Vendored or minified source is treated as an opaque runtime module: {path}"
-                ),
-                SourceEvidence::new(&path, None, EXTRACTOR),
-            );
-        }
-        let symbols = add_symbols(
-            graph,
-            project,
-            &path,
-            &file,
-            language,
-            if opaque_vendor { &[] } else { &info.symbols },
-        )?;
-        modules.insert(
-            (project.id.clone(), path.clone()),
-            Module {
-                project: project.id.clone(),
-                path,
-                file,
-                info,
-                symbols,
-            },
-        );
-    }
-    Ok(())
-}
-
-fn is_opaque_vendor_source(source_path: &Path, path: &str) -> bool {
-    let file_name = source_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("");
-    if file_name.contains(".min.") {
-        return true;
-    }
-    if !Path::new(path)
-        .components()
-        .any(|component| component.as_os_str() == "vendor")
-    {
-        return false;
-    }
-    if source_path
-        .metadata()
-        .ok()
-        .is_some_and(|metadata| metadata.len() >= OPAQUE_VENDOR_BYTES)
-    {
-        return true;
-    }
-    std::fs::read_to_string(source_path)
-        .ok()
-        .is_some_and(|source| source.lines().any(|line| line.len() >= 8_192))
-}
-
 #[cfg(test)]
-mod opaque_vendor_tests {
-    use super::{is_opaque_vendor_source, OPAQUE_VENDOR_BYTES};
-    use std::fs;
-
-    #[test]
-    fn large_vendor_bundles_are_opaque_even_when_pretty_printed() {
-        let root =
-            std::env::temp_dir().join(format!("codeatlas-large-vendor-{}", std::process::id()));
-        let path = root.join("src/vendor/bundle.js");
-        fs::create_dir_all(path.parent().expect("vendor parent")).expect("vendor directory");
-        fs::write(&path, vec![b'\n'; OPAQUE_VENDOR_BYTES as usize]).expect("large vendor bundle");
-
-        assert!(is_opaque_vendor_source(&path, "src/vendor/bundle.js"));
-
-        fs::remove_dir_all(root).expect("temporary vendor cleanup");
-    }
-}
-
-fn add_symbols(
-    graph: &mut SourceGraph,
-    project: &ResolvedAnalysisProject,
-    path: &str,
-    file: &NodeId,
-    language: SourceLanguage,
-    symbols: &[Symbol],
-) -> Result<BTreeMap<String, BTreeSet<NodeId>>> {
-    let mut by_name = BTreeMap::<String, BTreeSet<NodeId>>::new();
-    for symbol in symbols {
-        if symbol.name.contains('.') {
-            continue;
-        }
-        let id = NodeId::symbol(file, &symbol.id);
-        graph
-            .add_node(
-                id.clone(),
-                SourceNode::Symbol(SourceSymbol {
-                    project: project.id.clone(),
-                    file: file.clone(),
-                    name: symbol.name.clone(),
-                    symbol_kind: source_symbol_kind(symbol.kind),
-                    visibility: if language == SourceLanguage::Svelte {
-                        SourceVisibility::Unknown
-                    } else {
-                        symbol.visibility.into()
-                    },
-                    span: symbol.span.clone(),
-                }),
-            )
-            .map_err(anyhow::Error::from)?;
-        graph.edges.insert(SourceEdge {
-            from: file.clone(),
-            to: EdgeTarget::Node(id.clone()),
-            kind: SourceEdgeKind::Contains,
-            bindings: Vec::new(),
-            evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
-        });
-        by_name.entry(symbol.name.clone()).or_default().insert(id);
-    }
-    Ok(by_name)
-}
-
-fn connect_module(
-    graph: &mut SourceGraph,
-    key: &ModuleKey,
-    modules: &BTreeMap<ModuleKey, Module>,
-    resolver: &ModuleResolver,
-) -> Result<()> {
-    let module = &modules[key];
-    connect_local_references(graph, module);
-    connect_local_exports(graph, module);
-
-    for import in &module.info.imports {
-        let resolution = resolver.resolve(module, &import.source);
-        connect_module_resolution(
-            graph,
-            module,
-            &import.source,
-            &resolution,
-            SourceEdgeKind::ModuleDependency,
-            None,
-        );
-        let Some(target) = resolution.resolved() else {
-            continue;
-        };
-
-        for binding in &import.bindings {
-            let targets = if binding.namespace {
-                resolve_all_exports(target, modules, resolver, &mut HashSet::new())
-            } else {
-                resolve_export(
-                    target,
-                    &binding.imported,
-                    modules,
-                    resolver,
-                    &mut HashSet::new(),
-                )
-            };
-            let sources = reference_sources(module, &binding.local);
-            for source in sources {
-                for target in &targets {
-                    graph.edges.insert(SourceEdge {
-                        from: source.clone(),
-                        to: EdgeTarget::Node(target.clone()),
-                        kind: SourceEdgeKind::Import,
-                        bindings: vec![SourceBinding {
-                            imported: binding.imported.clone(),
-                            local: binding.local.clone(),
-                            exported: None,
-                            namespace: binding.namespace,
-                            type_only: binding.type_only || import.type_only,
-                        }],
-                        evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
-                    });
-                }
-            }
-        }
-    }
-
-    for re_export in &module.info.exports.re_exports {
-        let resolution = resolver.resolve(module, &re_export.source);
-        connect_module_resolution(
-            graph,
-            module,
-            &re_export.source,
-            &resolution,
-            SourceEdgeKind::ModuleDependency,
-            None,
-        );
-        let Some(target) = resolution.resolved() else {
-            continue;
-        };
-        for name in &re_export.names {
-            for symbol in resolve_export(
-                target,
-                &name.original,
-                modules,
-                resolver,
-                &mut HashSet::new(),
-            ) {
-                graph.edges.insert(SourceEdge {
-                    from: module.file.clone(),
-                    to: EdgeTarget::Node(symbol),
-                    kind: SourceEdgeKind::ReExport,
-                    bindings: vec![SourceBinding {
-                        imported: name.original.clone(),
-                        local: name.original.clone(),
-                        exported: Some(name.exported.clone()),
-                        namespace: false,
-                        type_only: false,
-                    }],
-                    evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
-                });
-            }
-        }
-    }
-
-    for source in &module.info.exports.export_all {
-        let resolution = resolver.resolve(module, source);
-        connect_module_resolution(
-            graph,
-            module,
-            source,
-            &resolution,
-            SourceEdgeKind::ModuleDependency,
-            None,
-        );
-        let Some(target) = resolution.resolved() else {
-            continue;
-        };
-        for symbol in resolve_all_exports(target, modules, resolver, &mut HashSet::new()) {
-            graph.edges.insert(SourceEdge {
-                from: module.file.clone(),
-                to: EdgeTarget::Node(symbol),
-                kind: SourceEdgeKind::ReExport,
-                bindings: Vec::new(),
-                evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
-            });
-        }
-    }
-
-    for dependency in &module.info.reachability.dynamic_dependencies {
-        let specifier = dynamic_dependency_label(&dependency.target);
-        let edge_kind = match dependency.kind {
-            parser::DynamicDependencyKind::Import => SourceEdgeKind::DynamicImport,
-            parser::DynamicDependencyKind::ImportMetaGlob => SourceEdgeKind::GlobImport,
-            parser::DynamicDependencyKind::ImportScripts => SourceEdgeKind::Require,
-            parser::DynamicDependencyKind::Require => SourceEdgeKind::Require,
-            parser::DynamicDependencyKind::RuntimeFile => SourceEdgeKind::ModuleDependency,
-            parser::DynamicDependencyKind::RuntimeProcess => SourceEdgeKind::ModuleDependency,
-            parser::DynamicDependencyKind::RuntimeUrl => SourceEdgeKind::DynamicImport,
-        };
-        for resolution in resolver.resolve_dynamic(module, &dependency.target, dependency.kind) {
-            connect_module_resolution(
-                graph,
-                module,
-                &specifier,
-                &resolution,
-                edge_kind,
-                Some(dependency.span.clone()),
-            );
-            if dynamic_dependency_uses_module_namespace(dependency.kind) {
-                let Some(target) = resolution.resolved() else {
-                    continue;
-                };
-                for symbol in resolve_all_exports(target, modules, resolver, &mut HashSet::new()) {
-                    graph.edges.insert(SourceEdge {
-                        from: module.file.clone(),
-                        to: EdgeTarget::Node(symbol),
-                        kind: edge_kind,
-                        bindings: Vec::new(),
-                        evidence: SourceEvidence::new(
-                            &module.path,
-                            Some(dependency.span.clone()),
-                            EXTRACTOR,
-                        ),
-                    });
-                }
-            }
-        }
-    }
-    for (specifier, targets) in &module.info.reachability.configured_aliases {
-        for target in targets {
-            let resolution = resolver.resolve_configured_alias(module, specifier, target);
-            if resolution.resolved().is_some() {
-                connect_module_resolution(
-                    graph,
-                    module,
-                    specifier,
-                    &resolution,
-                    SourceEdgeKind::ModuleDependency,
-                    None,
-                );
-            }
-        }
-    }
-    if contexts::is_test_config_module(&module.path) {
-        for entrypoint in &module.info.reachability.configured_test_entrypoints {
-            let resolution = resolver.resolve_configured_entrypoint(module, entrypoint);
-            connect_module_resolution(
-                graph,
-                module,
-                entrypoint,
-                &resolution,
-                SourceEdgeKind::ModuleDependency,
-                None,
-            );
-        }
-    }
-    Ok(())
-}
-
-fn dynamic_dependency_uses_module_namespace(kind: parser::DynamicDependencyKind) -> bool {
-    matches!(
-        kind,
-        parser::DynamicDependencyKind::Import
-            | parser::DynamicDependencyKind::ImportMetaGlob
-            | parser::DynamicDependencyKind::Require
-    )
-}
-
-fn dynamic_dependency_label(target: &parser::DynamicDependencyTarget) -> String {
-    match target {
-        parser::DynamicDependencyTarget::Literal(specifier) => specifier.clone(),
-        parser::DynamicDependencyTarget::Pattern { prefix, suffix } => {
-            format!("{prefix}*{suffix}")
-        }
-        parser::DynamicDependencyTarget::Glob(pattern) => pattern.clone(),
-        parser::DynamicDependencyTarget::Unknown => "<dynamic expression>".to_string(),
-    }
-}
-
-fn connect_local_references(graph: &mut SourceGraph, module: &Module) {
-    for reference in &module.info.reachability.top_level_references {
-        connect_named_symbols(
-            graph,
-            &module.file,
-            reference,
-            module,
-            SourceEdgeKind::LexicalReference,
-        );
-    }
-    for (owner, references) in &module.info.reachability.symbol_references {
-        let Some(owners) = module.symbols.get(owner) else {
-            continue;
-        };
-        for owner in owners {
-            for reference in references {
-                connect_named_symbols(
-                    graph,
-                    owner,
-                    reference,
-                    module,
-                    SourceEdgeKind::LexicalReference,
-                );
-            }
-        }
-    }
-}
-
-fn connect_local_exports(graph: &mut SourceGraph, module: &Module) {
-    for export in &module.info.exports.local_export_names {
-        if let Some(symbols) = module.symbols.get(&export.original) {
-            for symbol in symbols {
-                graph.edges.insert(SourceEdge {
-                    from: module.file.clone(),
-                    to: EdgeTarget::Node(symbol.clone()),
-                    kind: SourceEdgeKind::ReExport,
-                    bindings: vec![SourceBinding {
-                        imported: export.original.clone(),
-                        local: export.original.clone(),
-                        exported: Some(export.exported.clone()),
-                        namespace: false,
-                        type_only: false,
-                    }],
-                    evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
-                });
-            }
-        }
-    }
-}
-
-fn connect_named_symbols(
-    graph: &mut SourceGraph,
-    from: &NodeId,
-    name: &str,
-    module: &Module,
-    kind: SourceEdgeKind,
-) {
-    if let Some(symbols) = module.symbols.get(name) {
-        for symbol in symbols {
-            graph.edges.insert(SourceEdge {
-                from: from.clone(),
-                to: EdgeTarget::Node(symbol.clone()),
-                kind,
-                bindings: Vec::new(),
-                evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
-            });
-        }
-    }
-}
-
-fn reference_sources(module: &Module, local: &str) -> BTreeSet<NodeId> {
-    let mut sources = BTreeSet::new();
-    if module
-        .info
-        .reachability
-        .top_level_references
-        .contains(local)
-    {
-        sources.insert(module.file.clone());
-    }
-    for (owner, references) in &module.info.reachability.symbol_references {
-        if !references.contains(local) {
-            continue;
-        }
-        if let Some(symbols) = module.symbols.get(owner) {
-            sources.extend(symbols.iter().cloned());
-        }
-    }
-    sources
-}
-
-fn connect_module_resolution(
-    graph: &mut SourceGraph,
-    module: &Module,
-    specifier: &str,
-    resolution: &Resolution,
-    kind: SourceEdgeKind,
-    span: Option<crate::domain::Span>,
-) {
-    let (target, observed_kind) = match resolution {
-        Resolution::Resolved(key) | Resolution::ResolvedResource(key) => (
-            graph
-                .nodes
-                .get(&NodeId::file(&key.0, &key.1))
-                .map(|_| EdgeTarget::Node(NodeId::file(&key.0, &key.1)))
-                .unwrap_or_else(|| EdgeTarget::UnresolvedInternal(specifier.to_string())),
-            kind,
-        ),
-        Resolution::WorkspaceSource(key) => (
-            graph
-                .nodes
-                .get(&NodeId::file(&key.0, &key.1))
-                .map(|_| EdgeTarget::Node(NodeId::file(&key.0, &key.1)))
-                .unwrap_or_else(|| EdgeTarget::UnresolvedInternal(specifier.to_string())),
-            SourceEdgeKind::WorkspaceSourceBypass,
-        ),
-        Resolution::External(value) => (EdgeTarget::External(value.clone()), kind),
-        Resolution::UnexportedWorkspace(value) => {
-            (EdgeTarget::UnexportedWorkspace(value.clone()), kind)
-        }
-        Resolution::UnresolvedInternal(value) => {
-            (EdgeTarget::UnresolvedInternal(value.clone()), kind)
-        }
-        Resolution::Unscanned(value) => (EdgeTarget::Unsupported(value.clone()), kind),
-        Resolution::DynamicUnknown(value) => (EdgeTarget::DynamicUnknown(value.clone()), kind),
-        Resolution::Unsupported(value) => (EdgeTarget::Unsupported(value.clone()), kind),
-    };
-    graph.edges.insert(SourceEdge {
-        from: module.file.clone(),
-        to: target,
-        kind: observed_kind,
-        bindings: Vec::new(),
-        evidence: SourceEvidence::new(&module.path, span.clone(), EXTRACTOR),
-    });
-
-    let (boundary_kind, message) = match resolution {
-        Resolution::UnresolvedInternal(value) => (
-            Some(BoundaryKind::UnresolvedInternal),
-            format!(
-                "Could not resolve internal module {value:?} from {}",
-                module.path
-            ),
-        ),
-        Resolution::DynamicUnknown(_) => (
-            Some(BoundaryKind::DynamicImport),
-            format!("Dynamic module boundary in {}", module.path),
-        ),
-        Resolution::Unscanned(value) => (
-            Some(BoundaryKind::UnsupportedDependency),
-            format!(
-                "Source boundary {value:?} from {} is generated, excluded, or outside the scanned project",
-                module.path
-            ),
-        ),
-        Resolution::Unsupported(value) => (
-            Some(BoundaryKind::UnsupportedDependency),
-            format!(
-                "Dependency {value:?} from {} uses an unsupported source boundary",
-                module.path
-            ),
-        ),
-        Resolution::UnexportedWorkspace(_)
-        | Resolution::WorkspaceSource(_)
-        | Resolution::Resolved(_)
-        | Resolution::ResolvedResource(_)
-        | Resolution::External(_) => (None, String::new()),
-    };
-    if let Some(boundary_kind) = boundary_kind {
-        graph.record_boundary(
-            &module.project,
-            Some(module.file.clone()),
-            boundary_kind,
-            AnalysisCompleteness::Partial,
-            message,
-            SourceEvidence::new(&module.path, span, EXTRACTOR),
-        );
-    }
-}
-
-fn resolve_all_exports(
-    key: &ModuleKey,
-    modules: &BTreeMap<ModuleKey, Module>,
-    resolver: &ModuleResolver,
-    visited: &mut HashSet<ModuleKey>,
-) -> BTreeSet<NodeId> {
-    if !visited.insert(key.clone()) {
-        return BTreeSet::new();
-    }
-    let Some(module) = modules.get(key) else {
-        return BTreeSet::new();
-    };
-    let mut symbols = BTreeSet::new();
-    for export in &module.info.exports.local_export_names {
-        symbols.extend(resolve_export(
-            key,
-            &export.exported,
-            modules,
-            resolver,
-            &mut HashSet::new(),
-        ));
-    }
-    for re_export in &module.info.exports.re_exports {
-        if let Some(target) = resolver.resolve(module, &re_export.source).resolved() {
-            for name in &re_export.names {
-                symbols.extend(resolve_export(
-                    target,
-                    &name.original,
-                    modules,
-                    resolver,
-                    &mut HashSet::new(),
-                ));
-            }
-        }
-    }
-    for source in &module.info.exports.export_all {
-        if let Some(target) = resolver.resolve(module, source).resolved() {
-            symbols.extend(resolve_all_exports(target, modules, resolver, visited));
-        }
-    }
-    symbols
-}
-
-fn resolve_export(
-    key: &ModuleKey,
-    name: &str,
-    modules: &BTreeMap<ModuleKey, Module>,
-    resolver: &ModuleResolver,
-    visited: &mut HashSet<(ModuleKey, String)>,
-) -> BTreeSet<NodeId> {
-    if !visited.insert((key.clone(), name.to_string())) {
-        return BTreeSet::new();
-    }
-    let Some(module) = modules.get(key) else {
-        return BTreeSet::new();
-    };
-    let original = module
-        .info
-        .exports
-        .local_export_names
-        .iter()
-        .find(|export| export.exported == name)
-        .map(|export| export.original.as_str())
-        .or_else(|| {
-            (name == "default")
-                .then_some(module.info.exports.default_export.as_deref())
-                .flatten()
-        });
-    if let Some(original) = original {
-        if let Some(symbols) = module.symbols.get(original) {
-            return symbols.clone();
-        }
-    }
-
-    let mut symbols = BTreeSet::new();
-    for re_export in &module.info.exports.re_exports {
-        let Some(export) = re_export
-            .names
-            .iter()
-            .find(|export| export.exported == name)
-        else {
-            continue;
-        };
-        if let Some(target) = resolver.resolve(module, &re_export.source).resolved() {
-            symbols.extend(resolve_export(
-                target,
-                &export.original,
-                modules,
-                resolver,
-                visited,
-            ));
-        }
-    }
-    for source in &module.info.exports.export_all {
-        if let Some(target) = resolver.resolve(module, source).resolved() {
-            symbols.extend(resolve_export(target, name, modules, resolver, visited));
-        }
-    }
-    symbols
-}
-
-fn source_language(path: &Path) -> Option<SourceLanguage> {
-    match path.extension().and_then(|extension| extension.to_str()) {
-        Some("js" | "jsx" | "mjs" | "cjs") => Some(SourceLanguage::JavaScript),
-        Some("ts" | "tsx") => Some(SourceLanguage::TypeScript),
-        Some("svelte") => Some(SourceLanguage::Svelte),
-        _ => None,
-    }
-}
-
-fn source_symbol_kind(kind: SymbolKind) -> SourceSymbolKind {
-    match kind {
-        SymbolKind::Module => SourceSymbolKind::Module,
-        SymbolKind::Class => SourceSymbolKind::Class,
-        SymbolKind::Method => SourceSymbolKind::Method,
-        SymbolKind::Function => SourceSymbolKind::Function,
-        SymbolKind::Interface => SourceSymbolKind::Interface,
-        SymbolKind::Struct => SourceSymbolKind::Struct,
-        SymbolKind::Const => SourceSymbolKind::Constant,
-        SymbolKind::Property => SourceSymbolKind::Property,
-        SymbolKind::Enum => SourceSymbolKind::Enum,
-        SymbolKind::Trait => SourceSymbolKind::Trait,
-        SymbolKind::TypeAlias => SourceSymbolKind::TypeAlias,
-        SymbolKind::Decorator => SourceSymbolKind::Other,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::contexts::{is_conventional_test_module, is_conventional_tooling_module};
-
-    #[test]
-    fn conventional_test_detection_excludes_test_helpers() {
-        assert!(is_conventional_test_module("src/example.test.ts"));
-        assert!(is_conventional_test_module("tests/example.spec.js"));
-        assert!(is_conventional_test_module("src/Example.test.svelte"));
-        assert!(!is_conventional_test_module("src/__tests__/support.ts"));
-        assert!(!is_conventional_test_module("src/contest.ts"));
-        assert!(!is_conventional_test_module("src/example.test.d.ts"));
-    }
-
-    #[test]
-    fn conventional_tooling_detection_is_limited_to_root_config_modules() {
-        assert!(is_conventional_tooling_module("vitest.config.ts"));
-        assert!(is_conventional_tooling_module("playwright.config.mjs"));
-        assert!(is_conventional_tooling_module("gulpfile.js"));
-        assert!(!is_conventional_tooling_module("src/runtime.config.ts"));
-        assert!(!is_conventional_tooling_module("vitest.config.json"));
-    }
-}
+mod tests;

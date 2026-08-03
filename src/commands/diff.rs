@@ -22,15 +22,6 @@ pub(crate) struct PublicApiBaseline {
     pub(crate) packages: Vec<PublicApiPackage>,
 }
 
-impl PublicApiBaseline {
-    pub(crate) fn symbol_count(&self) -> usize {
-        self.packages
-            .iter()
-            .map(|package| package.symbols.len())
-            .sum()
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct PublicApiPackage {
     name: String,
@@ -48,12 +39,6 @@ pub(crate) struct PublicApiSymbol {
     kind: SymbolKind,
     qualified_name: String,
     contracts: Vec<String>,
-}
-
-#[derive(Debug)]
-pub(crate) struct BaselineScan {
-    pub(crate) baseline: PublicApiBaseline,
-    pub(crate) unused_public: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -74,17 +59,36 @@ pub(crate) fn run(
     exit_code(compare(baseline_path, path, workspace, exact, config_path))
 }
 
+pub(crate) fn run_baseline(
+    path: &Path,
+    workspace: bool,
+    out: Option<&Path>,
+    config_path: Option<&Path>,
+) -> i32 {
+    exit_code(write_baseline(path, workspace, out, config_path))
+}
+
+fn write_baseline(
+    path: &Path,
+    workspace: bool,
+    out: Option<&Path>,
+    config_path: Option<&Path>,
+) -> Result<i32> {
+    let baseline = create_baseline(path, workspace, config_path)?;
+    let rendered = render_baseline(&baseline)?;
+    super::output::write_text_or_print(&rendered, out, "Public API baseline")?;
+    Ok(0)
+}
+
 pub(crate) fn create_baseline(
     path: &Path,
     workspace: bool,
-    audit_unused: bool,
-    consumer_root: Option<&Path>,
     config_path: Option<&Path>,
-) -> Result<BaselineScan> {
+) -> Result<PublicApiBaseline> {
     if workspace {
-        create_workspace_baseline(path, audit_unused, consumer_root, config_path)
+        create_workspace_baseline(path, config_path)
     } else {
-        create_single_baseline(path, audit_unused, consumer_root, config_path)
+        create_single_baseline(path, config_path)
     }
 }
 
@@ -94,31 +98,17 @@ pub(crate) fn render_baseline(baseline: &PublicApiBaseline) -> Result<String> {
     Ok(rendered)
 }
 
-fn create_single_baseline(
-    path: &Path,
-    audit_unused: bool,
-    consumer_root: Option<&Path>,
-    config_path: Option<&Path>,
-) -> Result<BaselineScan> {
+fn create_single_baseline(path: &Path, config_path: Option<&Path>) -> Result<PublicApiBaseline> {
     let project = load_project(path, config_path)?;
-    let (report, unused_public) = scan_report(&project, audit_unused, consumer_root)?;
+    let report = scan_report(&project)?;
     let root = crate::paths::normalize_path(&project.root);
-    Ok(BaselineScan {
-        baseline: baseline_from_reports(vec![(root, report)], false)?,
-        unused_public,
-    })
+    baseline_from_reports(vec![(root, report)], false)
 }
 
-fn create_workspace_baseline(
-    path: &Path,
-    audit_unused: bool,
-    consumer_root: Option<&Path>,
-    config_path: Option<&Path>,
-) -> Result<BaselineScan> {
+fn create_workspace_baseline(path: &Path, config_path: Option<&Path>) -> Result<PublicApiBaseline> {
     let project = load_project(path, config_path)?;
     let workspace = crate::package::discover_workspace(&project.root)?;
     let mut reports = Vec::new();
-    let mut unused_public = Vec::new();
     let mut members = workspace
         .members
         .into_iter()
@@ -163,13 +153,8 @@ fn create_workspace_baseline(
             continue;
         }
 
-        let (report, member_unused) = scan_report(&member_project, audit_unused, consumer_root)
+        let report = scan_report(&member_project)
             .with_context(|| format!("Could not scan workspace package {member_name}"))?;
-        unused_public.extend(
-            member_unused
-                .into_iter()
-                .map(|unused| format!("{member_name}::{unused}")),
-        );
         reports.push((report_root, report));
     }
 
@@ -179,48 +164,14 @@ fn create_workspace_baseline(
             project.root.display()
         );
     }
-    unused_public.sort();
-    unused_public.dedup();
-    Ok(BaselineScan {
-        baseline: baseline_from_reports(reports, true)?,
-        unused_public,
-    })
+    baseline_from_reports(reports, true)
 }
 
-fn scan_report(
-    project: &crate::config::ProjectConfig,
-    audit_unused: bool,
-    consumer_root: Option<&Path>,
-) -> Result<(ScanReport, Vec<String>)> {
+fn scan_report(project: &crate::config::ProjectConfig) -> Result<ScanReport> {
     let config = build_scan_config(project, false, None)?;
     let mut report = scan_project(project, &config)?;
     annotate_report(&mut report, project)?;
-    if audit_unused {
-        let mut importers = crate::analysis::annotate_imports(
-            &mut report,
-            &project.root,
-            project.config.no_default_ignore,
-        );
-        if let Some(consumer_root) = consumer_root {
-            crate::analysis::annotate_package_consumers(
-                &mut report,
-                &mut importers,
-                &project.root,
-                consumer_root,
-            );
-        }
-        crate::analysis::annotate_unused_public(
-            &mut report,
-            &importers,
-            project.config.no_default_ignore,
-        );
-    }
-    let unused_public = report
-        .unused_public
-        .iter()
-        .map(|unused| unused.id.clone())
-        .collect();
-    Ok((report, unused_public))
+    Ok(report)
 }
 
 fn compare(
@@ -233,14 +184,7 @@ fn compare(
     let baseline_content = std::fs::read_to_string(baseline_path)
         .with_context(|| format!("Could not read {}", baseline_path.display()))?;
     let baseline = parse_baseline(&baseline_content, baseline_path)?;
-    let current = create_baseline(
-        path,
-        workspace || baseline.workspace,
-        false,
-        None,
-        config_path,
-    )?
-    .baseline;
+    let current = create_baseline(path, workspace || baseline.workspace, config_path)?;
 
     let baseline_symbols = symbols_by_stable_key(&baseline)?;
     let current_symbols = symbols_by_stable_key(&current)?;
@@ -338,26 +282,22 @@ fn compare(
 fn parse_baseline(content: &str, path: &Path) -> Result<PublicApiBaseline> {
     let value: serde_json::Value = serde_json::from_str(content)
         .with_context(|| format!("Invalid baseline JSON at {}", path.display()))?;
-    if value.get("format").and_then(serde_json::Value::as_str) == Some(BASELINE_FORMAT) {
-        let baseline: PublicApiBaseline = serde_json::from_value(value)
-            .with_context(|| format!("Invalid public API baseline at {}", path.display()))?;
-        if baseline.schema_version != BASELINE_SCHEMA_VERSION {
-            anyhow::bail!(
-                "Unsupported public API baseline schema {} at {}",
-                baseline.schema_version,
-                path.display()
-            );
-        }
-        return Ok(baseline);
-    }
-
-    let report: ScanReport = serde_json::from_value(value).with_context(|| {
-        format!(
-            "Baseline at {} is neither a CodeAtlas public API baseline nor a released scan report",
+    if value.get("format").and_then(serde_json::Value::as_str) != Some(BASELINE_FORMAT) {
+        anyhow::bail!(
+            "Baseline at {} is not a CodeAtlas public API baseline; create it with `codeatlas baseline code`",
             path.display()
-        )
-    })?;
-    baseline_from_reports(vec![(".".to_string(), report)], false)
+        );
+    }
+    let baseline: PublicApiBaseline = serde_json::from_value(value)
+        .with_context(|| format!("Invalid public API baseline at {}", path.display()))?;
+    if baseline.schema_version != BASELINE_SCHEMA_VERSION {
+        anyhow::bail!(
+            "Unsupported public API baseline schema {} at {}",
+            baseline.schema_version,
+            path.display()
+        );
+    }
+    Ok(baseline)
 }
 
 fn baseline_from_reports(

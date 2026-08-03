@@ -1,297 +1,131 @@
-use crate::commands;
-use crate::commands::dead_code::DeadCodeFormat;
-use crate::commands::docs::DocsFormat;
-use crate::commands::lexicon::LexiconFormat;
-use crate::commands::{OutputFormat, ScanScope};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use architecture::ArchitectureCommand;
-use http::HttpCommand;
-use postgres::PostgresCommand;
-use testing::TestingCommand;
-
 mod architecture;
-mod http;
+mod baseline;
+mod check;
+mod diff;
+mod docs;
+mod fuzz;
+mod init;
+mod inspect;
+mod lexicon;
 mod postgres;
-mod testing;
+mod scan;
+mod test;
+#[path = "tests.rs"]
+mod test_commands;
+mod usage;
 
 #[derive(Parser)]
 #[command(name = "codeatlas")]
-#[command(
-    about = "Map public APIs, analyze source reachability, and compare architecture evidence."
-)]
+#[command(about = "Inspect and test code, HTTP, PostgreSQL, and architecture contracts.")]
 #[command(version)]
 pub(crate) struct Cli {
-    #[command(subcommand)]
-    command: Command,
+    /// Repository root
+    #[arg(long, global = true, default_value = ".")]
+    root: PathBuf,
 
     /// Path to codeatlas.json
     #[arg(long, global = true)]
-    pub(crate) config: Option<PathBuf>,
+    config: Option<PathBuf>,
+
+    #[command(subcommand)]
+    command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
-    /// Show public API surface (default command)
+    /// Discover and model current contract evidence
     Scan {
-        /// Path to scan
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// Output format
-        #[arg(short, long, value_enum, default_value_t = OutputFormat::Tree)]
-        format: OutputFormat,
-        /// Include private/internal symbols
-        #[arg(long)]
-        all: bool,
-        /// Choose package API reachability or all maintained source files
-        #[arg(long, value_enum, default_value_t = ScanScope::Api)]
-        scope: ScanScope,
-        /// Output directory instead of stdout
-        #[arg(short, long)]
-        out: Option<PathBuf>,
-    },
-
-    /// Find deterministic naming collisions, aliases, and duplicate symbol families
-    Lexicon {
-        /// Path to scan
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// Output format
-        #[arg(short, long, value_enum, default_value_t = LexiconFormat::Text)]
-        format: LexiconFormat,
-        /// Write the report to a file instead of stdout
-        #[arg(short, long)]
-        out: Option<PathBuf>,
-    },
-
-    /// Report public exports with no detected repository consumers
-    Audit {
-        /// Path to scan
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// External source tree whose maintained package imports count as consumers
-        #[arg(long)]
-        consumer_root: Option<PathBuf>,
-    },
-
-    /// Analyze source reachability and report dead-code candidates
-    DeadCode {
-        /// Path to the repository or configured project set
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// Output format
-        #[arg(short, long, value_enum, default_value_t = DeadCodeFormat::Text)]
-        format: DeadCodeFormat,
-        /// Write the report to a file instead of stdout
-        #[arg(short, long)]
-        out: Option<PathBuf>,
-        /// Exit non-zero for high-confidence gating findings
-        #[arg(long)]
-        check: bool,
-        /// Render only findings that can fail the dead-code gate
-        #[arg(long)]
-        gates_only: bool,
-        /// Discover package projects from the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
-    },
-
-    /// Produce a bounded source context slice for exact files or symbols
-    Context {
-        /// Path to the repository or configured project set
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// Exact node ID, source path, or path#symbol target
-        #[arg(long, required = true)]
-        target: Vec<String>,
-        /// Incoming and outgoing graph traversal depth
-        #[arg(long, default_value_t = 2)]
-        depth: usize,
-        /// Maximum source nodes in the returned slice
-        #[arg(long, default_value_t = 128)]
-        max_nodes: usize,
-        /// Write the JSON report instead of stdout
-        #[arg(short, long)]
-        out: Option<PathBuf>,
-    },
-
-    /// Compile and compare declared architecture
-    Architecture {
         #[command(subcommand)]
-        command: ArchitectureCommand,
+        subject: scan::ScanSubject,
     },
-
-    /// Inventory and compare HTTP contracts
-    Http {
+    /// Apply static rules and contract conformance checks
+    Check {
         #[command(subcommand)]
-        command: HttpCommand,
+        subject: check::CheckSubject,
     },
-
-    /// Inventory and check PostgreSQL contracts
-    Postgres {
+    /// Save canonical comparison evidence
+    Baseline {
         #[command(subcommand)]
-        command: PostgresCommand,
+        subject: baseline::BaselineSubject,
     },
-
-    /// Inventory tests, select affected suites, and report public API witnesses
-    Testing {
-        #[command(subcommand)]
-        command: TestingCommand,
-    },
-
-    /// CI mode: exit non-zero if issues found
-    Ci {
-        /// Path to scan
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// External source tree whose maintained package imports count as consumers
-        #[arg(long)]
-        consumer_root: Option<PathBuf>,
-        /// Fail if any unused public exports exist
-        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-        fail_unused: bool,
-        /// Output JSON baseline to this file
-        #[arg(long)]
-        baseline: Option<PathBuf>,
-        /// Discover public packages from the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
-    },
-
-    /// Generate Mermaid diagram
-    Map {
-        /// Path to scan
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// Output file (default: stdout)
-        #[arg(short, long)]
-        out: Option<PathBuf>,
-    },
-
-    /// Generate deterministic API documentation
-    Docs {
-        /// Path to scan
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// Documentation output file
-        #[arg(short, long)]
-        out: Option<PathBuf>,
-        /// Documentation output format
-        #[arg(short, long, value_enum, default_value_t = DocsFormat::Markdown)]
-        format: DocsFormat,
-        /// Fail when the output file differs instead of writing it
-        #[arg(long)]
-        check: bool,
-        /// Override the generated page title
-        #[arg(long)]
-        title: Option<String>,
-    },
-
-    /// Compare current scan against a baseline JSON file
+    /// Compare current evidence with a baseline
     Diff {
-        /// Path to baseline JSON file from previous `codeatlas ci --baseline`
-        baseline: PathBuf,
-        /// Path to scan (default: current directory)
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// Discover public packages from the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
-        /// Fail on additive changes as well as breaking changes
-        #[arg(long)]
-        exact: bool,
+        #[command(subcommand)]
+        subject: diff::DiffSubject,
+    },
+    /// Classify code reachability and known consumers
+    Usage {
+        #[command(subcommand)]
+        subject: usage::UsageSubject,
+    },
+    /// Explain one exact code or architecture target
+    Inspect {
+        #[command(subcommand)]
+        subject: inspect::InspectSubject,
+    },
+    /// Find deterministic naming collisions and aliases
+    Lexicon {
+        #[command(subcommand)]
+        subject: lexicon::LexiconSubject,
+    },
+    /// Inventory tests, select affected suites, or report witnesses
+    Tests {
+        #[command(subcommand)]
+        command: test_commands::TestsCommand,
+    },
+    /// Generate or check API documentation
+    Docs {
+        #[command(subcommand)]
+        subject: docs::DocsSubject,
+    },
+    /// Exercise HTTP contracts with generated requests
+    Fuzz {
+        #[command(subcommand)]
+        subject: fuzz::FuzzSubject,
+    },
+    /// Exercise PostgreSQL contracts in an isolated database
+    Test {
+        #[command(subcommand)]
+        subject: test::TestSubject,
+    },
+    /// Discover and optionally write PostgreSQL configuration
+    Init {
+        #[command(subcommand)]
+        subject: init::InitSubject,
+    },
+    /// Validate and normalize architecture declarations
+    Compile {
+        #[command(subcommand)]
+        subject: architecture::CompileSubject,
+    },
+    /// Generate reproducible architecture source evidence
+    Observe {
+        #[command(subcommand)]
+        subject: architecture::ObserveSubject,
     },
 }
 
 pub(crate) fn run() -> i32 {
     let cli = Cli::parse();
-    let config_path = cli.config.clone();
-
+    let config = cli.config.as_deref();
     match cli.command {
-        Command::Scan {
-            path,
-            format,
-            all,
-            scope,
-            out,
-        } => commands::run_scan(&path, format, all, scope, out, config_path.as_deref()),
-        Command::Lexicon { path, format, out } => {
-            commands::lexicon::run(&path, format, out.as_deref(), config_path.as_deref())
-        }
-        Command::Audit {
-            path,
-            consumer_root,
-        } => commands::run_audit(&path, consumer_root.as_deref(), config_path.as_deref()),
-        Command::DeadCode {
-            path,
-            format,
-            out,
-            check,
-            gates_only,
-            workspace,
-        } => commands::dead_code::run(
-            &path,
-            format,
-            out.as_deref(),
-            check,
-            gates_only,
-            workspace,
-            config_path.as_deref(),
-        ),
-        Command::Context {
-            path,
-            target,
-            depth,
-            max_nodes,
-            out,
-        } => commands::context_slice::run(
-            &path,
-            target,
-            depth,
-            max_nodes,
-            out.as_deref(),
-            config_path.as_deref(),
-        ),
-        Command::Architecture { command } => command.run(config_path.as_deref()),
-        Command::Http { command } => command.run(config_path.as_deref()),
-        Command::Postgres { command } => command.run(config_path.as_deref()),
-        Command::Testing { command } => command.run(config_path.as_deref()),
-        Command::Ci {
-            path,
-            consumer_root,
-            fail_unused,
-            baseline,
-            workspace,
-        } => commands::run_ci(
-            &path,
-            consumer_root.as_deref(),
-            fail_unused,
-            baseline,
-            workspace,
-            config_path.as_deref(),
-        ),
-        Command::Map { path, out } => commands::run_map(&path, out, config_path.as_deref()),
-        Command::Docs {
-            path,
-            out,
-            format,
-            check,
-            title,
-        } => commands::docs::run(
-            &path,
-            out.as_deref(),
-            format,
-            check,
-            title.as_deref(),
-            config_path.as_deref(),
-        ),
-        Command::Diff {
-            baseline,
-            path,
-            workspace,
-            exact,
-        } => commands::diff::run(&baseline, &path, workspace, exact, config_path.as_deref()),
+        Command::Scan { subject } => subject.run(&cli.root, config),
+        Command::Check { subject } => subject.run(&cli.root, config),
+        Command::Baseline { subject } => subject.run(&cli.root, config),
+        Command::Diff { subject } => subject.run(&cli.root, config),
+        Command::Usage { subject } => subject.run(&cli.root, config),
+        Command::Inspect { subject } => subject.run(&cli.root, config),
+        Command::Lexicon { subject } => subject.run(&cli.root, config),
+        Command::Tests { command } => command.run(&cli.root, config),
+        Command::Docs { subject } => subject.run(&cli.root, config),
+        Command::Fuzz { subject } => subject.run(&cli.root, config),
+        Command::Test { subject } => subject.run(&cli.root, config),
+        Command::Init { subject } => subject.run(&cli.root, config),
+        Command::Compile { subject } => subject.run(),
+        Command::Observe { subject } => subject.run(&cli.root),
     }
 }
 
@@ -301,132 +135,65 @@ mod tests {
     use clap::Parser;
 
     #[test]
-    fn requires_an_explicit_command() {
-        assert!(Cli::try_parse_from(["codeatlas"]).is_err());
-        assert!(Cli::try_parse_from(["codeatlas", "scan", "."]).is_ok());
-        assert!(
-            Cli::try_parse_from(["codeatlas", "scan", ".", "--scope", "source", "--all"]).is_ok()
-        );
+    fn parses_the_clean_command_surface() {
+        for args in [
+            vec!["codeatlas", "scan", "code"],
+            vec!["codeatlas", "scan", "http", "--openapi", "openapi.json"],
+            vec!["codeatlas", "scan", "postgres"],
+            vec!["codeatlas", "check", "code", "--workspace"],
+            vec!["codeatlas", "baseline", "code", "--out", "api.json"],
+            vec!["codeatlas", "diff", "code", "--against", "api.json"],
+            vec!["codeatlas", "usage", "code"],
+            vec!["codeatlas", "inspect", "code", "src/lib.rs#run"],
+            vec!["codeatlas", "lexicon", "code"],
+            vec!["codeatlas", "tests", "inventory"],
+            vec!["codeatlas", "docs", "code"],
+            vec!["codeatlas", "fuzz", "http"],
+            vec!["codeatlas", "test", "postgres"],
+            vec!["codeatlas", "init", "postgres"],
+            vec![
+                "codeatlas",
+                "compile",
+                "architecture",
+                "architecture/root.atlas.yaml",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(args).is_ok());
+        }
+    }
+
+    #[test]
+    fn accepts_global_repository_options_without_positional_roots() {
         assert!(Cli::try_parse_from([
             "codeatlas",
-            "http",
-            "inventory",
-            ".",
-            "--openapi",
-            "openapi.json"
-        ])
-        .is_ok());
-        assert!(Cli::try_parse_from([
-            "codeatlas",
-            "lexicon",
+            "--root",
             "packages/example",
-            "--format",
-            "json"
-        ])
-        .is_ok());
-        assert!(Cli::try_parse_from([
-            "codeatlas",
-            "dead-code",
-            "packages",
-            "--workspace",
-            "--check",
-            "--gates-only"
-        ])
-        .is_ok());
-        assert!(Cli::try_parse_from([
-            "codeatlas",
-            "audit",
-            "packages/example",
-            "--consumer-root",
-            ".",
-        ])
-        .is_ok());
-        assert!(Cli::try_parse_from([
-            "codeatlas",
-            "ci",
-            "packages/example",
-            "--consumer-root",
-            ".",
-        ])
-        .is_ok());
-        assert!(Cli::try_parse_from(["codeatlas", "dead-code", "packages", "--workspace"]).is_ok());
-        assert!(Cli::try_parse_from([
-            "codeatlas",
-            "testing",
+            "--config",
+            "codeatlas.json",
+            "tests",
             "impact",
-            ".",
             "--workspace",
             "--changed",
-            "packages/example/src/index.ts",
-            "--changed",
-            "pnpm-lock.yaml"
+            "src/index.ts",
         ])
         .is_ok());
-        assert!(Cli::try_parse_from([
-            "codeatlas",
+        assert!(Cli::try_parse_from(["codeatlas", "scan", "code", "."]).is_err());
+    }
+
+    #[test]
+    fn rejects_removed_commands_instead_of_preserving_aliases() {
+        for command in [
+            "audit",
+            "dead-code",
+            "context",
+            "architecture",
+            "http",
+            "postgres",
+            "testing",
             "ci",
-            ".",
-            "--workspace",
-            "--baseline",
-            "public-api.json",
-            "--fail-unused",
-            "false"
-        ])
-        .is_ok());
-        assert!(Cli::try_parse_from([
-            "codeatlas",
-            "diff",
-            "public-api.json",
-            ".",
-            "--workspace",
-            "--exact"
-        ])
-        .is_ok());
-    }
-
-    #[test]
-    fn rejects_the_removed_flag_based_interface() {
-        assert!(Cli::try_parse_from(["codeatlas", ".", "--format", "json"]).is_err());
-        assert!(Cli::try_parse_from(["codeatlas", ".", "--suggest"]).is_err());
-    }
-
-    #[test]
-    fn parses_an_approved_provider_query() {
-        assert!(Cli::try_parse_from([
-            "codeatlas",
-            "architecture",
-            "providers",
-            "architecture/root.atlas.yaml",
-            "--capability",
-            "example.capability.context",
-            "--approval-scope",
-            "organization",
-        ])
-        .is_ok());
-    }
-
-    #[test]
-    fn requires_a_capability_for_provider_queries() {
-        assert!(Cli::try_parse_from([
-            "codeatlas",
-            "architecture",
-            "providers",
-            "architecture/root.atlas.yaml",
-        ])
-        .is_err());
-    }
-
-    #[test]
-    fn parses_vcs_neutral_source_conformance() {
-        assert!(Cli::try_parse_from([
-            "codeatlas",
-            "architecture",
-            "source-check",
-            "architecture/root.atlas.yaml",
-            "--repository",
-            ".",
-            "--check",
-        ])
-        .is_ok());
+            "map",
+        ] {
+            assert!(Cli::try_parse_from(["codeatlas", command]).is_err());
+        }
     }
 }

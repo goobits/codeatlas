@@ -34,6 +34,11 @@
           "entrypoints": ["tests/**/*.test.ts"]
         }
       }
+    },
+    {
+      "id": "@fixture/docs",
+      "root": "packages/docs",
+      "languages": ["ts"]
     }
   ]
 }
