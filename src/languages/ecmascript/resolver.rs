@@ -234,7 +234,9 @@ impl ModuleResolver {
             DynamicDependencyTarget::Pattern { prefix, suffix } => {
                 self.resolve_pattern(module, prefix, suffix)
             }
-            DynamicDependencyTarget::Glob(pattern) => self.resolve_glob(module, pattern),
+            DynamicDependencyTarget::GlobSet { includes, excludes } => {
+                self.resolve_glob_set(module, includes, excludes)
+            }
             DynamicDependencyTarget::Unknown => {
                 vec![Resolution::DynamicUnknown(
                     "<dynamic expression>".to_string(),

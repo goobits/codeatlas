@@ -1,16 +1,14 @@
-use super::model::{ContextSliceReport, TargetResolution, CONTEXT_SLICE_SCHEMA_VERSION};
-use crate::domain::source_graph::{EdgeTarget, NodeId, ProjectId, SourceGraph, SourceNode};
-use anyhow::{Context, Result};
-use std::collections::{BTreeSet, VecDeque};
+use super::model::{
+    ContextSliceOmitted, ContextSliceReport, ContextSliceRequest, CONTEXT_SLICE_SCHEMA_VERSION,
+};
+use super::pagination::create_page;
+use super::targets::resolve_target;
+use crate::domain::source_graph::{EdgeTarget, SourceGraph};
+use anyhow::Result;
+use std::collections::BTreeSet;
 
 const MAX_DEPTH: usize = 16;
 const MAX_NODES: usize = 4_096;
-
-pub(crate) struct ContextSliceRequest {
-    pub targets: Vec<String>,
-    pub depth: usize,
-    pub max_nodes: usize,
-}
 
 pub(crate) fn create(
     graph: &SourceGraph,
@@ -37,20 +35,12 @@ pub(crate) fn create(
         .iter()
         .flat_map(|target| target.nodes.iter().cloned())
         .collect::<BTreeSet<_>>();
-    if roots.len() > request.max_nodes {
-        anyhow::bail!(
-            "{} resolved target nodes exceed max-nodes {}",
-            roots.len(),
-            request.max_nodes
-        );
-    }
-
-    let (included, truncated) = expand(graph, roots, request.depth, request.max_nodes);
-    let projects = graph
+    let page = create_page(graph, request, &roots)?;
+    let all_projects = graph
         .projects
         .values()
         .filter(|project| {
-            included.iter().any(|node_id| {
+            page.included_nodes.iter().any(|node_id| {
                 graph
                     .nodes
                     .get(node_id)
@@ -59,11 +49,17 @@ pub(crate) fn create(
         })
         .cloned()
         .collect::<Vec<_>>();
-    let project_ids = projects
+    let project_ids = all_projects
         .iter()
         .map(|project| &project.id)
         .collect::<BTreeSet<_>>();
-    let nodes = included
+    let projects = all_projects
+        .iter()
+        .filter(|project| page.owns_project(graph, &project.id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let nodes = page
+        .page_nodes
         .iter()
         .map(|id| {
             (
@@ -71,49 +67,90 @@ pub(crate) fn create(
                 graph.nodes.get(id).expect("validated node").clone(),
             )
         })
-        .collect();
-    let edges = graph
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let all_edges = graph
         .edges
         .iter()
         .filter(|edge| {
-            if !included.contains(&edge.from) {
+            if !page.included_nodes.contains(&edge.from) {
                 return false;
             }
             match &edge.to {
-                EdgeTarget::Node(target) => target != &edge.from && included.contains(target),
+                EdgeTarget::Node(target) => {
+                    target != &edge.from && page.included_nodes.contains(target)
+                }
                 _ => true,
             }
         })
         .cloned()
-        .collect();
-    let contexts = graph
+        .collect::<Vec<_>>();
+    let edges = all_edges
+        .iter()
+        .filter(|edge| page.owns_node(&edge.from))
+        .cloned()
+        .collect::<Vec<_>>();
+    let all_contexts = graph
         .contexts
         .values()
-        .filter(|context| context.roots.iter().any(|root| included.contains(root)))
+        .filter(|context| {
+            context
+                .roots
+                .iter()
+                .any(|root| page.included_nodes.contains(root))
+        })
         .map(|context| {
             let mut context = context.clone();
-            context.roots.retain(|root| included.contains(root));
+            context
+                .roots
+                .retain(|root| page.included_nodes.contains(root));
             context
         })
-        .collect();
-    let boundaries = graph
+        .collect::<Vec<_>>();
+    let contexts = all_contexts
+        .iter()
+        .filter(|context| page.owns_any(&context.roots))
+        .cloned()
+        .collect::<Vec<_>>();
+    let all_boundaries = graph
         .boundaries
         .iter()
         .filter(|boundary| {
             boundary.node.as_ref().map_or_else(
                 || project_ids.contains(&boundary.project),
-                |id| included.contains(id),
+                |id| page.included_nodes.contains(id),
             )
         })
         .cloned()
-        .collect();
+        .collect::<Vec<_>>();
+    let boundaries = all_boundaries
+        .iter()
+        .filter(|boundary| {
+            boundary.node.as_ref().map_or_else(
+                || page.owns_project(graph, &boundary.project),
+                |node| page.owns_node(node),
+            )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let omitted = ContextSliceOmitted {
+        projects: all_projects.len().saturating_sub(projects.len()),
+        nodes: page.ordered_nodes.len().saturating_sub(nodes.len()),
+        edges: all_edges.len().saturating_sub(edges.len()),
+        contexts: all_contexts.len().saturating_sub(contexts.len()),
+        boundaries: all_boundaries.len().saturating_sub(boundaries.len()),
+    };
 
     Ok(ContextSliceReport {
         schema_version: CONTEXT_SLICE_SCHEMA_VERSION,
         tool_version: env!("CARGO_PKG_VERSION").to_owned(),
         depth: request.depth,
         max_nodes: request.max_nodes,
-        truncated,
+        direction: request.direction,
+        graph_digest: page.graph_digest,
+        page_offset: page.page_offset,
+        remaining_nodes: page.ordered_nodes.len().saturating_sub(page.page_end),
+        omitted,
+        continuation: page.continuation,
         targets,
         projects,
         nodes,
@@ -143,175 +180,16 @@ fn validate_request(request: &ContextSliceRequest) -> Result<()> {
     Ok(())
 }
 
-fn resolve_target(graph: &SourceGraph, query: &str) -> Result<TargetResolution> {
-    let query = query.trim();
-    if let Some((id, _)) = graph.nodes.iter().find(|(id, _)| id.0 == query) {
-        return Ok(TargetResolution {
-            query: query.to_owned(),
-            nodes: vec![id.clone()],
-        });
-    }
-    let normalized = normalize_query(query);
-    let (project, selector) = match normalized.split_once("::") {
-        Some((project, selector)) => {
-            let project = graph
-                .projects
-                .keys()
-                .find(|candidate| candidate.0 == project)
-                .cloned()
-                .with_context(|| {
-                    format!("context target {query:?} names unknown project {project:?}")
-                })?;
-            (Some(project), selector)
-        }
-        None => (None, normalized.as_str()),
-    };
-    let (path, symbol_name) = selector
-        .split_once('#')
-        .map_or((selector, None), |(path, symbol)| (path, Some(symbol)));
-    let files = resolve_files(graph, project.as_ref(), path, query)?;
-    let mut nodes = BTreeSet::new();
-    if let Some(symbol_name) = symbol_name {
-        for (id, node) in &graph.nodes {
-            if let SourceNode::Symbol(symbol) = node {
-                if files.contains(&symbol.file) && symbol.name == symbol_name {
-                    nodes.insert(id.clone());
-                }
-            }
-        }
-    } else {
-        nodes.extend(files);
-    }
-    if nodes.is_empty() {
-        anyhow::bail!(
-            "context target {query:?} did not match an exact node ID, project::path, repository path, source path, or symbol selector"
-        );
-    }
-    Ok(TargetResolution {
-        query: query.to_owned(),
-        nodes: nodes.into_iter().collect(),
-    })
-}
-
-fn normalize_query(query: &str) -> String {
-    query.strip_prefix("./").unwrap_or(query).replace('\\', "/")
-}
-
-fn resolve_files(
-    graph: &SourceGraph,
-    project: Option<&ProjectId>,
-    path: &str,
-    query: &str,
-) -> Result<BTreeSet<NodeId>> {
-    let matches = |repository_relative: bool| {
-        graph
-            .nodes
-            .iter()
-            .filter_map(|(id, node)| match node {
-                SourceNode::File(file)
-                    if project.is_none_or(|project| &file.project == project)
-                        && if repository_relative {
-                            graph.projects.get(&file.project).is_some_and(|project| {
-                                repository_path(&project.root, &file.path) == path
-                            })
-                        } else {
-                            file.path == path
-                        } =>
-                {
-                    Some(id.clone())
-                }
-                _ => None,
-            })
-            .collect::<BTreeSet<_>>()
-    };
-    if project.is_some() {
-        return Ok(matches(false));
-    }
-    let repository_matches = matches(true);
-    if !repository_matches.is_empty() {
-        return Ok(repository_matches);
-    }
-    let project_matches = matches(false);
-    let projects = project_matches
-        .iter()
-        .filter_map(|id| graph.nodes.get(id).map(SourceNode::project))
-        .collect::<BTreeSet<_>>();
-    if projects.len() > 1 {
-        anyhow::bail!(
-            "context target {query:?} is ambiguous across projects {}; qualify it as project::path",
-            projects
-                .iter()
-                .map(|project| project.0.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
-    Ok(project_matches)
-}
-
-fn repository_path(project_root: &str, file_path: &str) -> String {
-    let root = project_root.trim_matches('/');
-    if root.is_empty() || root == "." {
-        file_path.to_string()
-    } else {
-        format!("{root}/{file_path}")
-    }
-}
-
-fn expand(
-    graph: &SourceGraph,
-    roots: BTreeSet<NodeId>,
-    depth: usize,
-    max_nodes: usize,
-) -> (BTreeSet<NodeId>, bool) {
-    let mut included = roots.clone();
-    let mut frontier = roots.into_iter().collect::<VecDeque<_>>();
-    let mut truncated = false;
-    for _ in 0..depth {
-        let mut candidates = BTreeSet::new();
-        while let Some(current) = frontier.pop_front() {
-            for edge in &graph.edges {
-                match &edge.to {
-                    EdgeTarget::Node(target)
-                        if edge.from == current && !included.contains(target) =>
-                    {
-                        candidates.insert(target.clone());
-                    }
-                    EdgeTarget::Node(target)
-                        if *target == current && !included.contains(&edge.from) =>
-                    {
-                        candidates.insert(edge.from.clone());
-                    }
-                    _ => {}
-                }
-            }
-        }
-        if candidates.is_empty() {
-            break;
-        }
-        let available = max_nodes.saturating_sub(included.len());
-        if candidates.len() > available {
-            truncated = true;
-        }
-        let selected = candidates.into_iter().take(available).collect::<Vec<_>>();
-        if selected.is_empty() {
-            break;
-        }
-        included.extend(selected.iter().cloned());
-        frontier.extend(selected);
-    }
-    (included, truncated)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{create, ContextSliceRequest};
+    use crate::context_slice::ContextDirection;
     use crate::domain::source_graph::{
         AnalysisCompleteness, ContextId, ContextRole, ContextScope, EdgeTarget, NodeId, ProjectId,
         SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph,
         SourceLanguage, SourceNode, SourceProject,
     };
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
 
     fn graph() -> SourceGraph {
         let project = ProjectId("example".to_owned());
@@ -388,6 +266,8 @@ mod tests {
                 targets: vec!["src/b.ts".to_owned()],
                 depth: 1,
                 max_nodes: 10,
+                direction: ContextDirection::Both,
+                continuation: None,
             },
         )
         .expect("slice");
@@ -398,22 +278,42 @@ mod tests {
             .roots
             .iter()
             .all(|root| report.nodes.contains_key(root)));
-        assert!(!report.truncated);
+        assert!(report.continuation.is_none());
+        assert_eq!(report.omitted.nodes, 0);
     }
 
     #[test]
-    fn node_budget_truncates_deterministically() {
+    fn node_budget_pages_deterministically() {
         let report = create(
             &graph(),
             &ContextSliceRequest {
                 targets: vec!["src/b.ts".to_owned()],
                 depth: 1,
                 max_nodes: 2,
+                direction: ContextDirection::Both,
+                continuation: None,
             },
         )
         .expect("slice");
         assert_eq!(report.nodes.len(), 2);
-        assert!(report.truncated);
+        assert_eq!(report.remaining_nodes, 1);
+        assert_eq!(report.omitted.nodes, 1);
+        let continuation = report.continuation.expect("continuation cursor");
+        let resumed = create(
+            &graph(),
+            &ContextSliceRequest {
+                targets: vec!["src/b.ts".to_owned()],
+                depth: 1,
+                max_nodes: 2,
+                direction: ContextDirection::Both,
+                continuation: Some(continuation),
+            },
+        )
+        .expect("resumed slice");
+        assert_eq!(resumed.page_offset, 2);
+        assert_eq!(resumed.nodes.len(), 1);
+        assert_eq!(resumed.remaining_nodes, 0);
+        assert!(resumed.continuation.is_none());
     }
 
     #[test]
@@ -449,10 +349,12 @@ mod tests {
                 ],
                 depth: 0,
                 max_nodes: 10,
+                direction: ContextDirection::Both,
+                continuation: None,
             },
         )
         .expect("batched project-aware slice");
-        assert_eq!(report.schema_version, 2);
+        assert_eq!(report.schema_version, 3);
         assert_eq!(report.targets.len(), 2);
         assert_eq!(report.targets[0].nodes.len(), 1);
         assert_eq!(report.targets[1].nodes, [file]);
@@ -461,5 +363,149 @@ mod tests {
             .edges
             .iter()
             .all(|edge| !matches!(&edge.to, EdgeTarget::Node(target) if target == &edge.from)));
+    }
+
+    #[test]
+    fn traversal_direction_selects_callers_or_callees() {
+        let graph = graph();
+        let nodes = |direction| {
+            create(
+                &graph,
+                &ContextSliceRequest {
+                    targets: vec!["src/b.ts".to_owned()],
+                    depth: 1,
+                    max_nodes: 10,
+                    direction,
+                    continuation: None,
+                },
+            )
+            .expect("directed slice")
+            .nodes
+        };
+        let incoming = nodes(ContextDirection::Incoming);
+        let outgoing = nodes(ContextDirection::Outgoing);
+        assert!(incoming
+            .values()
+            .any(|node| { matches!(node, SourceNode::File(file) if file.path == "src/a.ts") }));
+        assert!(!incoming
+            .values()
+            .any(|node| { matches!(node, SourceNode::File(file) if file.path == "src/c.ts") }));
+        assert!(outgoing
+            .values()
+            .any(|node| { matches!(node, SourceNode::File(file) if file.path == "src/c.ts") }));
+        assert!(!outgoing
+            .values()
+            .any(|node| { matches!(node, SourceNode::File(file) if file.path == "src/a.ts") }));
+    }
+
+    #[test]
+    fn continuation_rejects_changed_graphs_and_requests() {
+        let graph = graph();
+        let first = create(
+            &graph,
+            &ContextSliceRequest {
+                targets: vec!["src/b.ts".to_owned()],
+                depth: 1,
+                max_nodes: 1,
+                direction: ContextDirection::Both,
+                continuation: None,
+            },
+        )
+        .expect("first page");
+        let cursor = first.continuation.expect("continuation cursor");
+        let request_error = create(
+            &graph,
+            &ContextSliceRequest {
+                targets: vec!["src/b.ts".to_owned()],
+                depth: 1,
+                max_nodes: 1,
+                direction: ContextDirection::Incoming,
+                continuation: Some(cursor.clone()),
+            },
+        )
+        .expect_err("changed request should reject cursor");
+        assert!(request_error.to_string().contains("does not match"));
+
+        let mut changed = graph;
+        changed
+            .boundaries
+            .insert(crate::domain::source_graph::AnalysisBoundary {
+                project: ProjectId("example".to_owned()),
+                node: None,
+                kind: crate::domain::source_graph::BoundaryKind::Reflection,
+                effect: AnalysisCompleteness::Partial,
+                message: "changed evidence".to_owned(),
+                evidence: SourceEvidence::new("src/b.ts", None, "test"),
+            });
+        let stale_error = create(
+            &changed,
+            &ContextSliceRequest {
+                targets: vec!["src/b.ts".to_owned()],
+                depth: 1,
+                max_nodes: 1,
+                direction: ContextDirection::Both,
+                continuation: Some(cursor),
+            },
+        )
+        .expect_err("changed graph should reject cursor");
+        assert!(stale_error.to_string().contains("stale"));
+    }
+
+    #[test]
+    fn resumed_pages_reconstruct_the_complete_directed_slice() {
+        let graph = graph();
+        let full = create(
+            &graph,
+            &ContextSliceRequest {
+                targets: vec!["src/b.ts".to_owned()],
+                depth: 1,
+                max_nodes: 10,
+                direction: ContextDirection::Both,
+                continuation: None,
+            },
+        )
+        .expect("complete slice");
+        let mut continuation = None;
+        let mut nodes = BTreeMap::new();
+        let mut edges = BTreeSet::new();
+        let mut projects = BTreeMap::new();
+        let mut contexts = BTreeMap::new();
+        let mut boundaries = BTreeSet::new();
+        loop {
+            let page = create(
+                &graph,
+                &ContextSliceRequest {
+                    targets: vec!["src/b.ts".to_owned()],
+                    depth: 1,
+                    max_nodes: 1,
+                    direction: ContextDirection::Both,
+                    continuation,
+                },
+            )
+            .expect("context page");
+            assert_eq!(page.graph_digest, full.graph_digest);
+            nodes.extend(page.nodes);
+            edges.extend(page.edges);
+            projects.extend(
+                page.projects
+                    .into_iter()
+                    .map(|project| (project.id.clone(), project)),
+            );
+            contexts.extend(
+                page.contexts
+                    .into_iter()
+                    .map(|context| (context.id.clone(), context)),
+            );
+            boundaries.extend(page.boundaries);
+            continuation = page.continuation;
+            if continuation.is_none() {
+                break;
+            }
+        }
+        assert_eq!(nodes, full.nodes);
+        assert_eq!(edges.into_iter().collect::<Vec<_>>(), full.edges);
+        assert_eq!(projects.into_values().collect::<Vec<_>>(), full.projects);
+        assert_eq!(contexts.into_values().collect::<Vec<_>>(), full.contexts);
+        assert_eq!(boundaries.into_iter().collect::<Vec<_>>(), full.boundaries);
     }
 }

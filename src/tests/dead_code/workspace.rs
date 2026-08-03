@@ -102,6 +102,7 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     let b_feature = NodeId::file(&package_b, "src/features/feature.ts");
     let b_alias = NodeId::file(&package_b, "src/aliasShared.ts");
     let b_docs_meta = NodeId::file(&package_b, "docs/meta/demo.ts");
+    let b_excluded_docs_meta = NodeId::file(&package_b, "docs/meta/excluded.ts");
     let b_shared = NodeId::file(&package_b, "src/sharedRuntime.ts");
     let b_alias_factory = NodeId::file(&package_b, "src/workspaceAliases.ts");
     let b_canvas_shim = NodeId::file(&package_b, "src/canvasBrowserShim.js");
@@ -159,6 +160,15 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
         }),
         "missing workspace glob edge in {glob_edges:#?}"
     );
+    assert!(
+        !glob_edges.iter().any(|edge| {
+            edge.from == root_docs && edge.to == EdgeTarget::Node(b_excluded_docs_meta.clone())
+        }),
+        "excluded workspace glob edge in {glob_edges:#?}"
+    );
+    assert!(!graph.boundaries.iter().any(|boundary| {
+        boundary.project == docs_project && boundary.message.contains("excluded.ts")
+    }));
     assert!(graph.edges.iter().any(|edge| {
         edge.from == a_entry
             && edge.kind == SourceEdgeKind::WorkspaceSourceBypass

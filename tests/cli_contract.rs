@@ -270,7 +270,13 @@ fn dead_code_check_only_fails_when_gating_is_requested() {
         &fs::read(&checked_report_path).expect("checked dead-code report should be written"),
     )
     .expect("dead-code report should be JSON");
-    assert_eq!(report["schema_version"], 4);
+    assert_eq!(report["schema_version"], 5);
+    assert!(report["findings"]
+        .as_array()
+        .expect("findings should be an array")
+        .iter()
+        .all(|finding| finding.get("evidence_class").is_some()
+            && finding.get("source_disposition").is_some()));
     assert!(report["findings"]
         .as_array()
         .expect("findings should be an array")
@@ -299,14 +305,83 @@ fn dead_code_check_fails_closed_for_required_incomplete_projects() {
         &fs::read(&report_path).expect("required-complete report should be written"),
     )
     .expect("required-complete report should be JSON");
-    assert_eq!(report["schema_version"], 4);
+    assert_eq!(report["schema_version"], 5);
     assert_eq!(report["projects"][0]["require_complete"], true);
     assert_eq!(report["projects"][0]["completeness"], "partial");
+    assert!(!report["projects"][0]["completeness_reasons"]
+        .as_array()
+        .expect("completeness reasons should be an array")
+        .is_empty());
     assert!(report["findings"]
         .as_array()
         .expect("findings should be an array")
         .iter()
         .all(|finding| finding["gates"] == false));
+}
+
+#[test]
+fn dead_code_text_prioritizes_gates_and_groups_advisories() {
+    let fixture = fixture("dead-code/ecmascript");
+    let output = run(&[
+        "--root",
+        fixture.to_str().expect("fixture path should be UTF-8"),
+        "usage",
+        "code",
+    ]);
+    assert_success(&output, "dead-code text report");
+    let stdout = String::from_utf8(output.stdout).expect("report should be UTF-8");
+    assert!(stdout.contains("Gating findings:"));
+    assert!(stdout.contains("Advisory triage:"));
+    assert!(stdout.contains("Use --format json for exact advisory evidence."));
+    assert!(stdout.contains("boundary-limited"));
+}
+
+#[test]
+fn inspect_code_resumes_exact_directed_pages() {
+    let fixture = fixture("dead-code/ecmascript");
+    let root = fixture.to_str().expect("fixture path should be UTF-8");
+    let first = run(&[
+        "--root",
+        root,
+        "inspect",
+        "code",
+        "src/index.ts",
+        "--depth",
+        "2",
+        "--max-nodes",
+        "1",
+        "--direction",
+        "outgoing",
+    ]);
+    assert_success(&first, "first context page");
+    let first: Value = serde_json::from_slice(&first.stdout).expect("context page should be JSON");
+    assert_eq!(first["schema_version"], 3);
+    assert_eq!(first["direction"], "outgoing");
+    assert_eq!(first["page_offset"], 0);
+    let cursor = first["continuation"]
+        .as_str()
+        .expect("first page should have a continuation cursor");
+
+    let second = run(&[
+        "--root",
+        root,
+        "inspect",
+        "code",
+        "src/index.ts",
+        "--depth",
+        "2",
+        "--max-nodes",
+        "1",
+        "--direction",
+        "outgoing",
+        "--cursor",
+        cursor,
+    ]);
+    assert_success(&second, "resumed context page");
+    let second: Value =
+        serde_json::from_slice(&second.stdout).expect("resumed context page should be JSON");
+    assert_eq!(second["page_offset"], 1);
+    assert_eq!(second["graph_digest"], first["graph_digest"]);
 }
 
 #[test]

@@ -1,10 +1,12 @@
 use crate::domain::source_graph::{
-    AnalysisCompleteness, ContextRole, FindingConfidence, NodeId, SourceEvidence, SourceLanguage,
+    AnalysisCompleteness, BoundaryKind, ContextRole, FindingConfidence, NodeId, SourceEvidence,
+    SourceLanguage,
 };
+use crate::domain::{EvidenceClass, SourceDisposition};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(crate) const DEAD_CODE_SCHEMA_VERSION: u32 = 4;
+pub(crate) const DEAD_CODE_SCHEMA_VERSION: u32 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DeadCodeReport {
@@ -66,10 +68,19 @@ pub(crate) struct DeadCodeProjectSummary {
     pub project: String,
     pub root: String,
     pub completeness: AnalysisCompleteness,
+    pub completeness_reasons: Vec<DeadCodeCompletenessReason>,
     pub require_complete: bool,
     pub files: usize,
     pub files_by_language: BTreeMap<SourceLanguage, usize>,
     pub symbols: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct DeadCodeCompletenessReason {
+    pub kind: BoundaryKind,
+    pub effect: AnalysisCompleteness,
+    pub message: String,
+    pub evidence: SourceEvidence,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -88,6 +99,8 @@ pub(crate) struct DeadCodeFinding {
     pub root_contexts: Vec<DeadCodeRootContext>,
     pub roles: BTreeSet<ContextRole>,
     pub confidence: FindingConfidence,
+    pub evidence_class: EvidenceClass,
+    pub source_disposition: SourceDisposition,
     pub evidence: SourceEvidence,
     pub message: String,
     pub gates: bool,
