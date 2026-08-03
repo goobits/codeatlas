@@ -18,6 +18,7 @@ pub(super) fn collect_project_modules(
     project: &ResolvedAnalysisProject,
     languages: &BTreeSet<SourceLanguage>,
     modules: &mut BTreeMap<ModuleKey, Module>,
+    index: &crate::source_index::SourceIndex,
 ) -> Result<ProjectEvidence> {
     let mut runtime_entrypoints = crate::package::discover_runtime_entrypoints(&project.root)?;
     runtime_entrypoints.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
@@ -109,13 +110,20 @@ pub(super) fn collect_project_modules(
             )
             .map_err(anyhow::Error::from)?;
 
-        let info = match language {
-            SourceLanguage::Svelte => crate::languages::svelte::reachability::parse_module_info(
-                &source_path,
-                &project.root,
-            ),
-            _ => parser::parse_module_info(&source_path, &project.root),
-        };
+        let info = index.parse_file(
+            match language {
+                SourceLanguage::Svelte => "svelte-module-v1",
+                _ => "ecmascript-module-v1",
+            },
+            &source_path,
+            &project.root,
+            |source| match language {
+                SourceLanguage::Svelte => {
+                    crate::languages::svelte::reachability::parse_source(&path, source)
+                }
+                _ => parser::parse_source(source, &path),
+            },
+        );
         let info = match info {
             Ok(info) => info,
             Err(error) => {

@@ -141,6 +141,14 @@ fn should_descend(
     }
 
     let relative = crate::paths::normalize_relative_path(path, root);
+    if name == "target"
+        && relative
+            .split('/')
+            .take_while(|part| *part != "target")
+            .any(|part| part == "src")
+    {
+        return true;
+    }
     if is_conventional_fixture_boundary(&relative) {
         return patterns
             .iter()
@@ -262,6 +270,29 @@ mod tests {
             root,
             false,
             &["tests/fixtures/http/**/*.ts".to_string()],
+        ));
+    }
+
+    #[test]
+    fn source_directories_named_target_are_not_cargo_output() {
+        let root = Path::new("/repository");
+        assert!(should_descend(
+            3,
+            true,
+            "target",
+            &root.join("src/http/target"),
+            root,
+            false,
+            &[],
+        ));
+        assert!(!should_descend(
+            3,
+            true,
+            "target",
+            &root.join("crates/http/target"),
+            root,
+            false,
+            &[],
         ));
     }
 

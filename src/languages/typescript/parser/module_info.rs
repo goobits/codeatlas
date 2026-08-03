@@ -1,4 +1,5 @@
 use crate::domain::Symbol;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use swc_core::common::{sync::Lrc, SourceMap};
 use swc_core::ecma::ast::*;
@@ -12,17 +13,19 @@ mod dependencies;
 mod exports;
 mod import_meta_globs;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct ExportName {
     pub exported: String,
     pub original: String,
 }
 
+#[derive(Serialize, Deserialize)]
 pub(crate) struct ReExport {
     pub source: String,
     pub names: Vec<ExportName>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub(crate) struct ExportInfo {
     pub local_exports: Vec<String>,
     pub local_export_names: Vec<ExportName>,
@@ -31,6 +34,7 @@ pub(crate) struct ExportInfo {
     pub default_export: Option<String>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub(crate) struct ImportInfo {
     pub source: String,
     pub named: Vec<String>,
@@ -40,7 +44,7 @@ pub(crate) struct ImportInfo {
     pub bindings: Vec<ImportBinding>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct ImportBinding {
     pub imported: String,
     pub local: String,
@@ -48,6 +52,7 @@ pub(crate) struct ImportBinding {
     pub type_only: bool,
 }
 
+#[derive(Serialize, Deserialize)]
 pub(crate) struct TypeScriptModuleInfo {
     pub symbols: Vec<Symbol>,
     pub exports: ExportInfo,
@@ -56,7 +61,7 @@ pub(crate) struct TypeScriptModuleInfo {
     pub has_shebang: bool,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct ReachabilityFacts {
     pub top_level_references: BTreeSet<String>,
     pub symbol_references: BTreeMap<String, BTreeSet<String>>,
@@ -68,14 +73,14 @@ pub(crate) struct ReachabilityFacts {
     pub declaration_only: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DynamicDependency {
     pub target: DynamicDependencyTarget,
     pub kind: DynamicDependencyKind,
     pub span: crate::domain::Span,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) enum DynamicDependencyTarget {
     Literal(String),
     Pattern {
@@ -89,7 +94,7 @@ pub(crate) enum DynamicDependencyTarget {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) enum DynamicDependencyKind {
     Import,
     ImportMetaGlob,

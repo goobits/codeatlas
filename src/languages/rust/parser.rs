@@ -1,5 +1,6 @@
 use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use syn::{
@@ -9,7 +10,7 @@ use syn::{
 
 mod reachability;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct UseExport {
     pub module_path: Vec<String>,
     pub name: String,
@@ -18,7 +19,7 @@ pub(crate) struct UseExport {
     pub visibility: RustVisibility,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ModuleDeclaration {
     pub name: String,
     pub path_override: Option<String>,
@@ -28,7 +29,7 @@ pub(crate) struct ModuleDeclaration {
     pub visibility: RustVisibility,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) enum RustVisibility {
     Public,
     Restricted(Vec<String>),
@@ -41,7 +42,7 @@ impl RustVisibility {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct RustReachabilityFacts {
     pub top_level_paths: BTreeSet<Vec<String>>,
     pub symbol_paths: BTreeMap<String, BTreeSet<Vec<String>>>,
@@ -52,20 +53,20 @@ pub(crate) struct RustReachabilityFacts {
     pub test_symbols: BTreeSet<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RustEmbeddedSource {
     pub owner: Option<String>,
     pub path: String,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) enum RustUncertaintyKind {
     ConditionalCompilation,
     MacroExpansion,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RustUncertainty {
     pub owner: Option<String>,
     pub kind: RustUncertaintyKind,
@@ -73,7 +74,7 @@ pub(crate) struct RustUncertainty {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RustModuleInfo {
     pub symbols: Vec<Symbol>,
     pub symbol_visibilities: BTreeMap<String, Vec<RustVisibility>>,

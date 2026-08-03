@@ -26,6 +26,7 @@ pub(crate) mod resolver;
 pub(crate) fn collect_projects(
     graph: &mut SourceGraph,
     projects: &[ProjectSelection<'_>],
+    index: &crate::source_index::SourceIndex,
 ) -> Result<()> {
     let project_uses_vitest = projects
         .par_iter()
@@ -54,6 +55,7 @@ pub(crate) fn collect_projects(
                 project,
                 languages,
                 &mut local_modules,
+                index,
             )?;
             Ok((project.id.clone(), local_graph, local_modules, evidence))
         })

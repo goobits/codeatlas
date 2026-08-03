@@ -27,6 +27,7 @@ mod resolver;
 pub(crate) fn collect_projects(
     graph: &mut SourceGraph,
     projects: &[&ResolvedAnalysisProject],
+    index: &crate::source_index::SourceIndex,
 ) -> Result<()> {
     let workers = std::thread::available_parallelism()
         .map_or(1, std::num::NonZeroUsize::get)
@@ -54,7 +55,7 @@ pub(crate) fn collect_projects(
         layouts.extend(loaded);
     }
     for (project, cargo) in layouts {
-        collect_project(graph, project, &cargo)?;
+        collect_project(graph, project, &cargo, index)?;
     }
     Ok(())
 }
@@ -63,9 +64,10 @@ fn collect_project(
     graph: &mut SourceGraph,
     project: &ResolvedAnalysisProject,
     cargo: &CargoLayout,
+    index: &crate::source_index::SourceIndex,
 ) -> Result<()> {
     let mut modules = BTreeMap::new();
-    collect_modules(graph, project, cargo, &mut modules)?;
+    collect_modules(graph, project, cargo, &mut modules, index)?;
     let resolver = RustResolver::new(cargo, &modules);
 
     for module in modules.values() {
@@ -92,6 +94,7 @@ fn collect_modules(
     project: &ResolvedAnalysisProject,
     cargo: &CargoLayout,
     modules: &mut BTreeMap<ModuleKey, Module>,
+    index: &crate::source_index::SourceIndex,
 ) -> Result<()> {
     let target_patterns = cargo
         .targets()
@@ -145,21 +148,9 @@ fn collect_modules(
                 }),
             )
             .map_err(anyhow::Error::from)?;
-        let source = match std::fs::read_to_string(&source_path) {
-            Ok(source) => source,
-            Err(error) => {
-                graph.record_boundary(
-                    &project.id,
-                    Some(file),
-                    BoundaryKind::UnsupportedSyntax,
-                    AnalysisCompleteness::Partial,
-                    format!("Could not read {path}: {error}"),
-                    SourceEvidence::new(path, None, EXTRACTOR),
-                );
-                continue;
-            }
-        };
-        let info = match parser::parse_module_info(&source_path, &project.root, &source) {
+        let info = match index.parse_file("rust-module-v1", &source_path, &project.root, |source| {
+            parser::parse_module_info(&source_path, &project.root, source)
+        }) {
             Ok(info) => info,
             Err(error) => {
                 graph.record_boundary(

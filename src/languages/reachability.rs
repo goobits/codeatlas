@@ -51,6 +51,15 @@ pub(crate) fn discover_project_sources_with_patterns(
 }
 
 pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result<SourceGraph> {
+    crate::source_index::build_graph(projects, |index| {
+        build_source_graph_uncached(projects, index)
+    })
+}
+
+fn build_source_graph_uncached(
+    projects: &[ResolvedAnalysisProject],
+    index: &crate::source_index::SourceIndex,
+) -> Result<SourceGraph> {
     if projects.is_empty() {
         anyhow::bail!("CodeAtlas needs at least one analysis project");
     }
@@ -99,19 +108,19 @@ pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result
             (!selected.is_empty()).then_some((project, selected))
         })
         .collect::<Vec<_>>();
-    crate::languages::ecmascript::collect_projects(&mut graph, &ecmascript_projects)?;
+    crate::languages::ecmascript::collect_projects(&mut graph, &ecmascript_projects, index)?;
 
     let python_projects = projects
         .iter()
         .filter(|project| languages_by_project[&project.id].contains(&SourceLanguage::Python))
         .collect::<Vec<_>>();
-    crate::languages::python::reachability::collect_projects(&mut graph, &python_projects)?;
+    crate::languages::python::reachability::collect_projects(&mut graph, &python_projects, index)?;
 
     let rust_projects = projects
         .iter()
         .filter(|project| languages_by_project[&project.id].contains(&SourceLanguage::Rust))
         .collect::<Vec<_>>();
-    crate::languages::rust::reachability::collect_projects(&mut graph, &rust_projects)?;
+    crate::languages::rust::reachability::collect_projects(&mut graph, &rust_projects, index)?;
 
     for project in projects {
         if languages_by_project[&project.id].is_empty() {

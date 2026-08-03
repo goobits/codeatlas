@@ -3,13 +3,14 @@ use anyhow::Result;
 use rustpython_parser::source_code::LineIndex;
 use rustpython_parser::text_size::TextRange;
 use rustpython_parser::{ast, Parse};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 
 mod reachability;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PythonImport {
     pub module: String,
     pub names: Vec<String>,
@@ -18,7 +19,7 @@ pub(crate) struct PythonImport {
     pub aliases: Vec<Option<String>>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct PythonReachabilityFacts {
     pub top_level_references: BTreeSet<String>,
     pub top_level_qualified_references: BTreeSet<String>,
@@ -30,26 +31,26 @@ pub(crate) struct PythonReachabilityFacts {
     pub uncertainties: Vec<PythonUncertainty>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PythonScopedImport {
     pub owner: String,
     pub import: PythonImport,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PythonDynamicDependency {
     pub owner: Option<String>,
     pub module: Option<String>,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) enum PythonUncertaintyKind {
     DynamicImport,
     Reflection,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PythonUncertainty {
     pub owner: Option<String>,
     pub kind: PythonUncertaintyKind,
@@ -57,7 +58,7 @@ pub(crate) struct PythonUncertainty {
     pub message: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PythonModuleInfo {
     pub symbols: Vec<Symbol>,
     pub exports: Option<Vec<String>>,

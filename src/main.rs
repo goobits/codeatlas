@@ -8,6 +8,7 @@ mod config;
 mod context_slice;
 mod dead_code;
 mod domain;
+mod environment;
 mod external_tool;
 mod filesystem;
 mod http;
@@ -18,6 +19,7 @@ mod package;
 mod paths;
 mod postgres;
 mod source_discovery;
+mod source_index;
 mod source_policy;
 mod testing;
 

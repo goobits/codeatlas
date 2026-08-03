@@ -33,12 +33,13 @@ const TEST_DISCOVERY_PATTERNS: [&str; 3] = ["**/test_*.py", "**/*_test.py", "**/
 pub(crate) fn collect_projects(
     graph: &mut SourceGraph,
     projects: &[&ResolvedAnalysisProject],
+    index: &crate::source_index::SourceIndex,
 ) -> Result<()> {
     let mut modules = BTreeMap::new();
     let mut source_roots = BTreeMap::new();
     for project in projects {
         let roots = python_source_roots(&project.root)?;
-        collect_project_modules(graph, project, &roots, &mut modules)?;
+        collect_project_modules(graph, project, &roots, &mut modules, index)?;
         source_roots.insert(project.id.clone(), roots);
     }
 
@@ -72,6 +73,7 @@ fn collect_project_modules(
     project: &ResolvedAnalysisProject,
     source_roots: &[PathBuf],
     modules: &mut BTreeMap<ModuleKey, Module>,
+    index: &crate::source_index::SourceIndex,
 ) -> Result<()> {
     let test_patterns = TEST_DISCOVERY_PATTERNS.map(str::to_string);
     let discovery =
@@ -108,34 +110,26 @@ fn collect_project_modules(
             )
             .map_err(anyhow::Error::from)?;
 
-        let source = match std::fs::read_to_string(&source_path) {
-            Ok(source) => source,
-            Err(error) => {
-                graph.record_boundary(
-                    &project.id,
-                    Some(file),
-                    BoundaryKind::UnsupportedSyntax,
-                    AnalysisCompleteness::Partial,
-                    format!("Could not read {path}: {error}"),
-                    SourceEvidence::new(path, None, EXTRACTOR),
-                );
-                continue;
-            }
-        };
-        let info = match parser::parse_module_info(&source_path, &project.root, &source) {
-            Ok(info) => info,
-            Err(error) => {
-                graph.record_boundary(
-                    &project.id,
-                    Some(file),
-                    BoundaryKind::UnsupportedSyntax,
-                    AnalysisCompleteness::Partial,
-                    format!("Could not parse {path}: {error}"),
-                    SourceEvidence::new(path, None, EXTRACTOR),
-                );
-                continue;
-            }
-        };
+        let (info, script) =
+            match index.parse_file("python-module-v1", &source_path, &project.root, |source| {
+                Ok((
+                    parser::parse_module_info(&source_path, &project.root, source)?,
+                    source.starts_with("#!"),
+                ))
+            }) {
+                Ok(info) => info,
+                Err(error) => {
+                    graph.record_boundary(
+                        &project.id,
+                        Some(file),
+                        BoundaryKind::UnsupportedSyntax,
+                        AnalysisCompleteness::Partial,
+                        format!("Could not parse {path}: {error}"),
+                        SourceEvidence::new(path, None, EXTRACTOR),
+                    );
+                    continue;
+                }
+            };
         let mut names = module_names(&path, source_roots);
         let canonical_name = names
             .iter()
@@ -154,7 +148,7 @@ fn collect_project_modules(
                 names,
                 canonical_name,
                 info,
-                script: source.starts_with("#!"),
+                script,
                 symbols,
             },
         );

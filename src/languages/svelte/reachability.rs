@@ -1,14 +1,6 @@
 use super::parser;
 use crate::languages::typescript::parser::TypeScriptModuleInfo;
-use anyhow::{Context, Result};
-use std::path::Path;
-
-pub(crate) fn parse_module_info(file_path: &Path, root_dir: &Path) -> Result<TypeScriptModuleInfo> {
-    let source = std::fs::read_to_string(file_path)
-        .with_context(|| format!("Could not read {}", file_path.display()))?;
-    let relative_path = crate::paths::normalize_relative_path(file_path, root_dir);
-    parse_source(&relative_path, &source)
-}
+use anyhow::Result;
 
 pub(crate) fn parse_source(relative_path: &str, source: &str) -> Result<TypeScriptModuleInfo> {
     let mut combined = crate::languages::typescript::parser::parse_source("", relative_path)?;

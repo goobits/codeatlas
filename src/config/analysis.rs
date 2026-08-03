@@ -71,7 +71,7 @@ pub(crate) enum TestSubjectConfig {
     Source(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct ResolvedAnalysisProject {
     pub id: crate::domain::source_graph::ProjectId,
     pub root: PathBuf,
