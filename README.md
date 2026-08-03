@@ -11,6 +11,7 @@ claiming certainty when the source graph is incomplete.
 npx @goobits/codeatlas scan .
 npx @goobits/codeatlas scan packages/example --scope source --all --format json
 npx @goobits/codeatlas lexicon packages/example --format json
+npx @goobits/codeatlas lexicon . --workspace --format json
 npx @goobits/codeatlas audit .
 npx @goobits/codeatlas audit packages/example --consumer-root .
 npx @goobits/codeatlas ci . --workspace --fail-unused false --baseline public-api.json
@@ -92,6 +93,9 @@ no fuzzy or probabilistic naming guesses are used. Package exposure is derived
 only from each symbol's `export_paths`, so an exported declaration in an
 implementation-only file is not mislabeled as public API. Use text for a short
 review or JSON for the complete term and public-symbol inventory.
+`lexicon --workspace` scans maintained source once, partitions symbols by the
+nearest pnpm workspace package, and preserves workspace-relative paths, package
+ownership, and each package's public export paths in the aggregate report.
 
 ## Declared Architecture
 

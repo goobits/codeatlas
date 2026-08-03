@@ -67,6 +67,8 @@ pub(crate) struct LexiconSymbol {
     pub kind: SymbolKind,
     pub visibility: Visibility,
     pub language: Language,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
     pub file_path: String,
     pub signature: String,
     pub export_paths: Vec<String>,

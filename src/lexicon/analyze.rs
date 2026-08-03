@@ -306,6 +306,7 @@ fn symbol_reference(symbol: &Symbol) -> LexiconSymbol {
         kind: symbol.kind,
         visibility: symbol.visibility,
         language: symbol.language,
+        package: symbol.package.clone(),
         file_path: symbol.file_path.clone(),
         signature: normalize_whitespace(&symbol.signature),
         export_paths,

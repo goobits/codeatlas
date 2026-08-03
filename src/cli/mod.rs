@@ -57,6 +57,9 @@ enum Command {
         /// Path to scan
         #[arg(default_value = ".")]
         path: PathBuf,
+        /// Preserve package ownership while scanning the nearest pnpm workspace
+        #[arg(long)]
+        workspace: bool,
         /// Output format
         #[arg(short, long, value_enum, default_value_t = LexiconFormat::Text)]
         format: LexiconFormat,
@@ -216,9 +219,18 @@ pub(crate) fn run() -> i32 {
             scope,
             out,
         } => commands::run_scan(&path, format, all, scope, out, config_path.as_deref()),
-        Command::Lexicon { path, format, out } => {
-            commands::lexicon::run(&path, format, out.as_deref(), config_path.as_deref())
-        }
+        Command::Lexicon {
+            path,
+            workspace,
+            format,
+            out,
+        } => commands::lexicon::run(
+            &path,
+            workspace,
+            format,
+            out.as_deref(),
+            config_path.as_deref(),
+        ),
         Command::Audit {
             path,
             consumer_root,

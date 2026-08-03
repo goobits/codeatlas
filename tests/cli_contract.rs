@@ -178,6 +178,42 @@ fn lexicon_reports_source_collisions_without_mislabeling_public_exposure() {
 }
 
 #[test]
+fn workspace_lexicon_preserves_package_ownership_and_public_exposure() {
+    let fixture = fixture("testing");
+    let config = fixture.join("codeatlas.json");
+    let output = run(&[
+        "lexicon",
+        fixture.to_str().expect("fixture path should be UTF-8"),
+        "--workspace",
+        "--config",
+        config.to_str().expect("config path should be UTF-8"),
+        "--format",
+        "json",
+    ]);
+    assert_success(&output, "workspace lexicon report");
+    let report: Value =
+        serde_json::from_slice(&output.stdout).expect("workspace lexicon report should be JSON");
+
+    assert!(report["stats"]["public_symbols"].as_u64().unwrap_or(0) >= 2);
+    let public_symbols = report["public_symbols"]
+        .as_array()
+        .expect("public symbols should be an array");
+    assert!(public_symbols.iter().any(|symbol| {
+        symbol["name"] == "createBrush"
+            && symbol["package"] == "@fixture/brush"
+            && symbol["file_path"] == "packages/brush/src/brush.ts"
+            && symbol["export_paths"]
+                .as_array()
+                .is_some_and(|paths| paths.iter().any(|path| path == "@fixture/brush"))
+    }));
+    assert!(public_symbols.iter().any(|symbol| {
+        symbol["name"] == "defaultBrush"
+            && symbol["package"] == "@fixture/consumer"
+            && symbol["file_path"] == "packages/consumer/src/index.ts"
+    }));
+}
+
+#[test]
 fn dead_code_check_only_fails_when_gating_is_requested() {
     let output_directory = TestDirectory::create("codeatlas-cli-contract");
     let fixture = fixture("dead-code/ecmascript");
