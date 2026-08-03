@@ -1113,7 +1113,10 @@ pub(crate) fn is_declaration_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| {
-            name.ends_with(".d.ts") || name.ends_with(".d.mts") || name.ends_with(".d.cts")
+            name.ends_with(".d.ts")
+                || name.ends_with(".d.mts")
+                || name.ends_with(".d.cts")
+                || name.ends_with(".d.svelte.ts")
         })
 }
 
@@ -1224,6 +1227,20 @@ pub(crate) fn resolve_relative_module(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recognizes_typescript_and_svelte_declaration_files() {
+        for path in [
+            "index.d.ts",
+            "index.d.mts",
+            "index.d.cts",
+            "Component.d.svelte.ts",
+        ] {
+            assert!(is_declaration_file(Path::new(path)), "{path}");
+        }
+        assert!(!is_declaration_file(Path::new("Component.svelte.ts")));
+        assert!(!is_declaration_file(Path::new("component.ts")));
+    }
 
     #[test]
     fn alias_config_inherits_from_the_nearest_package_root() {

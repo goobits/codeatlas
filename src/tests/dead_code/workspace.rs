@@ -229,6 +229,20 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     assert!(report.findings.iter().any(|finding| {
         finding.kind == DeadCodeFindingKind::WorkspaceSourceBypass && finding.gates
     }));
+    let workspace_root_bypass = report
+        .findings
+        .iter()
+        .find(|finding| {
+            finding.project == "@fixture/root"
+                && finding.path == "shared/browserRuntime.ts"
+                && finding.kind == DeadCodeFindingKind::WorkspaceSourceBypass
+        })
+        .expect("workspace-root source boundary");
+    assert_eq!(workspace_root_bypass.confidence, FindingConfidence::High);
+    assert!(!workspace_root_bypass.gates);
+    assert!(workspace_root_bypass
+        .message
+        .contains("repository tooling boundary"));
     assert!(!report.findings.iter().any(|finding| {
         finding.project == "@fixture/b"
             && finding.path == "docs/meta/demo.ts"
