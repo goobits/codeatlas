@@ -53,11 +53,12 @@ impl Connection {
                 "PostgreSQL target environment variable {name} must not contain a URL fragment"
             );
         }
-        let host = url
-            .host_str()
-            .filter(|host| !host.is_empty())
-            .context("PostgreSQL target URL needs a host")?
-            .to_string();
+        let host = decode(
+            url.host_str()
+                .filter(|host| !host.is_empty())
+                .context("PostgreSQL target URL needs a host")?,
+            "PostgreSQL host",
+        )?;
         let user = decode(url.username(), "PostgreSQL username")?;
         if user.is_empty() {
             anyhow::bail!("PostgreSQL target URL needs an explicit username");
@@ -250,6 +251,13 @@ mod tests {
         assert_eq!(connection.user, "user");
         assert_eq!(connection.password.as_deref(), Some("p@ss"));
         assert_eq!(connection.database, "postgres");
+        std::env::set_var(
+            &variable,
+            "postgresql://user@%2Fvar%2Frun%2Fpostgresql/postgres",
+        );
+        let socket_connection =
+            Connection::from_environment(&variable).expect("PostgreSQL socket URL");
+        assert_eq!(socket_connection.host, "/var/run/postgresql");
         std::env::set_var(
             &variable,
             "postgresql://user@localhost/postgres?unknown_option=true",

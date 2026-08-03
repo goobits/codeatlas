@@ -1,5 +1,5 @@
 use super::parameters;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use resolver::StaticSqlResolver;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
@@ -201,8 +201,13 @@ fn resolve_project_sql_file(root: &Path, configured: &str) -> Result<Option<Stat
     if relative.is_absolute() {
         anyhow::bail!("Embedded migration file must be project-relative: {configured}");
     }
-    let canonical_root = root.canonicalize()?;
-    let canonical = root.join(relative).canonicalize()?;
+    let canonical_root = root
+        .canonicalize()
+        .context("Could not resolve the PostgreSQL project root")?;
+    let canonical = root
+        .join(relative)
+        .canonicalize()
+        .with_context(|| format!("Embedded migration file does not exist: {configured}"))?;
     if canonical.strip_prefix(&canonical_root).is_err() {
         anyhow::bail!("Embedded migration file escapes the project root: {configured}");
     }
@@ -210,7 +215,8 @@ fn resolve_project_sql_file(root: &Path, configured: &str) -> Result<Option<Stat
         return Ok(None);
     }
     Ok(Some(StaticSql {
-        text: std::fs::read_to_string(&canonical)?,
+        text: std::fs::read_to_string(&canonical)
+            .with_context(|| format!("Could not read embedded migration file {configured}"))?,
         path: crate::paths::normalize_relative_path(&canonical, &canonical_root),
         line: 1,
         column: 1,
@@ -275,14 +281,14 @@ mod tests {
 
     #[test]
     fn extracts_embedded_migrations_imported_sql_and_queries() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/postgres/embedded");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/postgres");
         let source = extract(
             &root,
             &[
-                root.join("migrations.ts"),
-                root.join("manifest.ts"),
-                root.join("queries.ts"),
-                root.join("runner.ts"),
+                root.join("embedded/migrations.ts"),
+                root.join("embedded/manifest.ts"),
+                root.join("embedded/queries.ts"),
+                root.join("embedded/runner.ts"),
             ],
         )
         .expect("embedded PostgreSQL source");
@@ -290,13 +296,13 @@ mod tests {
         assert_eq!(source.migrations.len(), 4);
         assert_eq!(source.migrations[0].name, "001_inline.sql");
         assert_eq!(source.migrations[1].name, "002_imported.sql");
-        assert_eq!(source.migrations[1].sql.path, "schema.ts");
+        assert_eq!(source.migrations[1].sql.path, "embedded/schema.ts");
         assert_eq!(source.migrations[2].name, "003_composed.sql");
         assert!(source.migrations[2].sql.text.contains("composed_extension"));
         assert!(source.migrations[2].sql.text.contains("composed_audit"));
         assert!(!source.migrations[2].sql.dynamic);
         assert_eq!(source.migrations[3].name, "003_file.sql");
-        assert_eq!(source.migrations[3].sql.path, "003_file.sql");
+        assert_eq!(source.migrations[3].sql.path, "embedded/003_file.sql");
         assert_eq!(source.unresolved_migrations.len(), 1);
         assert_eq!(source.unresolved_migrations[0].name, "004_dynamic.ts");
         assert_eq!(source.bootstraps.len(), 1);
