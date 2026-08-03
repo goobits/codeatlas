@@ -1,5 +1,5 @@
 use super::resolver::ModuleResolver;
-use super::{Module, ModuleKey, ProjectEntrypoints};
+use super::{Module, ModuleKey, ProjectEvidence};
 use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
     ContextId, ContextRole, ContextScope, NodeId, SourceContext, SourceGraph,
@@ -19,16 +19,17 @@ pub(super) const TEST_CONTEXT: &str = "ecmascript-tests";
 const TOOLING_CONTEXT: &str = "ecmascript-tooling";
 const DECLARATION_CONTEXT: &str = "ecmascript-declarations";
 pub(super) const TEST_DISCOVERY_PATTERN: &str = "**/*.test.ts";
+pub(super) const HTML_DISCOVERY_PATTERN: &str = "**/*.html";
 
 pub(super) fn add_discovered_contexts(
     graph: &mut SourceGraph,
     project: &ResolvedAnalysisProject,
     modules: &BTreeMap<ModuleKey, Module>,
     resolver: &ModuleResolver,
-    entrypoints: &ProjectEntrypoints,
+    evidence: &ProjectEvidence,
     project_uses_vitest: bool,
 ) -> Result<()> {
-    let html_entrypoints = discover_html_entrypoints(project, resolver);
+    let html_entrypoints = discover_html_entrypoints(project, resolver, &evidence.html_sources);
     let medusa_project = is_medusa_project(project, modules);
     if !project.contexts.contains_key(PACKAGE_EXPORT_CONTEXT) {
         let roots = crate::package::discover_javascript(&project.root)?
@@ -50,8 +51,8 @@ pub(super) fn add_discovered_contexts(
         )?;
     }
     if !project.contexts.contains_key(PACKAGE_RUNTIME_CONTEXT) {
-        let mut roots = entrypoints
-            .runtime
+        let mut roots = evidence
+            .runtime_entrypoints
             .iter()
             .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, path))
             .filter_map(|key| modules.get(&key).map(|module| module.file.clone()))
@@ -172,8 +173,8 @@ pub(super) fn add_discovered_contexts(
             .map(|module| module.file.clone())
             .collect::<BTreeSet<_>>();
         roots.extend(
-            entrypoints
-                .tooling
+            evidence
+                .tooling_entrypoints
                 .iter()
                 .filter_map(|path| resolver.resolve_project_entrypoint(&project.id, path))
                 .filter_map(|key| modules.get(&key).map(|module| module.file.clone())),
@@ -233,6 +234,7 @@ struct HtmlEntrypoints {
 fn discover_html_entrypoints(
     project: &ResolvedAnalysisProject,
     resolver: &ModuleResolver,
+    html_sources: &[std::path::PathBuf],
 ) -> HtmlEntrypoints {
     static SCRIPT_SOURCE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r#"(?is)<script\b[^>]*?\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))"#)
@@ -253,20 +255,13 @@ fn discover_html_entrypoints(
         .expect("valid inline module source expression")
     });
 
-    let discovery = crate::languages::reachability::discover_project_sources(
-        project,
-        &["**/*.html".to_string()],
-    );
     let mut entrypoints = HtmlEntrypoints::default();
-    for html_path in discovery.files {
-        if html_path.extension().and_then(|value| value.to_str()) != Some("html") {
-            continue;
-        }
-        let relative = crate::paths::normalize_relative_path(&html_path, &project.root);
+    for html_path in html_sources {
+        let relative = crate::paths::normalize_relative_path(html_path, &project.root);
         let Some(role) = html_entrypoint_role(&relative) else {
             continue;
         };
-        let Ok(source) = std::fs::read_to_string(&html_path) else {
+        let Ok(source) = std::fs::read_to_string(html_path) else {
             continue;
         };
         let mut sources = SCRIPT_SOURCE

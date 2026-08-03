@@ -155,7 +155,7 @@ fn is_conventional_fixture_boundary(directory: &str) -> bool {
     })
 }
 
-fn normalize_pattern(pattern: &str) -> String {
+pub(crate) fn normalize_pattern(pattern: &str) -> String {
     pattern
         .strip_prefix("./")
         .unwrap_or(pattern)

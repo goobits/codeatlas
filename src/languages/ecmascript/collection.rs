@@ -1,4 +1,4 @@
-use super::{contexts, Module, ModuleKey, ProjectEntrypoints, EXTRACTOR};
+use super::{contexts, Module, ModuleKey, ProjectEvidence, EXTRACTOR};
 use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, SourceEdge, SourceEdgeKind,
@@ -18,7 +18,7 @@ pub(super) fn collect_project_modules(
     project: &ResolvedAnalysisProject,
     languages: &BTreeSet<SourceLanguage>,
     modules: &mut BTreeMap<ModuleKey, Module>,
-) -> Result<ProjectEntrypoints> {
+) -> Result<ProjectEvidence> {
     let mut runtime_entrypoints = crate::package::discover_runtime_entrypoints(&project.root)?;
     runtime_entrypoints.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
     runtime_entrypoints.sort();
@@ -33,8 +33,21 @@ pub(super) fn collect_project_modules(
     discovery_patterns.extend(tooling_entrypoints.iter().cloned());
     discovery_patterns.sort();
     discovery_patterns.dedup();
-    let discovery =
-        crate::languages::reachability::discover_project_sources(project, &discovery_patterns);
+    let module_patterns =
+        crate::languages::reachability::project_source_patterns(project, &discovery_patterns);
+    let html_patterns = crate::languages::reachability::project_source_patterns(
+        project,
+        &[contexts::HTML_DISCOVERY_PATTERN.to_string()],
+    );
+    let mut combined_patterns = module_patterns.clone();
+    combined_patterns.extend(html_patterns.iter().cloned());
+    combined_patterns.sort();
+    combined_patterns.dedup();
+    let discovery = crate::languages::reachability::discover_project_sources_with_patterns(
+        project,
+        &combined_patterns,
+    );
+    let mut html_sources = Vec::new();
     for warning in discovery.warnings {
         graph.record_boundary(
             &project.id,
@@ -46,6 +59,27 @@ pub(super) fn collect_project_modules(
         );
     }
     for source_path in discovery.files {
+        if source_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            == Some("html")
+            && crate::source_discovery::is_visible_with_patterns(
+                &project.root,
+                &source_path,
+                project.no_default_ignore,
+                &html_patterns,
+            )
+        {
+            html_sources.push(source_path.clone());
+        }
+        if !crate::source_discovery::is_visible_with_patterns(
+            &project.root,
+            &source_path,
+            project.no_default_ignore,
+            &module_patterns,
+        ) {
+            continue;
+        }
         let Some(language) = source_language(&source_path) else {
             continue;
         };
@@ -119,9 +153,10 @@ pub(super) fn collect_project_modules(
             },
         );
     }
-    Ok(ProjectEntrypoints {
-        runtime: runtime_entrypoints,
-        tooling: tooling_entrypoints,
+    Ok(ProjectEvidence {
+        runtime_entrypoints,
+        tooling_entrypoints,
+        html_sources,
     })
 }
 

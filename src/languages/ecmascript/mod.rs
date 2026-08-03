@@ -5,14 +5,16 @@ use anyhow::Result;
 use rayon::prelude::*;
 use resolver::ModuleResolver;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 type ProjectSelection<'a> = (&'a ResolvedAnalysisProject, BTreeSet<SourceLanguage>);
 type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.ecmascript";
 
-struct ProjectEntrypoints {
-    runtime: Vec<String>,
-    tooling: Vec<String>,
+struct ProjectEvidence {
+    runtime_entrypoints: Vec<String>,
+    tooling_entrypoints: Vec<String>,
+    html_sources: Vec<PathBuf>,
 }
 
 mod collection;
@@ -31,7 +33,7 @@ pub(crate) fn collect_projects(
         .into_iter()
         .collect::<BTreeMap<_, _>>();
     let mut modules = BTreeMap::new();
-    let mut project_entrypoints = BTreeMap::new();
+    let mut project_evidence = BTreeMap::new();
     let collected = projects
         .par_iter()
         .map(|(project, languages)| {
@@ -46,16 +48,16 @@ pub(crate) fn collect_projects(
                 )
                 .map_err(anyhow::Error::from)?;
             let mut local_modules = BTreeMap::new();
-            let entrypoints = collection::collect_project_modules(
+            let evidence = collection::collect_project_modules(
                 &mut local_graph,
                 project,
                 languages,
                 &mut local_modules,
             )?;
-            Ok((project.id.clone(), local_graph, local_modules, entrypoints))
+            Ok((project.id.clone(), local_graph, local_modules, evidence))
         })
         .collect::<Result<Vec<_>>>()?;
-    for (project, local_graph, local_modules, entrypoints) in collected {
+    for (project, local_graph, local_modules, evidence) in collected {
         let completeness = local_graph.projects[&project].completeness;
         let registered = graph
             .projects
@@ -73,7 +75,7 @@ pub(crate) fn collect_projects(
         graph.edges.extend(local_graph.edges);
         graph.boundaries.extend(local_graph.boundaries);
         modules.extend(local_modules);
-        project_entrypoints.insert(project, entrypoints);
+        project_evidence.insert(project, evidence);
     }
     let resolver = ModuleResolver::new(projects, &modules)?;
     let keys = modules.keys().cloned().collect::<Vec<_>>();
@@ -92,7 +94,7 @@ pub(crate) fn collect_projects(
             project,
             &modules,
             &resolver,
-            &project_entrypoints[&project.id],
+            &project_evidence[&project.id],
             project_uses_vitest
                 .get(&project.id)
                 .copied()
