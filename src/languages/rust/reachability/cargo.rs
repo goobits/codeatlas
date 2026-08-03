@@ -112,6 +112,12 @@ impl CargoLayout {
         self.targets.iter().any(|target| target.root == path)
     }
 
+    pub(super) fn is_integration_test_source(&self, path: &Path) -> bool {
+        self.targets
+            .iter()
+            .any(|target| target.role == ContextRole::Test && path.starts_with(&target.module_base))
+    }
+
     pub(super) fn cfg_is_covered(&self, package: Option<&str>, expression: &str) -> bool {
         if expression.starts_with("cfg_attr") {
             return false;

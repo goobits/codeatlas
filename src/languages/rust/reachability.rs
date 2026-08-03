@@ -705,7 +705,18 @@ fn add_cargo_contexts(
             target.name
         );
         let mut roots = BTreeSet::from([module.file.clone()]);
-        if !target.library {
+        if target.role == ContextRole::Test {
+            roots.extend(
+                module
+                    .info
+                    .reachability
+                    .test_symbols
+                    .iter()
+                    .filter_map(|name| module.symbols.get(name))
+                    .flatten()
+                    .cloned(),
+            );
+        } else if !target.library {
             if let Some(main) = module.symbols.get("main") {
                 roots.extend(main.iter().cloned());
             }
@@ -727,6 +738,7 @@ fn add_cargo_contexts(
     }
     let test_roots = modules
         .values()
+        .filter(|module| !cargo.is_integration_test_source(&project.root.join(&module.path)))
         .flat_map(|module| {
             module
                 .info

@@ -23,6 +23,10 @@ pub(crate) fn collect_projects(
     graph: &mut SourceGraph,
     projects: &[ProjectSelection<'_>],
 ) -> Result<()> {
+    let project_uses_vitest = projects
+        .iter()
+        .map(|(project, _)| Ok((project.id.clone(), contexts::project_uses_vitest(project)?)))
+        .collect::<Result<BTreeMap<_, _>>>()?;
     let mut modules = BTreeMap::new();
     for (project, languages) in projects {
         collect_project_modules(graph, project, languages, &mut modules)?;
@@ -30,10 +34,25 @@ pub(crate) fn collect_projects(
     let resolver = ModuleResolver::new(projects, &modules)?;
     let keys = modules.keys().cloned().collect::<Vec<_>>();
     for key in keys {
-        connect_module(graph, &key, &modules, &resolver)?;
+        connect_module(
+            graph,
+            &key,
+            &modules,
+            &resolver,
+            project_uses_vitest.get(&key.0).copied().unwrap_or(false),
+        )?;
     }
     for (project, _) in projects {
-        contexts::add_discovered_contexts(graph, project, &modules, &resolver)?;
+        contexts::add_discovered_contexts(
+            graph,
+            project,
+            &modules,
+            &resolver,
+            project_uses_vitest
+                .get(&project.id)
+                .copied()
+                .unwrap_or(false),
+        )?;
     }
     Ok(())
 }
@@ -244,6 +263,7 @@ fn connect_module(
     key: &ModuleKey,
     modules: &BTreeMap<ModuleKey, Module>,
     resolver: &ModuleResolver,
+    project_uses_vitest: bool,
 ) -> Result<()> {
     let module = &modules[key];
     connect_local_references(graph, module);
@@ -413,7 +433,7 @@ fn connect_module(
             }
         }
     }
-    if contexts::is_test_config_module(&module.path) {
+    if contexts::is_test_config_module(module, project_uses_vitest) {
         for entrypoint in &module.info.reachability.configured_test_entrypoints {
             let resolution = resolver.resolve_configured_entrypoint(module, entrypoint);
             connect_module_resolution(

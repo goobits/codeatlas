@@ -288,15 +288,23 @@ struct TestSymbolVisitor {
 
 impl<'ast> Visit<'ast> for TestSymbolVisitor {
     fn visit_item_fn(&mut self, item: &'ast ItemFn) {
-        if item
-            .attrs
-            .iter()
-            .any(|attribute| attribute.path().is_ident("test"))
-        {
+        if item.attrs.iter().any(is_test_attribute) {
             self.symbols.insert(item.sig.ident.to_string());
         }
         syn::visit::visit_item_fn(self, item);
     }
+}
+
+fn is_test_attribute(attribute: &Attribute) -> bool {
+    let path = attribute.path();
+    path.is_ident("test")
+        || path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "test")
+        || ["rstest", "test_case", "test_matrix"]
+            .iter()
+            .any(|name| path.is_ident(name))
 }
 
 fn item_owner_and_attrs(item: &syn::Item) -> (Option<String>, &[Attribute]) {
@@ -1424,6 +1432,33 @@ mod tests {
             .any(|module| module.name == "tests" && module.inline && module.test_only));
         assert!(info.reachability.symbol_paths["smoke"]
             .contains(&vec!["TestHelper".to_string(), "prepare".to_string()]));
+    }
+
+    #[test]
+    fn reachability_recognizes_qualified_test_attributes() {
+        let source = r#"
+            #[test]
+            fn synchronous_test() {}
+
+            #[tokio::test]
+            async fn asynchronous_test() {}
+
+            #[rstest]
+            fn parameterized_test() {}
+
+            fn helper() {}
+        "#;
+        let info = parse_module_info(Path::new("tests/runtime.rs"), Path::new("."), source)
+            .expect("Rust facts");
+
+        assert_eq!(
+            info.reachability.test_symbols,
+            BTreeSet::from([
+                "asynchronous_test".to_string(),
+                "parameterized_test".to_string(),
+                "synchronous_test".to_string(),
+            ])
+        );
     }
 
     #[test]

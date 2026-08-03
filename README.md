@@ -351,6 +351,9 @@ module scripts, become production browser roots; scripts referenced by test
 HTML and `test-harness.html` files become test roots. Conventional `*.test.*`,
 `*.spec.*`, and test-config files become runtime roots in an
 `ecmascript-tests` context.
+Plain `vite.config.*` files become test roots only when their package runs
+Vitest or the config declares a `test` section; production-only Vite configs
+remain tooling roots.
 Configured setup, teardown, and Svelte/Vite/Vitest alias replacement modules
 are followed from those configs, including static `path.resolve(...)` values,
 `alias`/`aliases` objects and arrays, and named replacement constants. Strings passed to

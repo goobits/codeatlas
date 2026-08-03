@@ -62,6 +62,7 @@ pub(crate) struct ReachabilityFacts {
     pub configured_test_entrypoints: BTreeSet<String>,
     pub configured_runtime_entrypoints: BTreeSet<String>,
     pub configured_aliases: BTreeMap<String, BTreeSet<String>>,
+    pub configures_tests: bool,
     pub declaration_only: bool,
 }
 
@@ -181,6 +182,7 @@ pub(super) fn collect_reachability_facts(
     facts.configured_test_entrypoints = configured.test_entrypoints;
     facts.configured_runtime_entrypoints = configured.runtime_entrypoints;
     facts.configured_aliases = configured.aliases;
+    facts.configures_tests = configured.configures_tests;
     facts.declaration_only = is_declaration_only(module);
     facts
 }

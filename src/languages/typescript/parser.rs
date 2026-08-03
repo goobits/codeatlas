@@ -259,6 +259,7 @@ export default {
             .into_iter()
             .collect()
         );
+        assert!(info.reachability.configures_tests);
         assert_eq!(
             info.reachability.configured_aliases["shared"],
             ["./tests/mocks/shared.ts".to_string()]
@@ -273,6 +274,25 @@ export default {
             info.reachability.configured_runtime_entrypoints,
             ["./src/runtime.ts".to_string()].into_iter().collect()
         );
+    }
+
+    #[test]
+    fn production_vite_config_does_not_claim_test_configuration() {
+        let info = parse_source(
+            r#"
+export default {
+    build: {
+        lib: {
+            entry: "./src/index.ts"
+        }
+    }
+}
+"#,
+            "vite.config.ts",
+        )
+        .expect("module info");
+
+        assert!(!info.reachability.configures_tests);
     }
 
     #[test]

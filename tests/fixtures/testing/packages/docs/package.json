@@ -1,0 +1,10 @@
+{
+  "name": "@fixture/docs",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "vite build"
+  }
+}

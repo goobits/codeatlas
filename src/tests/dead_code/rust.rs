@@ -2,7 +2,34 @@ use super::*;
 
 #[test]
 fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
-    let report = analyze_fixture("rust");
+    let graph = source_graph_fixture("rust");
+    let report = dead_code::analyze(&graph).expect("dead-code report");
+
+    let integration = graph
+        .contexts
+        .values()
+        .find(|context| context.name == "cargo-codeatlas-rust-fixture-test-integration")
+        .expect("integration test target context");
+    assert!(integration.roots.iter().any(|root| {
+        matches!(
+            graph.nodes.get(root),
+            Some(SourceNode::Symbol(symbol)) if symbol.name == "public_api_works"
+        )
+    }));
+    let unit_tests = graph
+        .contexts
+        .values()
+        .find(|context| context.name == "cargo-unit-tests")
+        .expect("unit test context");
+    assert!(!unit_tests.roots.iter().any(|root| {
+        matches!(
+            graph.nodes.get(root),
+            Some(SourceNode::Symbol(symbol))
+                if graph.nodes.get(&symbol.file).is_some_and(|file| {
+                    matches!(file, SourceNode::File(file) if file.path.starts_with("tests/"))
+                })
+        )
+    }));
 
     assert!(!report.findings.iter().any(|finding| {
         finding.kind == DeadCodeFindingKind::UnresolvedInternalEdge

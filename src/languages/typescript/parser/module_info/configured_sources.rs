@@ -7,6 +7,7 @@ pub(super) struct ConfiguredSources {
     pub(super) test_entrypoints: BTreeSet<String>,
     pub(super) runtime_entrypoints: BTreeSet<String>,
     pub(super) aliases: BTreeMap<String, BTreeSet<String>>,
+    pub(super) configures_tests: bool,
 }
 
 pub(super) fn collect(module: &Module) -> ConfiguredSources {
@@ -36,6 +37,7 @@ pub(super) fn collect(module: &Module) -> ConfiguredSources {
         test_entrypoints: tests.paths,
         runtime_entrypoints: runtime.paths,
         aliases: aliases.aliases,
+        configures_tests: tests.configures_tests,
     }
 }
 
@@ -61,6 +63,7 @@ impl Visit for ConfiguredRuntimeEntrypointCollector {
 struct ConfiguredTestEntrypointCollector {
     paths: BTreeSet<String>,
     bindings: BTreeMap<String, BTreeSet<String>>,
+    configures_tests: bool,
 }
 
 impl Visit for ConfiguredTestEntrypointCollector {
@@ -70,6 +73,9 @@ impl Visit for ConfiguredTestEntrypointCollector {
             PropName::Str(string) => string.value.as_ref(),
             _ => "",
         };
+        if key == "test" {
+            self.configures_tests = true;
+        }
         if matches!(key, "alias" | "aliases") {
             collect_configured_alias_source_paths(&property.value, &self.bindings, &mut self.paths);
         } else if matches!(

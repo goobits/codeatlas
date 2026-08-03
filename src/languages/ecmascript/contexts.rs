@@ -25,6 +25,7 @@ pub(super) fn add_discovered_contexts(
     project: &ResolvedAnalysisProject,
     modules: &BTreeMap<ModuleKey, Module>,
     resolver: &ModuleResolver,
+    project_uses_vitest: bool,
 ) -> Result<()> {
     let html_entrypoints = discover_html_entrypoints(project, resolver);
     let medusa_project = is_medusa_project(project, modules);
@@ -137,10 +138,9 @@ pub(super) fn add_discovered_contexts(
             })
             .map(|module| module.file.clone())
             .collect::<BTreeSet<_>>();
-        for config in modules
-            .values()
-            .filter(|module| module.project == project.id && is_test_config_module(&module.path))
-        {
+        for config in modules.values().filter(|module| {
+            module.project == project.id && is_test_config_module(module, project_uses_vitest)
+        }) {
             roots.insert(config.file.clone());
             roots.extend(
                 config
@@ -401,16 +401,32 @@ pub(super) fn is_conventional_test_module(path: &str) -> bool {
     ) && (stem.ends_with(".test") || stem.ends_with(".spec") || stem.ends_with(".playwright"))
 }
 
-pub(super) fn is_test_config_module(path: &str) -> bool {
-    let Some(name) = Path::new(path).file_name().and_then(|name| name.to_str()) else {
+pub(super) fn is_test_config_module(module: &Module, project_uses_vitest: bool) -> bool {
+    let Some(name) = Path::new(&module.path)
+        .file_name()
+        .and_then(|name| name.to_str())
+    else {
         return false;
     };
     let name = name.to_ascii_lowercase();
     name.starts_with("vitest.config.")
-        || name.starts_with("vite.config.")
+        || (name.starts_with("vite.config.")
+            && (project_uses_vitest || module.info.reachability.configures_tests))
         || name.starts_with("jest.config.")
         || name.starts_with("playwright.config.")
         || (name.contains("playwright") && name.contains("config"))
+}
+
+pub(super) fn project_uses_vitest(project: &ResolvedAnalysisProject) -> Result<bool> {
+    Ok(crate::package::read_scripts(&project.root)?
+        .values()
+        .any(|command| {
+            command
+                .split(|character: char| {
+                    !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+                })
+                .any(|token| token.eq_ignore_ascii_case("vitest"))
+        }))
 }
 
 pub(super) fn is_conventional_tooling_module(path: &str) -> bool {
