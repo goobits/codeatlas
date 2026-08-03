@@ -23,7 +23,6 @@ pub(crate) fn analyze(
     if changed.is_empty() {
         anyhow::bail!("testing impact needs at least one changed path");
     }
-    let reachability = Reachability::analyze(graph).map_err(render_diagnostics)?;
     let test_contexts = graph
         .contexts
         .values()
@@ -35,9 +34,22 @@ pub(crate) fn analyze(
         .iter()
         .map(|path| normalize_changed_path(path, repository_root))
         .collect::<BTreeSet<_>>();
+    let resolved = paths
+        .into_iter()
+        .map(|path| {
+            let files = resolve_files(graph, &path);
+            (path, files)
+        })
+        .collect::<Vec<_>>();
+    let targets = resolved
+        .iter()
+        .filter(|(_, files)| files.len() == 1)
+        .flat_map(|(_, files)| files.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let reachability =
+        Reachability::analyze_targets(graph, &targets).map_err(render_diagnostics)?;
 
-    for path in paths {
-        let files = resolve_files(graph, &path);
+    for (path, files) in resolved {
         if files.len() == 1 {
             let file_id = files.into_iter().next().expect("one resolved file");
             let SourceNode::File(file) = &graph.nodes[&file_id] else {

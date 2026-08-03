@@ -6,10 +6,12 @@
 
 use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, EdgeTarget,
-    FindingConfidence, GraphDiagnostic, NodeId, ProjectId, SourceEdgeKind, SourceGraph,
-    SourceLanguage, SourceNode,
+    FindingConfidence, GraphDiagnostic, NodeId, ProjectId, SourceContext, SourceEdgeKind,
+    SourceGraph, SourceLanguage, SourceNode,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+mod targets;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Reachability {
@@ -27,31 +29,11 @@ pub(crate) struct ReachabilityRoot {
 impl Reachability {
     pub(crate) fn analyze(graph: &SourceGraph) -> Result<Self, Vec<GraphDiagnostic>> {
         graph.validate()?;
+        Ok(Self::analyze_validated(graph))
+    }
 
-        let mut runtime_adjacency = BTreeMap::<NodeId, BTreeSet<NodeId>>::new();
-        let mut public_surface_adjacency = BTreeMap::<NodeId, BTreeSet<NodeId>>::new();
-        for edge in &graph.edges {
-            let EdgeTarget::Node(target) = &edge.to else {
-                continue;
-            };
-            let adjacency = match edge.kind {
-                SourceEdgeKind::Contains => continue,
-                SourceEdgeKind::ReExport => &mut public_surface_adjacency,
-                _ => &mut runtime_adjacency,
-            };
-            adjacency
-                .entry(edge.from.clone())
-                .or_default()
-                .insert(target.clone());
-        }
-        for (node_id, node) in &graph.nodes {
-            if let SourceNode::Symbol(symbol) = node {
-                runtime_adjacency
-                    .entry(node_id.clone())
-                    .or_default()
-                    .insert(symbol.file.clone());
-            }
-        }
+    fn analyze_validated(graph: &SourceGraph) -> Self {
+        let (runtime_adjacency, public_surface_adjacency) = adjacencies(graph);
 
         let mut result = Self::default();
         for context in graph.contexts.values() {
@@ -73,24 +55,7 @@ impl Reachability {
                 if !visited.insert(node.clone()) {
                     continue;
                 }
-                result
-                    .contexts_by_node
-                    .entry(node.clone())
-                    .or_default()
-                    .insert(context.id.clone());
-                result
-                    .roles_by_node
-                    .entry(node.clone())
-                    .or_default()
-                    .insert(context.role);
-                result
-                    .witness_roots_by_node
-                    .entry(node.clone())
-                    .or_default()
-                    .insert(ReachabilityRoot {
-                        context: context.id.clone(),
-                        root: roots[root_index].clone(),
-                    });
+                result.record(&node, context, &roots[root_index]);
 
                 if let Some(targets) = runtime_adjacency.get(&node) {
                     queue.extend(targets.iter().cloned().map(|target| (target, root_index)));
@@ -98,7 +63,25 @@ impl Reachability {
             }
         }
 
-        Ok(result)
+        result
+    }
+
+    fn record(&mut self, node: &NodeId, context: &SourceContext, root: &NodeId) {
+        self.contexts_by_node
+            .entry(node.clone())
+            .or_default()
+            .insert(context.id.clone());
+        self.roles_by_node
+            .entry(node.clone())
+            .or_default()
+            .insert(context.role);
+        self.witness_roots_by_node
+            .entry(node.clone())
+            .or_default()
+            .insert(ReachabilityRoot {
+                context: context.id.clone(),
+                root: root.clone(),
+            });
     }
 
     pub(crate) fn contexts(&self, node: &NodeId) -> BTreeSet<ContextId> {
@@ -115,6 +98,39 @@ impl Reachability {
             .cloned()
             .unwrap_or_default()
     }
+}
+
+fn adjacencies(
+    graph: &SourceGraph,
+) -> (
+    BTreeMap<NodeId, BTreeSet<NodeId>>,
+    BTreeMap<NodeId, BTreeSet<NodeId>>,
+) {
+    let mut runtime = BTreeMap::<NodeId, BTreeSet<NodeId>>::new();
+    let mut public_surface = BTreeMap::<NodeId, BTreeSet<NodeId>>::new();
+    for edge in &graph.edges {
+        let EdgeTarget::Node(target) = &edge.to else {
+            continue;
+        };
+        let adjacency = match edge.kind {
+            SourceEdgeKind::Contains => continue,
+            SourceEdgeKind::ReExport => &mut public_surface,
+            _ => &mut runtime,
+        };
+        adjacency
+            .entry(edge.from.clone())
+            .or_default()
+            .insert(target.clone());
+    }
+    for (node_id, node) in &graph.nodes {
+        if let SourceNode::Symbol(symbol) = node {
+            runtime
+                .entry(node_id.clone())
+                .or_default()
+                .insert(symbol.file.clone());
+        }
+    }
+    (runtime, public_surface)
 }
 
 fn public_surface_roots(
@@ -443,6 +459,15 @@ mod tests {
             .expect("public context");
 
         let reachability = Reachability::analyze(&graph).expect("valid graph");
+        let targeted = Reachability::analyze_targets(&graph, &BTreeSet::from([public_api.clone()]))
+            .expect("valid targeted graph");
+
+        assert_eq!(
+            targeted.contexts(&public_api),
+            reachability.contexts(&public_api)
+        );
+        assert_eq!(targeted.roles(&public_api), reachability.roles(&public_api));
+        assert_eq!(targeted.roots(&public_api), reachability.roots(&public_api));
 
         assert_eq!(
             reachability.contexts(&public_api),
@@ -504,6 +529,12 @@ mod tests {
             .expect("test context");
 
         let reachability = Reachability::analyze(&graph).expect("valid graph");
+        let targeted = Reachability::analyze_targets(&graph, &BTreeSet::from([helper.clone()]))
+            .expect("valid targeted graph");
+
+        assert_eq!(targeted.contexts(&helper), reachability.contexts(&helper));
+        assert_eq!(targeted.roles(&helper), reachability.roles(&helper));
+        assert_eq!(targeted.roots(&helper), reachability.roots(&helper));
 
         assert_eq!(
             reachability.contexts(&helper),
