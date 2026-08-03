@@ -129,6 +129,19 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
             && edge.kind == SourceEdgeKind::WorkspaceSourceBypass
             && edge.to == EdgeTarget::Node(b_alias.clone())
     }));
+    let root_vite = NodeId::file(&ProjectId("@fixture/root".to_string()), "vite.config.ts");
+    let root_vite_edges = graph
+        .edges
+        .iter()
+        .filter(|edge| edge.from == root_vite)
+        .collect::<Vec<_>>();
+    assert!(
+        !root_vite_edges.iter().any(|edge| {
+            edge.kind == SourceEdgeKind::WorkspaceSourceBypass
+                && edge.to == EdgeTarget::Node(b_absolute.clone())
+        }),
+        "unexpected cross-workspace alias resolution: {root_vite_edges:#?}"
+    );
     let glob_edges = graph
         .edges
         .iter()

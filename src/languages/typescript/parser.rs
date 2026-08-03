@@ -357,6 +357,43 @@ export default {
     }
 
     #[test]
+    fn config_reachability_extracts_alias_resolver_maps_without_metadata_aliases() {
+        let info = parse_source(
+            r#"
+export default {
+    settings: {
+        resolver: {
+            alias: {
+                map: [
+                    ["@domains", "./src/domains"],
+                    ["@shared", "./src/shared"]
+                ],
+                extensions: [".js", ".ts"]
+            }
+        }
+    }
+}
+"#,
+            "eslint.config.js",
+        )
+        .expect("module info");
+
+        assert_eq!(
+            info.reachability.configured_aliases["@domains"],
+            ["./src/domains".to_string()].into_iter().collect()
+        );
+        assert_eq!(
+            info.reachability.configured_aliases["@shared"],
+            ["./src/shared".to_string()].into_iter().collect()
+        );
+        assert!(!info.reachability.configured_aliases.contains_key("map"));
+        assert!(!info
+            .reachability
+            .configured_aliases
+            .contains_key("extensions"));
+    }
+
+    #[test]
     fn package_alias_factories_track_static_replacement_sources() {
         let info = parse_source(
             r#"

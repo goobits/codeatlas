@@ -194,6 +194,8 @@ fn every_selected_codeatlas_check_is_registered_by_the_managed_hook() {
             "managed hook does not register selected check {check}"
         );
     }
+    assert!(HOOK_SOURCE.contains("if _negative_body_revalidated_positive(case):"));
+    assert!(!HOOK_SOURCE.contains("_stateful_body_revalidated_positive"));
 }
 
 #[test]
