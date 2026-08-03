@@ -911,6 +911,8 @@ mod tests {
                 "managed hook does not register selected check {check}"
             );
         }
+        assert!(HOOK_SOURCE.contains("if _negative_body_revalidated_positive(case):"));
+        assert!(!HOOK_SOURCE.contains("_stateful_body_revalidated_positive"));
     }
 
     #[test]

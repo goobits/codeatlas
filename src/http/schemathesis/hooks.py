@@ -469,7 +469,7 @@ def codeatlas_negative_data_rejection(
         "query",
     }:
         return None
-    if _stateful_body_revalidated_positive(case):
+    if _negative_body_revalidated_positive(case):
         return None
     if _stateful_numeric_query_type_round_trip(case):
         return None
@@ -525,10 +525,10 @@ def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
 
 
-def _stateful_body_revalidated_positive(case: Any) -> bool:
-    """Trust the linked body when a state transition repairs negative generation."""
+def _negative_body_revalidated_positive(case: Any) -> bool:
+    """Do not demand rejection when a negative mutation still satisfies the full body schema."""
     metadata = case.meta
-    if metadata is None or _enum_value(getattr(metadata.phase, "name", None)) != "stateful":
+    if metadata is None:
         return False
     negative_locations = {
         _enum_value(component_location)
