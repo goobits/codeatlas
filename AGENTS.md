@@ -30,3 +30,12 @@ Consistent names should make related implementations easy to find and make
 duplicate concepts or misplaced ownership conspicuous to both maintainers and
 CodeAtlas itself. Apply these rules to new and touched code. Do not launch a
 repository-wide rename solely to conform old code.
+
+## Module ownership
+
+Keep one cohesive owner for each concern. Separate data contracts, parsing,
+resolution, policy, process execution, persistence, and rendering when a module
+starts coordinating more than one of them. A large file is a review signal, not
+proof of a bad boundary, so split by responsibility instead of an arbitrary
+line limit. Before extending a mixed-responsibility module, move the independent
+concern behind a focused private module and keep one authoritative path.
