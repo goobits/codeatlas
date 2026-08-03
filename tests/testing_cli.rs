@@ -102,6 +102,13 @@ fn testing_commands_share_one_versioned_read_only_contract() {
         .expect("public API witnesses")
         .iter()
         .any(|witness| witness["symbol"] == "createBrush" && witness["status"] == "witnessed"));
+
+    let witness_text = run(&["--root", root, "tests", "witnesses", "--workspace"]);
+    assert!(witness_text.status.success());
+    let witness_text = String::from_utf8_lossy(&witness_text.stdout);
+    assert!(witness_text.contains("packages/docs/src/index.ts#renderDocs [unwitnessed"));
+    assert!(!witness_text.contains("packages/brush/src/brush.ts#createBrush"));
+    assert!(witness_text.contains("Use --format json for complete witness evidence."));
 }
 
 #[test]

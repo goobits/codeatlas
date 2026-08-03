@@ -279,7 +279,9 @@ codeatlas --root . tests witnesses --workspace --format json
   default. Workspace manifests, lockfiles, toolchain files, and language project
   configuration use the conservative workspace fallback.
 - `witnesses` distinguishes observed, declared-only, unwitnessed, unknown, and
-  detached evidence for public symbols.
+  detached evidence for public symbols. Text output omits already-witnessed
+  detail and bounds the remaining findings; JSON preserves the complete
+  evidence contract.
 
 All three use the separate `codeatlas.testing/v1` contract.
 

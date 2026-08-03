@@ -135,3 +135,35 @@ fn impact_and_witnesses_separate_observed_declared_and_fallback_evidence() {
     assert!(!brush.observed.is_empty());
     assert!(!brush.declared.is_empty());
 }
+
+#[test]
+fn witness_text_is_findings_first_and_bounded() {
+    let (_, projects, graph) = fixture();
+    let mut report = testing::analyze_witnesses(&graph, &projects).expect("testing witnesses");
+    let rendered = crate::outputs::testing::render_witnesses(&report);
+    assert!(rendered.contains("packages/docs/src/index.ts#renderDocs [unwitnessed"));
+    assert!(!rendered.contains("packages/brush/src/brush.ts#createBrush"));
+    assert!(rendered.contains("2 witnessed symbol detail(s) omitted"));
+    assert!(rendered.contains("Use --format json for complete witness evidence."));
+
+    let template = report
+        .public_api
+        .iter()
+        .find(|witness| witness.symbol == "renderDocs")
+        .expect("unwitnessed fixture symbol")
+        .clone();
+    report.public_api = (0..205)
+        .map(|index| {
+            let mut witness = template.clone();
+            witness.symbol = format!("renderDocs{index:03}");
+            witness
+        })
+        .collect();
+    report.summary.public_symbols = 205;
+    report.summary.witnessed = 0;
+    report.summary.unwitnessed = 205;
+    let bounded = crate::outputs::testing::render_witnesses(&report);
+    assert!(bounded.contains("Text detail: 200/205 non-witnessed symbol(s)"));
+    assert!(bounded.contains("#renderDocs199"));
+    assert!(!bounded.contains("#renderDocs200"));
+}

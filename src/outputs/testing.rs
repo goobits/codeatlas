@@ -4,6 +4,8 @@ use crate::testing::{
     TestingImpactReport, TestingInventoryReport, TestingWitnessReport,
 };
 
+const TEST_WITNESS_TEXT_DETAIL_LIMIT: usize = 200;
+
 pub(crate) fn render_inventory(report: &TestingInventoryReport) -> String {
     let contexts = report
         .projects
@@ -162,7 +164,18 @@ pub(crate) fn render_witnesses(report: &TestingWitnessReport) -> String {
         report.summary.unwitnessed,
         report.summary.unknown
     );
-    for witness in &report.public_api {
+    let non_witnessed_count = report
+        .public_api
+        .iter()
+        .filter(|witness| witness.status != TestWitnessStatus::Witnessed)
+        .count();
+    let shown_count = non_witnessed_count.min(TEST_WITNESS_TEXT_DETAIL_LIMIT);
+    for witness in report
+        .public_api
+        .iter()
+        .filter(|witness| witness.status != TestWitnessStatus::Witnessed)
+        .take(TEST_WITNESS_TEXT_DETAIL_LIMIT)
+    {
         output.push_str(&format!(
             "  {}#{} [{}; {}; {}]\n",
             witness.path,
@@ -183,6 +196,12 @@ pub(crate) fn render_witnesses(report: &TestingWitnessReport) -> String {
                 declared.test_project, declared.context, declared.subject
             ));
         }
+    }
+    if report.summary.witnessed > 0 || shown_count < non_witnessed_count {
+        output.push_str(&format!(
+            "\nText detail: {shown_count}/{non_witnessed_count} non-witnessed symbol(s); {} witnessed symbol detail(s) omitted.\nUse --format json for complete witness evidence.\n",
+            report.summary.witnessed
+        ));
     }
     if !report.detached_contexts.is_empty() {
         output.push_str(&format!(
