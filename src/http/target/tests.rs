@@ -8,6 +8,7 @@ fn project_config(config: CodeAtlasConfig) -> ProjectConfig {
         config,
         config_dir: root,
         config_path: None,
+        validated_analysis_projects: None,
     }
 }
 

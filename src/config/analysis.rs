@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+mod workspace_boundaries;
+use workspace_boundaries::{add_nested_project_boundaries, remove_nested_workspace_contexts};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct AnalysisProjectConfig {
@@ -85,6 +88,9 @@ pub(crate) struct ResolvedAnalysisProject {
 
 impl ProjectConfig {
     pub(crate) fn analysis_projects(&self) -> Result<Vec<ResolvedAnalysisProject>> {
+        if let Some(projects) = &self.validated_analysis_projects {
+            return Ok(projects.clone());
+        }
         let configured = if self.config.projects.is_empty() {
             vec![AnalysisProjectConfig {
                 id: Some("default".to_string()),
@@ -617,105 +623,6 @@ fn add_inferred_context(
         context.entrypoints.append(&mut entrypoints);
         context.entrypoints.sort();
         context.entrypoints.dedup();
-    }
-    Ok(())
-}
-
-fn add_nested_project_boundaries(projects: &mut [ResolvedAnalysisProject]) {
-    let roots = projects
-        .iter()
-        .map(|project| project.root.clone())
-        .collect::<Vec<_>>();
-    for project in projects {
-        project.excluded_roots = roots
-            .iter()
-            .filter(|root| **root != project.root && root.starts_with(&project.root))
-            .cloned()
-            .collect();
-        project.excluded_roots.sort();
-    }
-}
-
-fn remove_nested_workspace_contexts(projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
-    for project in projects {
-        if project.excluded_roots.is_empty() {
-            continue;
-        }
-        let mut nested_only = Vec::new();
-        for (name, context) in &project.contexts {
-            let matchers = context
-                .entrypoints
-                .iter()
-                .map(|pattern| {
-                    let normalized = pattern
-                        .strip_prefix("./")
-                        .unwrap_or(pattern)
-                        .replace('\\', "/");
-                    GlobBuilder::new(&normalized)
-                        .literal_separator(true)
-                        .build()
-                        .with_context(|| {
-                            format!(
-                                "Invalid source pattern {pattern:?} in context {name} for {}",
-                                project.id.0
-                            )
-                        })
-                        .map(|glob| glob.compile_matcher())
-                })
-                .collect::<Result<Vec<_>>>()?;
-            let discovery = crate::source_discovery::discover(
-                crate::source_discovery::SourceDiscoveryRequest {
-                    root: &project.root,
-                    patterns: &context.entrypoints,
-                    excluded_roots: &[],
-                    no_default_ignore: project.no_default_ignore,
-                },
-            );
-            if let Some(warning) = discovery.warnings.first() {
-                anyhow::bail!(
-                    "Could not inspect analysis context {name} in {}: {warning}",
-                    project.id.0
-                );
-            }
-            let matched = discovery
-                .files
-                .iter()
-                .filter(|source| {
-                    let relative = crate::paths::normalize_relative_path(source, &project.root);
-                    crate::source_policy::source_argument(&relative).is_some()
-                        && matchers.iter().any(|matcher| matcher.is_match(&relative))
-                })
-                .collect::<Vec<_>>();
-            let all_matches_are_nested = !matched.is_empty()
-                && matched.iter().all(|source| {
-                    project
-                        .excluded_roots
-                        .iter()
-                        .any(|excluded| source.starts_with(excluded))
-                });
-            let all_patterns_are_nested = matched.is_empty()
-                && context.entrypoints.iter().all(|pattern| {
-                    let normalized = pattern
-                        .strip_prefix("./")
-                        .unwrap_or(pattern)
-                        .replace('\\', "/");
-                    let prefix = normalized
-                        .find(['*', '?', '[', '{'])
-                        .map_or(normalized.as_str(), |index| &normalized[..index])
-                        .trim_end_matches('/');
-                    project.excluded_roots.iter().any(|excluded| {
-                        let relative =
-                            crate::paths::normalize_relative_path(excluded, &project.root);
-                        prefix == relative || prefix.starts_with(&format!("{relative}/"))
-                    })
-                });
-            if all_matches_are_nested || all_patterns_are_nested {
-                nested_only.push(name.clone());
-            }
-        }
-        for name in nested_only {
-            project.contexts.remove(&name);
-        }
     }
     Ok(())
 }

@@ -76,6 +76,38 @@ pub(crate) fn discover(request: SourceDiscoveryRequest<'_>) -> SourceDiscovery {
     discovery
 }
 
+pub(crate) fn is_visible_with_patterns(
+    root: &Path,
+    source: &Path,
+    no_default_ignore: bool,
+    normalized_patterns: &[String],
+) -> bool {
+    let Ok(relative) = source.strip_prefix(root) else {
+        return false;
+    };
+    let components = relative.components().collect::<Vec<_>>();
+    let mut path = root.to_path_buf();
+    for (index, component) in components
+        .iter()
+        .take(components.len().saturating_sub(1))
+        .enumerate()
+    {
+        path.push(component);
+        if !should_descend(
+            index + 1,
+            true,
+            &component.as_os_str().to_string_lossy(),
+            &path,
+            root,
+            no_default_ignore,
+            normalized_patterns,
+        ) {
+            return false;
+        }
+    }
+    true
+}
+
 fn is_nested_repository(depth: usize, file_type: Option<std::fs::FileType>, path: &Path) -> bool {
     depth > 0 && file_type.is_some_and(|file_type| file_type.is_dir()) && path.join(".git").exists()
 }
@@ -143,7 +175,10 @@ fn pattern_may_descend_into(pattern: &str, directory: &str, name: &str) -> bool 
 
 #[cfg(test)]
 mod tests {
-    use super::{discover, pattern_may_descend_into, should_descend, SourceDiscoveryRequest};
+    use super::{
+        discover, is_visible_with_patterns, pattern_may_descend_into, should_descend,
+        SourceDiscoveryRequest,
+    };
     use std::path::{Path, PathBuf};
 
     struct TemporaryProject(PathBuf);
@@ -213,6 +248,24 @@ mod tests {
             "fixtures",
             &fixtures,
             root,
+            false,
+            &["tests/fixtures/http/**/*.ts".to_string()],
+        ));
+    }
+
+    #[test]
+    fn shared_discovery_preserves_each_contexts_ignored_directory_policy() {
+        let root = Path::new("/repository");
+        let fixture_test = root.join("tests/fixtures/http/route.test.ts");
+        assert!(!is_visible_with_patterns(
+            root,
+            &fixture_test,
+            false,
+            &["**/*.test.ts".to_string()],
+        ));
+        assert!(is_visible_with_patterns(
+            root,
+            &fixture_test,
             false,
             &["tests/fixtures/http/**/*.ts".to_string()],
         ));
