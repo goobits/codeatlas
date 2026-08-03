@@ -7,7 +7,7 @@ use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, NodeId,
     SourceContext, SourceEvidence, SourceGraph,
 };
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -75,25 +75,10 @@ pub(super) fn add_pyproject_entrypoints(
     if project.contexts.contains_key(PROJECT_ENTRYPOINT_CONTEXT) {
         return Ok(());
     }
-    let path = project.root.join("pyproject.toml");
-    if !path.is_file() {
-        return Ok(());
-    }
-    let source = std::fs::read_to_string(&path)
-        .with_context(|| format!("Could not read {}", path.display()))?;
-    let document: toml::Value =
-        toml::from_str(&source).with_context(|| format!("Invalid {}", path.display()))?;
-    let Some(project_table) = document.get("project").and_then(toml::Value::as_table) else {
-        return Ok(());
-    };
-    let scripts = ["scripts", "gui-scripts"]
-        .into_iter()
-        .filter_map(|name| project_table.get(name).and_then(toml::Value::as_table))
-        .flat_map(|table| table.values())
-        .filter_map(toml::Value::as_str)
-        .collect::<Vec<_>>();
+    let entrypoints = crate::package::discover_python_entrypoints(&project.root)?;
     let mut roots = BTreeSet::new();
-    for entrypoint in scripts {
+    for entrypoint in &entrypoints {
+        let entrypoint = entrypoint.as_str();
         let (module_name, symbol_name) = entrypoint
             .split_once(':')
             .map_or((entrypoint, None), |(module, symbol)| {

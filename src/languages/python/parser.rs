@@ -23,6 +23,7 @@ pub(crate) struct PythonImport {
 pub(crate) struct PythonReachabilityFacts {
     pub top_level_references: BTreeSet<String>,
     pub top_level_qualified_references: BTreeSet<String>,
+    pub annotation_references: BTreeMap<String, BTreeSet<String>>,
     pub symbol_references: BTreeMap<String, BTreeSet<String>>,
     pub symbol_qualified_references: BTreeMap<String, BTreeSet<String>>,
     pub scoped_imports: Vec<PythonScopedImport>,

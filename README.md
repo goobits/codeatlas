@@ -294,9 +294,14 @@ codeatlas --root . lexicon code --workspace --format json
 
 Lexicon analysis scans maintained source with private symbols included. It
 reports exact same-name/different-shape collisions, deterministic type-shape
-candidates, same-name/same-signature helper families, repeated identifier
-terms, and public exposure. Results are advisory and do not create gates or
-authorize deletion.
+candidates, callable contract candidates, repeated identifier terms, and
+public exposure. Exact same-name signatures carry direct structural evidence;
+differently named callables are inferred only when they share a typed contract
+shape, a cohesive source scope, and meaningful object or qualifier terms after
+the leading intent word. Untyped name-only matches and unrelated type
+coincidences are omitted because they do not provide enough evidence. CodeAtlas
+does not compare implementation bodies or claim behavioral equivalence, so
+every candidate remains advisory and never authorizes deletion.
 
 ### Public API baselines
 

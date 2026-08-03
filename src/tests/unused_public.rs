@@ -172,7 +172,25 @@ fn unused_public_python() {
     assert!(!unused.contains("py:pkg/api.py:def#registered_func"));
     assert!(!unused.contains("py:pkg/api.py:class#CatModel"));
     assert!(!unused.contains("py:pkg/api.py:class#DogModel"));
+    assert!(!unused.contains("py:pkg/api.py:class#RequestModel"));
+    assert!(!unused.contains("py:pkg/api.py:class#ResponseModel"));
+    assert!(unused.contains("py:pkg/api.py:class#LiteralOnlyModel"));
     assert!(!unused.contains("py:pkg/api.py:def#cli_only"));
+    assert!(!unused.contains("py:pkg/api.py:def#plugin_only"));
+    assert!(!unused.contains("py:pkg/api.py:def#poetry_script_only"));
+    assert!(!unused.contains("py:pkg/api.py:def#poetry_plugin_only"));
+}
+
+#[test]
+fn python_usage_resolves_src_layout_entrypoints() {
+    let root = fixture_root("dead-code/python");
+    let unused = collect_unused_ids(&root, "py");
+    for entrypoint in ["main", "pep_plugin", "poetry_script", "poetry_plugin"] {
+        assert!(
+            !unused.contains(&format!("py:src/fixture/cli.py:def#{entrypoint}")),
+            "{entrypoint} should be retained by pyproject.toml"
+        );
+    }
 }
 
 #[test]
@@ -192,6 +210,10 @@ fn python_usage_maps_relative_submodule_imports() {
         .file_edges
         .iter()
         .any(|edge| { edge.from == "pkg/consumer.py" && edge.to == "pkg/api.py" }));
+    assert!(report
+        .file_edges
+        .iter()
+        .any(|edge| { edge.from == "pkg/nested/consumer.py" && edge.to == "pkg/models.py" }));
 }
 
 #[test]

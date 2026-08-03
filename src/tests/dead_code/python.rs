@@ -92,6 +92,12 @@ fn python_reachability_handles_src_layouts_relative_imports_and_context_roles() 
                     | "_PRIVATE_TOKEN"
                     | "_LocalClient"
                     | "_scoped_values"
+                    | "pep_plugin"
+                    | "poetry_script"
+                    | "poetry_plugin"
+                    | "CatPayload"
+                    | "DogPayload"
+                    | "PublicEnvelope"
             )
         )
     }));

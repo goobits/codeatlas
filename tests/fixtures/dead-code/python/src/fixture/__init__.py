@@ -1,3 +1,3 @@
-from .api import public_api
+from .api import PublicEnvelope, public_api
 
-__all__ = ["public_api"]
+__all__ = ["PublicEnvelope", "public_api"]

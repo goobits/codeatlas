@@ -5,5 +5,14 @@ version = "0.1.0"
 [project.scripts]
 fixture-cli = "fixture.cli:main"
 
+[project.entry-points."fixture.plugins"]
+fixture-plugin = "fixture.cli:pep_plugin"
+
+[tool.poetry.scripts]
+fixture-poetry = "fixture.cli:poetry_script"
+
+[tool.poetry.plugins."fixture.plugins"]
+fixture-poetry-plugin = "fixture.cli:poetry_plugin"
+
 [tool.setuptools.package-dir]
 "" = "src"

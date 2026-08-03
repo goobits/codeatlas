@@ -8,6 +8,18 @@ class _LocalClient:
         return _PRIVATE_TOKEN
 
 
+class CatPayload:
+    pass
+
+
+class DogPayload:
+    pass
+
+
+class PublicEnvelope:
+    payload: "CatPayload | DogPayload"
+
+
 def _used_private():
     return "used"
 

@@ -1,0 +1,2 @@
+class NestedPublicModel:
+    pass
