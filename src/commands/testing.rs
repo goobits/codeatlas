@@ -42,27 +42,17 @@ fn inventory(
 pub(crate) fn run_impact(
     path: &Path,
     changed: &[PathBuf],
-    working_tree: bool,
     workspace: bool,
     format: TestingFormat,
     out: Option<&Path>,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(impact(
-        path,
-        changed,
-        working_tree,
-        workspace,
-        format,
-        out,
-        config_path,
-    ))
+    exit_code(impact(path, changed, workspace, format, out, config_path))
 }
 
 fn impact(
     path: &Path,
     changed: &[PathBuf],
-    working_tree: bool,
     workspace: bool,
     format: TestingFormat,
     out: Option<&Path>,
@@ -70,7 +60,7 @@ fn impact(
 ) -> Result<i32> {
     let (projects, graph, repository_root) = load_graph(path, workspace, config_path)?;
     let discovered;
-    let changed = if working_tree {
+    let changed = if changed.is_empty() {
         discovered = testing::git_working_tree_paths(&repository_root)?;
         discovered.as_slice()
     } else {

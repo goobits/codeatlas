@@ -144,7 +144,6 @@ fn testing_impact_can_discover_the_git_working_tree() {
         "testing",
         "impact",
         root.to_str().expect("fixture path should be UTF-8"),
-        "--working-tree",
         "--format",
         "json",
     ]));
