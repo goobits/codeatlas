@@ -1,13 +1,13 @@
 use super::output as diagnostic_output;
 use crate::architecture::{
-    compile, conform, conformance_source_inputs, CompileMode, CompileRequest, ConformanceRequest,
+    conform, conformance_source_inputs, load_compilation, ConformanceRequest,
 };
 use crate::commands::output;
 use std::path::{Path, PathBuf};
 
 pub(crate) struct Options<'a> {
-    pub modules: &'a [PathBuf],
-    pub source_root: &'a Path,
+    pub baseline: &'a Path,
+    pub policy_allowed_root: &'a Path,
     pub policies: &'a [PathBuf],
     pub observation: &'a Path,
     pub conformance_id: &'a str,
@@ -17,11 +17,7 @@ pub(crate) struct Options<'a> {
 }
 
 pub(crate) fn run(options: &Options<'_>) -> i32 {
-    let compilation = match compile(&CompileRequest {
-        roots: options.modules.to_vec(),
-        allowed_root: options.source_root.to_path_buf(),
-        mode: CompileMode::Governing,
-    }) {
+    let compilation = match load_compilation(options.baseline) {
         Ok(compilation) => compilation,
         Err(diagnostics) => {
             diagnostic_output::print_diagnostics(&diagnostics);
@@ -30,15 +26,15 @@ pub(crate) fn run(options: &Options<'_>) -> i32 {
     };
     let request = ConformanceRequest {
         policy_roots: options.policies.to_vec(),
-        policy_allowed_root: options.source_root.to_path_buf(),
+        policy_allowed_root: options.policy_allowed_root.to_path_buf(),
         observation_path: options.observation.to_path_buf(),
         conformance_id: options.conformance_id.to_owned(),
         as_of: options.as_of.to_owned(),
         source_inputs: conformance_source_inputs(
-            options.modules,
+            options.baseline,
             options.policies,
             options.observation,
-            options.source_root,
+            options.policy_allowed_root,
         ),
     };
     match conform(&compilation, &request) {

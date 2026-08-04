@@ -2,6 +2,7 @@ use crate::commands;
 use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
+use super::architecture::ArchitectureBaselineArgs;
 use super::postgres::PostgresLiveArgs;
 
 #[derive(Subcommand)]
@@ -29,6 +30,11 @@ pub(super) enum BaselineSubject {
         #[command(flatten)]
         live: PostgresLiveArgs,
     },
+    /// Save a canonical governing graph or non-governing review graph
+    Architecture {
+        #[command(flatten)]
+        args: ArchitectureBaselineArgs,
+    },
 }
 
 impl BaselineSubject {
@@ -43,6 +49,7 @@ impl BaselineSubject {
             Self::Postgres { live } => {
                 commands::postgres::run_baseline(&live.options(root, config))
             }
+            Self::Architecture { args } => args.run(),
         }
     }
 }

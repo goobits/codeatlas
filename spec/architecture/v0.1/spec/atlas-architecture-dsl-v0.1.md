@@ -111,7 +111,7 @@ metadata:
   generatedAt: "2026-07-23T00:00:00Z"
   sourceInputs:
     - architecture/root.atlas.yaml
-  generationCommand: codeatlas observe architecture
+  generationCommand: codeatlas scan architecture
 ```
 
 ## 6. Identifiers

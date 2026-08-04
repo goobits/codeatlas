@@ -5,7 +5,7 @@ use super::graph::{self, CompileMode, CompiledGraph};
 use super::model::{GeneratorIdentity, VocabularyIdentity};
 use super::vocabulary::Vocabulary;
 use super::{ARCHITECTURE_API_VERSION, ARCHITECTURE_SCHEMA_VERSION};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -19,20 +19,20 @@ pub(crate) struct CompileRequest {
     pub mode: CompileMode,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct CompileResult {
     pub report: CompilationReport,
     pub lockfile: ArchitectureLockfile,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct CompilationReport {
     pub schema_version: u32,
-    pub api_version: &'static str,
+    pub api_version: String,
     pub tool_version: String,
-    pub compiler_version: &'static str,
+    pub compiler_version: String,
     pub mode: CompileMode,
     pub architecture_closure_digest: TypedDigest,
     pub graph_digest: TypedDigest,
@@ -41,21 +41,21 @@ pub(crate) struct CompilationReport {
     pub graph: CompiledGraph,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct ArchitectureLockfile {
     pub schema_version: u32,
-    pub api_version: &'static str,
+    pub api_version: String,
     pub generated: bool,
-    pub manual_editing: &'static str,
+    pub manual_editing: String,
     pub generator: GeneratorIdentity,
     pub roots: Vec<String>,
     pub vocabulary: VocabularyIdentity,
     pub documents: Vec<LockDocument>,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct LockDocument {
     pub module_id: String,
     pub architecture_version: u64,
@@ -119,9 +119,9 @@ pub(crate) fn compile(request: &CompileRequest) -> Result<CompileResult, Vec<Dia
     Ok(CompileResult {
         report: CompilationReport {
             schema_version: ARCHITECTURE_SCHEMA_VERSION,
-            api_version: ARCHITECTURE_API_VERSION,
+            api_version: ARCHITECTURE_API_VERSION.to_owned(),
             tool_version: env!("CARGO_PKG_VERSION").to_owned(),
-            compiler_version: COMPILER_VERSION,
+            compiler_version: COMPILER_VERSION.to_owned(),
             mode: request.mode,
             architecture_closure_digest,
             graph_digest,
@@ -131,9 +131,9 @@ pub(crate) fn compile(request: &CompileRequest) -> Result<CompileResult, Vec<Dia
         },
         lockfile: ArchitectureLockfile {
             schema_version: ARCHITECTURE_SCHEMA_VERSION,
-            api_version: ARCHITECTURE_API_VERSION,
+            api_version: ARCHITECTURE_API_VERSION.to_owned(),
             generated: true,
-            manual_editing: "prohibited",
+            manual_editing: "prohibited".to_owned(),
             generator: GeneratorIdentity {
                 id: "codeatlas.tool.architecture-compiler".to_owned(),
                 version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -148,6 +148,7 @@ pub(crate) fn compile(request: &CompileRequest) -> Result<CompileResult, Vec<Dia
 #[cfg(test)]
 mod tests {
     use super::{compile, CompileRequest};
+    use crate::architecture::baseline::load;
     use crate::architecture::digest::{digest_value, DigestKind};
     use crate::architecture::documents::confined_path;
     use crate::architecture::graph::CompileMode;
@@ -192,6 +193,44 @@ mod tests {
             "graph identity must be deterministic"
         );
         assert_eq!(first.lockfile.documents.len(), 1);
+    }
+
+    #[test]
+    fn saved_compilation_loads_exactly_and_rejects_digest_drift() {
+        let root = crate_root();
+        let result = compile(&CompileRequest {
+            roots: vec![
+                root.join("spec/architecture/v0.1/examples/tabby-shelly/architecture.atlas.yaml")
+            ],
+            allowed_root: root,
+            mode: CompileMode::Governing,
+        })
+        .expect("compilation");
+        let path = fixture_root("saved-compilation.json");
+        remove_existing(&path);
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&result).expect("serialize compilation"),
+        )
+        .expect("write compilation");
+
+        let loaded = load(&path).expect("load exact saved compilation");
+        assert_eq!(loaded.report.graph_digest, result.report.graph_digest);
+        assert_eq!(loaded.report.mode, CompileMode::Governing);
+
+        let mut changed = serde_json::to_value(&result).expect("compilation value");
+        changed["report"]["graph"]["objects"]["goobits.app.tabby"]["declaration"]["name"] =
+            serde_json::json!("Changed without a new reviewed baseline");
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&changed).expect("serialize changed compilation"),
+        )
+        .expect("write changed compilation");
+        let diagnostics = load(&path).expect_err("digest drift must fail closed");
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "baseline.graph-digest-mismatch"));
+        fs::remove_file(path).expect("remove saved compilation");
     }
 
     #[test]

@@ -303,7 +303,33 @@ for every witness class.
 
 ## Phase 2: Hard-cut the architecture lifecycle
 
-Status: [~] In progress
+Status: [x] Complete
+
+Execution checkpoint:
+
+- [x] Route architecture evidence through scan/check/baseline/diff and remove
+  the top-level compile/observe parser branches.
+- [x] Load and validate the exact saved compilation for diff; reject review
+  baselines as governing evidence without recompiling source declarations.
+- [x] Update generation-command metadata and canonical architecture docs and
+  examples to the stable lifecycle vocabulary.
+- [x] Add end-to-end lifecycle coverage for deterministic IDs, governing versus
+  review mode, exact artifact use, and removed-command rejection.
+- [x] Run focused architecture/CLI verification and external dogfooding, record
+  the checkpoint here, and commit the phase.
+
+Verified checkpoint (2026-08-04):
+
+- `cargo test --locked --jobs 1 --bin codeatlas architecture::`: 38 passed,
+  including strict saved-compilation loading and digest-drift rejection.
+- `cargo test --locked --jobs 1 --test architecture_cli`: 3 passed. The public
+  lifecycle is deterministic, review baselines cannot govern, removed commands
+  and noun groups exit 2, IDs remain exact, and diff succeeds after the current
+  declaration source is deleted because it consumes the saved graph.
+- Binary parser tests: 3 passed. Full `tests/cli_contract.rs`: 15 passed.
+- `node tasks/check-self.js` passed all seven private reports from the external
+  target. `cargo fmt --check` and `git diff --check` passed; no generated state
+  appeared under the checkout.
 
 LOC: +350-600 / -200-350
 
@@ -323,6 +349,9 @@ old `compile` and `observe` commands are rejected.
 ~ src/commands/architecture/observe.rs
 ~ src/commands/architecture/conform.rs
 ~ src/commands/architecture/source_check.rs
++ src/architecture/baseline.rs
+~ src/architecture/compiler.rs
+~ src/architecture/graph.rs
 ~ src/architecture/observation/mod.rs
 ~ src/architecture/conformance.rs
 + tests/architecture_cli.rs
@@ -333,7 +362,7 @@ old `compile` and `observe` commands are rejected.
 
 ## Phase 3: Normalize outputs, gates, diffs, and live artifacts
 
-Status: [ ] Not started; PostgreSQL artifact completion waits for the kernel
+Status: [~] In progress; PostgreSQL artifact completion waits for the kernel
 and PostgreSQL observation contract
 
 LOC: +300-500 / -150-250

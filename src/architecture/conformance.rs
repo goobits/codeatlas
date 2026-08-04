@@ -160,7 +160,7 @@ pub(crate) fn conform(
             },
             generated_at: request.as_of.clone(),
             source_inputs,
-            generation_command: "codeatlas check architecture observation".to_owned(),
+            generation_command: "codeatlas diff architecture".to_owned(),
             manual_editing: "prohibited".to_owned(),
         },
         vocabulary: vocabulary.identity(),
@@ -649,12 +649,14 @@ fn validate_evidence(
 }
 
 pub(crate) fn source_inputs(
-    modules: &[PathBuf],
+    baseline: &Path,
     policies: &[PathBuf],
     observation: &Path,
     source_root: &Path,
 ) -> Vec<String> {
-    let mut paths = modules.iter().chain(policies).cloned().collect::<Vec<_>>();
+    let mut paths = Vec::with_capacity(policies.len() + 2);
+    paths.push(baseline.to_path_buf());
+    paths.extend_from_slice(policies);
     paths.push(observation.to_path_buf());
     paths
         .iter()

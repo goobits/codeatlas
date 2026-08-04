@@ -1,26 +1,26 @@
 use super::diagnostic::{sort_diagnostics, Diagnostic};
 use super::digest::{digest_value, DigestKind, TypedDigest};
 use super::vocabulary::{CyclePolicy, Vocabulary};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CompileMode {
     Governing,
     Review,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct GraphDeclaration {
     pub module: String,
     pub declaration: Value,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct CompiledGraph {
     pub mode: CompileMode,
     pub objects: BTreeMap<String, GraphDeclaration>,

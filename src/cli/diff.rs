@@ -2,6 +2,7 @@ use crate::commands;
 use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
+use super::architecture::ArchitectureDiffArgs;
 use super::postgres::PostgresLiveArgs;
 
 #[derive(Subcommand)]
@@ -38,6 +39,11 @@ pub(super) enum DiffSubject {
         #[command(flatten)]
         live: PostgresLiveArgs,
     },
+    /// Compare an observation with an exact saved governing graph
+    Architecture {
+        #[command(flatten)]
+        args: ArchitectureDiffArgs,
+    },
 }
 
 impl DiffSubject {
@@ -56,6 +62,7 @@ impl DiffSubject {
             Self::Postgres { against, live } => {
                 commands::postgres::run_diff(&against, &live.options(root, config))
             }
+            Self::Architecture { args } => args.run(root),
         }
     }
 }

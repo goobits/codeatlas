@@ -1,156 +1,148 @@
 use crate::commands;
 use crate::commands::architecture::compile::ArchitectureCompileMode;
-use clap::Subcommand;
+use clap::Args;
 use std::path::{Path, PathBuf};
 
-#[derive(Subcommand)]
-pub(super) enum ArchitectureCheck {
-    /// Check workspace imports against exports and declared architecture
-    Source {
-        #[arg(required = true)]
-        modules: Vec<PathBuf>,
-        #[arg(long, default_value = ".")]
-        source_root: PathBuf,
-        #[arg(short, long)]
-        out: Option<PathBuf>,
-    },
-    /// Compare a governing graph with an architecture observation
-    Observation {
-        #[arg(required = true)]
-        modules: Vec<PathBuf>,
-        #[arg(long, default_value = ".")]
-        source_root: PathBuf,
-        #[arg(long = "policy")]
-        policies: Vec<PathBuf>,
-        #[arg(long)]
-        observation: PathBuf,
-        #[arg(long)]
-        conformance_id: String,
-        #[arg(long)]
-        as_of: String,
-        #[arg(short, long)]
-        out: Option<PathBuf>,
-    },
+#[derive(Args)]
+pub(super) struct ArchitectureScanArgs {
+    /// Root ArchitectureModule documents
+    #[arg(required = true)]
+    modules: Vec<PathBuf>,
+    /// Filesystem boundary for modules and local imports
+    #[arg(long, default_value = ".")]
+    source_root: PathBuf,
+    /// Stable repository identity
+    #[arg(long)]
+    repository_id: String,
+    /// Stable observation identity
+    #[arg(long)]
+    observation_id: String,
+    /// Exact source revision being observed
+    #[arg(long)]
+    source_commit: String,
+    /// RFC 3339 UTC observation time
+    #[arg(long)]
+    observed_at: String,
+    /// Write the observation instead of stdout
+    #[arg(short, long)]
+    out: Option<PathBuf>,
 }
 
-impl ArchitectureCheck {
-    pub(super) fn run(self, root: &Path, config: Option<&Path>) -> i32 {
-        match self {
-            Self::Source {
-                modules,
-                source_root,
-                out,
-            } => commands::architecture::source_check::run(
-                &commands::architecture::source_check::Options {
-                    modules: &modules,
-                    source_root: &source_root,
-                    repository_root: root,
-                    config_path: config,
-                    out: out.as_deref(),
-                    check: true,
-                },
-            ),
-            Self::Observation {
-                modules,
-                source_root,
-                policies,
-                observation,
-                conformance_id,
-                as_of,
-                out,
-            } => commands::architecture::conform::run(&commands::architecture::conform::Options {
-                modules: &modules,
-                source_root: &source_root,
-                policies: &policies,
-                observation: &observation,
-                conformance_id: &conformance_id,
-                as_of: &as_of,
-                out: out.as_deref(),
-                check: true,
-            }),
-        }
-    }
-}
-
-#[derive(Subcommand)]
-pub(super) enum CompileSubject {
-    /// Compile accepted ArchitectureModule declarations
-    Architecture {
-        #[arg(required = true)]
-        modules: Vec<PathBuf>,
-        #[arg(long, default_value = ".")]
-        source_root: PathBuf,
-        #[arg(long, value_enum, default_value_t = ArchitectureCompileMode::Governing)]
-        mode: ArchitectureCompileMode,
-        #[arg(short, long)]
-        out: Option<PathBuf>,
-        #[arg(long)]
-        lock_out: Option<PathBuf>,
-    },
-}
-
-impl CompileSubject {
-    pub(super) fn run(self) -> i32 {
-        match self {
-            Self::Architecture {
-                modules,
-                source_root,
-                mode,
-                out,
-                lock_out,
-            } => commands::architecture::compile::run(
-                &modules,
-                &source_root,
-                mode,
-                out.as_deref(),
-                lock_out.as_deref(),
-            ),
-        }
-    }
-}
-
-#[derive(Subcommand)]
-pub(super) enum ObserveSubject {
-    /// Observe implementation evidence for accepted architecture bindings
-    Architecture {
-        #[arg(required = true)]
-        modules: Vec<PathBuf>,
-        #[arg(long, default_value = ".")]
-        source_root: PathBuf,
-        #[arg(long)]
-        repository_id: String,
-        #[arg(long)]
-        observation_id: String,
-        #[arg(long)]
-        source_commit: String,
-        #[arg(long)]
-        observed_at: String,
-        #[arg(short, long)]
-        out: Option<PathBuf>,
-    },
-}
-
-impl ObserveSubject {
+impl ArchitectureScanArgs {
     pub(super) fn run(self, root: &Path) -> i32 {
-        match self {
-            Self::Architecture {
-                modules,
-                source_root,
-                repository_id,
-                observation_id,
-                source_commit,
-                observed_at,
-                out,
-            } => commands::architecture::observe::run(&commands::architecture::observe::Options {
-                modules: &modules,
-                source_root: &source_root,
-                repository_root: root,
-                repository_id: &repository_id,
-                observation_id: &observation_id,
-                source_commit: &source_commit,
-                observed_at: &observed_at,
-                out: out.as_deref(),
-            }),
-        }
+        commands::architecture::observe::run(&commands::architecture::observe::Options {
+            modules: &self.modules,
+            source_root: &self.source_root,
+            repository_root: root,
+            repository_id: &self.repository_id,
+            observation_id: &self.observation_id,
+            source_commit: &self.source_commit,
+            observed_at: &self.observed_at,
+            out: self.out.as_deref(),
+        })
+    }
+}
+
+#[derive(Args)]
+pub(super) struct ArchitectureCheckArgs {
+    /// Root ArchitectureModule documents
+    #[arg(required = true, value_parser = parse_architecture_module_path)]
+    modules: Vec<PathBuf>,
+    /// Filesystem boundary for modules and local imports
+    #[arg(long, default_value = ".")]
+    source_root: PathBuf,
+    /// Write the source-conformance report instead of stdout
+    #[arg(short, long)]
+    out: Option<PathBuf>,
+}
+
+fn parse_architecture_module_path(value: &str) -> Result<PathBuf, String> {
+    if matches!(value, "source" | "observation") {
+        Err(format!(
+            "{value:?} is a removed architecture check group; pass module paths directly"
+        ))
+    } else {
+        Ok(PathBuf::from(value))
+    }
+}
+
+impl ArchitectureCheckArgs {
+    pub(super) fn run(self, root: &Path, config: Option<&Path>) -> i32 {
+        commands::architecture::source_check::run(&commands::architecture::source_check::Options {
+            modules: &self.modules,
+            source_root: &self.source_root,
+            repository_root: root,
+            config_path: config,
+            out: self.out.as_deref(),
+            check: true,
+        })
+    }
+}
+
+#[derive(Args)]
+pub(super) struct ArchitectureBaselineArgs {
+    /// Root ArchitectureModule documents
+    #[arg(required = true)]
+    modules: Vec<PathBuf>,
+    /// Filesystem boundary for modules and local imports
+    #[arg(long, default_value = ".")]
+    source_root: PathBuf,
+    /// Governing evidence or a non-governing review artifact
+    #[arg(long, value_enum, default_value_t = ArchitectureCompileMode::Governing)]
+    mode: ArchitectureCompileMode,
+    /// Write the compilation baseline instead of stdout
+    #[arg(short, long)]
+    out: Option<PathBuf>,
+    /// Also write the canonical architecture lockfile
+    #[arg(long)]
+    lock_out: Option<PathBuf>,
+}
+
+impl ArchitectureBaselineArgs {
+    pub(super) fn run(self) -> i32 {
+        commands::architecture::compile::run(
+            &self.modules,
+            &self.source_root,
+            self.mode,
+            self.out.as_deref(),
+            self.lock_out.as_deref(),
+        )
+    }
+}
+
+#[derive(Args)]
+pub(super) struct ArchitectureDiffArgs {
+    /// Saved architecture compilation baseline
+    #[arg(long)]
+    against: PathBuf,
+    /// Architecture observation to compare
+    #[arg(long)]
+    observation: PathBuf,
+    /// ArchitecturePolicy document; repeat for an accepted policy closure
+    #[arg(long = "policy")]
+    policies: Vec<PathBuf>,
+    /// Stable conformance-report identity
+    #[arg(long)]
+    conformance_id: String,
+    /// RFC 3339 UTC policy evaluation time
+    #[arg(long)]
+    as_of: String,
+    /// Write the conformance report instead of stdout
+    #[arg(short, long)]
+    out: Option<PathBuf>,
+}
+
+impl ArchitectureDiffArgs {
+    pub(super) fn run(self, root: &Path) -> i32 {
+        commands::architecture::conform::run(&commands::architecture::conform::Options {
+            baseline: &self.against,
+            policy_allowed_root: root,
+            policies: &self.policies,
+            observation: &self.observation,
+            conformance_id: &self.conformance_id,
+            as_of: &self.as_of,
+            out: self.out.as_deref(),
+            check: true,
+        })
     }
 }

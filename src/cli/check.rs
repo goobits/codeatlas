@@ -4,7 +4,7 @@ use crate::commands::testing::TestingFormat;
 use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
-use super::architecture::ArchitectureCheck;
+use super::architecture::ArchitectureCheckArgs;
 
 #[derive(Subcommand)]
 pub(super) enum CheckSubject {
@@ -44,10 +44,10 @@ pub(super) enum CheckSubject {
         #[arg(long)]
         squawk: Option<PathBuf>,
     },
-    /// Check declared architecture against source or an observation
+    /// Check declared architecture and source conformance
     Architecture {
-        #[command(subcommand)]
-        check: ArchitectureCheck,
+        #[command(flatten)]
+        args: ArchitectureCheckArgs,
     },
     /// Check public APIs for test witness evidence
     Tests {
@@ -97,7 +97,7 @@ impl CheckSubject {
             Self::Postgres { out, squawk } => {
                 commands::postgres::run_check(root, out.as_deref(), squawk.as_deref(), config)
             }
-            Self::Architecture { check } => check.run(root, config),
+            Self::Architecture { args } => args.run(root, config),
             Self::Tests {
                 workspace,
                 format,

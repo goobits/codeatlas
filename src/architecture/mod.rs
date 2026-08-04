@@ -1,3 +1,4 @@
+mod baseline;
 mod compiler;
 mod conformance;
 mod diagnostic;
@@ -13,6 +14,7 @@ mod source_conformance;
 mod vocabulary;
 mod yaml;
 
+pub(crate) use baseline::load as load_compilation;
 pub(crate) use compiler::{compile, CompileRequest, CompileResult};
 pub(crate) use conformance::{
     conform, source_inputs as conformance_source_inputs, ConformanceRequest,

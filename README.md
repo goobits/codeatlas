@@ -48,20 +48,17 @@ present.
 
 | Command | Purpose |
 | --- | --- |
-| `scan code\|http\|postgres` | Discover current code, HTTP, or PostgreSQL evidence |
-| `check code\|http\|postgres\|architecture` | Apply static rules and contract checks |
-| `baseline code\|http\|postgres` | Save reviewed comparison evidence |
-| `diff code\|http\|postgres` | Compare current evidence with a baseline |
-| `usage code` | Classify reachability and known public consumers |
+| `scan code\|http\|postgres\|architecture\|tests` | Gather current subject evidence |
+| `check code\|http\|postgres\|architecture\|tests` | Apply static rules and contract checks |
+| `baseline code\|http\|postgres\|architecture` | Save reviewed comparison evidence |
+| `diff code\|http\|postgres\|architecture` | Compare evidence with a baseline |
+| `usage code\|tests` | Classify consumers or select affected tests |
 | `inspect code\|architecture` | Explain an exact target and its bounded neighborhood |
 | `lexicon code` | Report deterministic naming, structural, and declared conceptual overlap |
-| `tests inventory\|impact\|witnesses` | Inventory tests, select affected tests, and report witnesses |
 | `docs code` | Generate or check public API documentation |
 | `fuzz http` | Exercise a configured HTTP target with generated requests |
 | `test postgres` | Replay migrations and prepare queries in a disposable database |
 | `init postgres` | Discover and optionally write PostgreSQL configuration |
-| `compile architecture` | Validate and normalize architecture declarations |
-| `observe architecture` | Generate reproducible source-binding evidence |
 
 Run `codeatlas <command> <subject> --help` for the complete option set.
 
@@ -547,10 +544,10 @@ Restricted YAML is the sole editable architecture authority. Generated graphs,
 lockfiles, observations, and conformance reports are evidence and must not be
 edited by hand.
 
-Compile one or more root modules:
+Save a canonical compilation baseline for one or more root modules:
 
 ```bash
-codeatlas compile architecture \
+codeatlas baseline architecture \
   architecture/root.atlas.yaml \
   --source-root . \
   --mode governing \
@@ -564,7 +561,7 @@ proposed and unresolved declarations but remains non-governing.
 Check current imports and accepted dependency constraints:
 
 ```bash
-codeatlas --root . check architecture source \
+codeatlas --root . check architecture \
   architecture/root.atlas.yaml \
   --source-root . \
   --out .codeatlas/source-conformance.json
@@ -576,7 +573,7 @@ source bypasses, and dependency paths forbidden by accepted architecture.
 Generate reproducible binding evidence and compare it with the governing graph:
 
 ```bash
-codeatlas --root . observe architecture \
+codeatlas --root . scan architecture \
   architecture/root.atlas.yaml \
   --source-root . \
   --repository-id example.repository.source \
@@ -585,18 +582,19 @@ codeatlas --root . observe architecture \
   --observed-at 2026-07-23T00:00:00Z \
   --out .codeatlas/architecture-observation.json
 
-codeatlas check architecture observation \
-  architecture/root.atlas.yaml \
-  --source-root . \
+codeatlas --root . diff architecture \
+  --against .codeatlas/architecture.json \
   --observation .codeatlas/architecture-observation.json \
   --conformance-id example.conformance.current \
   --as-of 2026-07-23T00:00:00Z \
   --out .codeatlas/architecture-conformance.json
 ```
 
-The caller supplies commit and time metadata explicitly. Optional repeatable
-`--policy` inputs may change a finding's disposition but never the governing
-graph.
+The caller supplies commit and time metadata explicitly. Diff loads the exact
+saved governing graph; it does not silently recompile current declarations.
+A review-mode baseline is inspectable but cannot govern conformance. Optional
+repeatable `--policy` inputs may change a finding's disposition but never the
+governing graph.
 
 Query an approved provider classification:
 

@@ -185,7 +185,7 @@ pub(crate) fn observe(
         &json!({"coverage": &coverage, "facts": &facts}),
     )
     .map_err(|error| vec![*error.diagnostic])?;
-    let generation_command = "codeatlas observe architecture".to_owned();
+    let generation_command = "codeatlas scan architecture".to_owned();
     let repository = RepositoryIdentity {
         id: request.repository_id.clone(),
     };

@@ -4,6 +4,8 @@ use crate::commands::{OutputFormat, ScanScope};
 use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
+use super::architecture::ArchitectureScanArgs;
+
 #[derive(Subcommand)]
 pub(super) enum ScanSubject {
     /// Discover the code API or maintained source surface
@@ -48,6 +50,11 @@ pub(super) enum ScanSubject {
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
+    /// Gather current implementation evidence for declared architecture
+    Architecture {
+        #[command(flatten)]
+        args: ArchitectureScanArgs,
+    },
 }
 
 impl ScanSubject {
@@ -70,6 +77,7 @@ impl ScanSubject {
                 format,
                 out,
             } => commands::testing::run_inventory(root, workspace, format, out.as_deref(), config),
+            Self::Architecture { args } => args.run(root),
         }
     }
 }

@@ -89,16 +89,6 @@ enum Command {
         #[command(subcommand)]
         subject: init::InitSubject,
     },
-    /// Validate and normalize architecture declarations
-    Compile {
-        #[command(subcommand)]
-        subject: architecture::CompileSubject,
-    },
-    /// Generate reproducible architecture source evidence
-    Observe {
-        #[command(subcommand)]
-        subject: architecture::ObserveSubject,
-    },
 }
 
 pub(crate) fn run() -> i32 {
@@ -116,8 +106,6 @@ pub(crate) fn run() -> i32 {
         Command::Fuzz { subject } => subject.run(&cli.root, config),
         Command::Test { subject } => subject.run(&cli.root, config),
         Command::Init { subject } => subject.run(&cli.root, config),
-        Command::Compile { subject } => subject.run(),
-        Command::Observe { subject } => subject.run(&cli.root),
     }
 }
 
@@ -133,10 +121,49 @@ mod tests {
             vec!["codeatlas", "scan", "http", "--openapi", "openapi.json"],
             vec!["codeatlas", "scan", "postgres"],
             vec!["codeatlas", "scan", "tests"],
+            vec![
+                "codeatlas",
+                "scan",
+                "architecture",
+                "architecture/root.atlas.yaml",
+                "--repository-id",
+                "example.repository.source",
+                "--observation-id",
+                "example.observation.current",
+                "--source-commit",
+                "0123456",
+                "--observed-at",
+                "2026-08-04T00:00:00Z",
+            ],
             vec!["codeatlas", "check", "code", "--workspace"],
             vec!["codeatlas", "check", "tests", "--gates-only"],
+            vec![
+                "codeatlas",
+                "check",
+                "architecture",
+                "architecture/root.atlas.yaml",
+            ],
             vec!["codeatlas", "baseline", "code", "--out", "api.json"],
+            vec![
+                "codeatlas",
+                "baseline",
+                "architecture",
+                "architecture/root.atlas.yaml",
+            ],
             vec!["codeatlas", "diff", "code", "--against", "api.json"],
+            vec![
+                "codeatlas",
+                "diff",
+                "architecture",
+                "--against",
+                "architecture.json",
+                "--observation",
+                "observation.json",
+                "--conformance-id",
+                "example.conformance.current",
+                "--as-of",
+                "2026-08-04T00:00:00Z",
+            ],
             vec!["codeatlas", "usage", "code"],
             vec!["codeatlas", "usage", "tests", "--changed", "src/lib.rs"],
             vec!["codeatlas", "inspect", "code", "src/lib.rs#run"],
@@ -145,12 +172,6 @@ mod tests {
             vec!["codeatlas", "fuzz", "http"],
             vec!["codeatlas", "test", "postgres"],
             vec!["codeatlas", "init", "postgres"],
-            vec![
-                "codeatlas",
-                "compile",
-                "architecture",
-                "architecture/root.atlas.yaml",
-            ],
         ] {
             assert!(Cli::try_parse_from(args).is_ok());
         }
@@ -185,6 +206,8 @@ mod tests {
             "postgres",
             "testing",
             "tests",
+            "compile",
+            "observe",
             "ci",
             "map",
         ] {
