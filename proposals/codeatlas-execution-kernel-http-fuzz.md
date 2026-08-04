@@ -5,9 +5,15 @@ Status: Accepted; implementation in progress
 Decision scope: Shared execution safety, immutable plans and receipts, enforced
 isolation, and migration of existing HTTP fuzzing
 
-Depends on: [`codeatlas-evidence-lifecycle-cli.md`](codeatlas-evidence-lifecycle-cli.md)
-for the final public execution grammar. Phase 1 governance and self-audit can
-start independently and in parallel with the CLI hard cut.
+Depends on:
+
+- [`codeatlas-evidence-lifecycle-cli.md`](codeatlas-evidence-lifecycle-cli.md)
+  for the final public execution grammar
+- [`codeatlas-published-schemas.md`](codeatlas-published-schemas.md) for the
+  new-artifact registry and namespaced version contract
+
+Phase 1 governance and self-audit can start independently and in parallel with
+the CLI hard cut and schema publication.
 
 Unblocks: Callable fuzzing, PostgreSQL fuzzing, and performance evidence
 
@@ -175,6 +181,44 @@ target call.
 
 Observations and baselines remain domain-owned payloads. The shared store owns
 only their identity, addressing, linkage, privacy, retention, and size rules.
+
+### Canonical execution-plan ID
+
+The first execution artifact locks the byte contract for the namespace. An
+`ExecutionPlan` uses the namespaced schema string
+`codeatlas.execution-plan/v1`. Its identity is derived as follows:
+
+1. Build the typed plan identity body containing the schema/subject/operation,
+   exact target and evidence digests, workload, effects, required capabilities,
+   destinations, tool/engine identities, policy digest, explicit ceilings, and
+   eligibility decision.
+2. Exclude only the derived `id` and `content_digest`. A plan contains no
+   timestamp, local artifact path, checkout path, display command, or other
+   volatile metadata; identical accepted evidence must produce identical plan
+   bytes.
+3. Serialize the identity body with RFC 8785 JSON Canonicalization Scheme.
+   Ordinary `serde_json` map ordering or the architecture subsystem's current
+   restricted-integer helper is not assumed to be RFC 8785 conformance.
+4. Hash these exact bytes:
+
+   ```text
+   atlas.codeatlas.dev/execution-plan/v1\n<RFC-8785-plan-bytes>
+   ```
+
+5. Serialize the digest as `sha256:<64 lowercase hex>` and the canonical ID as
+   `plan_<same 64 lowercase hex>`.
+
+The canonicalizer has one audited owner in `src/execution/artifact.rs` and must
+pass the RFC 8785 published vectors plus CodeAtlas vectors for the domain
+separator, Unicode, numeric serialization, nested key order, and field
+exclusion. A value RFC 8785 cannot represent fails during zero-call planning.
+Changing canonicalization, the domain separator, or identity-body membership
+requires a new plan schema version and invalidates old cached authorization;
+there is no fallback reader under the same version.
+
+Every later artifact kind receives its own registered schema string and domain
+separator. It may reuse the canonicalization primitive but cannot reuse the
+execution-plan digest kind.
 
 ## Configuration is strict JSON
 
@@ -515,17 +559,21 @@ TypeMill-specific transaction, recovery, and mutation-stage rules stay in
 TypeMill because CodeAtlas does not own those concepts.
 
 `docs/concepts/lexicon.md` becomes the canonical vocabulary owner. Its initial
-table defines at least `target`, `contract`, `case`, `call`, `workload`, `plan`,
-`receipt`, `observation`, `measurement`, `optimization candidate`, `hotspot`,
-`regression`, `failure`, `reproducer`, `effect`, `capability`, and `isolation`.
-Each entry records its exact meaning, owning module/report, required subject
-qualification, and retired synonyms. Public schema fields, CLI terms,
-diagnostics, tests, and proposals must use that table; external terms such as
-Schemathesis `example` are translated at their adapter boundary.
+table defines at least `target`, `target block`, `contract`, `case`, `call`,
+`workload`, `plan`, `receipt`, `observation`, `measurement`, `optimization
+candidate`, `hotspot`, `regression`, `failure`, `reproducer`, `effect`,
+`capability`, `isolation`, `inventory`, `hint`, and `annotation key`. Each entry
+records its exact meaning, owning module/report, required subject qualification,
+and retired synonyms. Public schema fields, CLI terms, diagnostics, tests, and
+proposals must use that table; external terms such as Schemathesis `example`
+are translated at their adapter boundary. The target-block entry references the
+superseding external core-plus-annotations contract without reproducing its
+obsolete draft, and annotation keys reserve the `codeatlas.` producer
+namespace defined by the published-schemas proposal.
 
 ## Phase 1: Governance and reproducible self-audit
 
-Status: [~] In progress
+Status: [x] Complete
 
 Execution checkpoint (keep current across context restarts):
 
@@ -534,38 +582,33 @@ Execution checkpoint (keep current across context restarts):
   strict Rust/JavaScript self-analysis config.
 - [x] Cargo reproducibility exposed the enclosing TypeMill workspace; the
   explicit standalone CodeAtlas workspace boundary now passes Cargo tests.
-- [~] The self-audit task covers scan, check, usage, exact inspect, lexicon,
-  inventory, and witnesses with private external artifacts; its two test
-  command forms change after the CLI hard cut.
-- [ ] Complete the CLI-dependent `scan tests` and `check tests` cut, then run
-  the full Cargo-backed dogfood surface.
-- [~] Pre-cut findings are classified below and the checkout has no generated
-  residue; rerun and close this item after the stable test grammar lands.
+- [x] The self-audit task covers scan, check, usage, exact inspect, lexicon,
+  `scan tests`, and `check tests` with private external artifacts.
+- [x] The stable testing and architecture CLI hard cuts pass focused, contract,
+  and Cargo-backed dogfood verification.
+- [x] Current findings are classified and the checkout has no generated
+  residue.
 
-Verified checkpoint, 2026-08-04 (current pre-cut test grammar):
+Verified checkpoint, 2026-08-04 (stable lifecycle grammar):
 
 - External root: `/tmp/codeatlas-xdo-cache.hTn1Nk`; no build, cache, or report
   directory exists under the checkout.
-- `cargo test --locked --jobs 1
-  config::tests::repository_self_config_covers_maintained_rust_and_javascript
-  -- --exact` passed after adding the standalone workspace boundary.
-- `node tasks/check-self.js` passed and persisted private reports under the
-  external Cargo target: 233 files, 2,235 scan symbols, 2,622 lexicon symbols,
-  one exact inspect target with five nodes/five edges, five test contexts, four
-  scripts, and zero duplicate scripts.
-- Code check/usage produced 179 non-gating medium-confidence advisories: 130
-  test-only nodes, 23 explicit `cfg`/debug runtime boundaries, 24 private
-  symbols whose calls are not yet resolved by the graph, and two unresolved
-  `super::` edges in a test module. None is evidence that source can be safely
-  deleted; the last two edges are an analyzer-resolution defect to retain as a
-  dogfood regression target.
+- Focused testing and architecture suites, the 15-case CLI contract suite,
+  formatter checks, and artifact lifecycle acceptance tests passed through
+  commits `dfb271b` and `7cbb342`.
+- `node tasks/check-self.js` passed all seven stable reports under the external
+  Cargo target: 233 files, 2,241 scan symbols, 2,628 lexicon symbols, one exact
+  inspect target with five nodes/five edges, six test contexts, four scripts,
+  and zero duplicate scripts.
+- Code check/usage produced 100 non-gating advisories: 69 test-only nodes, 23
+  explicit dynamic boundaries, six unresolved private-symbol usages, and two
+  unresolved internal edges. None is evidence that source can be safely
+  deleted; unresolved edges remain analyzer regression targets.
 - Lexicon evidence contains six private domain-local name collisions, four
-  intentional adapter/CLI shape families, 42 callable consolidation
-  candidates, and zero public exports (expected for the binary crate). Two
-  exact duplicate helpers are actionable: repository-relative path joining in
-  `context_slice`/`testing`, and graph-diagnostic rendering in testing impact/
-  witnesses. Consolidate them in the first owning code phase rather than
-  creating a generic utility bucket here.
+  intentional shape families, 41 callable candidates, and zero public exports
+  (expected for the binary crate). The earlier duplicate diagnostic renderer
+  was consolidated in the testing grammar phase rather than moved to a generic
+  utility owner.
 
 LOC: +550-800 / -20-50
 
@@ -590,8 +633,9 @@ Status: [ ] Not started
 
 LOC: +700-1,000 / -150-250
 
-Verify: Target and replay preview make zero calls; canonical plan/artifact IDs
-and typed references are stable; changed evidence refuses execution; the shared
+Verify: Target and replay preview make zero calls; RFC 8785 and CodeAtlas
+domain-separation vectors pin canonical plan IDs; canonical artifact IDs and
+typed references are stable; changed evidence refuses execution; the shared
 classifier cannot preauthorize remote/effectful targets; artifacts are private,
 bounded, redacted, and external; leases release on every outcome; incomplete
 work cannot pass.
@@ -614,6 +658,8 @@ work cannot pass.
 + src/fuzz/reproducer.rs
 + src/commands/fuzz.rs
 + tests/fuzz_plan.rs
+~ src/published_schemas.rs
+~ schemas/
 ~ src/main.rs
 ~ src/config/mod.rs
 ~ src/cli/execution.rs

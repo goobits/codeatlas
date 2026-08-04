@@ -2,22 +2,23 @@
 
 Status: Accepted follow-on; implementation waits for the execution sandbox gate
 
-Decision scope: Structured callable contracts, effect evidence, deterministic
-boundary corpora, language harnesses, and `fuzz code`
+Decision scope: Deterministic boundary corpora, language harnesses, native
+engine adapters, and `fuzz code`
 
 Depends on:
 
 - [`codeatlas-evidence-lifecycle-cli.md`](codeatlas-evidence-lifecycle-cli.md)
+- [`codeatlas-structured-callable-evidence.md`](codeatlas-structured-callable-evidence.md)
 - [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md),
   including a passing isolation backend
 
 ## Decision
 
 CodeAtlas will fuzz supported callables in Rust, Python, JavaScript, and
-TypeScript through one structured callable contract and the accepted execution
-kernel. Language adapters own syntax, type extraction, harness generation, and
-native engine translation. They do not own plans, budgets, sandboxing,
-artifacts, or receipts.
+TypeScript by consuming the accepted structured callable evidence and execution
+kernel. Language adapters own native value materialization, harness generation,
+and engine translation. They do not own callable parsing, effects, plans,
+budgets, sandboxing, artifacts, or receipts.
 
 Automatic selection is conservative. A callable is eligible only when its
 target identity, parameters, receiver construction, result handling, and
@@ -43,116 +44,37 @@ resource limits.
 Reuse and consolidate:
 
 - Language parsers and reachability adapters as the only syntax owners.
+- The accepted structured callable/effect contract as the only semantic input
+  and eligibility evidence.
 - `src/testing` public API witnesses to prioritize reachable, unwitnessed
   contracts.
 - Inspect/context/source-graph identity for exact targets and report links.
-- Existing lexicon callable evidence as behavior to replace with the structured
-  contract, then delete.
 - The execution kernel for plans, authorization, budgets, isolation, tools,
   artifacts, replay, redaction, leases, cancellation, and receipts.
 - Pinned native generation/search engines behind exact tool fingerprints rather
   than inventing CodeAtlas-specific shrinkers for every runtime. Provisioning
   uses the generalized `src/external_tool.rs` owner, not language downloaders.
 
-No existing owner provides a constructible cross-language callable contract or
-generated harness, so those are new focused owners.
+No existing owner provides generated external harnesses or native engine
+translation, so those remain focused additions here.
 
-## Structured callable contract
+## Consumed callable evidence
 
-Each language adapter emits the same semantic contract where its language can
-prove equivalent meaning:
+The structured-callable proposal owns the cross-language contract, supported
+semantic type vocabulary, receiver/constructibility evidence, effect
+propagation, lexicon v4 transition, and removal of display-signature parsing.
+This proposal consumes that accepted model without restating or extending it.
 
-```text
-CallableContract
-  target identity and visibility
-  callable kind
-  receiver requirement
-  type parameters and unresolved constraints
-  ordered parameters
-    name
-    semantic type
-    required/default/variadic state
-    declared constraints
-  result and error shapes
-  constructibility evidence
-  effect evidence
-  source and export identities
-```
+Automatic selection requires a reachable exact target, a supported callable
+kind, fully constructible parameter/result evidence, no unresolved receiver or
+lifecycle, no unknown required effect, and a verified sandbox satisfying the
+derived plan. Language capability reports remain exact per contract; they never
+advertise blanket language support.
 
-The contract is consumed by scan/inspect, lexicon, public API witnesses, and
-fuzz planning. No consumer reparses a display signature.
-
-### Initial parity set
-
-Automatically constructible types are deliberately bounded:
-
-- Boolean.
-- Bounded signed and unsigned integers.
-- Floating point, including special values only where the language contract
-  permits them.
-- String and bytes.
-- Null/none and optional/nullable values.
-- Enums and finite literal unions.
-- Bounded lists, tuples, sets, and maps whose element contracts are supported.
-- Records/data objects whose required fields are supported.
-- Supported result/error shapes.
-
-Explicit-only or blocked types include:
-
-- Unresolved generics, trait/protocol objects, existential values, and opaque
-  foreign handles.
-- Closures, callbacks, and runtime executors without an explicit adapter.
-- Methods without a deterministic receiver factory and teardown.
-- Resources requiring credentials, services, clocks, randomness, ambient
-  global state, or host handles.
-- Recursive contracts without a declared depth/size bound.
-- Types whose validation constraints cannot be represented.
-
-Capability reports list supported constructs per language. CodeAtlas advertises
-exact evidence, never blanket language fuzz support.
-
-## Lexicon and artifact versioning
-
-`src/lexicon/callable_contract.rs` currently derives callable candidates from
-signature strings. Once the structured contract ships, all lexicon callers move
-to it and that heuristic file is deleted in the same phase.
-
-The source-graph/analysis identity is bumped so old cached evidence cannot be
-read as structured evidence. The lexicon JSON report moves from schema version
-3 to version 4 if, as expected, structured callable fields or candidate kinds
-change its serialized shape. The phase must decide this from the actual diff;
-it may not change public JSON silently or bump only an internal constant while
-fixtures remain stale.
-
-## Effects and eligibility
-
-Static analysis classifies known evidence for:
-
-- Filesystem reads and writes.
-- Network calls.
-- Database access.
-- Process creation.
-- Environment access.
-- Time/random/global state.
-- Unknown or unsupported effects.
-
-Known sinks propagate through the bounded source graph. The report includes the
-path and confidence supporting a classification. Absence of a detected sink is
-not proof that no effect exists, so effect evidence controls automatic
-selection and planned capabilities but never disables sandbox enforcement.
-
-Automatic public selection requires:
-
-- Reachable public identity.
-- Supported callable kind.
-- Fully constructible parameter/result contract.
-- No unresolved receiver or lifecycle.
-- No unknown required effect.
-- A verified sandbox backend satisfying the plan.
-
-An owner may configure an exact internal or effectful fixture, factory,
-invariant, or differential oracle. That adds evidence; it does not add a force
-path or permit host filesystem access.
+An owner may configure an exact safe fixture, receiver factory, invariant, or
+differential oracle through the structured-evidence contract. That adds
+evidence; it does not add a force path, relax isolation, or let this fuzzer
+reparse source signatures.
 
 ## Deterministic corpus
 
@@ -295,58 +217,17 @@ source files into the checkout.
 
 - Rust, Python, JavaScript, and TypeScript pass one semantic type conformance
   table for the supported parity set.
-- Unsupported constructs and effect evidence have deterministic block reasons.
-- No display-signature parser remains as a parallel contract source.
+- Unsupported constructs and effect evidence from the accepted callable
+  contract have deterministic block reasons.
 - Boundary corpus ordering and seeded replay are exact for capable engines.
 - The target never observes a call without a kernel permit.
 - Checkout, home, absolute, traversal, symlink, `/tmp`, network, and subprocess
   escape attempts fail under the accepted isolation suite.
 - Sandbox absence blocks before target invocation.
 - Every automatic failure identifies its oracle and minimized reproducer.
-- Public lexicon schema and algorithm identities match the actual serialized
-  changes.
 - CodeAtlas dogfood creates no source-adjacent state or fake public library.
 
-## Phase 1: Structured callable, effect, and lexicon evidence
-
-Status: [ ] Not started
-
-LOC: +900-1,300 / -200-350
-
-Verify: Cross-language contracts and block reasons match the conformance table;
-effect propagation is deterministic; inspect/lexicon/witness consumers use one
-contract; lexicon v4 and cache identities are exact where public shape changes.
-
-```text
-+ src/domain/callable.rs
-+ src/analysis/effects.rs
-+ src/config/code.rs
-+ tests/callable_contract.rs
-~ src/domain/mod.rs
-~ src/domain/model.rs
-~ src/domain/source_graph.rs
-~ src/config/mod.rs
-~ src/languages/definition.rs
-~ src/languages/ecmascript/collection.rs
-~ src/languages/typescript/parser/visitor.rs
-~ src/languages/python/parser.rs
-~ src/languages/python/reachability.rs
-~ src/languages/rust/parser.rs
-~ src/languages/rust/parser/signatures.rs
-~ src/languages/rust/reachability.rs
-~ src/context_slice/model.rs
-~ src/outputs/context_slice.rs
-~ src/lexicon/mod.rs
-~ src/lexicon/model.rs
-~ src/commands/lexicon.rs
-~ src/outputs/lexicon.rs
-~ src/source_index/mod.rs
-~ src/tests/public_api.rs
-~ tests/cli_contract.rs
-- src/lexicon/callable_contract.rs
-```
-
-## Phase 2: Corpus, harness, and reproducer foundation
+## Phase 1: Corpus, harness, and reproducer foundation
 
 Status: [ ] Not started
 
@@ -380,7 +261,7 @@ pass using controlled language-neutral fixtures.
 ~ codeatlas.json
 ```
 
-## Phase 3: Rust, Python, JavaScript, and TypeScript adapters
+## Phase 2: Rust, Python, JavaScript, and TypeScript adapters
 
 Status: [ ] Not started
 
@@ -410,7 +291,7 @@ escape suite; capability evidence names unsupported engine behavior.
 ~ package.json
 ```
 
-## Phase 4: Self-dogfood, consolidation, and release hardening
+## Phase 3: Self-dogfood, consolidation, and release hardening
 
 Status: [ ] Not started
 
@@ -424,28 +305,27 @@ public export remains.
 ```text
 ~ codeatlas.json
 ~ README.md
-~ docs/concepts/lexicon.md
 ~ proposals/codeatlas-code-fuzzing.md
 ~ proposals/codeatlas-fuzz-performance.md
 ~ tasks/check-self.js
 ~ package.json
 ~ src/fuzz/code/mod.rs
 ~ src/fuzz/code/report.rs
-~ tests/callable_contract.rs
 ~ tests/code_fuzz_cli.rs
 ```
 
-The implementation is intentionally net higher because it adds a structured
-cross-language contract and four real runtime adapters. It must not retain the
-old signature heuristic, parallel effect models, source-local fuzz projects, or
-language-private execution controls.
+The implementation is intentionally net higher because it adds external
+harness generation and four real runtime adapters. It must not grow a second
+callable/effect model, source-local fuzz projects, or language-private execution
+controls.
 
-Total LOC: +3,300-5,100 / -630-1,230
+Total LOC: +2,400-3,800 / -430-880
 
 ## Layman's wins
 
 - CodeAtlas can safely try difficult values against supported functions.
 - It clearly explains which APIs it cannot construct or isolate instead of
   pretending everything is fuzzable.
-- One type model powers inspection, vocabulary checks, witnesses, and fuzzing.
+- It reuses the same accepted callable evidence as inspection, vocabulary
+  checks, witnesses, and sibling analysis.
 - Failures replay without adding fuzzing files or dependencies to the project.

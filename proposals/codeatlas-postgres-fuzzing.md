@@ -13,7 +13,7 @@ Depends on:
   including a passing Phase 4 isolation backend
 
 Phase 3 additionally consumes only the shared `src/fuzz/corpus.rs` foundation
-from [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) Phase 2; PostgreSQL
+from [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) Phase 1; PostgreSQL
 does not depend on callable contracts or language engines.
 
 ## Decision

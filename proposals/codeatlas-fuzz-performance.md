@@ -14,32 +14,42 @@ shared execution safety contract and domain-owned generators, harnesses, and
 oracles.
 
 This is not one all-or-nothing implementation proposal. It is a program index
-for seven independently reviewable proposals:
+for eleven independently reviewable proposals:
 
 1. [`codeatlas-evidence-lifecycle-cli.md`](codeatlas-evidence-lifecycle-cli.md)
    hard-cuts the public CLI into a consistent evidence lifecycle.
-2. [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md)
+2. [`codeatlas-published-schemas.md`](codeatlas-published-schemas.md) publishes
+   drift-tested schemas for current reports and every new artifact.
+3. [`codeatlas-hqa-seeding.md`](codeatlas-hqa-seeding.md) adds the CodeAtlas-only
+   HQA application-inventory renderer without editing HQA.
+4. [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md)
    builds the execution kernel, proves a real sandbox, and migrates existing
-   HTTP fuzzing. This is the first implementation authorization candidate.
-3. [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) adds structured
-   callable evidence and sandboxed Rust/Python/JavaScript/TypeScript fuzzing.
-4. [`codeatlas-postgres-fuzzing.md`](codeatlas-postgres-fuzzing.md) adds typed
+   HTTP fuzzing.
+5. [`codeatlas-structured-callable-evidence.md`](codeatlas-structured-callable-evidence.md)
+   replaces signature heuristics with one four-language callable/effect model.
+6. [`codeatlas-semantic-role-siblings.md`](codeatlas-semantic-role-siblings.md)
+   adds bounded advisory evidence for conceptually duplicated sibling
+   implementations.
+7. [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) adds sandboxed
+   Rust/Python/JavaScript/TypeScript callable fuzzing over accepted evidence.
+8. [`codeatlas-postgres-fuzzing.md`](codeatlas-postgres-fuzzing.md) adds typed
    PostgreSQL parameter generation in the disposable database lifecycle.
-5. [`codeatlas-subject-evidence-parity.md`](codeatlas-subject-evidence-parity.md)
+9. [`codeatlas-subject-evidence-parity.md`](codeatlas-subject-evidence-parity.md)
    fills meaningful HTTP/PostgreSQL usage, inspection, documentation,
    initialization, and cross-subject lexicon gaps without forcing empty matrix
    cells.
-6. [`codeatlas-performance-evidence.md`](codeatlas-performance-evidence.md)
+10. [`codeatlas-performance-evidence.md`](codeatlas-performance-evidence.md)
    adds planned measurements, curves, baselines, regression gates, hotspot
    attribution, and self-performance evidence.
-7. [`codeatlas-cost-guided-search.md`](codeatlas-cost-guided-search.md) is the
+11. [`codeatlas-cost-guided-search.md`](codeatlas-cost-guided-search.md) is the
    separately gated bridge from accepted domain generators to explicit
    performance cost objectives.
 
 The user authorized the full phased program. Code fuzzing, PostgreSQL fuzzing,
 subject parity, profiler integration, and cost-guided search still retain their
 technical continuation gates: authorization never turns a failed prerequisite
-into a capability.
+into a capability. This program edits CodeAtlas only; HQA, TypeMill, and any
+neutral schema repository remain external owners.
 
 ## Review disposition
 
@@ -126,6 +136,31 @@ may make it eligible.
 Callable, PostgreSQL, and OpenAPI contracts remain separate. Domain oracles,
 psql versus typed query execution, and fuzz versus performance reports also
 remain domain-owned.
+
+### Accepted schema and interop follow-up
+
+- Structured callable/effect evidence is its own acceptance unit because
+  lexicon, witnesses, semantic sibling analysis, and fuzzing all consume it.
+- New CodeAtlas artifacts publish generated, drift-tested schemas. Existing
+  report version fields are not churned; new artifacts use one namespaced
+  schema-version string.
+- Execution-plan IDs are SHA-256 content identities over the exact
+  `atlas.codeatlas.dev/execution-plan/v1\n` domain separator plus RFC
+  8785-canonicalized identity bytes. The kernel proposal owns the byte-level
+  contract and test vectors.
+- Semantic-role sibling evidence compares only configured sibling sets, counts
+  discrete corroborations, records mandatory counterevidence, treats a shared
+  trait contract as nomination rather than proof, and can never gate.
+- The CodeAtlas-side HQA renderer consumes the published application-inventory
+  v1 schema. It preserves partial completeness, uses a globally unique
+  contract-plus-operation route ID, includes source and OpenAPI evidence, and
+  never treats detector-specific `pathPattern` text as an HQA regex.
+- The obsolete source-target field draft is superseded by the external
+  core-plus-annotations contract. CodeAtlas reserves registered `codeatlas.*`
+  annotation keys and does not publish a competing schema.
+- Any future TypeMill receipt verification must be closed over the exact plan
+  and receipt alone. Moved-path digest verification remains an explicit
+  dependency on TypeMill's publication audit rather than an assumed field.
 
 ### Accepted subject-parity follow-up
 
@@ -374,15 +409,17 @@ public library is manufactured for dogfooding. All caches, compilers, package
 stores, harnesses, profiles, observations, and reports remain outside the
 checkout.
 
-Phase 1 must reproduce the current partial checkpoint with Cargo available:
+The latest stable-lifecycle checkpoint records:
 
-- 234 source files and 2,254 scan symbols.
-- 2,654 lexicon symbols.
+- 233 source files and 2,241 scan symbols.
+- 2,628 lexicon symbols.
 - 6 naming collisions and 4 shape aliases requiring classification.
-- 42 callable candidates.
-- Zero exported Rust symbols, expected for the current binary crate.
+- 41 callable candidates.
+- Six test contexts and zero exported Rust symbols, expected for the current
+  binary crate.
 
-These counts are evidence to reproduce and explain, not frozen product budgets.
+These counts are evidence to reproduce and explain, not frozen product budgets;
+later accepted analysis changes may change them with an explicit disposition.
 
 ## Process contract
 
@@ -397,34 +434,45 @@ checkout.
 ```text
 governance + CLI lifecycle hard cut
         |
-        v
-execution kernel + HTTP migration
+        +--> published schemas --> CodeAtlas HQA renderer
+        |                              (external HQA remains untouched)
         |
-        v
-callable code fuzzing                 establishes shared corpus descriptors
-        |
-        v
-PostgreSQL fuzzing                    consumes descriptors, keeps SQL semantics
-        |
-        v
-HTTP/PostgreSQL subject parity        consumes stable operation/query contracts
-        |
-        v
-performance evidence + attribution   consumes richer bounded dependency graphs
-        |
-        v
-cost-guided isolated search           consumes accepted metrics and adapters
+        +--> execution kernel + HTTP migration ------------------+
+        |                                                        |
+        +--> structured callable/effect evidence                 |
+                     |                                           |
+                     +--> semantic-role siblings                 |
+                     |       (static advisory branch)            |
+                     |                                           v
+                     +---------------------------> callable code fuzzing
+                                                            |
+                                                            v
+                                                PostgreSQL fuzzing
+                                                            |
+                                                            v
+                                         HTTP/PostgreSQL subject parity
+                                                            |
+                                                            v
+                                      performance evidence + attribution
+                                                            |
+                                                            v
+                                           cost-guided isolated search
 ```
 
-Some branches are technically independent after the kernel gate, but the order
-above is the recommended single-worker execution order. It avoids reworking
-PostgreSQL generation before shared boundary descriptors, cross-subject graphs
-before callable/query identities stabilize, and performance attribution before
-those graphs exist. PostgreSQL consumes only the shared boundary foundation,
-not callable contracts or engines. Base performance measurement could begin
-after the kernel, but intentionally follows parity so its first attribution
-contract is not immediately replaced. Cost-guided work waits for explicit
-accepted metric-feedback and shrink capabilities.
+The recommended single-worker order is: finish the proposal/schema contract
+pass; publish current schemas; add the CodeAtlas HQA renderer; build the kernel
+and migrate HTTP; complete the kernel-owned CLI normalization; land structured
+callable evidence; dogfood semantic-role siblings; add code fuzzing; add
+PostgreSQL fuzzing and finish its observation-dependent CLI cut; fill static
+subject parity; then add performance and separately gated cost search.
+
+The static schema/HQA and structured-evidence/sibling branches do not require a
+sandbox. Their position minimizes later artifact and adapter churn. PostgreSQL
+consumes only the shared corpus descriptors established by code fuzzing, not
+callable contracts or engines. Base performance could begin after the kernel,
+but intentionally follows parity so its first attribution model is not
+immediately replaced. Cost-guided work waits for explicit accepted
+metric-feedback and threshold-preserving shrink capabilities.
 
 ## Live execution checklist
 
@@ -436,8 +484,18 @@ detailed checklist.
   `6845a24`.
 - [x] Governance, lexicon, standalone Cargo boundary, self-configuration, and
   external self-audit foundation.
-- [~] Evidence lifecycle CLI hard cut and final stable-grammar dogfood.
-- [ ] Execution kernel, verified sandbox, and complete HTTP migration.
+- [~] Evidence lifecycle CLI: testing and architecture hard cuts are complete;
+  shared execution flags and PostgreSQL observation routing wait for their
+  accepted owners.
+- [x] Eleven-child proposal/schema convergence pass: four child proposals, RFC
+  8785 plan identity, interop corrections, extracted callable ownership, links,
+  and exact LOC arithmetic are internally verified.
+- [ ] Published CodeAtlas schemas and drift enforcement.
+- [ ] CodeAtlas HQA application-inventory renderer; no HQA repository edits.
+- [~] Execution kernel: governance Phase 1 is complete; immutable plan/artifact
+  Phase 2 is next, followed by sandbox and HTTP migration.
+- [ ] Structured callable/effect evidence and lexicon v4.
+- [ ] Advisory semantic-role sibling evidence and CodeAtlas dogfood.
 - [ ] Callable code fuzzing and shared boundary corpus.
 - [ ] PostgreSQL fuzzing and observation lifecycle.
 - [ ] HTTP/PostgreSQL evidence parity.
@@ -456,11 +514,12 @@ contracts with no current owner.
 No child may create a second plan, target classifier, budget, sandbox, artifact
 store/resolver, common limit parser, reproducer envelope, replay path, redaction
 engine, cleanup registry, tool provisioner, resource sampler, callable parser,
-query executor, performance metrics owner, or public command alias.
+published-schema registry, annotation namespace, HQA route scanner, query
+executor, performance metrics owner, or public command alias.
 
 ## Program stage 1: Evidence lifecycle CLI
 
-Status: [~] Accepted; implementation begins with the testing hard cut
+Status: [~] Accepted; testing and architecture complete, shared artifacts next
 
 LOC: +970-1,650 / -610-1,060
 
@@ -472,9 +531,37 @@ compatibility routing remains.
 ~ proposals/codeatlas-evidence-lifecycle-cli.md
 ```
 
-## Program stage 2: Execution kernel and HTTP migration
+## Program stage 2: Published schemas
 
-Status: [~] Accepted; Phase 1 governance in progress
+Status: [ ] Accepted; implementation follows this proposal checkpoint
+
+LOC: +650-1,000 / -0-50
+
+Verify: Every current public JSON root has one generated schema and exact drift
+test; new-artifact version and CodeAtlas annotation namespace rules are pinned;
+existing report bytes do not churn.
+
+```text
+~ proposals/codeatlas-published-schemas.md
+```
+
+## Program stage 3: CodeAtlas HQA seeding
+
+Status: [ ] Accepted CodeAtlas-only integration
+
+LOC: +220-350 / -0-20
+
+Verify: Source and OpenAPI routes render deterministically into the published
+HQA v1 inventory with unique IDs, honest completeness, conservative dynamic
+paths, no invented roles, and no HQA repository edit.
+
+```text
+~ proposals/codeatlas-hqa-seeding.md
+```
+
+## Program stage 4: Execution kernel and HTTP migration
+
+Status: [~] Accepted; Phase 1 governance complete, Phase 2 next
 
 LOC: +4,100-6,300 / -820-1,550
 
@@ -486,21 +573,49 @@ receipts, cleanup, reviewed execution, and eligible one-shot execution pass.
 ~ proposals/codeatlas-execution-kernel-http-fuzz.md
 ```
 
-## Program stage 3: Callable code fuzzing
+## Program stage 5: Structured callable evidence
+
+Status: [ ] Accepted; independent of the sandbox track
+
+LOC: +900-1,300 / -200-350
+
+Verify: One four-language callable/effect contract feeds inspect, lexicon,
+witnesses, sibling analysis, and fuzz planning; the display-signature heuristic
+is deleted; lexicon/cache/schema identities are exact.
+
+```text
+~ proposals/codeatlas-structured-callable-evidence.md
+```
+
+## Program stage 6: Semantic-role siblings
+
+Status: [ ] Accepted advisory analysis; follows structured callable evidence
+
+LOC: +850-1,350 / -100-250
+
+Verify: Only configured sibling sets are compared; discrete corroboration and
+mandatory counterevidence are exact; shared trait contracts are not proof;
+results never gate; both CodeAtlas dogfood corpora are reviewed.
+
+```text
+~ proposals/codeatlas-semantic-role-siblings.md
+```
+
+## Program stage 7: Callable code fuzzing
 
 Status: [ ] Accepted; waits for the sandbox gate
 
-LOC: +3,300-5,100 / -630-1,230
+LOC: +2,400-3,800 / -430-880
 
-Verify: Structured callable/effect evidence, lexicon v4 where required,
-four-language parity, deterministic boundary/replay, native engine adapters,
-automatic oracles, and CodeAtlas self-fuzzing pass.
+Verify: Accepted callable/effect evidence, four-language parity, deterministic
+boundary/replay, native engine adapters, automatic oracles, and CodeAtlas
+self-fuzzing pass.
 
 ```text
 ~ proposals/codeatlas-code-fuzzing.md
 ```
 
-## Program stage 4: PostgreSQL fuzzing
+## Program stage 8: PostgreSQL fuzzing
 
 Status: [ ] Accepted; runs after the callable corpus foundation
 
@@ -514,7 +629,7 @@ baseline/diff pass.
 ~ proposals/codeatlas-postgres-fuzzing.md
 ```
 
-## Program stage 5: HTTP and PostgreSQL evidence parity
+## Program stage 9: HTTP and PostgreSQL evidence parity
 
 Status: [ ] Accepted; runs after callable and PostgreSQL contract evidence
 
@@ -529,7 +644,7 @@ retains subject provenance.
 ~ proposals/codeatlas-subject-evidence-parity.md
 ```
 
-## Program stage 6: Performance evidence and attribution
+## Program stage 10: Performance evidence and attribution
 
 Status: [ ] Accepted; recommended after subject dependency graphs
 
@@ -543,7 +658,7 @@ profiler confidence is required only after its separate continuation gate.
 ~ proposals/codeatlas-performance-evidence.md
 ```
 
-## Program stage 7: Cost-guided isolated search
+## Program stage 11: Cost-guided isolated search
 
 Status: [ ] Accepted but technically gated by performance and domain adapters
 
@@ -562,7 +677,7 @@ sandbox, three execution domains, four language adapters, a typed database
 client, and a performance evidence product. Each child has a final hardening
 phase that removes replaced owners and refuses compatibility residue.
 
-Total LOC: +16,570-25,900 / -3,840-7,420
+Total LOC: +18,290-28,600 / -3,940-7,740
 
 ## Layman's wins
 

@@ -1,14 +1,14 @@
 # Evidence lifecycle CLI
 
-Status: Accepted; implementation pending
+Status: Accepted; Phases 1-2 complete, Phase 3 waits for shared artifact owners
 
 Decision scope: Public command grammar and artifact flow plus explicit test-gate
 and PostgreSQL no-hidden-execution behavior; no new static analyzer
 
 Depends on: None
 
-Unblocks: Execution/HTTP, code fuzzing, PostgreSQL fuzzing, and performance
-evidence proposals
+Unblocks: Published schemas, HQA rendering, execution/HTTP, structured callable
+evidence, code fuzzing, PostgreSQL fuzzing, and performance evidence proposals
 
 ## Decision
 
