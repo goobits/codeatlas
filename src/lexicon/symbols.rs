@@ -22,6 +22,7 @@ pub(super) fn project_symbol(symbol: &Symbol) -> LexiconSymbol {
         language: symbol.language,
         package: symbol.package.clone(),
         file_path: symbol.file_path.clone(),
+        span: symbol.span.clone(),
         signature: normalize_whitespace(&symbol.signature),
         export_paths,
     }
@@ -31,26 +32,25 @@ pub(super) fn sort_symbols(symbols: &mut [LexiconSymbol]) {
     symbols.sort_by(|left, right| left.id.cmp(&right.id));
 }
 
-pub(super) fn collect_identifier_terms(name: &str) -> BTreeSet<String> {
-    split_identifier_terms(name).into_iter().collect()
-}
-
 pub(super) fn collect_identifier_concept_terms(name: &str) -> BTreeSet<String> {
-    let mut terms = split_identifier_terms(name);
+    let mut terms = tokenize_identifier(name);
     if !terms.is_empty() {
         terms.remove(0);
     }
-    terms.into_iter().collect()
+    terms
+        .into_iter()
+        .filter(|term| is_reportable_identifier_term(term))
+        .collect()
 }
 
-fn split_identifier_terms(name: &str) -> Vec<String> {
+pub(super) fn tokenize_identifier(name: &str) -> Vec<String> {
     let characters = name.chars().collect::<Vec<_>>();
     let mut terms = Vec::new();
     let mut current = String::new();
 
     for (index, character) in characters.iter().copied().enumerate() {
         if !character.is_alphanumeric() {
-            push_term(&mut terms, &mut current);
+            push_identifier_token(&mut terms, &mut current);
             continue;
         }
         let previous = index.checked_sub(1).and_then(|index| characters.get(index));
@@ -62,21 +62,24 @@ fn split_identifier_terms(name: &str) -> Vec<String> {
                 || previous.is_some_and(|character| character.is_uppercase())
                     && next.is_some_and(|character| character.is_lowercase()));
         if starts_word {
-            push_term(&mut terms, &mut current);
+            push_identifier_token(&mut terms, &mut current);
         }
         current.extend(character.to_lowercase());
     }
-    push_term(&mut terms, &mut current);
+    push_identifier_token(&mut terms, &mut current);
     terms
 }
 
-fn push_term(terms: &mut Vec<String>, current: &mut String) {
-    if current.len() >= 3
-        && !current.chars().all(|character| character.is_ascii_digit())
-        && !matches!(current.as_str(), "and" | "for" | "from" | "the" | "with")
-    {
+fn push_identifier_token(terms: &mut Vec<String>, current: &mut String) {
+    if !current.is_empty() {
         terms.push(std::mem::take(current));
     } else {
         current.clear();
     }
+}
+
+pub(super) fn is_reportable_identifier_term(term: &str) -> bool {
+    term.len() >= 3
+        && !term.chars().all(|character| character.is_ascii_digit())
+        && !matches!(term, "and" | "for" | "from" | "the" | "with")
 }

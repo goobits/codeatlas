@@ -1,5 +1,6 @@
 mod analysis;
 mod http;
+mod lexicon;
 mod postgres;
 
 pub(crate) use analysis::{
@@ -9,6 +10,10 @@ pub(crate) use http::{
     HttpConfig, HttpFuzzCommandConfig, HttpFuzzHealthCheck, HttpFuzzOperationScopeConfig,
     HttpFuzzOperationSelectionConfig, HttpFuzzPositiveCoverageConfig, HttpFuzzServerConfig,
     HttpOpenApiProviderConfig, HttpOpenApiSourceConfig,
+};
+pub(crate) use lexicon::{
+    LexiconConfig, LexiconProviderConfig, LexiconProviderCoverage, LexiconProviderFormat,
+    LexiconProviderTier,
 };
 pub(crate) use postgres::{
     PostgresConfig, PostgresContractConfig, PostgresLintConfig, PostgresPsqlMetaCommandMode,
@@ -32,6 +37,7 @@ pub(crate) struct CodeAtlasConfig {
     pub projects: Vec<AnalysisProjectConfig>,
     pub docs: DocsConfig,
     pub http: HttpConfig,
+    pub lexicon: LexiconConfig,
     pub postgres: PostgresConfig,
 }
 
@@ -48,6 +54,7 @@ impl Default for CodeAtlasConfig {
             projects: Vec::new(),
             docs: DocsConfig::default(),
             http: HttpConfig::default(),
+            lexicon: LexiconConfig::default(),
             postgres: PostgresConfig::default(),
         }
     }
@@ -192,6 +199,8 @@ mod tests {
         assert!(!config.include_private);
         assert!(!config.docs.declaration_contract);
         assert!(!config.docs.require_descriptions);
+        assert!(config.lexicon.concepts.is_empty());
+        assert!(config.lexicon.providers.is_empty());
         assert!(config.postgres.contracts.is_empty());
         assert!(config.postgres.targets.is_empty());
     }

@@ -54,7 +54,7 @@ present.
 | `diff code\|http\|postgres` | Compare current evidence with a baseline |
 | `usage code` | Classify reachability and known public consumers |
 | `inspect code\|architecture` | Explain an exact target and its bounded neighborhood |
-| `lexicon code` | Report deterministic naming and structural collisions |
+| `lexicon code` | Report deterministic naming, structural, and declared conceptual overlap |
 | `tests inventory\|impact\|witnesses` | Inventory tests, select affected tests, and report witnesses |
 | `docs code` | Generate or check public API documentation |
 | `fuzz http` | Exercise a configured HTTP target with generated requests |
@@ -295,13 +295,154 @@ codeatlas --root . lexicon code --workspace --format json
 Lexicon analysis scans maintained source with private symbols included. It
 reports exact same-name/different-shape collisions, deterministic type-shape
 candidates, callable contract candidates, repeated identifier terms, and
-public exposure. Exact same-name signatures carry direct structural evidence;
+declared terminology policy. It also records package exposure. Exact same-name
+signatures carry direct structural evidence;
 differently named callables are inferred only when they share a typed contract
 shape, a cohesive source scope, and meaningful object or qualifier terms after
 the leading intent word. Untyped name-only matches and unrelated type
 coincidences are omitted because they do not provide enough evidence. CodeAtlas
 does not compare implementation bodies or claim behavioral equivalence, so
-every candidate remains advisory and never authorizes deletion.
+structural candidates remain advisory. Results are read-only: they do not
+create gates, choose a refactor, authorize deletion, or update a source
+dataset.
+
+Project policy is the authority. A concept can own preferred terms, exact
+aliases, and retired terms. `distinct_from` records that two declared concepts
+are intentionally different; `never_suggest` suppresses one exact unowned or
+partially owned term pair. Both exception forms require a durable reason.
+
+```json
+{
+  "lexicon": {
+    "concepts": [
+      {
+        "id": "request_handler",
+        "preferred_terms": ["request handler"],
+        "exact_aliases": ["controller"],
+        "retired_terms": ["request processor"],
+        "distinct_from": [
+          {
+            "concept": "event_listener",
+            "reason": "Handlers own requests; listeners observe domain events."
+          }
+        ]
+      },
+      {
+        "id": "event_listener",
+        "preferred_terms": ["event listener"]
+      }
+    ],
+    "never_suggest": [
+      {
+        "terms": ["record", "row"],
+        "reason": "A record is a domain value; a row is storage in this project."
+      }
+    ]
+  }
+}
+```
+
+Terms are matched exactly after case, punctuation, separator, and identifier
+word-boundary normalization. A term may belong to only one concept. A
+`distinct_from` declaration is symmetric even when it is written on only one
+concept. Contradictory, duplicate, unknown, or reasonless declarations fail
+before source scanning.
+
+#### Offline thesaurus evidence
+
+Optional sources are pinned offline evidence, never authority. Every provider
+manifest declares its version, SHA-256 digest, license, attribution, upstream
+URL, format, and whether the local data is complete or filtered. Missing files,
+changed bytes, malformed records, and unsupported schemas fail the command
+instead of silently producing a partial report.
+
+[Computer Science Ontology (CSO)](https://cso.kmi.open.ac.uk/) is the primary
+supported programming/domain source. CSO 3.5 contains about 15,000 topics and
+166,000 relationships and is licensed
+[CC BY 4.0](https://cso.kmi.open.ac.uk/faq). CodeAtlas reads the official,
+extracted CSV directly and considers only `preferentialEquivalent` and
+`relatedEquivalent`; hierarchy and contribution edges are not synonym
+evidence. CSO itself defines `relatedEquivalent` as contextual equivalence,
+not `skos:exactMatch`, so every sourced result remains advisory.
+
+Source acquisition and refresh stay outside analysis. This reproducible example
+pins the CSO 3.5 release archive and the extracted CSV bytes used by the
+provider:
+
+```bash
+lexicon_source_root=/opt/codeatlas/lexicon
+mkdir -p "$lexicon_source_root"
+curl -fsSL \
+  https://cso.kmi.open.ac.uk/download/version-3.5/CSO.3.5.csv.zip \
+  -o "$lexicon_source_root/CSO.3.5.csv.zip"
+printf '%s  %s\n' \
+  5b16a3902e90b704bc90536034665022b2b3d074c7bf3fbf4291e5d6cc0aae20 \
+  "$lexicon_source_root/CSO.3.5.csv.zip" | sha256sum --check
+unzip -p "$lexicon_source_root/CSO.3.5.csv.zip" \
+  > "$lexicon_source_root/CSO.3.5.csv"
+printf '%s  %s\n' \
+  564fb62dcc638c655bd9936247f45d740417e5786f6892f0341f606cfbbba98f \
+  "$lexicon_source_root/CSO.3.5.csv" | sha256sum --check
+```
+
+```json
+{
+  "lexicon": {
+    "providers": [
+      {
+        "id": "cso",
+        "tier": "domain",
+        "format": "cso_csv",
+        "coverage": "complete",
+        "version": "3.5",
+        "path": "/opt/codeatlas/lexicon/CSO.3.5.csv",
+        "sha256": "sha256:564fb62dcc638c655bd9936247f45d740417e5786f6892f0341f606cfbbba98f",
+        "license": "CC-BY-4.0",
+        "attribution": "Computer Science Ontology, Knowledge Media Institute, The Open University",
+        "url": "https://cso.kmi.open.ac.uk/downloads"
+      }
+    ]
+  }
+}
+```
+
+Relative provider paths resolve from the selected `codeatlas.json`. CodeAtlas
+does not distribute CSO, download it during analysis, or refresh a pin.
+
+`relations_json_v1` is the small pluggable format for a versioned domain source
+or a filtered general thesaurus. It has a closed schema:
+
+```json
+{
+  "schema_version": 1,
+  "relations": [
+    {
+      "subject": "language model",
+      "relation": "synonym",
+      "object": "language models"
+    }
+  ]
+}
+```
+
+Domain manifests may use `preferential_equivalent`, `related_equivalent`, or
+`synonym`. General manifests may use only `synonym`, require at least one domain
+provider, and are indexed only when the exact normalized pair already has
+domain evidence. Thus a normal thesaurus can corroborate a programming result
+but cannot originate one. [Open English WordNet
+2025](https://github.com/globalwordnet/english-wordnet/releases) is the
+recommended general source: it is versioned and CC BY 4.0, but its roughly
+120,000 sense-specific synsets are deliberately not embedded or guessed across
+code identifiers. Prepare a small attributed relation file in a separate source
+refresh process, mark its coverage `filtered`, and pin its resulting bytes.
+
+JSON reports use lexicon schema version 2. They expose deterministic candidate
+IDs and ordering, source manifests and record counts, evidence relation and
+direction, available source ranges for observed symbols, project/domain tiers,
+qualitative confidence, stable rules and reasons, preferred terms when
+declared, applied suppressions, and the exact config key for permanently
+dismissing an advisory candidate. Text output shows the same review surface in
+compact form; JSON is the complete contract.
 
 ### Public API baselines
 

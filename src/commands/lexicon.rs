@@ -32,12 +32,13 @@ fn run_inner(
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let project = load_project(path, config_path)?;
+    let policy = lexicon::load_concept_policy(&project.config.lexicon, project.config_base())?;
     let scan = if workspace {
         scan_workspace(&project)?
     } else {
         scan_source(&project)?
     };
-    let report = lexicon::analyze(&scan);
+    let report = lexicon::analyze(&scan, &policy);
     let rendered = match format {
         LexiconFormat::Text => outputs::lexicon::render_text(&report),
         LexiconFormat::Json => outputs::lexicon::render_json(&report)?,

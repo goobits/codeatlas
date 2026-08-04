@@ -66,7 +66,7 @@ enum Command {
         #[command(subcommand)]
         subject: inspect::InspectSubject,
     },
-    /// Find deterministic naming collisions and aliases
+    /// Find deterministic naming and conceptual overlap
     Lexicon {
         #[command(subcommand)]
         subject: lexicon::LexiconSubject,
