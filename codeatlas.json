@@ -1,0 +1,8 @@
+{
+  "root": ".",
+  "languages": ["rs", "ts"],
+  "entrypoints": ["src/main.rs"],
+  "include_private": true,
+  "include_types": true,
+  "package_exports": false
+}

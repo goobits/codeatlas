@@ -257,7 +257,18 @@ module owns reusable execution/fuzz limit arguments.
 
 ## Phase 1: Hard-cut the testing grammar
 
-Status: [ ] Not started
+Status: [~] In progress
+
+Execution checkpoint:
+
+- [ ] Add `tests` as a subject under scan/check/usage using the existing
+  testing command owner.
+- [ ] Give `check tests` gate decisions and `--gates-only` rendering semantics.
+- [ ] Remove the top-level `tests` parser/module with no alias or forwarding
+  branch.
+- [ ] Update CLI/integration tests and the self-audit task to the stable forms.
+- [ ] Run focused testing/CLI/self-dogfood verification, record evidence here,
+  and commit the coherent hard cut.
 
 LOC: +220-350 / -160-260
 

@@ -530,14 +530,42 @@ Status: [~] In progress
 Execution checkpoint (keep current across context restarts):
 
 - [x] Proposal suite reviewed, consolidated, and committed as `6845a24`.
-- [~] `AGENTS.md`, the canonical lexicon, and strict self-analysis config are
-  drafted; targeted validation is pending.
-- [ ] Make the self-audit task cover scan, check, usage, inspect, lexicon, and
-  test evidence without writing generated state into the checkout.
+- [x] Expanded `AGENTS.md`, established the canonical lexicon, and added a
+  strict Rust/JavaScript self-analysis config.
+- [x] Cargo reproducibility exposed the enclosing TypeMill workspace; the
+  explicit standalone CodeAtlas workspace boundary now passes Cargo tests.
+- [~] The self-audit task covers scan, check, usage, exact inspect, lexicon,
+  inventory, and witnesses with private external artifacts; its two test
+  command forms change after the CLI hard cut.
 - [ ] Complete the CLI-dependent `scan tests` and `check tests` cut, then run
   the full Cargo-backed dogfood surface.
-- [ ] Classify every current finding, record verification evidence here, and
-  confirm that Git and the checkout contain no generated residue.
+- [~] Pre-cut findings are classified below and the checkout has no generated
+  residue; rerun and close this item after the stable test grammar lands.
+
+Verified checkpoint, 2026-08-04 (current pre-cut test grammar):
+
+- External root: `/tmp/codeatlas-xdo-cache.hTn1Nk`; no build, cache, or report
+  directory exists under the checkout.
+- `cargo test --locked --jobs 1
+  config::tests::repository_self_config_covers_maintained_rust_and_javascript
+  -- --exact` passed after adding the standalone workspace boundary.
+- `node tasks/check-self.js` passed and persisted private reports under the
+  external Cargo target: 233 files, 2,235 scan symbols, 2,622 lexicon symbols,
+  one exact inspect target with five nodes/five edges, five test contexts, four
+  scripts, and zero duplicate scripts.
+- Code check/usage produced 179 non-gating medium-confidence advisories: 130
+  test-only nodes, 23 explicit `cfg`/debug runtime boundaries, 24 private
+  symbols whose calls are not yet resolved by the graph, and two unresolved
+  `super::` edges in a test module. None is evidence that source can be safely
+  deleted; the last two edges are an analyzer-resolution defect to retain as a
+  dogfood regression target.
+- Lexicon evidence contains six private domain-local name collisions, four
+  intentional adapter/CLI shape families, 42 callable consolidation
+  candidates, and zero public exports (expected for the binary crate). Two
+  exact duplicate helpers are actionable: repository-relative path joining in
+  `context_slice`/`testing`, and graph-diagnostic rendering in testing impact/
+  witnesses. Consolidate them in the first owning code phase rather than
+  creating a generic utility bucket here.
 
 LOC: +550-800 / -20-50
 
@@ -549,6 +577,7 @@ or unrelated Git change exists.
 ~ AGENTS.md
 + docs/concepts/lexicon.md
 + codeatlas.json
+~ Cargo.toml
 ~ proposals/codeatlas-execution-kernel-http-fuzz.md
 ~ tasks/check-self.js
 ~ package.json

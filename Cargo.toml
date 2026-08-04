@@ -6,6 +6,9 @@ description = "Map source code and compile declared architecture across language
 license-file = "LICENSE"
 repository = "https://github.com/goobits/codeatlas"
 
+[workspace]
+resolver = "2"
+
 [dependencies]
 # CLI & Error Handling
 clap = { version = "4.4", features = ["derive"] }

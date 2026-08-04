@@ -185,6 +185,19 @@ mod tests {
     use super::CodeAtlasConfig;
 
     #[test]
+    fn repository_self_config_covers_maintained_rust_and_javascript() {
+        let config = serde_json::from_str::<CodeAtlasConfig>(include_str!("../../codeatlas.json"))
+            .expect("repository CodeAtlas config should remain valid and strict");
+
+        assert_eq!(config.root, Some(std::path::PathBuf::from(".")));
+        assert_eq!(config.languages, ["rs", "ts"]);
+        assert_eq!(config.entrypoints, ["src/main.rs"]);
+        assert!(config.include_private);
+        assert!(config.include_types);
+        assert!(!config.package_exports);
+    }
+
+    #[test]
     fn config_rejects_unknown_fields() {
         let error = serde_json::from_str::<CodeAtlasConfig>(r#"{"unknown":true}"#)
             .expect_err("unknown config field should fail");

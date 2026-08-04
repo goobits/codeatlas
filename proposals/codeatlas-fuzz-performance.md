@@ -434,9 +434,9 @@ detailed checklist.
 
 - [x] Original seven-document fuzz/performance suite corrected and committed as
   `6845a24`.
-- [~] Governance/lexicon/self-configuration foundation; CLI-dependent dogfood
-  remains pending.
-- [ ] Evidence lifecycle CLI hard cut.
+- [x] Governance, lexicon, standalone Cargo boundary, self-configuration, and
+  external self-audit foundation.
+- [~] Evidence lifecycle CLI hard cut and final stable-grammar dogfood.
 - [ ] Execution kernel, verified sandbox, and complete HTTP migration.
 - [ ] Callable code fuzzing and shared boundary corpus.
 - [ ] PostgreSQL fuzzing and observation lifecycle.
@@ -460,7 +460,7 @@ query executor, performance metrics owner, or public command alias.
 
 ## Program stage 1: Evidence lifecycle CLI
 
-Status: [ ] Accepted; governance prerequisite in progress
+Status: [~] Accepted; implementation begins with the testing hard cut
 
 LOC: +970-1,650 / -610-1,060
 
