@@ -1,7 +1,6 @@
 # Fuzzing and performance program
 
-Status: Umbrella roadmap; child proposals are reviewed and authorized
-independently
+Status: Approved program; phased implementation in progress
 
 Repository: CodeAtlas
 
@@ -15,7 +14,7 @@ shared execution safety contract and domain-owned generators, harnesses, and
 oracles.
 
 This is not one all-or-nothing implementation proposal. It is a program index
-for six independently reviewable proposals:
+for seven independently reviewable proposals:
 
 1. [`codeatlas-evidence-lifecycle-cli.md`](codeatlas-evidence-lifecycle-cli.md)
    hard-cuts the public CLI into a consistent evidence lifecycle.
@@ -26,16 +25,21 @@ for six independently reviewable proposals:
    callable evidence and sandboxed Rust/Python/JavaScript/TypeScript fuzzing.
 4. [`codeatlas-postgres-fuzzing.md`](codeatlas-postgres-fuzzing.md) adds typed
    PostgreSQL parameter generation in the disposable database lifecycle.
-5. [`codeatlas-performance-evidence.md`](codeatlas-performance-evidence.md)
+5. [`codeatlas-subject-evidence-parity.md`](codeatlas-subject-evidence-parity.md)
+   fills meaningful HTTP/PostgreSQL usage, inspection, documentation,
+   initialization, and cross-subject lexicon gaps without forcing empty matrix
+   cells.
+6. [`codeatlas-performance-evidence.md`](codeatlas-performance-evidence.md)
    adds planned measurements, curves, baselines, regression gates, hotspot
    attribution, and self-performance evidence.
-6. [`codeatlas-cost-guided-search.md`](codeatlas-cost-guided-search.md) is the
+7. [`codeatlas-cost-guided-search.md`](codeatlas-cost-guided-search.md) is the
    separately gated bridge from accepted domain generators to explicit
    performance cost objectives.
 
-Acceptance of the CLI and kernel/HTTP proposals does not pre-authorize any
-follow-on. Code fuzzing, PostgreSQL fuzzing, profiler integration, and
-cost-guided search each retain their own continuation gates.
+The user authorized the full phased program. Code fuzzing, PostgreSQL fuzzing,
+subject parity, profiler integration, and cost-guided search still retain their
+technical continuation gates: authorization never turns a failed prerequisite
+into a capability.
 
 ## Review disposition
 
@@ -123,6 +127,26 @@ Callable, PostgreSQL, and OpenAPI contracts remain separate. Domain oracles,
 psql versus typed query execution, and fuzz versus performance reports also
 remain domain-owned.
 
+### Accepted subject-parity follow-up
+
+- Schedule `usage http|postgres`, `inspect http|postgres`,
+  `docs http|postgres`, truthful `init code|http`, and
+  `lexicon repository --subjects code,http,postgres` as one separate static
+  evidence proposal.
+- Extract one repository/workspace scope and strict config-edit owner before
+  adding subject commands. HTTP and PostgreSQL do not reinterpret
+  `--workspace` or clone PostgreSQL init's JSON insertion.
+- Keep HTTP and PostgreSQL dependency graphs domain-owned while sharing bounded
+  graph projection, ordering, pagination, and cursor mechanics with code
+  inspection.
+- Keep negative evidence honest: no known repository route consumer and no
+  known static SQL touch are not universal “unused” claims.
+- Add PostgreSQL docs as well as HTTP docs because migrations, static queries,
+  catalog observations, and sourced comments provide a real deterministic
+  evidence contract.
+- Do not add `init architecture`, `test code|http`, universal domain graphs, or
+  blank symmetry commands.
+
 ## Product outcome
 
 The stable product families are:
@@ -135,20 +159,20 @@ Evidence lifecycle
   diff code|http|postgres|architecture|performance
 
 Focused evidence
-  usage code|tests
-  inspect code|architecture
-  lexicon code
-  docs code
-  init postgres
+  usage code|http|postgres|tests
+  inspect code|http|postgres|architecture
+  lexicon code|repository
+  docs code|http|postgres
+  init code|http|postgres
 
 Runtime exploration
   fuzz code|http|postgres
   test postgres
 ```
 
-HTTP/PostgreSQL usage, inspection, docs, cross-domain lexicon, and generalized
-init remain separately proposed future capabilities. They are not created for
-matrix symmetry.
+HTTP/PostgreSQL usage, inspection, docs, cross-domain lexicon, and truthful
+code/HTTP init are scheduled in the separate subject-parity proposal. They are
+not created merely for matrix symmetry.
 
 ## Architectural decision
 
@@ -371,27 +395,55 @@ checkout.
 ## Dependency and authorization graph
 
 ```text
-CLI lifecycle hard cut
+governance + CLI lifecycle hard cut
         |
         v
-execution kernel + HTTP migration        first acceptance unit
+execution kernel + HTTP migration
         |
-        +----------------------+----------------------+
-        |                      |                      |
-        v                      v                      v
-callable code fuzzing   PostgreSQL fuzzing   base performance evidence
-        |                      |                      |
-        +----------------------+----------------------+
-                               |
-                               v
-                    cost-guided isolated search
+        v
+callable code fuzzing                 establishes shared corpus descriptors
+        |
+        v
+PostgreSQL fuzzing                    consumes descriptors, keeps SQL semantics
+        |
+        v
+HTTP/PostgreSQL subject parity        consumes stable operation/query contracts
+        |
+        v
+performance evidence + attribution   consumes richer bounded dependency graphs
+        |
+        v
+cost-guided isolated search           consumes accepted metrics and adapters
 ```
 
-Code and PostgreSQL contract/sandbox work can proceed independently after the
-kernel gate. PostgreSQL's generated-corpus phase consumes the shared boundary
-foundation introduced by code fuzzing, not its callable contracts or engines.
-Base performance phases can begin after the kernel and CLI proposals;
-cost-guided domain work waits for explicit accepted cost-search extensions.
+Some branches are technically independent after the kernel gate, but the order
+above is the recommended single-worker execution order. It avoids reworking
+PostgreSQL generation before shared boundary descriptors, cross-subject graphs
+before callable/query identities stabilize, and performance attribution before
+those graphs exist. PostgreSQL consumes only the shared boundary foundation,
+not callable contracts or engines. Base performance measurement could begin
+after the kernel, but intentionally follows parity so its first attribution
+contract is not immediately replaced. Cost-guided work waits for explicit
+accepted metric-feedback and shrink capabilities.
+
+## Live execution checklist
+
+Keep this program-level checkpoint synchronized whenever a child phase starts,
+finishes, blocks, or changes order. The active child proposal holds its more
+detailed checklist.
+
+- [x] Original seven-document fuzz/performance suite corrected and committed as
+  `6845a24`.
+- [~] Governance/lexicon/self-configuration foundation; CLI-dependent dogfood
+  remains pending.
+- [ ] Evidence lifecycle CLI hard cut.
+- [ ] Execution kernel, verified sandbox, and complete HTTP migration.
+- [ ] Callable code fuzzing and shared boundary corpus.
+- [ ] PostgreSQL fuzzing and observation lifecycle.
+- [ ] HTTP/PostgreSQL evidence parity.
+- [ ] Performance curves, regressions, candidates, and gated profiler evidence.
+- [ ] Cost-guided isolated search.
+- [ ] Whole-program consolidation, dogfood, docs honesty, and release hardening.
 
 ## Existing-first check
 
@@ -408,7 +460,7 @@ query executor, performance metrics owner, or public command alias.
 
 ## Program stage 1: Evidence lifecycle CLI
 
-Status: [ ] Proposed independently
+Status: [ ] Accepted; governance prerequisite in progress
 
 LOC: +970-1,650 / -610-1,060
 
@@ -422,7 +474,7 @@ compatibility routing remains.
 
 ## Program stage 2: Execution kernel and HTTP migration
 
-Status: [ ] First implementation authorization candidate
+Status: [~] Accepted; Phase 1 governance in progress
 
 LOC: +4,100-6,300 / -820-1,550
 
@@ -434,9 +486,9 @@ receipts, cleanup, reviewed execution, and eligible one-shot execution pass.
 ~ proposals/codeatlas-execution-kernel-http-fuzz.md
 ```
 
-## Program stage 3A: Callable code fuzzing
+## Program stage 3: Callable code fuzzing
 
-Status: [ ] Follow-on after sandbox gate
+Status: [ ] Accepted; waits for the sandbox gate
 
 LOC: +3,300-5,100 / -630-1,230
 
@@ -448,9 +500,9 @@ automatic oracles, and CodeAtlas self-fuzzing pass.
 ~ proposals/codeatlas-code-fuzzing.md
 ```
 
-## Program stage 3B: PostgreSQL fuzzing
+## Program stage 4: PostgreSQL fuzzing
 
-Status: [ ] Follow-on after kernel gate
+Status: [ ] Accepted; runs after the callable corpus foundation
 
 LOC: +2,150-3,350 / -410-830
 
@@ -462,9 +514,24 @@ baseline/diff pass.
 ~ proposals/codeatlas-postgres-fuzzing.md
 ```
 
-## Program stage 4: Performance evidence and attribution
+## Program stage 5: HTTP and PostgreSQL evidence parity
 
-Status: [ ] Follow-on after kernel gate
+Status: [ ] Accepted; runs after callable and PostgreSQL contract evidence
+
+LOC: +3,400-5,250 / -840-1,590
+
+Verify: One repository scope feeds code/HTTP/PostgreSQL; route and database
+usage claims expose completeness; docs contain only sourced facts; exact
+inspection graphs are bounded; init preview is zero-write; repository lexicon
+retains subject provenance.
+
+```text
+~ proposals/codeatlas-subject-evidence-parity.md
+```
+
+## Program stage 6: Performance evidence and attribution
+
+Status: [ ] Accepted; recommended after subject dependency graphs
 
 LOC: +2,150-3,450 / -430-910
 
@@ -476,9 +543,9 @@ profiler confidence is required only after its separate continuation gate.
 ~ proposals/codeatlas-performance-evidence.md
 ```
 
-## Program stage 5: Cost-guided isolated search
+## Program stage 7: Cost-guided isolated search
 
-Status: [ ] Speculative follow-on after performance and domain adapters
+Status: [ ] Accepted but technically gated by performance and domain adapters
 
 LOC: +500-800 / -100-250
 
@@ -495,7 +562,7 @@ sandbox, three execution domains, four language adapters, a typed database
 client, and a performance evidence product. Each child has a final hardening
 phase that removes replaced owners and refuses compatibility residue.
 
-Total LOC: +13,170-20,650 / -3,000-5,830
+Total LOC: +16,570-25,900 / -3,840-7,420
 
 ## Layman's wins
 

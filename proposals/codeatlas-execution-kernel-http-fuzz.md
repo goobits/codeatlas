@@ -1,6 +1,6 @@
 # Execution kernel and bounded HTTP fuzzing
 
-Status: Proposed for first implementation authorization
+Status: Accepted; implementation in progress
 
 Decision scope: Shared execution safety, immutable plans and receipts, enforced
 isolation, and migration of existing HTTP fuzzing
@@ -525,7 +525,19 @@ Schemathesis `example` are translated at their adapter boundary.
 
 ## Phase 1: Governance and reproducible self-audit
 
-Status: [ ] Not started
+Status: [~] In progress
+
+Execution checkpoint (keep current across context restarts):
+
+- [x] Proposal suite reviewed, consolidated, and committed as `6845a24`.
+- [~] `AGENTS.md`, the canonical lexicon, and strict self-analysis config are
+  drafted; targeted validation is pending.
+- [ ] Make the self-audit task cover scan, check, usage, inspect, lexicon, and
+  test evidence without writing generated state into the checkout.
+- [ ] Complete the CLI-dependent `scan tests` and `check tests` cut, then run
+  the full Cargo-backed dogfood surface.
+- [ ] Classify every current finding, record verification evidence here, and
+  confirm that Git and the checkout contain no generated residue.
 
 LOC: +550-800 / -20-50
 

@@ -1,6 +1,7 @@
 # PostgreSQL parameter fuzzing
 
-Status: Follow-on proposal; implementation waits for the execution kernel
+Status: Accepted follow-on; implementation waits for callable corpus and the
+execution kernel
 
 Decision scope: Typed PostgreSQL parameter contracts, deterministic value
 generation, guarded execution, reduction, and `fuzz postgres`

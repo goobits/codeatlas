@@ -1,6 +1,6 @@
 # Evidence lifecycle CLI
 
-Status: Proposed
+Status: Accepted; implementation pending
 
 Decision scope: Public command grammar and artifact flow plus explicit test-gate
 and PostgreSQL no-hidden-execution behavior; no new static analyzer
@@ -199,8 +199,9 @@ rules.
 
 ## Cross-domain additions are separate capabilities
 
-The following are valuable destinations but not part of this grammar-only
-migration:
+The following accepted destinations are owned by the separate
+[`codeatlas-subject-evidence-parity.md`](codeatlas-subject-evidence-parity.md)
+proposal rather than this grammar-only migration:
 
 - `usage http`: known repository callers and tests for routes, with completeness
   evidence and no claim that an externally consumed route is unused.
@@ -216,8 +217,8 @@ migration:
 - Generalized `init`: only for subjects where discovery can produce a truthful,
   useful configuration proposal.
 
-Each addition needs its own evidence contract and acceptance tests. Symmetry is
-a design diagnostic, not authorization to add an empty command.
+Each addition has its own evidence contract and acceptance tests there.
+Symmetry is a design diagnostic, not authorization to add an empty command.
 
 ## Migration contract
 

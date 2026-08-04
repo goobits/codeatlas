@@ -1,6 +1,6 @@
 # Performance evidence, curves, and hotspots
 
-Status: Follow-on proposal; base implementation waits for the execution kernel
+Status: Accepted follow-on; base implementation waits for the execution kernel
 
 Decision scope: Planned performance observations, fixed workload curves,
 budgets, baselines, diffs, and profiler attribution

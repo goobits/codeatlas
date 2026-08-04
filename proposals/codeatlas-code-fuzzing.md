@@ -1,6 +1,6 @@
 # Sandboxed callable code fuzzing
 
-Status: Follow-on proposal; implementation waits for the execution sandbox gate
+Status: Accepted follow-on; implementation waits for the execution sandbox gate
 
 Decision scope: Structured callable contracts, effect evidence, deterministic
 boundary corpora, language harnesses, and `fuzz code`

@@ -1,6 +1,7 @@
 # Cost-guided isolated input search
 
-Status: Speculative follow-on; independently authorized after all dependencies
+Status: Accepted but technically gated; implementation waits for all
+dependencies
 
 Decision scope: Adaptive input search and reduction against an explicit
 performance cost objective
