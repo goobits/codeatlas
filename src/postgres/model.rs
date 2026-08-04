@@ -10,7 +10,7 @@ pub(crate) const POSTGRES_BASELINE_SCHEMA_VERSION: u32 = 1;
 pub(crate) const POSTGRES_DIFF_API_VERSION: &str = "codeatlas.postgres-diff/v1";
 pub(crate) const POSTGRES_DIFF_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresInventoryReport {
     pub schema_version: u32,
@@ -30,7 +30,7 @@ impl PostgresInventoryReport {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresContractInventory {
     pub id: String,
@@ -46,7 +46,7 @@ pub(crate) struct PostgresContractInventory {
     pub diagnostics: Vec<PostgresFinding>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresSqlSourceInventory {
     pub name: String,
@@ -62,14 +62,14 @@ pub(crate) struct PostgresSqlSourceInventory {
     pub directives: Vec<PostgresPsqlDirective>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresPsqlDirective {
     pub command: String,
     pub line: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresQueryInventory {
     pub id: String,
@@ -82,7 +82,7 @@ pub(crate) struct PostgresQueryInventory {
     pub kind: PostgresQueryKind,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PostgresQueryKind {
     Select,
@@ -93,7 +93,7 @@ pub(crate) enum PostgresQueryKind {
     Other,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresCheckReport {
     pub schema_version: u32,
@@ -118,7 +118,7 @@ impl PostgresCheckReport {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresTestReport {
     pub schema_version: u32,
@@ -190,7 +190,7 @@ pub(crate) struct PostgresTestMetadata {
     pub migrations_applied: usize,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresQueryValidationSummary {
     pub discovered: usize,
@@ -200,7 +200,7 @@ pub(crate) struct PostgresQueryValidationSummary {
     pub non_preparable_skipped: usize,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresCatalogInventory {
     pub digest: String,
@@ -210,7 +210,7 @@ pub(crate) struct PostgresCatalogInventory {
     pub indexes: Vec<PostgresCatalogIndex>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresCatalogTable {
     pub schema: String,
@@ -218,7 +218,7 @@ pub(crate) struct PostgresCatalogTable {
     pub kind: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresCatalogColumn {
     pub schema: String,
@@ -231,7 +231,7 @@ pub(crate) struct PostgresCatalogColumn {
     pub default_digest: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresCatalogConstraint {
     pub schema: String,
@@ -241,7 +241,7 @@ pub(crate) struct PostgresCatalogConstraint {
     pub definition_digest: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresCatalogIndex {
     pub schema: String,
@@ -252,7 +252,7 @@ pub(crate) struct PostgresCatalogIndex {
     pub definition_digest: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresBaselineReport {
     pub schema_version: u32,
@@ -343,21 +343,21 @@ impl PostgresBaselineReport {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresBaselineBootstrap {
     pub name: String,
     pub sha256: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresBaselineMigration {
     pub name: String,
     pub sha256: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresBaselineQuery {
     pub id: String,
@@ -367,7 +367,9 @@ pub(crate) struct PostgresBaselineQuery {
     pub kind: PostgresQueryKind,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresBaselineLintFinding {
     pub code: String,
@@ -389,7 +391,7 @@ impl PostgresBaselineLintFinding {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresDiffReport {
     pub schema_version: u32,
@@ -408,7 +410,7 @@ pub(crate) struct PostgresDiffReport {
     pub findings: Vec<PostgresFinding>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresChange {
     pub kind: PostgresChangeKind,
@@ -417,7 +419,9 @@ pub(crate) struct PostgresChange {
     pub message: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PostgresChangeKind {
     Additive,
@@ -425,7 +429,9 @@ pub(crate) enum PostgresChangeKind {
     Informational,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PostgresArtifactKind {
     Bootstrap,
@@ -438,7 +444,7 @@ pub(crate) enum PostgresArtifactKind {
     Index,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresFinding {
     pub severity: PostgresFindingSeverity,
@@ -501,7 +507,7 @@ impl PostgresFinding {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PostgresFindingSeverity {
     Info,
@@ -509,7 +515,9 @@ pub(crate) enum PostgresFindingSeverity {
     Error,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PostgresEvidence {
     pub path: String,

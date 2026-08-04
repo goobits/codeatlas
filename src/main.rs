@@ -18,6 +18,8 @@ mod outputs;
 mod package;
 mod paths;
 mod postgres;
+#[cfg(test)]
+mod published_schemas;
 mod source_discovery;
 mod source_index;
 mod source_policy;

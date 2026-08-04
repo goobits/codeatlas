@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "ApprovedProvider": {
+      "properties": {
+        "approvalId": {
+          "type": "string"
+        },
+        "approvalModule": {
+          "type": "string"
+        },
+        "approvalScope": {
+          "type": "string"
+        },
+        "capabilityId": {
+          "type": "string"
+        },
+        "compatibilityRange": {
+          "type": "string"
+        },
+        "contractId": {
+          "type": "string"
+        },
+        "contractVersion": {
+          "type": "string"
+        },
+        "lifecycle": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "providerModule": {
+          "type": "string"
+        },
+        "risk": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approvalId",
+        "approvalModule",
+        "providerId",
+        "providerModule",
+        "capabilityId",
+        "contractId",
+        "contractVersion",
+        "lifecycle",
+        "approvalScope",
+        "origin",
+        "owner",
+        "compatibilityRange",
+        "risk",
+        "source"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "atlas.codeatlas.dev/architecture-provider-query/v0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "apiVersion": {
+      "const": "atlas.codeatlas.dev/v0.1",
+      "type": "string"
+    },
+    "approvalScope": {
+      "type": "string"
+    },
+    "authorization": {
+      "type": "string"
+    },
+    "capabilityId": {
+      "type": "string"
+    },
+    "eligibility": {
+      "type": "string"
+    },
+    "governingGraphDigest": {
+      "type": "string"
+    },
+    "providers": {
+      "items": {
+        "$ref": "#/$defs/ApprovedProvider"
+      },
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "toolVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "apiVersion",
+    "toolVersion",
+    "governingGraphDigest",
+    "capabilityId",
+    "approvalScope",
+    "eligibility",
+    "authorization",
+    "providers"
+  ],
+  "title": "ProviderQueryReport",
+  "type": "object"
+}

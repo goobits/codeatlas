@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub(crate) const SOURCE_CONFORMANCE_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SourceConformanceReport {
     pub schema_version: u32,
@@ -31,7 +31,7 @@ impl SourceConformanceReport {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum SourceConformanceFindingKind {
     UnexportedWorkspaceImport,
@@ -39,7 +39,7 @@ pub(crate) enum SourceConformanceFindingKind {
     ForbiddenDependencyPath,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SourceConformanceFinding {
     pub kind: SourceConformanceFindingKind,

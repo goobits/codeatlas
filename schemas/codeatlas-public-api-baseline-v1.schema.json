@@ -1,0 +1,116 @@
+{
+  "$defs": {
+    "PublicApiPackage": {
+      "properties": {
+        "exports": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "symbols": {
+          "items": {
+            "$ref": "#/$defs/PublicApiSymbol"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "root",
+        "symbols"
+      ],
+      "type": "object"
+    },
+    "PublicApiSymbol": {
+      "properties": {
+        "contracts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "export_path": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/SymbolKind"
+        },
+        "qualified_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "export_path",
+        "kind",
+        "qualified_name",
+        "contracts"
+      ],
+      "type": "object"
+    },
+    "SymbolKind": {
+      "enum": [
+        "Module",
+        "Class",
+        "Method",
+        "Function",
+        "Interface",
+        "Struct",
+        "Const",
+        "Property",
+        "Decorator",
+        "Enum",
+        "Trait",
+        "TypeAlias"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "codeatlas.public-api-baseline/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "format": {
+      "const": "codeatlas.public-api-baseline",
+      "type": "string"
+    },
+    "packages": {
+      "items": {
+        "$ref": "#/$defs/PublicApiPackage"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tool_version": {
+      "type": "string"
+    },
+    "workspace": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "format",
+    "schema_version",
+    "tool_version",
+    "workspace",
+    "packages"
+  ],
+  "title": "PublicApiBaseline",
+  "type": "object"
+}

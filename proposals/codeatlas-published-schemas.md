@@ -1,6 +1,6 @@
 # Published CodeAtlas schemas
 
-Status: Accepted program child; implementation pending
+Status: Accepted program child; Phase 1 complete, Phase 2 next
 
 Decision scope: Generated JSON Schemas for every public versioned CodeAtlas
 JSON artifact, a drift-tested schema registry, and CodeAtlas-owned annotation
@@ -77,13 +77,13 @@ command:
 - HTTP inventory, check, baseline, diff, and fuzz reports as distinct roots.
 - PostgreSQL inventory, check, test, baseline, and diff reports as distinct
   roots.
-- Architecture compilation/lock, observation, source-conformance, and
-  conformance artifacts.
+- Architecture compilation/lock, observation, conformance,
+  source-conformance, provider-query inspection, and diagnostic reports.
 
-An internal cache entry, provider query, request-adapter message, temporary
-engine event, or private transport envelope is not promoted to a public schema
-merely because it contains a version field. If another tool must consume one,
-the owning proposal must first make it an explicit public artifact.
+An internal cache entry, request-adapter message, temporary engine event, or
+private transport envelope is not promoted to a public schema merely because
+it contains a version field. If another tool must consume one, the owning
+proposal must first make it an explicit public artifact.
 
 Each registry entry records:
 
@@ -119,7 +119,11 @@ inside the existing payload.
 
 Schema generation is development-only. CodeAtlas does not add a public
 `schemas` CLI command or turn the binary crate into a library solely to expose
-private models.
+private models. The registry and generator compile only in tests; the owning
+models carry direct compile-time `JsonSchema` evidence so ordinary source
+analysis does not misclassify 198 conditional derives as dynamic boundaries.
+`JsonSchema` is explicitly reachability-inert, and the source-index algorithm
+identity is bumped so cached evidence cannot preserve the older classification.
 
 ## New-artifact version rule
 
@@ -210,20 +214,26 @@ service, runtime network dependency, or public schema-generation command.
 
 ## Phase 1: Registry and current schemas
 
-Status: [ ] Not started
+Status: [x] Complete (2026-08-04)
 
-LOC: +500-750 / -0-20
+Implementation diff: +1,143 / -218 non-schema lines; +7,706 generated schema
+lines
 
-Verify: The public-root inventory is complete; deterministic schemas and exact
-fixtures agree; a normal test is read-only and the explicit update path changes
-only registered schema files.
+Verify: 25 public roots have 25 deterministic Draft 2020-12 schemas and 54
+constant identity constraints; both committed report fixtures validate; the
+read-only drift test fails on an exact temporary serde rename and passes after
+restoration; all Rust, clippy, Node, architecture-spec, and package checks pass.
+Final CodeAtlas dogfood finds zero gates and zero schema-related dynamic
+boundaries across 235 files and 2,258 scan symbols.
 
 ```text
 + src/published_schemas.rs
 + schemas/codeatlas-*.schema.json
-+ tests/fixtures/schemas/
++ tasks/update-schemas.js
 ~ Cargo.toml
 ~ Cargo.lock
+~ package.json
+~ tasks/check-package.js
 ~ src/main.rs
 ~ src/domain/model.rs
 ~ src/dead_code/model.rs
@@ -234,6 +244,11 @@ only registered schema files.
 ~ src/postgres/model.rs
 ~ src/architecture/*
 ~ src/commands/diff.rs
+~ src/languages/rust/parser/reachability.rs
+~ src/languages/rust/parser/tests.rs
+~ src/source_index/mod.rs
+~ spec/architecture/v0.1/MANIFEST.sha256
+~ tests/fixtures/dead-code/rust-dynamic/Cargo.toml
 ```
 
 ## Phase 2: Prospective enforcement and interop registry
@@ -257,7 +272,9 @@ registration enforcement pass without changing existing payload bytes.
 ~ tests/cli_contract.rs
 ```
 
-Total LOC: +650-1,000 / -0-50
+Total authored LOC: +1,293-1,393 / -218-248
+
+Generated current-schema JSON: +7,706 LOC
 
 ## Layman's wins
 

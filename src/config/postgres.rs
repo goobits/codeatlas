@@ -83,7 +83,9 @@ impl Default for PostgresTargetConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PostgresTransactionMode {
     #[default]
@@ -92,7 +94,9 @@ pub(crate) enum PostgresTransactionMode {
     Never,
 }
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PostgresPsqlMetaCommandMode {
     #[default]

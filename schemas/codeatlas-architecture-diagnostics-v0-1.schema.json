@@ -1,0 +1,76 @@
+{
+  "$defs": {
+    "Diagnostic": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "related_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "source_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message"
+      ],
+      "type": "object"
+    },
+    "Severity": {
+      "enum": [
+        "error",
+        "warning",
+        "advisory"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "atlas.codeatlas.dev/architecture-diagnostics/v0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "apiVersion": {
+      "const": "atlas.codeatlas.dev/v0.1",
+      "type": "string"
+    },
+    "diagnostics": {
+      "items": {
+        "$ref": "#/$defs/Diagnostic"
+      },
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "apiVersion",
+    "diagnostics"
+  ],
+  "title": "ArchitectureDiagnosticReport",
+  "type": "object"
+}

@@ -15,7 +15,7 @@ use std::fmt;
 
 pub(crate) const SOURCE_GRAPH_SCHEMA_VERSION: u32 = 4;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SourceGraph {
     pub schema_version: u32,
     pub projects: BTreeMap<ProjectId, SourceProject>,
@@ -189,7 +189,9 @@ impl SourceGraph {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 #[serde(transparent)]
 pub(crate) struct ProjectId(pub String);
 
@@ -199,7 +201,9 @@ impl fmt::Display for ProjectId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 #[serde(transparent)]
 pub(crate) struct NodeId(pub String);
 
@@ -227,7 +231,9 @@ impl fmt::Display for NodeId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 #[serde(transparent)]
 pub(crate) struct ContextId(pub String);
 
@@ -247,7 +253,7 @@ impl fmt::Display for ContextId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SourceProject {
     pub id: ProjectId,
     pub root: String,
@@ -255,7 +261,7 @@ pub(crate) struct SourceProject {
     pub completeness: AnalysisCompleteness,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum SourceNode {
     File(SourceFile),
@@ -271,14 +277,14 @@ impl SourceNode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SourceFile {
     pub project: ProjectId,
     pub path: String,
     pub language: SourceLanguage,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SourceSymbol {
     pub project: ProjectId,
     pub file: NodeId,
@@ -289,7 +295,19 @@ pub(crate) struct SourceSymbol {
     pub span: Option<Span>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 pub(crate) enum SourceLanguage {
     #[serde(rename = "javascript")]
     JavaScript,
@@ -303,7 +321,19 @@ pub(crate) enum SourceLanguage {
     Rust,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum SourceSymbolKind {
     Module,
@@ -321,7 +351,19 @@ pub(crate) enum SourceSymbolKind {
     Other,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum SourceVisibility {
     Public,
@@ -341,7 +383,19 @@ impl From<Visibility> for SourceVisibility {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AnalysisCompleteness {
     Complete,
@@ -360,7 +414,19 @@ impl AnalysisCompleteness {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum FindingConfidence {
     High,
@@ -368,7 +434,9 @@ pub(crate) enum FindingConfidence {
     Low,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct SourceContext {
     pub id: ContextId,
     pub project: ProjectId,
@@ -379,7 +447,19 @@ pub(crate) struct SourceContext {
     pub roots: BTreeSet<NodeId>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ContextRole {
     Production,
@@ -388,7 +468,18 @@ pub(crate) enum ContextRole {
 }
 
 #[derive(
-    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
 )]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ContextScope {
@@ -397,7 +488,9 @@ pub(crate) enum ContextScope {
     PublicSurface,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct SourceEdge {
     pub from: NodeId,
     pub to: EdgeTarget,
@@ -407,7 +500,9 @@ pub(crate) struct SourceEdge {
     pub evidence: SourceEvidence,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub(crate) enum EdgeTarget {
     Node(NodeId),
@@ -418,7 +513,19 @@ pub(crate) enum EdgeTarget {
     Unsupported(String),
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum SourceEdgeKind {
     Contains,
@@ -433,7 +540,9 @@ pub(crate) enum SourceEdgeKind {
     AssumeReachable,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct SourceBinding {
     pub imported: String,
     pub local: String,
@@ -445,7 +554,9 @@ pub(crate) struct SourceBinding {
     pub type_only: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct SourceEvidence {
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -467,7 +578,9 @@ impl SourceEvidence {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct AnalysisBoundary {
     pub project: ProjectId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -478,7 +591,19 @@ pub(crate) struct AnalysisBoundary {
     pub evidence: SourceEvidence,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum BoundaryKind {
     DynamicImport,

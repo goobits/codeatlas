@@ -7,7 +7,7 @@ pub(crate) const HTTP_BASELINE_SCHEMA_VERSION: u32 = 1;
 pub(crate) const HTTP_FUZZ_API_VERSION: &str = "codeatlas.http-fuzz/v2";
 pub(crate) const HTTP_FUZZ_SCHEMA_VERSION: u32 = 2;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpInventoryReport {
     pub schema_version: u32,
@@ -27,7 +27,7 @@ impl HttpInventoryReport {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpBaselineReport {
     pub schema_version: u32,
@@ -62,7 +62,7 @@ impl HttpBaselineReport {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpBaselineContract {
     pub id: String,
@@ -70,7 +70,7 @@ pub(crate) struct HttpBaselineContract {
     pub operations: Vec<HttpOperation>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpContractInventory {
     pub id: String,
@@ -85,7 +85,7 @@ pub(crate) struct HttpContractInventory {
     pub source: HttpSourceInventory,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpContractDiagnostic {
     pub severity: HttpFindingSeverity,
@@ -95,7 +95,7 @@ pub(crate) struct HttpContractDiagnostic {
     pub message: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpOperation {
     pub key: String,
@@ -112,13 +112,13 @@ pub(crate) struct HttpOperation {
     pub responses: Vec<HttpResponse>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpSecurityRequirement {
     pub schemes: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpParameter {
     pub name: String,
@@ -128,14 +128,14 @@ pub(crate) struct HttpParameter {
     pub schema_digest: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpRequestBody {
     pub required: bool,
     pub content: Vec<HttpMediaType>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpResponse {
     pub status: String,
@@ -143,7 +143,7 @@ pub(crate) struct HttpResponse {
     pub content: Vec<HttpMediaType>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpMediaType {
     pub media_type: String,
@@ -151,7 +151,7 @@ pub(crate) struct HttpMediaType {
     pub schema_digest: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpSourceInventory {
     pub completeness: HttpSourceCompleteness,
@@ -161,14 +161,14 @@ pub(crate) struct HttpSourceInventory {
     pub skipped_files: Vec<HttpSkippedFile>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HttpSourceCompleteness {
     Partial,
     Complete,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpSourceOperation {
     pub key: String,
@@ -183,35 +183,35 @@ pub(crate) struct HttpSourceOperation {
     pub evidence: HttpSourceEvidence,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HttpSourceOperationKind {
     Endpoint,
     Page,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HttpConfidence {
     High,
     Medium,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpSourceEvidence {
     pub path: String,
     pub line: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpSkippedFile {
     pub path: String,
     pub reason: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpCheckReport {
     pub schema_version: u32,
@@ -240,7 +240,7 @@ impl HttpCheckReport {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpFinding {
     pub severity: HttpFindingSeverity,
@@ -253,7 +253,7 @@ pub(crate) struct HttpFinding {
     pub evidence: Option<HttpSourceEvidence>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HttpFindingSeverity {
     Info,
@@ -261,7 +261,7 @@ pub(crate) enum HttpFindingSeverity {
     Error,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpDiffReport {
     pub schema_version: u32,
@@ -272,14 +272,14 @@ pub(crate) struct HttpDiffReport {
     pub additive_changes: usize,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpContractDiff {
     pub id: String,
     pub changes: Vec<HttpOperationChange>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpOperationChange {
     pub kind: HttpChangeKind,
@@ -287,14 +287,14 @@ pub(crate) struct HttpOperationChange {
     pub message: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HttpChangeKind {
     Additive,
     Breaking,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpFuzzReport {
     pub schema_version: u32,
@@ -313,7 +313,9 @@ pub(crate) struct HttpFuzzReport {
     pub operations: Vec<HttpFuzzOperationSummary>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HttpFuzzContractMode {
     #[default]
@@ -331,7 +333,7 @@ impl HttpFuzzContractMode {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpFuzzStatefulSummary {
     pub scenarios: u64,
@@ -344,7 +346,7 @@ pub(crate) struct HttpFuzzStatefulSummary {
     pub links_covered: u64,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub(crate) struct HttpFuzzTotals {
     pub operations: u64,
@@ -366,7 +368,7 @@ pub(crate) struct HttpFuzzTotals {
     pub check_failures: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HttpFuzzOperationSummary {
     pub operation: String,
@@ -383,7 +385,7 @@ pub(crate) struct HttpFuzzOperationSummary {
     pub observed_statuses: std::collections::BTreeMap<String, u64>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HttpFuzzPositiveCoverage {
     SuccessObserved,

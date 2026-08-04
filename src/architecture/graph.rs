@@ -5,21 +5,21 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CompileMode {
     Governing,
     Review,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct GraphDeclaration {
     pub module: String,
     pub declaration: Value,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct CompiledGraph {
     pub mode: CompileMode,

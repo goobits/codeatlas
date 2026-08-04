@@ -13,6 +13,8 @@ mod symbols;
 
 pub(crate) use analyze::analyze;
 pub(crate) use concept_policy::load_concept_policy;
+#[cfg(test)]
+pub(crate) use model::LEXICON_SCHEMA_VERSION;
 pub(crate) use model::{
     CallableCandidateKind, ConceptCandidate, ConceptCandidateConfidence, ConceptCandidateRule,
     ConceptEvidenceRelation, ConceptSuppressionKind, LexiconReport, LexiconSymbol,

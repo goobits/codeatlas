@@ -1,0 +1,232 @@
+{
+  "$defs": {
+    "ChangedPathImpact": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolution": {
+          "$ref": "#/$defs/ChangedPathResolution"
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "resolution"
+      ],
+      "type": "object"
+    },
+    "ChangedPathResolution": {
+      "enum": [
+        "exact_source",
+        "project_fallback",
+        "workspace_fallback"
+      ],
+      "type": "string"
+    },
+    "FindingConfidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "type": "string"
+    },
+    "ImpactedTestContext": {
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/TestImpactEvidence"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "roots": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "roots",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "ImpactedTestProject": {
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/FindingConfidence"
+        },
+        "contexts": {
+          "items": {
+            "$ref": "#/$defs/ImpactedTestContext"
+          },
+          "type": "array"
+        },
+        "project": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "scripts": {
+          "items": {
+            "$ref": "#/$defs/TestScriptInventory"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "project",
+        "root",
+        "confidence",
+        "contexts",
+        "scripts"
+      ],
+      "type": "object"
+    },
+    "TestImpactEvidence": {
+      "properties": {
+        "changed_path": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/TestImpactEvidenceKind"
+        },
+        "subject": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "witness_root": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "changed_path",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "TestImpactEvidenceKind": {
+      "enum": [
+        "observed_dependency",
+        "declared_project",
+        "declared_source",
+        "project_fallback",
+        "workspace_fallback"
+      ],
+      "type": "string"
+    },
+    "TestRunner": {
+      "enum": [
+        "ava",
+        "bun",
+        "cargo",
+        "cypress",
+        "deno",
+        "jest",
+        "mocha",
+        "node",
+        "playwright",
+        "pytest",
+        "schemathesis",
+        "unittest",
+        "vitest",
+        "other"
+      ],
+      "type": "string"
+    },
+    "TestScriptInventory": {
+      "properties": {
+        "allows_empty": {
+          "type": "boolean"
+        },
+        "command": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "no_op": {
+          "type": "boolean"
+        },
+        "runners": {
+          "items": {
+            "$ref": "#/$defs/TestRunner"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "command",
+        "runners",
+        "no_op",
+        "allows_empty"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.testing-impact/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "changed": {
+      "items": {
+        "$ref": "#/$defs/ChangedPathImpact"
+      },
+      "type": "array"
+    },
+    "projects": {
+      "items": {
+        "$ref": "#/$defs/ImpactedTestProject"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "selection_complete": {
+      "type": "boolean"
+    },
+    "tool_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "tool_version",
+    "selection_complete",
+    "changed",
+    "projects"
+  ],
+  "title": "TestingImpactReport",
+  "type": "object"
+}

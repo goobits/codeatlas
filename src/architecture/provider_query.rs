@@ -10,7 +10,7 @@ const PROVIDER_LIFECYCLES: [&str; 4] = ["candidate", "approved", "prohibited", "
 const APPROVAL_SCOPES: [&str; 3] = ["personal", "project", "organization"];
 const PROVIDER_ORIGINS: [&str; 5] = ["internal", "external", "package", "service", "tool"];
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ApprovedProvider {
     pub approval_id: String,
@@ -29,7 +29,7 @@ pub(crate) struct ApprovedProvider {
     pub source: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProviderQueryReport {
     pub schema_version: u32,

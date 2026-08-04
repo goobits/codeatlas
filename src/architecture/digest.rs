@@ -41,7 +41,9 @@ impl DigestKind {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
 #[serde(transparent)]
 pub(crate) struct TypedDigest(String);
 

@@ -1,0 +1,456 @@
+{
+  "$defs": {
+    "HttpConfidence": {
+      "enum": [
+        "high",
+        "medium"
+      ],
+      "type": "string"
+    },
+    "HttpContractDiagnostic": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/HttpFindingSeverity"
+        }
+      },
+      "required": [
+        "severity",
+        "code",
+        "operation",
+        "location",
+        "message"
+      ],
+      "type": "object"
+    },
+    "HttpContractInventory": {
+      "properties": {
+        "contractSource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "diagnostics": {
+          "items": {
+            "$ref": "#/$defs/HttpContractDiagnostic"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "openapiVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/HttpOperation"
+          },
+          "type": "array"
+        },
+        "schemaMissing": {
+          "type": "boolean"
+        },
+        "source": {
+          "$ref": "#/$defs/HttpSourceInventory"
+        }
+      },
+      "required": [
+        "id",
+        "schemaMissing",
+        "operations",
+        "source"
+      ],
+      "type": "object"
+    },
+    "HttpFinding": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "contractId": {
+          "type": "string"
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HttpSourceEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "operation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "severity": {
+          "$ref": "#/$defs/HttpFindingSeverity"
+        }
+      },
+      "required": [
+        "severity",
+        "code",
+        "contractId",
+        "message"
+      ],
+      "type": "object"
+    },
+    "HttpFindingSeverity": {
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
+    "HttpInventoryReport": {
+      "properties": {
+        "apiVersion": {
+          "type": "string"
+        },
+        "contracts": {
+          "items": {
+            "$ref": "#/$defs/HttpContractInventory"
+          },
+          "type": "array"
+        },
+        "schemaVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "toolVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "apiVersion",
+        "toolVersion",
+        "contracts"
+      ],
+      "type": "object"
+    },
+    "HttpMediaType": {
+      "properties": {
+        "mediaType": {
+          "type": "string"
+        },
+        "schemaDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "mediaType"
+      ],
+      "type": "object"
+    },
+    "HttpOperation": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/HttpParameter"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "requestBody": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HttpRequestBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "responses": {
+          "items": {
+            "$ref": "#/$defs/HttpResponse"
+          },
+          "type": "array"
+        },
+        "security": {
+          "items": {
+            "$ref": "#/$defs/HttpSecurityRequirement"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "method",
+        "path",
+        "responses"
+      ],
+      "type": "object"
+    },
+    "HttpParameter": {
+      "properties": {
+        "location": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "schemaDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "location",
+        "required"
+      ],
+      "type": "object"
+    },
+    "HttpRequestBody": {
+      "properties": {
+        "content": {
+          "items": {
+            "$ref": "#/$defs/HttpMediaType"
+          },
+          "type": "array"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "required",
+        "content"
+      ],
+      "type": "object"
+    },
+    "HttpResponse": {
+      "properties": {
+        "content": {
+          "items": {
+            "$ref": "#/$defs/HttpMediaType"
+          },
+          "type": "array"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "HttpSecurityRequirement": {
+      "properties": {
+        "schemes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemes"
+      ],
+      "type": "object"
+    },
+    "HttpSkippedFile": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "HttpSourceCompleteness": {
+      "enum": [
+        "partial",
+        "complete"
+      ],
+      "type": "string"
+    },
+    "HttpSourceEvidence": {
+      "properties": {
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line"
+      ],
+      "type": "object"
+    },
+    "HttpSourceInventory": {
+      "properties": {
+        "completeness": {
+          "$ref": "#/$defs/HttpSourceCompleteness"
+        },
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/HttpSourceOperation"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "skippedFiles": {
+          "items": {
+            "$ref": "#/$defs/HttpSkippedFile"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "completeness",
+        "reason",
+        "operations"
+      ],
+      "type": "object"
+    },
+    "HttpSourceOperation": {
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/HttpConfidence"
+        },
+        "detector": {
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/HttpSourceEvidence"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/HttpSourceOperationKind"
+        },
+        "method": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "pathPattern": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schemaMissing": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "method",
+        "path",
+        "kind",
+        "schemaMissing",
+        "detector",
+        "confidence",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "HttpSourceOperationKind": {
+      "enum": [
+        "endpoint",
+        "page"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "codeatlas.http-check/v2",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "apiVersion": {
+      "const": "codeatlas.http/v2",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/HttpFinding"
+      },
+      "type": "array"
+    },
+    "inventory": {
+      "$ref": "#/$defs/HttpInventoryReport"
+    },
+    "schemaVersion": {
+      "const": 2,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "toolVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "apiVersion",
+    "toolVersion",
+    "inventory",
+    "findings"
+  ],
+  "title": "HttpCheckReport",
+  "type": "object"
+}

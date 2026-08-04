@@ -23,6 +23,11 @@ pub(crate) use model::{
     HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpDiffReport, HttpInventoryReport,
     HTTP_BASELINE_API_VERSION,
 };
+#[cfg(test)]
+pub(crate) use model::{
+    HttpFuzzReport, HTTP_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION, HTTP_FUZZ_API_VERSION,
+    HTTP_FUZZ_SCHEMA_VERSION, HTTP_SCHEMA_VERSION,
+};
 pub(crate) use schemathesis::{
     run as run_fuzz, Contract as FuzzContract, RunOptions as FuzzRunOptions,
 };

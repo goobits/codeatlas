@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "HttpChangeKind": {
+      "enum": [
+        "additive",
+        "breaking"
+      ],
+      "type": "string"
+    },
+    "HttpContractDiff": {
+      "properties": {
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/HttpOperationChange"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "changes"
+      ],
+      "type": "object"
+    },
+    "HttpOperationChange": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/HttpChangeKind"
+        },
+        "message": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "operation",
+        "message"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.http-diff/v2",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "additiveChanges": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "apiVersion": {
+      "const": "codeatlas.http/v2",
+      "type": "string"
+    },
+    "breakingChanges": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "contracts": {
+      "items": {
+        "$ref": "#/$defs/HttpContractDiff"
+      },
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": 2,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "toolVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "apiVersion",
+    "toolVersion",
+    "contracts",
+    "breakingChanges",
+    "additiveChanges"
+  ],
+  "title": "HttpDiffReport",
+  "type": "object"
+}

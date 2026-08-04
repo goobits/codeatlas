@@ -26,7 +26,7 @@ pub(crate) struct ConformanceRequest {
     pub source_inputs: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ConformanceInputs {
     pub governing_graph_digest: TypedDigest,
@@ -38,7 +38,7 @@ pub(crate) struct ConformanceInputs {
     pub as_of: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConformanceState {
     Matched,
@@ -50,14 +50,14 @@ pub(crate) enum ConformanceState {
     Ambiguous,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ConformanceEvidence {
     pub fact_ids: Vec<String>,
     pub coverage_ids: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ExceptionDispositions {
     pub applied: Vec<String>,
     pub stale: Vec<String>,
@@ -66,7 +66,7 @@ pub(crate) struct ExceptionDispositions {
     pub rejected: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ConformanceResult {
     pub declaration_id: String,
@@ -78,7 +78,7 @@ pub(crate) struct ConformanceResult {
     pub explanation: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ArchitectureConformance {
     pub api_version: String,

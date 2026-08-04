@@ -1,20 +1,20 @@
 use super::digest::TypedDigest;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct GeneratorIdentity {
     pub id: String,
     pub version: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct VocabularyIdentity {
     pub id: String,
     pub version: u64,
     pub digest: TypedDigest,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GeneratedMetadata {
     pub id: String,
@@ -28,24 +28,24 @@ pub(crate) struct GeneratedMetadata {
     pub manual_editing: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct RepositoryIdentity {
     pub id: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct SourcePosition {
     pub line: u64,
     pub column: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct SourceSpan {
     pub start: SourcePosition,
     pub end: SourcePosition,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct SourceLocation {
     pub path: String,
     pub span: SourceSpan,

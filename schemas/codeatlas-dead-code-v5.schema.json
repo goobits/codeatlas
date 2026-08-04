@@ -1,0 +1,374 @@
+{
+  "$defs": {
+    "AnalysisCompleteness": {
+      "enum": [
+        "complete",
+        "partial",
+        "unsupported"
+      ],
+      "type": "string"
+    },
+    "BoundaryKind": {
+      "enum": [
+        "dynamic_import",
+        "reflection",
+        "macro_expansion",
+        "conditional_compilation",
+        "unresolved_internal",
+        "unsupported_dependency",
+        "unsupported_syntax"
+      ],
+      "type": "string"
+    },
+    "ContextRole": {
+      "enum": [
+        "production",
+        "test",
+        "tooling"
+      ],
+      "type": "string"
+    },
+    "DeadCodeCompletenessReason": {
+      "properties": {
+        "effect": {
+          "$ref": "#/$defs/AnalysisCompleteness"
+        },
+        "evidence": {
+          "$ref": "#/$defs/SourceEvidence"
+        },
+        "kind": {
+          "$ref": "#/$defs/BoundaryKind"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "effect",
+        "message",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "DeadCodeFinding": {
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/FindingConfidence"
+        },
+        "contexts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "evidence": {
+          "$ref": "#/$defs/SourceEvidence"
+        },
+        "evidence_class": {
+          "$ref": "#/$defs/EvidenceClass"
+        },
+        "gates": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/DeadCodeFindingKind"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceLanguage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "node_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "roles": {
+          "items": {
+            "$ref": "#/$defs/ContextRole"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "root_contexts": {
+          "items": {
+            "$ref": "#/$defs/DeadCodeRootContext"
+          },
+          "type": "array"
+        },
+        "source_disposition": {
+          "$ref": "#/$defs/SourceDisposition"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "project",
+        "path",
+        "contexts",
+        "root_contexts",
+        "roles",
+        "confidence",
+        "evidence_class",
+        "source_disposition",
+        "evidence",
+        "message",
+        "gates"
+      ],
+      "type": "object"
+    },
+    "DeadCodeFindingKind": {
+      "enum": [
+        "unreachable_file",
+        "unused_private_symbol",
+        "test_only",
+        "tooling_only",
+        "unreferenced_public",
+        "unexported_workspace_import",
+        "workspace_source_bypass",
+        "unresolved_internal_edge",
+        "dynamic_boundary"
+      ],
+      "type": "string"
+    },
+    "DeadCodeProjectSummary": {
+      "properties": {
+        "completeness": {
+          "$ref": "#/$defs/AnalysisCompleteness"
+        },
+        "completeness_reasons": {
+          "items": {
+            "$ref": "#/$defs/DeadCodeCompletenessReason"
+          },
+          "type": "array"
+        },
+        "files": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "files_by_language": {
+          "additionalProperties": false,
+          "properties": {
+            "javascript": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "python": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "rust": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "svelte": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "typescript": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "project": {
+          "type": "string"
+        },
+        "require_complete": {
+          "type": "boolean"
+        },
+        "root": {
+          "type": "string"
+        },
+        "symbols": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "project",
+        "root",
+        "completeness",
+        "completeness_reasons",
+        "require_complete",
+        "files",
+        "files_by_language",
+        "symbols"
+      ],
+      "type": "object"
+    },
+    "DeadCodeRootContext": {
+      "properties": {
+        "context": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "context",
+        "root"
+      ],
+      "type": "object"
+    },
+    "EvidenceClass": {
+      "enum": [
+        "direct",
+        "inferred",
+        "boundary_limited"
+      ],
+      "type": "string"
+    },
+    "FindingConfidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "type": "string"
+    },
+    "SourceDisposition": {
+      "enum": [
+        "maintained",
+        "generated",
+        "fixture",
+        "test",
+        "tooling"
+      ],
+      "type": "string"
+    },
+    "SourceEvidence": {
+      "properties": {
+        "extractor": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "extractor"
+      ],
+      "type": "object"
+    },
+    "SourceLanguage": {
+      "enum": [
+        "javascript",
+        "typescript",
+        "svelte",
+        "python",
+        "rust"
+      ],
+      "type": "string"
+    },
+    "Span": {
+      "properties": {
+        "end_col": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "end_line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start_col": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start_line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start_line",
+        "start_col",
+        "end_line",
+        "end_col"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.dead-code/v5",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/DeadCodeFinding"
+      },
+      "type": "array"
+    },
+    "projects": {
+      "items": {
+        "$ref": "#/$defs/DeadCodeProjectSummary"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 5,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tool_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "tool_version",
+    "projects",
+    "findings"
+  ],
+  "title": "DeadCodeReport",
+  "type": "object"
+}

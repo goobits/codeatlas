@@ -1,0 +1,329 @@
+{
+  "$defs": {
+    "HttpFuzzContractMode": {
+      "enum": [
+        "openapi",
+        "source_transport"
+      ],
+      "type": "string"
+    },
+    "HttpFuzzOperationSummary": {
+      "properties": {
+        "cases": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "checkFailures": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "negativeCases": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "negativeRejections": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "observedStatuses": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "positiveAuthRejections": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positiveCases": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positiveClientErrors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positiveCoverage": {
+          "$ref": "#/$defs/HttpFuzzPositiveCoverage"
+        },
+        "positiveSuccesses": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "serverErrors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operation",
+        "positiveCoverage",
+        "cases",
+        "positiveCases",
+        "positiveSuccesses",
+        "positiveAuthRejections",
+        "positiveClientErrors",
+        "negativeCases",
+        "negativeRejections",
+        "serverErrors",
+        "checkFailures",
+        "observedStatuses"
+      ],
+      "type": "object"
+    },
+    "HttpFuzzPositiveCoverage": {
+      "enum": [
+        "success_observed",
+        "expected_non_success_observed",
+        "authentication_rejection_only",
+        "client_error_only",
+        "no_positive_cases",
+        "mixed_without_success"
+      ],
+      "type": "string"
+    },
+    "HttpFuzzStatefulSummary": {
+      "properties": {
+        "failedScenarios": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "linksCovered": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "linksInferred": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "linksSelected": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "linksTotal": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scenarios": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skippedScenarios": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "successfulScenarios": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "scenarios",
+        "successfulScenarios",
+        "failedScenarios",
+        "skippedScenarios",
+        "linksTotal",
+        "linksSelected",
+        "linksInferred",
+        "linksCovered"
+      ],
+      "type": "object"
+    },
+    "HttpFuzzTotals": {
+      "properties": {
+        "authenticationRejectionOnlyOperations": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cases": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "checkFailures": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "clientErrorOnlyOperations": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expectedNonSuccessOperations": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mixedWithoutSuccessOperations": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "negativeCases": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "negativeRejections": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "noPositiveCaseOperations": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operations": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operationsWithoutSuccess": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positiveAuthRejections": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positiveCases": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positiveClientErrors": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positiveSuccesses": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "serverErrors": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "successObservedOperations": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.http-fuzz/v2",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "apiVersion": {
+      "const": "codeatlas.http-fuzz/v2",
+      "type": "string"
+    },
+    "contractId": {
+      "type": "string"
+    },
+    "contractMode": {
+      "$ref": "#/$defs/HttpFuzzContractMode",
+      "default": "openapi"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/HttpFuzzOperationSummary"
+      },
+      "type": "array"
+    },
+    "profile": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 2,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "seed": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stateful": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HttpFuzzStatefulSummary"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "targetId": {
+      "type": "string"
+    },
+    "toolVersion": {
+      "type": "string"
+    },
+    "totals": {
+      "$ref": "#/$defs/HttpFuzzTotals"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "apiVersion",
+    "toolVersion",
+    "targetId",
+    "contractId",
+    "profile",
+    "totals",
+    "operations"
+  ],
+  "title": "HttpFuzzReport",
+  "type": "object"
+}

@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "AnalysisCompleteness": {
+      "enum": [
+        "complete",
+        "partial",
+        "unsupported"
+      ],
+      "type": "string"
+    },
+    "DeclaredTestSubject": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "project",
+              "type": "string"
+            },
+            "project": {
+              "type": "string"
+            },
+            "resolved": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "resolved"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "matched_paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "pattern": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "pattern",
+            "matched_paths"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "DuplicateTestScript": {
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "locations": {
+          "items": {
+            "$ref": "#/$defs/TestScriptLocation"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "command",
+        "locations"
+      ],
+      "type": "object"
+    },
+    "TestContextInventory": {
+      "properties": {
+        "declared_subjects": {
+          "items": {
+            "$ref": "#/$defs/DeclaredTestSubject"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "roots": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "roots",
+        "declared_subjects"
+      ],
+      "type": "object"
+    },
+    "TestRunner": {
+      "enum": [
+        "ava",
+        "bun",
+        "cargo",
+        "cypress",
+        "deno",
+        "jest",
+        "mocha",
+        "node",
+        "playwright",
+        "pytest",
+        "schemathesis",
+        "unittest",
+        "vitest",
+        "other"
+      ],
+      "type": "string"
+    },
+    "TestScriptInventory": {
+      "properties": {
+        "allows_empty": {
+          "type": "boolean"
+        },
+        "command": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "no_op": {
+          "type": "boolean"
+        },
+        "runners": {
+          "items": {
+            "$ref": "#/$defs/TestRunner"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "command",
+        "runners",
+        "no_op",
+        "allows_empty"
+      ],
+      "type": "object"
+    },
+    "TestScriptLocation": {
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "script": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "project",
+        "script"
+      ],
+      "type": "object"
+    },
+    "TestingProjectInventory": {
+      "properties": {
+        "completeness": {
+          "$ref": "#/$defs/AnalysisCompleteness"
+        },
+        "contexts": {
+          "items": {
+            "$ref": "#/$defs/TestContextInventory"
+          },
+          "type": "array"
+        },
+        "project": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "scripts": {
+          "items": {
+            "$ref": "#/$defs/TestScriptInventory"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "project",
+        "root",
+        "completeness",
+        "contexts",
+        "scripts"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.testing-inventory/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "duplicate_scripts": {
+      "items": {
+        "$ref": "#/$defs/DuplicateTestScript"
+      },
+      "type": "array"
+    },
+    "projects": {
+      "items": {
+        "$ref": "#/$defs/TestingProjectInventory"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tool_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "tool_version",
+    "projects",
+    "duplicate_scripts"
+  ],
+  "title": "TestingInventoryReport",
+  "type": "object"
+}

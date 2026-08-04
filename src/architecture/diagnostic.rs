@@ -2,7 +2,29 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+use super::{ARCHITECTURE_API_VERSION, ARCHITECTURE_SCHEMA_VERSION};
+
+#[derive(schemars::JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ArchitectureDiagnosticReport<'a> {
+    schema_version: u32,
+    api_version: &'static str,
+    diagnostics: &'a [Diagnostic],
+}
+
+impl<'a> ArchitectureDiagnosticReport<'a> {
+    pub(crate) fn new(diagnostics: &'a [Diagnostic]) -> Self {
+        Self {
+            schema_version: ARCHITECTURE_SCHEMA_VERSION,
+            api_version: ARCHITECTURE_API_VERSION,
+            diagnostics,
+        }
+    }
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Severity {
     Error,
@@ -10,7 +32,7 @@ pub(crate) enum Severity {
     Advisory,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Diagnostic {
     pub code: String,
     pub severity: Severity,

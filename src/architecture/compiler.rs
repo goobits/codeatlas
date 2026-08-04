@@ -19,14 +19,14 @@ pub(crate) struct CompileRequest {
     pub mode: CompileMode,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct CompileResult {
     pub report: CompilationReport,
     pub lockfile: ArchitectureLockfile,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct CompilationReport {
     pub schema_version: u32,
@@ -41,7 +41,7 @@ pub(crate) struct CompilationReport {
     pub graph: CompiledGraph,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct ArchitectureLockfile {
     pub schema_version: u32,
@@ -54,7 +54,7 @@ pub(crate) struct ArchitectureLockfile {
     pub documents: Vec<LockDocument>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct LockDocument {
     pub module_id: String,

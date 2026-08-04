@@ -490,7 +490,9 @@ detailed checklist.
 - [x] Eleven-child proposal/schema convergence pass: four child proposals, RFC
   8785 plan identity, interop corrections, extracted callable ownership, links,
   and exact LOC arithmetic are internally verified.
-- [ ] Published CodeAtlas schemas and drift enforcement.
+- [~] Published CodeAtlas schemas and drift enforcement: the 25-root current
+  registry is complete; prospective artifact and annotation enforcement is
+  next.
 - [ ] CodeAtlas HQA application-inventory renderer; no HQA repository edits.
 - [~] Execution kernel: governance Phase 1 is complete; immutable plan/artifact
   Phase 2 is next, followed by sandbox and HTTP migration.
@@ -533,9 +535,9 @@ compatibility routing remains.
 
 ## Program stage 2: Published schemas
 
-Status: [ ] Accepted; implementation follows this proposal checkpoint
+Status: [~] Accepted; current public schemas complete, enforcement next
 
-LOC: +650-1,000 / -0-50
+LOC: +1,293-1,393 / -218-248 authored; +7,706 generated schema JSON
 
 Verify: Every current public JSON root has one generated schema and exact drift
 test; new-artifact version and CodeAtlas annotation namespace rules are pinned;
@@ -677,7 +679,9 @@ sandbox, three execution domains, four language adapters, a typed database
 client, and a performance evidence product. Each child has a final hardening
 phase that removes replaced owners and refuses compatibility residue.
 
-Total LOC: +18,290-28,600 / -3,940-7,740
+Total authored LOC: +18,933-28,993 / -4,158-7,938
+
+Generated current-schema JSON: +7,706 LOC
 
 ## Layman's wins
 

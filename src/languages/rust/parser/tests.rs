@@ -50,7 +50,7 @@ fn reachability_tracks_attributes_methods_and_embedded_sources() {
 #[test]
 fn reachability_understands_tauri_command_registration() {
     let source = r#"
-            #[derive(Serialize)]
+            #[derive(Serialize, schemars::JsonSchema)]
             #[serde(rename_all = "camelCase")]
             struct Payload {
                 value: String,
@@ -100,6 +100,7 @@ fn reachability_understands_tauri_command_registration() {
         .iter()
         .any(|item| item.contains("tauri :: command")));
     assert!(!uncertainty.iter().any(|item| item.contains("serde")));
+    assert!(!uncertainty.iter().any(|item| item.contains("JsonSchema")));
 }
 
 #[test]

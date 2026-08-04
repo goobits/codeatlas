@@ -13,6 +13,12 @@ pub(crate) use model::{
     PostgresBaselineReport, POSTGRES_BASELINE_API_VERSION, POSTGRES_BASELINE_SCHEMA_VERSION,
 };
 pub(crate) use model::{PostgresCheckReport, PostgresInventoryReport, PostgresTestReport};
+#[cfg(test)]
+pub(crate) use model::{
+    PostgresDiffReport, POSTGRES_API_VERSION, POSTGRES_DIFF_API_VERSION,
+    POSTGRES_DIFF_SCHEMA_VERSION, POSTGRES_SCHEMA_VERSION, POSTGRES_TEST_API_VERSION,
+    POSTGRES_TEST_SCHEMA_VERSION,
+};
 
 pub(crate) fn proposed_config(project: &ProjectConfig) -> Result<crate::config::PostgresConfig> {
     source::proposed_config(project)

@@ -8,12 +8,12 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-const BASELINE_FORMAT: &str = "codeatlas.public-api-baseline";
-const BASELINE_SCHEMA_VERSION: u32 = 1;
+pub(crate) const BASELINE_FORMAT: &str = "codeatlas.public-api-baseline";
+pub(crate) const BASELINE_SCHEMA_VERSION: u32 = 1;
 const ROOT_EXPORT_PATH: &str = "<root>";
 const SUPPORTING_EXPORT_PATH: &str = "<supporting>";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct PublicApiBaseline {
     format: String,
     schema_version: u32,
@@ -22,7 +22,7 @@ pub(crate) struct PublicApiBaseline {
     pub(crate) packages: Vec<PublicApiPackage>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct PublicApiPackage {
     name: String,
     root: String,
@@ -33,7 +33,7 @@ pub(crate) struct PublicApiPackage {
     symbols: Vec<PublicApiSymbol>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct PublicApiSymbol {
     export_path: String,
     kind: SymbolKind,

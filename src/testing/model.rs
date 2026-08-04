@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) const TESTING_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct TestingInventoryReport {
     pub schema_version: u32,
     pub tool_version: String,
@@ -24,7 +24,7 @@ impl TestingInventoryReport {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct TestingProjectInventory {
     pub project: String,
     pub root: String,
@@ -33,7 +33,9 @@ pub(crate) struct TestingProjectInventory {
     pub scripts: Vec<TestScriptInventory>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct TestContextInventory {
     pub id: String,
     pub name: String,
@@ -41,7 +43,9 @@ pub(crate) struct TestContextInventory {
     pub declared_subjects: Vec<DeclaredTestSubject>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum DeclaredTestSubject {
     Project {
@@ -54,7 +58,9 @@ pub(crate) enum DeclaredTestSubject {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct TestScriptInventory {
     pub name: String,
     pub command: String,
@@ -63,7 +69,19 @@ pub(crate) struct TestScriptInventory {
     pub allows_empty: bool,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TestRunner {
     Ava,
@@ -103,19 +121,21 @@ impl TestRunner {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DuplicateTestScript {
     pub command: String,
     pub locations: Vec<TestScriptLocation>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct TestScriptLocation {
     pub project: String,
     pub script: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct TestingImpactReport {
     pub schema_version: u32,
     pub tool_version: String,
@@ -136,7 +156,7 @@ impl TestingImpactReport {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct ChangedPathImpact {
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -146,7 +166,7 @@ pub(crate) struct ChangedPathImpact {
     pub resolution: ChangedPathResolution,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ChangedPathResolution {
     ExactSource,
@@ -154,7 +174,7 @@ pub(crate) enum ChangedPathResolution {
     WorkspaceFallback,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct ImpactedTestProject {
     pub project: String,
     pub root: String,
@@ -163,7 +183,7 @@ pub(crate) struct ImpactedTestProject {
     pub scripts: Vec<TestScriptInventory>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct ImpactedTestContext {
     pub id: String,
     pub name: String,
@@ -171,7 +191,9 @@ pub(crate) struct ImpactedTestContext {
     pub evidence: Vec<TestImpactEvidence>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct TestImpactEvidence {
     pub changed_path: String,
     pub kind: TestImpactEvidenceKind,
@@ -181,7 +203,9 @@ pub(crate) struct TestImpactEvidence {
     pub subject: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TestImpactEvidenceKind {
     ObservedDependency,
@@ -191,7 +215,7 @@ pub(crate) enum TestImpactEvidenceKind {
     WorkspaceFallback,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct TestingWitnessReport {
     pub schema_version: u32,
     pub tool_version: String,
@@ -212,7 +236,7 @@ impl TestingWitnessReport {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct TestingWitnessSummary {
     pub public_symbols: usize,
     pub witnessed: usize,
@@ -222,7 +246,7 @@ pub(crate) struct TestingWitnessSummary {
     pub detached_contexts: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct PublicApiTestWitness {
     pub node_id: NodeId,
     pub project: String,
@@ -235,7 +259,7 @@ pub(crate) struct PublicApiTestWitness {
     pub declared: Vec<DeclaredTestWitness>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TestWitnessStatus {
     Witnessed,
@@ -244,21 +268,25 @@ pub(crate) enum TestWitnessStatus {
     Unknown,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct ObservedTestWitness {
     pub test_project: String,
     pub context: String,
     pub root: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct DeclaredTestWitness {
     pub test_project: String,
     pub context: String,
     pub subject: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DetachedTestContext {
     pub project: String,
     pub context: String,

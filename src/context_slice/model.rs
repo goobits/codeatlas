@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 pub(crate) const CONTEXT_SLICE_SCHEMA_VERSION: u32 = 3;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ContextDirection {
     Incoming,
@@ -22,13 +22,13 @@ pub(crate) struct ContextSliceRequest {
     pub continuation: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct TargetResolution {
     pub query: String,
     pub nodes: Vec<NodeId>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ContextSliceReport {
     pub schema_version: u32,
     pub tool_version: String,
@@ -48,7 +48,7 @@ pub(crate) struct ContextSliceReport {
     pub boundaries: Vec<AnalysisBoundary>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ContextSliceOmitted {
     pub projects: usize,
     pub nodes: usize,

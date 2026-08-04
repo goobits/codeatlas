@@ -1,0 +1,177 @@
+{
+  "$defs": {
+    "Severity": {
+      "enum": [
+        "error",
+        "warning",
+        "advisory"
+      ],
+      "type": "string"
+    },
+    "SourceConformanceFinding": {
+      "properties": {
+        "constraintId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dependencyPath": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/SourceEvidence"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/SourceConformanceFindingKind"
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "sourceProject": {
+          "type": "string"
+        },
+        "targetProject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "severity",
+        "sourceProject",
+        "targetProject",
+        "dependencyPath",
+        "evidence",
+        "message"
+      ],
+      "type": "object"
+    },
+    "SourceConformanceFindingKind": {
+      "enum": [
+        "unexported_workspace_import",
+        "workspace_source_bypass",
+        "forbidden_dependency_path"
+      ],
+      "type": "string"
+    },
+    "SourceEvidence": {
+      "properties": {
+        "extractor": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "extractor"
+      ],
+      "type": "object"
+    },
+    "Span": {
+      "properties": {
+        "end_col": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "end_line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start_col": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start_line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start_line",
+        "start_col",
+        "end_line",
+        "end_col"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.architecture-source-conformance/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "architectureGraphDigest": {
+      "type": "string"
+    },
+    "dependencyEdges": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "evaluatedConstraints": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/SourceConformanceFinding"
+      },
+      "type": "array"
+    },
+    "projects": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "skippedConstraints": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "toolVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "toolVersion",
+    "architectureGraphDigest",
+    "projects",
+    "dependencyEdges",
+    "evaluatedConstraints",
+    "skippedConstraints",
+    "findings"
+  ],
+  "title": "SourceConformanceReport",
+  "type": "object"
+}

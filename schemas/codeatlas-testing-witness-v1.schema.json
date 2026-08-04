@@ -1,0 +1,235 @@
+{
+  "$defs": {
+    "DeclaredTestWitness": {
+      "properties": {
+        "context": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "test_project": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "test_project",
+        "context",
+        "subject"
+      ],
+      "type": "object"
+    },
+    "DetachedTestContext": {
+      "properties": {
+        "context": {
+          "type": "string"
+        },
+        "declared_subjects": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "project": {
+          "type": "string"
+        },
+        "roots": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "project",
+        "context",
+        "roots",
+        "declared_subjects"
+      ],
+      "type": "object"
+    },
+    "FindingConfidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "type": "string"
+    },
+    "ObservedTestWitness": {
+      "properties": {
+        "context": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "test_project": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "test_project",
+        "context",
+        "root"
+      ],
+      "type": "object"
+    },
+    "PublicApiTestWitness": {
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/FindingConfidence"
+        },
+        "declared": {
+          "items": {
+            "$ref": "#/$defs/DeclaredTestWitness"
+          },
+          "type": "array"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "observed": {
+          "items": {
+            "$ref": "#/$defs/ObservedTestWitness"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/TestWitnessStatus"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "symbol_kind": {
+          "$ref": "#/$defs/SourceSymbolKind"
+        }
+      },
+      "required": [
+        "node_id",
+        "project",
+        "path",
+        "symbol",
+        "symbol_kind",
+        "confidence",
+        "status",
+        "observed",
+        "declared"
+      ],
+      "type": "object"
+    },
+    "SourceSymbolKind": {
+      "enum": [
+        "module",
+        "class",
+        "function",
+        "method",
+        "variable",
+        "constant",
+        "interface",
+        "struct",
+        "enum",
+        "trait",
+        "type_alias",
+        "property",
+        "other"
+      ],
+      "type": "string"
+    },
+    "TestWitnessStatus": {
+      "enum": [
+        "witnessed",
+        "declared_only",
+        "unwitnessed",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "TestingWitnessSummary": {
+      "properties": {
+        "declared_only": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "detached_contexts": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "public_symbols": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unknown": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unwitnessed": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "witnessed": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "public_symbols",
+        "witnessed",
+        "declared_only",
+        "unwitnessed",
+        "unknown",
+        "detached_contexts"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.testing-witness/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "detached_contexts": {
+      "items": {
+        "$ref": "#/$defs/DetachedTestContext"
+      },
+      "type": "array"
+    },
+    "public_api": {
+      "items": {
+        "$ref": "#/$defs/PublicApiTestWitness"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "summary": {
+      "$ref": "#/$defs/TestingWitnessSummary"
+    },
+    "tool_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "tool_version",
+    "summary",
+    "public_api",
+    "detached_contexts"
+  ],
+  "title": "TestingWitnessReport",
+  "type": "object"
+}

@@ -48,3 +48,4 @@ swc_core = { version = "0.91.1", features = ["ecma_parser", "ecma_ast", "ecma_vi
 pathdiff = "0.2"
 percent-encoding = "2.3"
 rayon = "1.10"
+schemars = "=1.2.2"

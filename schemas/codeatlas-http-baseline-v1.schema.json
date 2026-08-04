@@ -1,0 +1,198 @@
+{
+  "$defs": {
+    "HttpBaselineContract": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "openapiVersion": {
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/HttpOperation"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "openapiVersion",
+        "operations"
+      ],
+      "type": "object"
+    },
+    "HttpMediaType": {
+      "properties": {
+        "mediaType": {
+          "type": "string"
+        },
+        "schemaDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "mediaType"
+      ],
+      "type": "object"
+    },
+    "HttpOperation": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/HttpParameter"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "requestBody": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HttpRequestBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "responses": {
+          "items": {
+            "$ref": "#/$defs/HttpResponse"
+          },
+          "type": "array"
+        },
+        "security": {
+          "items": {
+            "$ref": "#/$defs/HttpSecurityRequirement"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "method",
+        "path",
+        "responses"
+      ],
+      "type": "object"
+    },
+    "HttpParameter": {
+      "properties": {
+        "location": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "schemaDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "location",
+        "required"
+      ],
+      "type": "object"
+    },
+    "HttpRequestBody": {
+      "properties": {
+        "content": {
+          "items": {
+            "$ref": "#/$defs/HttpMediaType"
+          },
+          "type": "array"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "required",
+        "content"
+      ],
+      "type": "object"
+    },
+    "HttpResponse": {
+      "properties": {
+        "content": {
+          "items": {
+            "$ref": "#/$defs/HttpMediaType"
+          },
+          "type": "array"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "HttpSecurityRequirement": {
+      "properties": {
+        "schemes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemes"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.http-baseline/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "apiVersion": {
+      "const": "codeatlas.http-baseline/v1",
+      "type": "string"
+    },
+    "contracts": {
+      "items": {
+        "$ref": "#/$defs/HttpBaselineContract"
+      },
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "apiVersion",
+    "contracts"
+  ],
+  "title": "HttpBaselineReport",
+  "type": "object"
+}

@@ -81,21 +81,27 @@ pub(crate) struct LexiconProviderConfig {
     pub url: String,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum LexiconProviderTier {
     Domain,
     General,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum LexiconProviderFormat {
     CsoCsv,
     RelationsJsonV1,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum LexiconProviderCoverage {
     Complete,

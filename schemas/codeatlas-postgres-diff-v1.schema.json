@@ -1,0 +1,209 @@
+{
+  "$defs": {
+    "PostgresArtifactKind": {
+      "enum": [
+        "bootstrap",
+        "lint",
+        "migration",
+        "query",
+        "table",
+        "column",
+        "constraint",
+        "index"
+      ],
+      "type": "string"
+    },
+    "PostgresChange": {
+      "properties": {
+        "artifact": {
+          "type": "string"
+        },
+        "artifactKind": {
+          "$ref": "#/$defs/PostgresArtifactKind"
+        },
+        "kind": {
+          "$ref": "#/$defs/PostgresChangeKind"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "artifactKind",
+        "artifact",
+        "message"
+      ],
+      "type": "object"
+    },
+    "PostgresChangeKind": {
+      "enum": [
+        "additive",
+        "breaking",
+        "informational"
+      ],
+      "type": "string"
+    },
+    "PostgresEvidence": {
+      "properties": {
+        "column": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line"
+      ],
+      "type": "object"
+    },
+    "PostgresFinding": {
+      "properties": {
+        "artifact": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "contractId": {
+          "type": "string"
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PostgresEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gates": {
+          "type": "boolean"
+        },
+        "help": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/PostgresFindingSeverity"
+        }
+      },
+      "required": [
+        "severity",
+        "code",
+        "contractId",
+        "message",
+        "gates"
+      ],
+      "type": "object"
+    },
+    "PostgresFindingSeverity": {
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "codeatlas.postgres-diff/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "additiveChanges": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "apiVersion": {
+      "const": "codeatlas.postgres-diff/v1",
+      "type": "string"
+    },
+    "breakingChanges": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/PostgresChange"
+      },
+      "type": "array"
+    },
+    "contractId": {
+      "type": "string"
+    },
+    "currentCatalogDigest": {
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/PostgresFinding"
+      },
+      "type": "array"
+    },
+    "informationalChanges": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "previousCatalogDigest": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "serverMajor": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "toolVersion": {
+      "type": "string"
+    },
+    "validationGateCount": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "apiVersion",
+    "toolVersion",
+    "contractId",
+    "serverMajor",
+    "previousCatalogDigest",
+    "currentCatalogDigest",
+    "changes",
+    "breakingChanges",
+    "additiveChanges",
+    "informationalChanges",
+    "validationGateCount"
+  ],
+  "title": "PostgresDiffReport",
+  "type": "object"
+}

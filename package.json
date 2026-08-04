@@ -13,6 +13,7 @@
 		"test:node": "node --test tests/wrapper.test.js tests/storage.test.js",
 		"spec:check": "node tasks/check-architecture-spec.js",
 		"spec:write": "node tasks/check-architecture-spec.js --write",
+		"schemas:write": "node tasks/update-schemas.js",
 		"self:check": "node tasks/check-self.js",
 		"pack:check": "node tasks/check-package.js",
 		"release": "node tasks/release.js patch",
@@ -34,6 +35,7 @@
 	"files": [
 		"bin/**",
 		"src/**",
+		"schemas/**",
 		"spec/architecture/v0.1/**",
 		"Cargo.toml",
 		"Cargo.lock",

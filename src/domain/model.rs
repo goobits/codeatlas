@@ -4,7 +4,7 @@ use std::fmt;
 
 pub(crate) const SCAN_SCHEMA_VERSION: u32 = 2;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ScanReport {
     pub schema_version: u32,
     pub tool_version: String,
@@ -36,7 +36,7 @@ impl Default for ScanReport {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct PackageInfo {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -45,34 +45,36 @@ pub(crate) struct PackageInfo {
     pub exports: Vec<PackageExport>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct PackageExport {
     pub public_path: String,
     pub source_path: String,
 }
 
 /// A dependency edge from one file to another.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub(crate) struct FileEdge {
     pub from: String,
     pub to: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, Default)]
 pub(crate) struct ScanStats {
     pub files_scanned: usize,
     pub files_skipped: usize,
     pub symbols_found: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SkippedFile {
     pub path: String,
     pub reason: String,
     pub language: Language,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct Span {
     pub start_line: u32,
     pub start_col: u32,
@@ -80,7 +82,7 @@ pub(crate) struct Span {
     pub end_col: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Symbol {
     /// ID Format: "{lang}:{repo_path}:{kind}#{name}"
     pub id: String,
@@ -103,7 +105,7 @@ pub(crate) struct Symbol {
     pub children: Vec<Symbol>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub(crate) struct SymbolDocs {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub summary: String,
@@ -127,7 +129,7 @@ pub(crate) struct SymbolDocs {
     pub throws: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Stability {
     Experimental,
@@ -135,19 +137,19 @@ pub(crate) enum Stability {
     Stable,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ImportUsage {
     pub id: String,
     pub importers: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct UnusedPublic {
     pub id: String,
     pub suggestion: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) enum Visibility {
     Public,
     Internal,
@@ -155,7 +157,7 @@ pub(crate) enum Visibility {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub(crate) enum Language {
     TypeScript,
     Python,
@@ -163,7 +165,9 @@ pub(crate) enum Language {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) enum SymbolKind {
     Module,
     Class,

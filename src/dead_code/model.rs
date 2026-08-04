@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const DEAD_CODE_SCHEMA_VERSION: u32 = 5;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DeadCodeReport {
     pub schema_version: u32,
     pub tool_version: String,
@@ -63,7 +63,7 @@ impl DeadCodeReport {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DeadCodeProjectSummary {
     pub project: String,
     pub root: String,
@@ -75,7 +75,9 @@ pub(crate) struct DeadCodeProjectSummary {
     pub symbols: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct DeadCodeCompletenessReason {
     pub kind: BoundaryKind,
     pub effect: AnalysisCompleteness,
@@ -83,7 +85,7 @@ pub(crate) struct DeadCodeCompletenessReason {
     pub evidence: SourceEvidence,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DeadCodeFinding {
     pub id: String,
     pub kind: DeadCodeFindingKind,
@@ -106,13 +108,27 @@ pub(crate) struct DeadCodeFinding {
     pub gates: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub(crate) struct DeadCodeRootContext {
     pub context: String,
     pub root: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum DeadCodeFindingKind {
     UnreachableFile,

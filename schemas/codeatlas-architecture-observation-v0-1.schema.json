@@ -1,0 +1,321 @@
+{
+  "$defs": {
+    "Coverage": {
+      "properties": {
+        "excludedRoots": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "feature": {
+          "type": "string"
+        },
+        "includedRoots": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "repositoryScope": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CoverageStatus"
+        }
+      },
+      "required": [
+        "repositoryScope",
+        "feature",
+        "status"
+      ],
+      "type": "object"
+    },
+    "CoverageStatus": {
+      "enum": [
+        "complete",
+        "partial",
+        "unsupported",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "GeneratedMetadata": {
+      "properties": {
+        "architectureVersion": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "generated": {
+          "type": "boolean"
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "generationCommand": {
+          "type": "string"
+        },
+        "generator": {
+          "$ref": "#/$defs/GeneratorIdentity"
+        },
+        "id": {
+          "type": "string"
+        },
+        "manualEditing": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sourceInputs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "architectureVersion",
+        "generated",
+        "generator",
+        "generatedAt",
+        "sourceInputs",
+        "generationCommand",
+        "manualEditing"
+      ],
+      "type": "object"
+    },
+    "GeneratorIdentity": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "type": "object"
+    },
+    "ObservationDigests": {
+      "properties": {
+        "observationContentDigest": {
+          "type": "string"
+        },
+        "observationEnvelopeDigest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "observationContentDigest",
+        "observationEnvelopeDigest"
+      ],
+      "type": "object"
+    },
+    "ObservationFact": {
+      "properties": {
+        "attributes": true,
+        "confidenceBasisPoints": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "coverageIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "extractor": {
+          "$ref": "#/$defs/GeneratorIdentity"
+        },
+        "mode": {
+          "$ref": "#/$defs/ObservationMode"
+        },
+        "observedKind": {
+          "type": "string"
+        },
+        "sourceLocations": {
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "type": "array"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "observedKind",
+        "attributes",
+        "extractor",
+        "mode",
+        "sourceLocations",
+        "coverageIds"
+      ],
+      "type": "object"
+    },
+    "ObservationMode": {
+      "enum": [
+        "deterministic",
+        "inferred"
+      ],
+      "type": "string"
+    },
+    "RepositoryIdentity": {
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "SourceLocation": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/SourceSpan"
+        }
+      },
+      "required": [
+        "path",
+        "span"
+      ],
+      "type": "object"
+    },
+    "SourcePosition": {
+      "properties": {
+        "column": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "line": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "line",
+        "column"
+      ],
+      "type": "object"
+    },
+    "SourceSpan": {
+      "properties": {
+        "end": {
+          "$ref": "#/$defs/SourcePosition"
+        },
+        "start": {
+          "$ref": "#/$defs/SourcePosition"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object"
+    },
+    "VocabularyIdentity": {
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "digest"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "atlas.codeatlas.dev/architecture-observation/v0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "apiVersion": {
+      "const": "atlas.codeatlas.dev/v0.1",
+      "type": "string"
+    },
+    "coverage": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Coverage"
+      },
+      "type": "object"
+    },
+    "digests": {
+      "$ref": "#/$defs/ObservationDigests"
+    },
+    "facts": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ObservationFact"
+      },
+      "type": "object"
+    },
+    "kind": {
+      "const": "ArchitectureObservation",
+      "type": "string"
+    },
+    "metadata": {
+      "$ref": "#/$defs/GeneratedMetadata"
+    },
+    "repository": {
+      "$ref": "#/$defs/RepositoryIdentity"
+    },
+    "sourceCommit": {
+      "type": "string"
+    },
+    "vocabulary": {
+      "$ref": "#/$defs/VocabularyIdentity"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "vocabulary",
+    "repository",
+    "sourceCommit",
+    "coverage",
+    "facts",
+    "digests"
+  ],
+  "title": "ArchitectureObservation",
+  "type": "object"
+}

@@ -496,6 +496,7 @@ fn known_attribute(name: &str, attribute: &Attribute) -> bool {
                     | "Eq"
                     | "Error"
                     | "Hash"
+                    | "JsonSchema"
                     | "Ord"
                     | "PartialEq"
                     | "PartialOrd"

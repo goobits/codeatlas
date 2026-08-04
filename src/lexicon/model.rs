@@ -4,7 +4,7 @@ use serde::Serialize;
 
 pub(crate) const LEXICON_SCHEMA_VERSION: u32 = 3;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct LexiconReport {
     pub schema_version: u32,
     pub tool_version: String,
@@ -17,7 +17,7 @@ pub(crate) struct LexiconReport {
     pub public_symbols: Vec<LexiconSymbol>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct LexiconStats {
     pub source_files: usize,
     pub symbols_analyzed: usize,
@@ -30,20 +30,20 @@ pub(crate) struct LexiconStats {
     pub suppressed_concept_candidates: usize,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct NameCollision {
     pub name: String,
     pub shapes: Vec<ShapeGroup>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct ShapeAlias {
     pub shape: String,
     pub names: Vec<String>,
     pub symbols: Vec<LexiconSymbol>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct CallableCandidate {
     pub kind: CallableCandidateKind,
     pub evidence_class: EvidenceClass,
@@ -56,20 +56,20 @@ pub(crate) struct CallableCandidate {
     pub symbols: Vec<LexiconSymbol>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CallableCandidateKind {
     ExactSignature,
     SharedContractShape,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct ShapeGroup {
     pub shape: String,
     pub symbols: Vec<LexiconSymbol>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct TermUsage {
     pub term: String,
     pub symbol_count: usize,
@@ -77,7 +77,7 @@ pub(crate) struct TermUsage {
     pub names: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct ConceptualAnalysis {
     pub mode: ConceptualAnalysisMode,
     pub identifier_grammar: IdentifierGrammarSummary,
@@ -98,7 +98,7 @@ impl Default for ConceptualAnalysis {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConceptualAnalysisMode {
     LocalDeterministic,
@@ -106,7 +106,7 @@ pub(crate) enum ConceptualAnalysisMode {
     DomainWithGeneralCorroboration,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct IdentifierGrammarSummary {
     pub source_id: String,
     pub version: String,
@@ -131,7 +131,7 @@ impl Default for IdentifierGrammarSummary {
     }
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct LexiconSource {
     pub id: String,
     pub version: String,
@@ -147,7 +147,7 @@ pub(crate) struct LexiconSource {
     pub relations_indexed: usize,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct ConceptCandidate {
     pub id: String,
     pub terms: [String; 2],
@@ -165,7 +165,7 @@ pub(crate) struct ConceptCandidate {
     pub suggested_suppression: Option<SuggestedSuppression>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConceptCandidateRule {
     ExactAlias,
@@ -175,7 +175,7 @@ pub(crate) enum ConceptCandidateRule {
     DomainRelatedEquivalent,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConceptCandidateTier {
     Project,
@@ -183,7 +183,7 @@ pub(crate) enum ConceptCandidateTier {
     Domain,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConceptCandidateConfidence {
     Authoritative,
@@ -192,7 +192,7 @@ pub(crate) enum ConceptCandidateConfidence {
     Advisory,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ConceptEvidence {
     pub source_id: String,
     pub source_version: String,
@@ -202,7 +202,7 @@ pub(crate) struct ConceptEvidence {
     pub object: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConceptEvidenceTier {
     Project,
@@ -212,7 +212,7 @@ pub(crate) enum ConceptEvidenceTier {
     General,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConceptEvidenceRelation {
     ExactAlias,
@@ -229,13 +229,13 @@ pub(crate) enum ConceptEvidenceRelation {
     Synonym,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct ConceptTermUsage {
     pub term: String,
     pub symbols: Vec<LexiconSymbol>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct SuggestedSuppression {
     pub kind: ConceptSuppressionKind,
     pub config_key: String,
@@ -245,7 +245,7 @@ pub(crate) struct SuggestedSuppression {
     pub reason_required: bool,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct SuppressedConceptCandidate {
     pub id: String,
     pub terms: [String; 2],
@@ -254,7 +254,7 @@ pub(crate) struct SuppressedConceptCandidate {
     pub suppression: AppliedSuppression,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct AppliedSuppression {
     pub kind: ConceptSuppressionKind,
     pub reason: String,
@@ -262,14 +262,14 @@ pub(crate) struct AppliedSuppression {
     pub concept_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConceptSuppressionKind {
     DistinctFrom,
     NeverSuggest,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct LexiconSymbol {
     pub id: String,
     pub name: String,

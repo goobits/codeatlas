@@ -1,0 +1,848 @@
+{
+  "$defs": {
+    "AppliedSuppression": {
+      "properties": {
+        "concept_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/ConceptSuppressionKind"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "reason",
+        "concept_ids"
+      ],
+      "type": "object"
+    },
+    "CallableCandidate": {
+      "properties": {
+        "contract_shape": {
+          "type": "string"
+        },
+        "evidence_class": {
+          "$ref": "#/$defs/EvidenceClass"
+        },
+        "kind": {
+          "$ref": "#/$defs/CallableCandidateKind"
+        },
+        "names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "shared_terms": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "symbols": {
+          "items": {
+            "$ref": "#/$defs/LexiconSymbol"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "evidence_class",
+        "contract_shape",
+        "shared_terms",
+        "names",
+        "symbols"
+      ],
+      "type": "object"
+    },
+    "CallableCandidateKind": {
+      "enum": [
+        "exact_signature",
+        "shared_contract_shape"
+      ],
+      "type": "string"
+    },
+    "ConceptCandidate": {
+      "properties": {
+        "concept_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "confidence": {
+          "$ref": "#/$defs/ConceptCandidateConfidence"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ConceptEvidence"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "preferred_terms": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "rule": {
+          "$ref": "#/$defs/ConceptCandidateRule"
+        },
+        "suggested_suppression": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SuggestedSuppression"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "terms": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "tier": {
+          "$ref": "#/$defs/ConceptCandidateTier"
+        },
+        "usages": {
+          "items": {
+            "$ref": "#/$defs/ConceptTermUsage"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "terms",
+        "concept_ids",
+        "rule",
+        "reason",
+        "tier",
+        "confidence",
+        "preferred_terms",
+        "evidence",
+        "usages"
+      ],
+      "type": "object"
+    },
+    "ConceptCandidateConfidence": {
+      "enum": [
+        "authoritative",
+        "strong_advisory",
+        "corroborated_advisory",
+        "advisory"
+      ],
+      "type": "string"
+    },
+    "ConceptCandidateRule": {
+      "enum": [
+        "exact_alias",
+        "retired_term",
+        "programming_grammar_variant",
+        "domain_preferential_equivalent",
+        "domain_related_equivalent"
+      ],
+      "type": "string"
+    },
+    "ConceptCandidateTier": {
+      "enum": [
+        "project",
+        "grammar",
+        "domain"
+      ],
+      "type": "string"
+    },
+    "ConceptEvidence": {
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "relation": {
+          "$ref": "#/$defs/ConceptEvidenceRelation"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "source_version": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "tier": {
+          "$ref": "#/$defs/ConceptEvidenceTier"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_version",
+        "tier",
+        "relation",
+        "subject",
+        "object"
+      ],
+      "type": "object"
+    },
+    "ConceptEvidenceRelation": {
+      "enum": [
+        "exact_alias",
+        "retired_term",
+        "canonical_grammar",
+        "morphological_variant",
+        "abbreviation_expansion",
+        "compatible_symbol_kind",
+        "shared_callable_contract",
+        "shared_callable_shape",
+        "shared_structural_shape",
+        "preferential_equivalent",
+        "related_equivalent",
+        "synonym"
+      ],
+      "type": "string"
+    },
+    "ConceptEvidenceTier": {
+      "enum": [
+        "project",
+        "grammar",
+        "structural",
+        "domain",
+        "general"
+      ],
+      "type": "string"
+    },
+    "ConceptSuppressionKind": {
+      "enum": [
+        "distinct_from",
+        "never_suggest"
+      ],
+      "type": "string"
+    },
+    "ConceptTermUsage": {
+      "properties": {
+        "symbols": {
+          "items": {
+            "$ref": "#/$defs/LexiconSymbol"
+          },
+          "type": "array"
+        },
+        "term": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "term",
+        "symbols"
+      ],
+      "type": "object"
+    },
+    "ConceptualAnalysis": {
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/ConceptCandidate"
+          },
+          "type": "array"
+        },
+        "identifier_grammar": {
+          "$ref": "#/$defs/IdentifierGrammarSummary"
+        },
+        "mode": {
+          "$ref": "#/$defs/ConceptualAnalysisMode"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/LexiconSource"
+          },
+          "type": "array"
+        },
+        "suppressed_candidates": {
+          "items": {
+            "$ref": "#/$defs/SuppressedConceptCandidate"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "mode",
+        "identifier_grammar",
+        "sources",
+        "candidates",
+        "suppressed_candidates"
+      ],
+      "type": "object"
+    },
+    "ConceptualAnalysisMode": {
+      "enum": [
+        "local_deterministic",
+        "domain_advisory",
+        "domain_with_general_corroboration"
+      ],
+      "type": "string"
+    },
+    "EvidenceClass": {
+      "enum": [
+        "direct",
+        "inferred",
+        "boundary_limited"
+      ],
+      "type": "string"
+    },
+    "IdentifierGrammarSummary": {
+      "properties": {
+        "builtin_abbreviations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "builtin_morphology": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "candidate_strategy": {
+          "type": "string"
+        },
+        "configured_abbreviations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "configured_morphology": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "version",
+        "builtin_abbreviations",
+        "configured_abbreviations",
+        "builtin_morphology",
+        "configured_morphology",
+        "candidate_strategy"
+      ],
+      "type": "object"
+    },
+    "Language": {
+      "enum": [
+        "TypeScript",
+        "Python",
+        "Rust",
+        "Unknown"
+      ],
+      "type": "string"
+    },
+    "LexiconProviderCoverage": {
+      "enum": [
+        "complete",
+        "filtered"
+      ],
+      "type": "string"
+    },
+    "LexiconProviderFormat": {
+      "enum": [
+        "cso_csv",
+        "relations_json_v1"
+      ],
+      "type": "string"
+    },
+    "LexiconProviderTier": {
+      "enum": [
+        "domain",
+        "general"
+      ],
+      "type": "string"
+    },
+    "LexiconSource": {
+      "properties": {
+        "attribution": {
+          "type": "string"
+        },
+        "coverage": {
+          "$ref": "#/$defs/LexiconProviderCoverage"
+        },
+        "format": {
+          "$ref": "#/$defs/LexiconProviderFormat"
+        },
+        "id": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "records_read": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "relations_indexed": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "relations_loaded": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "tier": {
+          "$ref": "#/$defs/LexiconProviderTier"
+        },
+        "url": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "tier",
+        "format",
+        "coverage",
+        "sha256",
+        "license",
+        "attribution",
+        "url",
+        "records_read",
+        "relations_loaded",
+        "relations_indexed"
+      ],
+      "type": "object"
+    },
+    "LexiconStats": {
+      "properties": {
+        "callable_candidates": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "concept_candidates": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name_collisions": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "public_symbols": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "repeated_terms": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "shape_aliases": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_files": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "suppressed_concept_candidates": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "symbols_analyzed": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_files",
+        "symbols_analyzed",
+        "public_symbols",
+        "name_collisions",
+        "shape_aliases",
+        "callable_candidates",
+        "repeated_terms",
+        "concept_candidates",
+        "suppressed_concept_candidates"
+      ],
+      "type": "object"
+    },
+    "LexiconSymbol": {
+      "properties": {
+        "export_paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "file_path": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/SymbolKind"
+        },
+        "language": {
+          "$ref": "#/$defs/Language"
+        },
+        "name": {
+          "type": "string"
+        },
+        "package": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signature": {
+          "type": "string"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visibility": {
+          "$ref": "#/$defs/Visibility"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "visibility",
+        "language",
+        "file_path",
+        "signature",
+        "export_paths"
+      ],
+      "type": "object"
+    },
+    "NameCollision": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "shapes": {
+          "items": {
+            "$ref": "#/$defs/ShapeGroup"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "shapes"
+      ],
+      "type": "object"
+    },
+    "ShapeAlias": {
+      "properties": {
+        "names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "shape": {
+          "type": "string"
+        },
+        "symbols": {
+          "items": {
+            "$ref": "#/$defs/LexiconSymbol"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "shape",
+        "names",
+        "symbols"
+      ],
+      "type": "object"
+    },
+    "ShapeGroup": {
+      "properties": {
+        "shape": {
+          "type": "string"
+        },
+        "symbols": {
+          "items": {
+            "$ref": "#/$defs/LexiconSymbol"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "shape",
+        "symbols"
+      ],
+      "type": "object"
+    },
+    "Span": {
+      "properties": {
+        "end_col": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "end_line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start_col": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start_line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start_line",
+        "start_col",
+        "end_line",
+        "end_col"
+      ],
+      "type": "object"
+    },
+    "SuggestedSuppression": {
+      "properties": {
+        "concept_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "config_key": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ConceptSuppressionKind"
+        },
+        "reason_required": {
+          "type": "boolean"
+        },
+        "terms": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "config_key",
+        "terms",
+        "concept_ids",
+        "reason_required"
+      ],
+      "type": "object"
+    },
+    "SuppressedConceptCandidate": {
+      "properties": {
+        "candidate_rule": {
+          "$ref": "#/$defs/ConceptCandidateRule"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ConceptEvidence"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "suppression": {
+          "$ref": "#/$defs/AppliedSuppression"
+        },
+        "terms": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "terms",
+        "candidate_rule",
+        "evidence",
+        "suppression"
+      ],
+      "type": "object"
+    },
+    "SymbolKind": {
+      "enum": [
+        "Module",
+        "Class",
+        "Method",
+        "Function",
+        "Interface",
+        "Struct",
+        "Const",
+        "Property",
+        "Decorator",
+        "Enum",
+        "Trait",
+        "TypeAlias"
+      ],
+      "type": "string"
+    },
+    "TermUsage": {
+      "properties": {
+        "names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "public_symbol_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "symbol_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "term": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "term",
+        "symbol_count",
+        "public_symbol_count",
+        "names"
+      ],
+      "type": "object"
+    },
+    "Visibility": {
+      "enum": [
+        "Public",
+        "Internal",
+        "Private",
+        "Unknown"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "codeatlas.lexicon/v3",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "callable_candidates": {
+      "items": {
+        "$ref": "#/$defs/CallableCandidate"
+      },
+      "type": "array"
+    },
+    "conceptual_analysis": {
+      "$ref": "#/$defs/ConceptualAnalysis"
+    },
+    "name_collisions": {
+      "items": {
+        "$ref": "#/$defs/NameCollision"
+      },
+      "type": "array"
+    },
+    "public_symbols": {
+      "items": {
+        "$ref": "#/$defs/LexiconSymbol"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 3,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "shape_aliases": {
+      "items": {
+        "$ref": "#/$defs/ShapeAlias"
+      },
+      "type": "array"
+    },
+    "stats": {
+      "$ref": "#/$defs/LexiconStats"
+    },
+    "terms": {
+      "items": {
+        "$ref": "#/$defs/TermUsage"
+      },
+      "type": "array"
+    },
+    "tool_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "tool_version",
+    "stats",
+    "name_collisions",
+    "shape_aliases",
+    "callable_candidates",
+    "terms",
+    "conceptual_analysis",
+    "public_symbols"
+  ],
+  "title": "LexiconReport",
+  "type": "object"
+}
