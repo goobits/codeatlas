@@ -239,7 +239,8 @@ impl IdentifierGrammar {
                     GrammarConstruction::Action
                 },
             )
-        } else if let Some(rule) = suffix_rule {
+        } else {
+            let rule = suffix_rule?;
             let subject = &expanded[..expanded.len() - 1];
             if subject.is_empty() {
                 return None;
@@ -258,8 +259,6 @@ impl IdentifierGrammar {
                     LexiconMorphologyRole::Result => GrammarConstruction::Result,
                 },
             )
-        } else {
-            return None;
         };
 
         let (object, qualifiers) = subject.split_first()?;

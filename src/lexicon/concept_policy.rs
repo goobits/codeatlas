@@ -86,8 +86,10 @@ pub(crate) fn load_concept_policy(
     config_base: &Path,
 ) -> Result<LexiconPolicy> {
     validate_resource_counts(config)?;
-    let mut policy = LexiconPolicy::default();
-    policy.identifier_grammar = compile_identifier_grammar(&config.grammar)?;
+    let mut policy = LexiconPolicy {
+        identifier_grammar: compile_identifier_grammar(&config.grammar)?,
+        ..LexiconPolicy::default()
+    };
     load_concepts(config, &mut policy)?;
     load_suppressions(config, &mut policy)?;
     load_providers(config, config_base, &mut policy)?;
