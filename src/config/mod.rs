@@ -12,7 +12,8 @@ pub(crate) use http::{
     HttpOpenApiProviderConfig, HttpOpenApiSourceConfig,
 };
 pub(crate) use lexicon::{
-    LexiconConfig, LexiconProviderConfig, LexiconProviderCoverage, LexiconProviderFormat,
+    LexiconAbbreviationConfig, LexiconConfig, LexiconGrammarConfig, LexiconMorphologyConfig,
+    LexiconMorphologyRole, LexiconProviderConfig, LexiconProviderCoverage, LexiconProviderFormat,
     LexiconProviderTier,
 };
 pub(crate) use postgres::{

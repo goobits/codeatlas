@@ -5,7 +5,7 @@ use super::model::{
     LEXICON_SCHEMA_VERSION,
 };
 use super::symbols::{
-    is_reportable_identifier_term, normalize_signature, normalize_whitespace, project_symbol,
+    has_structural_detail, is_reportable_identifier_term, project_symbol, resolve_symbol_shape,
     sort_symbols, tokenize_identifier,
 };
 use crate::domain::{ScanReport, Symbol, SymbolKind};
@@ -42,6 +42,7 @@ pub(crate) fn analyze(scan: &ScanReport, policy: &LexiconPolicy) -> LexiconRepor
         .map(|view| ConceptObservation {
             symbol: view.symbol,
             tokens: &view.tokens,
+            top_level: view.top_level,
         })
         .collect::<Vec<_>>();
     let conceptual_analysis = analyze_concepts(&observations, policy);
@@ -102,7 +103,7 @@ fn find_name_collisions(symbols: &[SymbolView<'_>]) -> Vec<NameCollision> {
         candidates
             .entry(view.symbol.name.clone())
             .or_default()
-            .entry(symbol_shape(view.symbol))
+            .entry(resolve_symbol_shape(view.symbol))
             .or_default()
             .push(project_symbol(view.symbol));
     }
@@ -139,7 +140,7 @@ fn find_shape_aliases(symbols: &[SymbolView<'_>]) -> Vec<ShapeAlias> {
         .filter(|view| is_concept_kind(view.symbol.kind) && has_structural_detail(view.symbol))
     {
         candidates
-            .entry(symbol_shape(view.symbol))
+            .entry(resolve_symbol_shape(view.symbol))
             .or_default()
             .entry(view.symbol.name.clone())
             .or_default()
@@ -216,33 +217,6 @@ fn is_concept_kind(kind: SymbolKind) -> bool {
             | SymbolKind::Enum
             | SymbolKind::Trait
             | SymbolKind::TypeAlias
-    )
-}
-
-fn has_structural_detail(symbol: &Symbol) -> bool {
-    !symbol.children.is_empty()
-        || matches!(symbol.kind, SymbolKind::TypeAlias)
-            && normalize_signature(&symbol.signature, &symbol.name).contains('=')
-}
-
-fn symbol_shape(symbol: &Symbol) -> String {
-    let mut children = symbol
-        .children
-        .iter()
-        .map(|child| {
-            format!(
-                "{:?}:{}",
-                child.kind,
-                normalize_whitespace(&child.signature)
-            )
-        })
-        .collect::<Vec<_>>();
-    children.sort();
-    format!(
-        "{:?}:{}[{}]",
-        symbol.kind,
-        normalize_signature(&symbol.signature, &symbol.name),
-        children.join(";")
     )
 }
 

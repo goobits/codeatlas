@@ -183,7 +183,7 @@ fn lexicon_reports_source_collisions_without_mislabeling_public_exposure() {
     let report: Value =
         serde_json::from_slice(&output.stdout).expect("lexicon report should be JSON");
 
-    assert_eq!(report["schema_version"], 2);
+    assert_eq!(report["schema_version"], 3);
     assert!(report["callable_candidates"].is_array());
     assert!(report["conceptual_analysis"].is_object());
     assert!(report.get("duplicate_families").is_none());
@@ -197,6 +197,104 @@ fn lexicon_reports_source_collisions_without_mislabeling_public_exposure() {
     assert!(public_symbols
         .iter()
         .all(|symbol| { symbol["export_paths"][0] == "@example/lexicon" }));
+}
+
+#[test]
+fn lexicon_identifier_grammar_has_rust_typescript_javascript_python_and_svelte_parity() {
+    let project = TestDirectory::create("codeatlas-cli-grammar-parity");
+    write(
+        &project,
+        "src/config/load.rs",
+        "pub fn load_config(path: &str) -> String { path.to_string() }\n",
+    );
+    write(
+        &project,
+        "src/config/loader.rs",
+        "pub fn config_loader(path: &str) -> String { path.to_string() }\n",
+    );
+    write(
+        &project,
+        "src/request/validate.ts",
+        "export function validateRequest(request: Request): Result { return request as Result }\n",
+    );
+    write(
+        &project,
+        "src/request/validator.ts",
+        "export function requestValidator(request: Request): Result { return request as Result }\n",
+    );
+    write(
+        &project,
+        "src/receipt/write.js",
+        "export function writeReceipt(receipt) { return receipt }\n",
+    );
+    write(
+        &project,
+        "src/receipt/writer.js",
+        "export function receiptWriter(receipt) { return receipt }\n",
+    );
+    write(
+        &project,
+        "src/path/resolve.py",
+        "def resolve_path(value: str) -> str:\n    return value\n",
+    );
+    write(
+        &project,
+        "src/path/resolver.py",
+        "def path_resolver(value: str) -> str:\n    return value\n",
+    );
+    write(
+        &project,
+        "src/template/Parse.svelte",
+        "<script>\nexport function parseTemplate(source) { return source }\n</script>\n",
+    );
+    write(
+        &project,
+        "src/template/Parser.svelte",
+        "<script>\nexport function templateParser(source) { return source }\n</script>\n",
+    );
+    let args = [
+        "--root",
+        project
+            .path()
+            .to_str()
+            .expect("project path should be UTF-8"),
+        "lexicon",
+        "code",
+        "--format",
+        "json",
+    ];
+
+    let output = run(&args);
+    assert_success(&output, "cross-language identifier grammar report");
+    let repeated = run(&args);
+    assert_success(&repeated, "repeated identifier grammar report");
+    assert_eq!(output.stdout, repeated.stdout);
+    let report: Value = serde_json::from_slice(&output.stdout).expect("lexicon JSON");
+    let candidates = report["conceptual_analysis"]["candidates"]
+        .as_array()
+        .expect("concept candidates");
+    for terms in [
+        serde_json::json!(["config loader", "load config"]),
+        serde_json::json!(["parse template", "template parser"]),
+        serde_json::json!(["path resolver", "resolve path"]),
+        serde_json::json!(["receipt writer", "write receipt"]),
+        serde_json::json!(["request validator", "validate request"]),
+    ] {
+        let candidate = candidates
+            .iter()
+            .find(|candidate| candidate["terms"] == terms)
+            .unwrap_or_else(|| panic!("missing grammar candidate {terms}"));
+        assert_eq!(candidate["rule"], "programming_grammar_variant");
+        assert!(candidate["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("Corroboration:")));
+        assert!(candidate["evidence"]
+            .as_array()
+            .is_some_and(|evidence| evidence.iter().any(|item| {
+                item["relation"] == "canonical_grammar"
+                    && item["source_id"] == "codeatlas.programming-grammar"
+            })));
+    }
 }
 
 #[test]

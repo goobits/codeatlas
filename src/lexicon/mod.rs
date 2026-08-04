@@ -1,8 +1,12 @@
 mod analyze;
 mod callable_contract;
 mod callables;
+mod candidate_policy;
 mod concept_policy;
 mod concepts;
+mod grammar_candidates;
+mod grammar_corroboration;
+mod identifier_grammar;
 mod model;
 mod provider;
 mod symbols;

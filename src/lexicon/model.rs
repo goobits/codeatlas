@@ -2,7 +2,7 @@ use crate::config::{LexiconProviderCoverage, LexiconProviderFormat, LexiconProvi
 use crate::domain::{EvidenceClass, Language, Span, SymbolKind, Visibility};
 use serde::Serialize;
 
-pub(crate) const LEXICON_SCHEMA_VERSION: u32 = 2;
+pub(crate) const LEXICON_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct LexiconReport {
@@ -80,6 +80,7 @@ pub(crate) struct TermUsage {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct ConceptualAnalysis {
     pub mode: ConceptualAnalysisMode,
+    pub identifier_grammar: IdentifierGrammarSummary,
     pub sources: Vec<LexiconSource>,
     pub candidates: Vec<ConceptCandidate>,
     pub suppressed_candidates: Vec<SuppressedConceptCandidate>,
@@ -88,7 +89,8 @@ pub(crate) struct ConceptualAnalysis {
 impl Default for ConceptualAnalysis {
     fn default() -> Self {
         Self {
-            mode: ConceptualAnalysisMode::ProjectPolicyOnly,
+            mode: ConceptualAnalysisMode::LocalDeterministic,
+            identifier_grammar: IdentifierGrammarSummary::default(),
             sources: Vec::new(),
             candidates: Vec::new(),
             suppressed_candidates: Vec::new(),
@@ -99,9 +101,34 @@ impl Default for ConceptualAnalysis {
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConceptualAnalysisMode {
-    ProjectPolicyOnly,
+    LocalDeterministic,
     DomainAdvisory,
     DomainWithGeneralCorroboration,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub(crate) struct IdentifierGrammarSummary {
+    pub source_id: String,
+    pub version: String,
+    pub builtin_abbreviations: usize,
+    pub configured_abbreviations: usize,
+    pub builtin_morphology: usize,
+    pub configured_morphology: usize,
+    pub candidate_strategy: String,
+}
+
+impl Default for IdentifierGrammarSummary {
+    fn default() -> Self {
+        Self {
+            source_id: "codeatlas.programming-grammar".to_string(),
+            version: "1".to_string(),
+            builtin_abbreviations: 0,
+            configured_abbreviations: 0,
+            builtin_morphology: 0,
+            configured_morphology: 0,
+            candidate_strategy: "action_anchor_linear".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -143,6 +170,7 @@ pub(crate) struct ConceptCandidate {
 pub(crate) enum ConceptCandidateRule {
     ExactAlias,
     RetiredTerm,
+    ProgrammingGrammarVariant,
     DomainPreferentialEquivalent,
     DomainRelatedEquivalent,
 }
@@ -151,6 +179,7 @@ pub(crate) enum ConceptCandidateRule {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConceptCandidateTier {
     Project,
+    Grammar,
     Domain,
 }
 
@@ -177,6 +206,8 @@ pub(crate) struct ConceptEvidence {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConceptEvidenceTier {
     Project,
+    Grammar,
+    Structural,
     Domain,
     General,
 }
@@ -186,6 +217,13 @@ pub(crate) enum ConceptEvidenceTier {
 pub(crate) enum ConceptEvidenceRelation {
     ExactAlias,
     RetiredTerm,
+    CanonicalGrammar,
+    MorphologicalVariant,
+    AbbreviationExpansion,
+    CompatibleSymbolKind,
+    SharedCallableContract,
+    SharedCallableShape,
+    SharedStructuralShape,
     PreferentialEquivalent,
     RelatedEquivalent,
     Synonym,

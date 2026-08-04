@@ -119,8 +119,19 @@ fn render_conceptual_analysis(report: &LexiconReport, output: &mut String) {
         report.conceptual_analysis.sources.len()
     ));
     if report.conceptual_analysis.sources.is_empty() {
-        output.push_str("  none (project policy only)\n");
+        output.push_str("  none (local deterministic analysis only)\n");
     }
+    let grammar = &report.conceptual_analysis.identifier_grammar;
+    output.push_str(&format!(
+        "\nIdentifier grammar\n- {}@{}: {} built-in + {} configured abbreviations; {} built-in + {} configured morphology rules; {} strategy\n",
+        grammar.source_id,
+        grammar.version,
+        grammar.builtin_abbreviations,
+        grammar.configured_abbreviations,
+        grammar.builtin_morphology,
+        grammar.configured_morphology,
+        grammar.candidate_strategy
+    ));
     for source in &report.conceptual_analysis.sources {
         let tier = match source.tier {
             LexiconProviderTier::Domain => "domain",
@@ -208,10 +219,12 @@ fn render_candidate(candidate: &ConceptCandidate, output: &mut String) {
         .iter()
         .map(|evidence| {
             format!(
-                "{}@{}:{}",
+                "{}@{}:{}({:?} -> {:?})",
                 evidence.source_id,
                 evidence.source_version,
-                resolve_evidence_relation_label(evidence.relation)
+                resolve_evidence_relation_label(evidence.relation),
+                evidence.subject,
+                evidence.object
             )
         })
         .collect::<Vec<_>>()
@@ -229,6 +242,7 @@ fn resolve_candidate_rule_label(rule: ConceptCandidateRule) -> &'static str {
     match rule {
         ConceptCandidateRule::ExactAlias => "exact alias",
         ConceptCandidateRule::RetiredTerm => "retired term",
+        ConceptCandidateRule::ProgrammingGrammarVariant => "programming grammar",
         ConceptCandidateRule::DomainPreferentialEquivalent => "domain preference",
         ConceptCandidateRule::DomainRelatedEquivalent => "domain relation",
     }
@@ -268,6 +282,13 @@ fn resolve_evidence_relation_label(relation: ConceptEvidenceRelation) -> &'stati
     match relation {
         ConceptEvidenceRelation::ExactAlias => "exact_alias",
         ConceptEvidenceRelation::RetiredTerm => "retired_term",
+        ConceptEvidenceRelation::CanonicalGrammar => "canonical_grammar",
+        ConceptEvidenceRelation::MorphologicalVariant => "morphological_variant",
+        ConceptEvidenceRelation::AbbreviationExpansion => "abbreviation_expansion",
+        ConceptEvidenceRelation::CompatibleSymbolKind => "compatible_symbol_kind",
+        ConceptEvidenceRelation::SharedCallableContract => "shared_callable_contract",
+        ConceptEvidenceRelation::SharedCallableShape => "shared_callable_shape",
+        ConceptEvidenceRelation::SharedStructuralShape => "shared_structural_shape",
         ConceptEvidenceRelation::PreferentialEquivalent => "preferential_equivalent",
         ConceptEvidenceRelation::RelatedEquivalent => "related_equivalent",
         ConceptEvidenceRelation::Synonym => "synonym",

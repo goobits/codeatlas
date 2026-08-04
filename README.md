@@ -295,16 +295,52 @@ codeatlas --root . lexicon code --workspace --format json
 Lexicon analysis scans maintained source with private symbols included. It
 reports exact same-name/different-shape collisions, deterministic type-shape
 candidates, callable contract candidates, repeated identifier terms, and
-declared terminology policy. It also records package exposure. Exact same-name
-signatures carry direct structural evidence;
-differently named callables are inferred only when they share a typed contract
-shape, a cohesive source scope, and meaningful object or qualifier terms after
-the leading intent word. Untyped name-only matches and unrelated type
-coincidences are omitted because they do not provide enough evidence. CodeAtlas
-does not compare implementation bodies or claim behavioral equivalence, so
-structural candidates remain advisory. Results are read-only: they do not
-create gates, choose a refactor, authorize deletion, or update a source
-dataset.
+declared terminology policy. It also records package exposure.
+
+Its programming-identifier grammar recognizes one bounded family of naming
+constructions: `verb_object[_qualifier]`, `object[_qualifier]_actor`, and
+`object[_qualifier]_result`. Thus `load_config` / `config_loader`,
+`validate_request` / `request_validator`, and `resolve_path` /
+`path_resolution` can be compared without permuting arbitrary words. Object and
+qualifier order is preserved, and predicates (`is`, `has`, `can`, `supports`)
+remain semantically distinct from actions. A grammar pair is reported only when
+same-language, compatible symbol kinds also share a cross-file typed callable
+contract, untyped callable shape, or structural type shape. Untyped evidence is
+clearly lower confidence.
+
+The built-in grammar uses a reviewed, closed programming morphology table for
+actor/result forms of `build`, `collect`, `convert`, `format`, `load`, `parse`,
+`plan`, `read`, `render`, `resolve`, `validate`, and `write`. Its safe
+abbreviations are exactly `cfg`/`config`, `ctx`/`context`, `req`/`request`,
+`resp`/`response`, and `repo`/`repository`. It does not use Porter stemming, a
+general dictionary, or arbitrary token sorting. Projects may add bounded exact
+rules without overriding built-ins:
+
+```json
+{
+  "lexicon": {
+    "grammar": {
+      "abbreviations": [
+        { "term": "svc", "expansion": "service" }
+      ],
+      "morphology": [
+        { "term": "hydrator", "action": "hydrate", "role": "actor" }
+      ]
+    }
+  }
+}
+```
+
+Candidate generation is linear: each observed actor/result surface is compared
+with one deterministic action-form anchor, never every spelling pair. Exact
+same-name signatures carry direct structural evidence. Separate non-grammar
+callable candidates require a typed contract shape, cohesive source scope, and
+meaningful object or qualifier terms after the leading intent word. Untyped
+name-only matches and unrelated type coincidences are omitted because they do
+not provide enough evidence. CodeAtlas does not compare implementation bodies
+or claim behavioral equivalence, so structural candidates remain advisory.
+Results are read-only: they do not create gates, choose a refactor, authorize
+deletion, or update a source dataset.
 
 Project policy is the authority. A concept can own preferred terms, exact
 aliases, and retired terms. `distinct_from` records that two declared concepts
@@ -347,6 +383,13 @@ word-boundary normalization. A term may belong to only one concept. A
 `distinct_from` declaration is symmetric even when it is written on only one
 concept. Contradictory, duplicate, unknown, or reasonless declarations fail
 before source scanning.
+
+Evidence precedence is project policy, exact normalized concepts, local
+programming grammar/morphology, then pinned CSO relations. Project declarations
+are authoritative. Grammar and provider results remain explainable advisories;
+each JSON finding lists its canonical grammar, every abbreviation/morphology
+rewrite, compatible kind, and exact structural corroboration. An exact
+`distinct_from` or `never_suggest` rule always suppresses later evidence.
 
 #### Offline thesaurus evidence
 
@@ -436,13 +479,14 @@ recommended general source: it is versioned and CC BY 4.0, but its roughly
 code identifiers. Prepare a small attributed relation file in a separate source
 refresh process, mark its coverage `filtered`, and pin its resulting bytes.
 
-JSON reports use lexicon schema version 2. They expose deterministic candidate
+JSON reports use lexicon schema version 3. They expose deterministic candidate
 IDs and ordering, source manifests and record counts, evidence relation and
 direction, available source ranges for observed symbols, project/domain tiers,
 qualitative confidence, stable rules and reasons, preferred terms when
-declared, applied suppressions, and the exact config key for permanently
-dismissing an advisory candidate. Text output shows the same review surface in
-compact form; JSON is the complete contract.
+declared, the exact built-in/configured grammar-rule counts, applied
+suppressions, and the exact config key for permanently dismissing an advisory
+candidate. Text output shows the same review surface in compact form; JSON is
+the complete contract.
 
 ### Public API baselines
 

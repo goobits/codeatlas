@@ -2,7 +2,7 @@ use super::callable_contract::normalize_callable_contract;
 use super::model::{CallableCandidate, CallableCandidateKind};
 use super::symbols::{
     collect_identifier_concept_terms, normalize_signature, normalize_whitespace, project_symbol,
-    sort_symbols,
+    resolve_semantic_scope, sort_symbols,
 };
 use crate::domain::{EvidenceClass, Language, Symbol};
 use std::collections::{BTreeMap, BTreeSet};
@@ -171,16 +171,6 @@ fn resolve_common_scope(symbols: &[&Symbol]) -> Option<String> {
         .iter()
         .all(|symbol| resolve_semantic_scope(&symbol.file_path).as_deref() == Some(first.as_str()))
         .then_some(first)
-}
-
-fn resolve_semantic_scope(path: &str) -> Option<String> {
-    let mut components = path.split('/').collect::<Vec<_>>();
-    components.pop();
-    let source = components
-        .iter()
-        .position(|component| *component == "src")?;
-    let end = (source + 3).min(components.len());
-    (end > source + 1).then(|| components[..end].join("/"))
 }
 
 fn rank_language(language: Language) -> u8 {

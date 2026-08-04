@@ -1,5 +1,5 @@
 use super::model::LexiconSymbol;
-use crate::domain::Symbol;
+use crate::domain::{Symbol, SymbolKind};
 use std::collections::BTreeSet;
 
 pub(super) fn normalize_signature(signature: &str, name: &str) -> String {
@@ -82,4 +82,41 @@ pub(super) fn is_reportable_identifier_term(term: &str) -> bool {
     term.len() >= 3
         && !term.chars().all(|character| character.is_ascii_digit())
         && !matches!(term, "and" | "for" | "from" | "the" | "with")
+}
+
+pub(super) fn has_structural_detail(symbol: &Symbol) -> bool {
+    !symbol.children.is_empty()
+        || matches!(symbol.kind, SymbolKind::TypeAlias)
+            && normalize_signature(&symbol.signature, &symbol.name).contains('=')
+}
+
+pub(super) fn resolve_symbol_shape(symbol: &Symbol) -> String {
+    let mut children = symbol
+        .children
+        .iter()
+        .map(|child| {
+            format!(
+                "{:?}:{}",
+                child.kind,
+                normalize_whitespace(&child.signature)
+            )
+        })
+        .collect::<Vec<_>>();
+    children.sort();
+    format!(
+        "{:?}:{}[{}]",
+        symbol.kind,
+        normalize_signature(&symbol.signature, &symbol.name),
+        children.join(";")
+    )
+}
+
+pub(super) fn resolve_semantic_scope(path: &str) -> Option<String> {
+    let mut components = path.split('/').collect::<Vec<_>>();
+    components.pop();
+    let source = components
+        .iter()
+        .position(|component| *component == "src")?;
+    let end = (source + 3).min(components.len());
+    (end > source + 1).then(|| components[..end].join("/"))
 }

@@ -1,24 +1,25 @@
 //! Matches observed symbol terms against an immutable conceptual lexicon policy.
 
-use super::concept_policy::{
-    resolve_concept_ids_for_terms, LexiconPolicy, PolicySuppression, SourcedRelation,
+use super::candidate_policy::{
+    derive_candidate_id, find_candidate_suppression, suggest_candidate_suppression,
 };
+use super::concept_policy::{resolve_concept_ids_for_terms, LexiconPolicy, SourcedRelation};
+use super::grammar_candidates::collect_grammar_candidates;
 use super::model::{
     AppliedSuppression, ConceptCandidate, ConceptCandidateConfidence, ConceptCandidateRule,
     ConceptCandidateTier, ConceptEvidence, ConceptEvidenceRelation, ConceptEvidenceTier,
-    ConceptSuppressionKind, ConceptTermUsage, ConceptualAnalysis, LexiconSymbol,
-    SuggestedSuppression, SuppressedConceptCandidate,
+    ConceptTermUsage, ConceptualAnalysis, LexiconSymbol, SuppressedConceptCandidate,
 };
 use super::provider::{canonicalize_term_pair, ProviderRelationKind};
 use super::symbols::project_symbol;
 use crate::config::LexiconProviderTier;
 use crate::domain::Symbol;
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) struct ConceptObservation<'a> {
     pub symbol: &'a Symbol,
     pub tokens: &'a [String],
+    pub top_level: bool,
 }
 
 pub(super) fn analyze_concepts(
@@ -27,7 +28,22 @@ pub(super) fn analyze_concepts(
 ) -> ConceptualAnalysis {
     let usages = collect_usages(observations, policy);
     let mut candidates = collect_project_candidates(policy, &usages);
-    let mut suppressed_candidates = Vec::new();
+    let grammar = collect_grammar_candidates(observations, policy);
+    candidates.extend(grammar.candidates);
+    let mut suppressed_candidates = grammar.suppressed_candidates;
+    let grammar_pairs = candidates
+        .iter()
+        .filter(|candidate| candidate.rule == ConceptCandidateRule::ProgrammingGrammarVariant)
+        .map(|candidate| candidate.terms.clone())
+        .chain(
+            suppressed_candidates
+                .iter()
+                .filter(|candidate| {
+                    candidate.candidate_rule == ConceptCandidateRule::ProgrammingGrammarVariant
+                })
+                .map(|candidate| candidate.terms.clone()),
+        )
+        .collect::<BTreeSet<_>>();
 
     for (terms, domain_relations) in &policy.domain_relations {
         if !terms.iter().all(|term| usages.contains_key(term)) {
@@ -46,8 +62,27 @@ pub(super) fn analyze_concepts(
             .get(terms)
             .map_or(&[][..], Vec::as_slice);
         let evidence = relation_evidence(domain_relations, general_relations);
+        if grammar_pairs.contains(terms) {
+            if let Some(candidate) = candidates.iter_mut().find(|candidate| {
+                candidate.rule == ConceptCandidateRule::ProgrammingGrammarVariant
+                    && candidate.terms == *terms
+            }) {
+                candidate.evidence.extend(evidence.clone());
+                candidate.evidence.sort();
+                candidate.evidence.dedup();
+            }
+            if let Some(candidate) = suppressed_candidates.iter_mut().find(|candidate| {
+                candidate.candidate_rule == ConceptCandidateRule::ProgrammingGrammarVariant
+                    && candidate.terms == *terms
+            }) {
+                candidate.evidence.extend(evidence);
+                candidate.evidence.sort();
+                candidate.evidence.dedup();
+            }
+            continue;
+        }
         let rule = resolve_relation_rule(domain_relations);
-        if let Some(suppression) = find_suppression(terms, &concept_ids, policy) {
+        if let Some(suppression) = find_candidate_suppression(terms, &concept_ids, policy) {
             suppressed_candidates.push(SuppressedConceptCandidate {
                 id: derive_candidate_id(rule, terms, &concept_ids),
                 terms: terms.clone(),
@@ -91,7 +126,7 @@ pub(super) fn analyze_concepts(
             preferred_terms,
             evidence,
             usages: collect_usages_for_terms(terms, &usages),
-            suggested_suppression: Some(suggest_suppression(terms, &concept_ids)),
+            suggested_suppression: Some(suggest_candidate_suppression(terms, &concept_ids)),
         });
     }
 
@@ -110,6 +145,7 @@ pub(super) fn analyze_concepts(
     });
     ConceptualAnalysis {
         mode: policy.mode,
+        identifier_grammar: policy.identifier_grammar.summary.clone(),
         sources: policy.sources.clone(),
         candidates,
         suppressed_candidates,
@@ -238,40 +274,6 @@ fn resolve_relation_rule(relations: &[SourcedRelation]) -> ConceptCandidateRule 
     }
 }
 
-fn find_suppression<'a>(
-    terms: &[String; 2],
-    concept_ids: &[String],
-    policy: &'a LexiconPolicy,
-) -> Option<&'a PolicySuppression> {
-    if concept_ids.len() == 2 {
-        let pair = canonicalize_term_pair(&concept_ids[0], &concept_ids[1]);
-        if let Some(suppression) = policy.distinct_concepts.get(&pair) {
-            return Some(suppression);
-        }
-    }
-    policy.never_suggest.get(terms)
-}
-
-fn suggest_suppression(terms: &[String; 2], concept_ids: &[String]) -> SuggestedSuppression {
-    if concept_ids.len() == 2 {
-        SuggestedSuppression {
-            kind: ConceptSuppressionKind::DistinctFrom,
-            config_key: "lexicon.concepts[].distinct_from".to_string(),
-            terms: terms.clone(),
-            concept_ids: concept_ids.to_vec(),
-            reason_required: true,
-        }
-    } else {
-        SuggestedSuppression {
-            kind: ConceptSuppressionKind::NeverSuggest,
-            config_key: "lexicon.never_suggest".to_string(),
-            terms: terms.clone(),
-            concept_ids: concept_ids.to_vec(),
-            reason_required: true,
-        }
-    }
-}
-
 fn collect_usages_for_terms(
     terms: &[String; 2],
     usages: &BTreeMap<String, Vec<LexiconSymbol>>,
@@ -310,29 +312,5 @@ fn format_domain_reason(rule: ConceptCandidateRule, terms: &[String; 2]) -> Stri
             terms[0], terms[1]
         ),
         _ => unreachable!("domain reason requires a domain rule"),
-    }
-}
-
-fn derive_candidate_id(
-    rule: ConceptCandidateRule,
-    terms: &[String; 2],
-    concept_ids: &[String],
-) -> String {
-    let mut digest = Sha256::new();
-    digest.update(b"codeatlas.lexicon-candidate/v1\0");
-    digest.update(resolve_rule_name(rule).as_bytes());
-    for value in terms.iter().chain(concept_ids) {
-        digest.update(b"\0");
-        digest.update(value.as_bytes());
-    }
-    format!("sha256:{:x}", digest.finalize())
-}
-
-fn resolve_rule_name(rule: ConceptCandidateRule) -> &'static str {
-    match rule {
-        ConceptCandidateRule::ExactAlias => "exact_alias",
-        ConceptCandidateRule::RetiredTerm => "retired_term",
-        ConceptCandidateRule::DomainPreferentialEquivalent => "domain_preferential_equivalent",
-        ConceptCandidateRule::DomainRelatedEquivalent => "domain_related_equivalent",
     }
 }

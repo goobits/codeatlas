@@ -3,6 +3,7 @@
 //! This is the sole mutable construction boundary. Candidate analysis receives
 //! the resulting immutable policy and cannot reinterpret source precedence.
 
+use super::identifier_grammar::{compile_identifier_grammar, IdentifierGrammar};
 use super::model::{ConceptSuppressionKind, ConceptualAnalysisMode, LexiconSource};
 use super::provider::{canonicalize_term_pair, load_provider, normalize_term, ProviderRelation};
 use crate::config::{LexiconConfig, LexiconProviderTier};
@@ -25,6 +26,7 @@ pub(crate) struct LexiconPolicy {
     pub(super) never_suggest: BTreeMap<[String; 2], PolicySuppression>,
     pub(super) domain_relations: BTreeMap<[String; 2], Vec<SourcedRelation>>,
     pub(super) general_relations: BTreeMap<[String; 2], Vec<SourcedRelation>>,
+    pub(super) identifier_grammar: IdentifierGrammar,
     pub(super) known_terms: BTreeSet<String>,
     pub(super) max_term_words: usize,
     pub(super) mode: ConceptualAnalysisMode,
@@ -33,6 +35,8 @@ pub(crate) struct LexiconPolicy {
 
 impl Default for LexiconPolicy {
     fn default() -> Self {
+        let identifier_grammar = compile_identifier_grammar(&Default::default())
+            .expect("the built-in identifier grammar must be valid");
         Self {
             concepts: Vec::new(),
             term_owners: BTreeMap::new(),
@@ -40,9 +44,10 @@ impl Default for LexiconPolicy {
             never_suggest: BTreeMap::new(),
             domain_relations: BTreeMap::new(),
             general_relations: BTreeMap::new(),
+            identifier_grammar,
             known_terms: BTreeSet::new(),
             max_term_words: 1,
-            mode: ConceptualAnalysisMode::ProjectPolicyOnly,
+            mode: ConceptualAnalysisMode::LocalDeterministic,
             sources: Vec::new(),
         }
     }
@@ -82,6 +87,7 @@ pub(crate) fn load_concept_policy(
 ) -> Result<LexiconPolicy> {
     validate_resource_counts(config)?;
     let mut policy = LexiconPolicy::default();
+    policy.identifier_grammar = compile_identifier_grammar(&config.grammar)?;
     load_concepts(config, &mut policy)?;
     load_suppressions(config, &mut policy)?;
     load_providers(config, config_base, &mut policy)?;
@@ -384,7 +390,7 @@ fn load_providers(
     } else if has_domain {
         ConceptualAnalysisMode::DomainAdvisory
     } else {
-        ConceptualAnalysisMode::ProjectPolicyOnly
+        ConceptualAnalysisMode::LocalDeterministic
     };
     Ok(())
 }

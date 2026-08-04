@@ -5,8 +5,38 @@ use std::path::PathBuf;
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct LexiconConfig {
     pub concepts: Vec<LexiconConceptConfig>,
+    pub grammar: LexiconGrammarConfig,
     pub never_suggest: Vec<LexiconNeverSuggestConfig>,
     pub providers: Vec<LexiconProviderConfig>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct LexiconGrammarConfig {
+    pub abbreviations: Vec<LexiconAbbreviationConfig>,
+    pub morphology: Vec<LexiconMorphologyConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LexiconAbbreviationConfig {
+    pub term: String,
+    pub expansion: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LexiconMorphologyConfig {
+    pub term: String,
+    pub action: String,
+    pub role: LexiconMorphologyRole,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum LexiconMorphologyRole {
+    Actor,
+    Result,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -75,7 +105,8 @@ pub(crate) enum LexiconProviderCoverage {
 #[cfg(test)]
 mod tests {
     use super::{
-        LexiconConfig, LexiconProviderCoverage, LexiconProviderFormat, LexiconProviderTier,
+        LexiconConfig, LexiconMorphologyRole, LexiconProviderCoverage, LexiconProviderFormat,
+        LexiconProviderTier,
     };
 
     #[test]
@@ -92,6 +123,10 @@ mod tests {
                         "reason": "Handlers own requests; listeners observe events."
                     }]
                 }],
+                "grammar": {
+                    "abbreviations": [{"term":"svc", "expansion":"service"}],
+                    "morphology": [{"term":"hydrator", "action":"hydrate", "role":"actor"}]
+                },
                 "never_suggest": [{
                     "terms": ["record", "row"],
                     "reason": "A record is a domain value; a row is storage."
@@ -113,6 +148,11 @@ mod tests {
         .expect("lexicon config");
 
         assert_eq!(config.concepts[0].id, "request_handler");
+        assert_eq!(config.grammar.abbreviations[0].term, "svc");
+        assert_eq!(
+            config.grammar.morphology[0].role,
+            LexiconMorphologyRole::Actor
+        );
         assert_eq!(config.never_suggest[0].terms, ["record", "row"]);
         assert_eq!(config.providers[0].tier, LexiconProviderTier::Domain);
         assert_eq!(config.providers[0].format, LexiconProviderFormat::CsoCsv);
