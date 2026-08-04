@@ -1,8 +1,6 @@
 use crate::domain::Symbol;
 use anyhow::Result;
-use regex::Regex;
 use std::path::Path;
-use std::sync::OnceLock;
 
 pub(crate) fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec<Symbol>> {
     let relative_path = pathdiff::diff_paths(file_path, root_dir)
@@ -41,20 +39,49 @@ pub(super) struct ScriptBlock {
 }
 
 pub(super) fn script_blocks(source: &str) -> Vec<ScriptBlock> {
-    static SCRIPT_RE: OnceLock<Regex> = OnceLock::new();
-    let regex = SCRIPT_RE.get_or_init(|| Regex::new(r"(?s)<script[^>]*>(.*?)</script>").unwrap());
-    regex
-        .captures_iter(source)
-        .filter_map(|capture| {
-            let full_match = capture.get(0)?;
-            let content = capture.get(1)?.as_str().to_string();
-            let start_line = source[..full_match.start()].matches('\n').count() as u32 + 1;
-            Some(ScriptBlock {
-                source: content,
-                start_line,
-            })
-        })
-        .collect()
+    let mut blocks = Vec::new();
+    let mut cursor = 0;
+
+    while let Some(relative_start) = source[cursor..].find("<script") {
+        let tag_start = cursor + relative_start;
+        let name_end = tag_start + "<script".len();
+        let Some(boundary) = source.as_bytes().get(name_end) else {
+            break;
+        };
+        if !boundary.is_ascii_whitespace() && *boundary != b'>' {
+            cursor = name_end;
+            continue;
+        }
+
+        let Some(tag_end) = find_script_tag_end(source, name_end) else {
+            break;
+        };
+        let content_start = tag_end + 1;
+        let Some(relative_end) = source[content_start..].find("</script>") else {
+            break;
+        };
+        let content_end = content_start + relative_end;
+        blocks.push(ScriptBlock {
+            source: source[content_start..content_end].to_string(),
+            start_line: source[..tag_start].matches('\n').count() as u32 + 1,
+        });
+        cursor = content_end + "</script>".len();
+    }
+
+    blocks
+}
+
+fn find_script_tag_end(source: &str, start: usize) -> Option<usize> {
+    let mut quote = None;
+    for (offset, byte) in source.as_bytes()[start..].iter().copied().enumerate() {
+        match (quote, byte) {
+            (Some(active), current) if current == active => quote = None,
+            (None, b'\'' | b'"') => quote = Some(byte),
+            (None, b'>') => return Some(start + offset),
+            _ => {}
+        }
+    }
+    None
 }
 
 fn offset_symbol_lines(symbol: &mut Symbol, offset: u32) {
@@ -88,5 +115,18 @@ export const create = (options: Options): string => options.label
             .find(|symbol| symbol.name == "create")
             .expect("create symbol");
         assert_eq!(create.span.as_ref().map(|span| span.start_line), Some(6));
+    }
+
+    #[test]
+    fn parses_generic_script_attributes_with_nested_type_syntax() {
+        let source = r#"<script lang="ts" generics="T extends { name: string; config: Record<string, unknown> }">
+interface Props { tests: T[] }
+const props = $props<Props>()
+</script>"#;
+
+        let symbols = parse_svelte_file("src/Generic.svelte", source).expect("Svelte symbols");
+
+        assert!(symbols.iter().any(|symbol| symbol.name == "Props"));
+        assert!(symbols.iter().any(|symbol| symbol.name == "props"));
     }
 }
