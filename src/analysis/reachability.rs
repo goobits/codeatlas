@@ -6,8 +6,8 @@
 
 use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, EdgeTarget,
-    FindingConfidence, GraphDiagnostic, NodeId, ProjectId, SourceContext, SourceEdgeKind,
-    SourceGraph, SourceLanguage, SourceNode,
+    FindingConfidence, GraphDiagnostic, NodeId, ProjectId, SourceContext, SourceEdge,
+    SourceEdgeKind, SourceGraph, SourceLanguage, SourceNode,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -97,6 +97,25 @@ impl Reachability {
             .get(node)
             .cloned()
             .unwrap_or_default()
+    }
+
+    pub(crate) fn is_test_identity_witness(&self, graph: &SourceGraph, edge: &SourceEdge) -> bool {
+        if edge.kind != SourceEdgeKind::WorkspaceSourceBypass
+            || !matches!(edge.to, EdgeTarget::Node(_))
+            || self.roles(&edge.from) != BTreeSet::from([ContextRole::Test])
+        {
+            return false;
+        }
+        graph.edges.iter().any(|candidate| {
+            candidate.from == edge.from
+                && candidate.to == edge.to
+                && matches!(
+                    candidate.kind,
+                    SourceEdgeKind::ModuleDependency
+                        | SourceEdgeKind::DynamicImport
+                        | SourceEdgeKind::Require
+                )
+        })
     }
 }
 

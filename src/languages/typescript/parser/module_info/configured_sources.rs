@@ -76,9 +76,7 @@ impl Visit for ConfiguredTestEntrypointCollector {
         if key == "test" {
             self.configures_tests = true;
         }
-        if matches!(key, "alias" | "aliases") {
-            collect_configured_alias_source_paths(&property.value, &self.bindings, &mut self.paths);
-        } else if matches!(
+        if matches!(
             key,
             "setupFiles" | "setupFilesAfterEnv" | "globalSetup" | "globalTeardown"
         ) {
@@ -86,72 +84,6 @@ impl Visit for ConfiguredTestEntrypointCollector {
         }
         property.visit_children_with(self);
     }
-}
-
-fn collect_configured_alias_source_paths(
-    expression: &Expr,
-    bindings: &BTreeMap<String, BTreeSet<String>>,
-    paths: &mut BTreeSet<String>,
-) {
-    match expression {
-        Expr::Ident(identifier) => {
-            if let Some(bound) = bindings.get(identifier.sym.as_ref()) {
-                paths.extend(bound.iter().cloned());
-            }
-        }
-        Expr::Object(object) => {
-            if object.props.iter().any(|property| {
-                let PropOrSpread::Prop(property) = property else {
-                    return false;
-                };
-                let Prop::KeyValue(property) = &**property else {
-                    return false;
-                };
-                prop_name_string(&property.key).as_deref() == Some("map")
-                    && collect_alias_map_source_paths(&property.value, bindings, paths)
-            }) {
-                return;
-            }
-            for property in &object.props {
-                let PropOrSpread::Prop(property) = property else {
-                    continue;
-                };
-                let Prop::KeyValue(property) = &**property else {
-                    continue;
-                };
-                collect_configured_source_paths(&property.value, bindings, paths);
-            }
-        }
-        Expr::Array(array) => {
-            for element in array.elems.iter().flatten() {
-                let Expr::Object(object) = &*element.expr else {
-                    continue;
-                };
-                for property in &object.props {
-                    let PropOrSpread::Prop(property) = property else {
-                        continue;
-                    };
-                    let Prop::KeyValue(property) = &**property else {
-                        continue;
-                    };
-                    if prop_name_string(&property.key).as_deref() == Some("replacement") {
-                        collect_configured_source_paths(&property.value, bindings, paths);
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn collect_alias_map_source_paths(
-    expression: &Expr,
-    bindings: &BTreeMap<String, BTreeSet<String>>,
-    paths: &mut BTreeSet<String>,
-) -> bool {
-    visit_alias_map_pairs(expression, |_, target| {
-        collect_configured_source_paths(target, bindings, paths);
-    })
 }
 
 fn collect_configured_source_paths(
@@ -390,7 +322,7 @@ fn collect_alias_descriptor(
             continue;
         };
         match prop_name_string(&property.key).as_deref() {
-            Some("find") => patterns.extend(static_strings(&property.value, bindings)),
+            Some("find") => patterns.extend(alias_patterns(&property.value, bindings)),
             Some("replacement") => targets.extend(static_strings(&property.value, bindings)),
             _ => {}
         }
@@ -401,6 +333,42 @@ fn collect_alias_descriptor(
             .or_default()
             .extend(targets.iter().cloned());
     }
+}
+
+fn alias_patterns(
+    expression: &Expr,
+    bindings: &BTreeMap<String, BTreeSet<String>>,
+) -> BTreeSet<String> {
+    let mut patterns = static_strings(expression, bindings);
+    if let Expr::Lit(Lit::Regex(regex)) = expression {
+        if let Some(pattern) = exact_regex_alias(&regex.exp, &regex.flags) {
+            patterns.insert(pattern);
+        }
+    }
+    patterns
+}
+
+fn exact_regex_alias(expression: &str, flags: &str) -> Option<String> {
+    if !flags.is_empty() {
+        return None;
+    }
+    let expression = expression.strip_prefix('^')?.strip_suffix('$')?;
+    let mut output = String::with_capacity(expression.len());
+    let mut characters = expression.chars();
+    while let Some(character) = characters.next() {
+        if character == '\\' {
+            let escaped = characters.next()?;
+            if !matches!(escaped, '/' | '.' | '-' | '_' | '@') {
+                return None;
+            }
+            output.push(escaped);
+        } else if character.is_ascii_alphanumeric() || matches!(character, '@' | '/' | '-' | '_') {
+            output.push(character);
+        } else {
+            return None;
+        }
+    }
+    (!output.is_empty()).then_some(output)
 }
 
 fn prop_name_string(name: &PropName) -> Option<String> {

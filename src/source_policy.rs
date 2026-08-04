@@ -59,6 +59,34 @@ pub(crate) fn is_conventional_test_source(path: &Path) -> bool {
         })
 }
 
+pub(crate) fn is_fingerprinted_web_bundle(path: &str) -> bool {
+    let mut previous = None;
+    let mut is_web_assets = false;
+    for part in path.split('/') {
+        if part == "assets" && matches!(previous, Some("public" | "public_html")) {
+            is_web_assets = true;
+            break;
+        }
+        previous = Some(part);
+    }
+    if !is_web_assets {
+        return false;
+    }
+    let Some(stem) = Path::new(path).file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    stem.match_indices('-').any(|(index, _)| {
+        let fingerprint = &stem[index + 1..];
+        let uppercase = fingerprint.bytes().filter(u8::is_ascii_uppercase).count();
+        let digits = fingerprint.bytes().filter(u8::is_ascii_digit).count();
+        (8..=16).contains(&fingerprint.len())
+            && fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            && (uppercase >= 2 || (uppercase >= 1 && digits >= 1))
+    })
+}
+
 pub(crate) fn source_argument(token: &str) -> Option<String> {
     let token = token.strip_prefix("./").unwrap_or(token);
     let path = Path::new(token);
@@ -73,7 +101,8 @@ pub(crate) fn source_argument(token: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_conventional_test_source, is_ignored_consumer_dir, is_ignored_path, source_argument,
+        is_conventional_test_source, is_fingerprinted_web_bundle, is_ignored_consumer_dir,
+        is_ignored_path, source_argument,
     };
     use std::path::Path;
 
@@ -127,5 +156,28 @@ mod tests {
         assert!(is_conventional_test_source(Path::new("src/query_test.py")));
         assert!(!is_conventional_test_source(Path::new("src/contest.ts")));
         assert!(!is_conventional_test_source(Path::new("src/db.ts")));
+    }
+
+    #[test]
+    fn fingerprinted_web_bundles_are_distinct_from_authored_public_sources() {
+        assert!(is_fingerprinted_web_bundle(
+            "public_html/assets/engine-HoUmi6oy.js"
+        ));
+        assert!(is_fingerprinted_web_bundle(
+            "public/assets/legacy-client-CJXK-3MP.js"
+        ));
+        assert!(is_fingerprinted_web_bundle(
+            "public_html/assets/_glGradientTexture-BEFAVWhE.js"
+        ));
+        assert!(is_fingerprinted_web_bundle(
+            "public_html/assets/media-vt7l6_4F.js"
+        ));
+        assert!(!is_fingerprinted_web_bundle("public/assets/engine.js"));
+        assert!(!is_fingerprinted_web_bundle(
+            "public/assets/release-surface-v2.js"
+        ));
+        assert!(!is_fingerprinted_web_bundle(
+            "src/assets/engine-HoUmi6oy.js"
+        ));
     }
 }

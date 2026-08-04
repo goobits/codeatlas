@@ -10,11 +10,18 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
         .expect("conventional ECMAScript test context");
     assert_eq!(test_context.role, ContextRole::Test);
     assert_eq!(test_context.scope, ContextScope::Runtime);
-    for path in ["src/test/setup.ts", "src/test/mock.ts", "vitest.config.ts"] {
+    for path in ["src/test/setup.ts", "vitest.config.ts"] {
         assert!(test_context
             .roots
             .contains(&NodeId::file(&ProjectId("ecmascript".to_string()), path)));
     }
+    let configured_mock = NodeId::file(&ProjectId("ecmascript".to_string()), "src/test/mock.ts");
+    assert!(!test_context.roots.contains(&configured_mock));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.from == NodeId::file(&ProjectId("ecmascript".to_string()), "vitest.config.ts")
+            && edge.to == EdgeTarget::Node(configured_mock.clone())
+            && edge.kind == SourceEdgeKind::ModuleDependency
+    }));
     assert!(test_context.roots.contains(&NodeId::file(
         &ProjectId("ecmascript".to_string()),
         "tests/htmlHarness.ts"

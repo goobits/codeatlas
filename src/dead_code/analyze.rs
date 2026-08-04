@@ -285,41 +285,47 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         let Some(project) = project_for_node(graph, &edge.from) else {
             continue;
         };
-        let (kind, value, confidence, workspace_root_boundary) = match (&edge.kind, &edge.to) {
-            (SourceEdgeKind::WorkspaceSourceBypass, EdgeTarget::Node(target)) => (
-                DeadCodeFindingKind::WorkspaceSourceBypass,
-                &target.0,
-                FindingConfidence::High,
-                is_workspace_root_project(graph, project)
-                    || project_for_node(graph, target)
-                        .is_some_and(|target| is_workspace_root_project(graph, target)),
-            ),
-            (_, EdgeTarget::UnexportedWorkspace(value)) => (
-                DeadCodeFindingKind::UnexportedWorkspaceImport,
-                value,
-                FindingConfidence::High,
-                false,
-            ),
-            (_, EdgeTarget::UnresolvedInternal(value)) => (
-                DeadCodeFindingKind::UnresolvedInternalEdge,
-                value,
-                unresolved_internal_confidence(graph, project, Some(&edge.from)),
-                false,
-            ),
-            (_, EdgeTarget::DynamicUnknown(value)) => (
-                DeadCodeFindingKind::DynamicBoundary,
-                value,
-                project_confidence(graph, project),
-                false,
-            ),
-            (_, EdgeTarget::Unsupported(value)) => (
-                DeadCodeFindingKind::DynamicBoundary,
-                value,
-                project_confidence(graph, project),
-                false,
-            ),
-            _ => continue,
-        };
+        let (kind, value, confidence, workspace_root_boundary, test_identity_witness) =
+            match (&edge.kind, &edge.to) {
+                (SourceEdgeKind::WorkspaceSourceBypass, EdgeTarget::Node(target)) => (
+                    DeadCodeFindingKind::WorkspaceSourceBypass,
+                    &target.0,
+                    FindingConfidence::High,
+                    is_workspace_root_project(graph, project)
+                        || project_for_node(graph, target)
+                            .is_some_and(|target| is_workspace_root_project(graph, target)),
+                    reachability.is_test_identity_witness(graph, edge),
+                ),
+                (_, EdgeTarget::UnexportedWorkspace(value)) => (
+                    DeadCodeFindingKind::UnexportedWorkspaceImport,
+                    value,
+                    FindingConfidence::High,
+                    false,
+                    false,
+                ),
+                (_, EdgeTarget::UnresolvedInternal(value)) => (
+                    DeadCodeFindingKind::UnresolvedInternalEdge,
+                    value,
+                    unresolved_internal_confidence(graph, project, Some(&edge.from)),
+                    false,
+                    false,
+                ),
+                (_, EdgeTarget::DynamicUnknown(value)) => (
+                    DeadCodeFindingKind::DynamicBoundary,
+                    value,
+                    project_confidence(graph, project),
+                    false,
+                    false,
+                ),
+                (_, EdgeTarget::Unsupported(value)) => (
+                    DeadCodeFindingKind::DynamicBoundary,
+                    value,
+                    project_confidence(graph, project),
+                    false,
+                    false,
+                ),
+                _ => continue,
+            };
         represented_boundaries.insert((project.clone(), edge.from.clone(), kind));
         let mut boundary_finding = build_finding(
             kind,
@@ -345,6 +351,9 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                     DeadCodeFindingKind::WorkspaceSourceBypass if workspace_root_boundary => {
                         format!("Workspace-root source import crosses a repository tooling boundary and resolves to {value}.")
                     }
+                    DeadCodeFindingKind::WorkspaceSourceBypass if test_identity_witness => {
+                        format!("Test identity witness compares a public package export with its source module at {value}.")
+                    }
                     DeadCodeFindingKind::WorkspaceSourceBypass => {
                         format!("Workspace source import bypasses the target package exports and resolves to {value}.")
                     }
@@ -356,7 +365,7 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
                 identity_detail: Some(value.clone()),
             },
         );
-        if workspace_root_boundary {
+        if workspace_root_boundary || test_identity_witness {
             boundary_finding.gates = false;
         }
         report.findings.push(boundary_finding);

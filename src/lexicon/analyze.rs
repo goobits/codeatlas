@@ -67,6 +67,9 @@ fn collect_symbols<'a>(
     collected: &mut Vec<SymbolView<'a>>,
 ) {
     for symbol in symbols {
+        if top_level && crate::source_policy::is_fingerprinted_web_bundle(&symbol.file_path) {
+            continue;
+        }
         collected.push(SymbolView { symbol, top_level });
         collect_symbols(&symbol.children, false, collected);
     }
@@ -311,6 +314,13 @@ mod tests {
                     "function isRecord(value: unknown): boolean",
                     Vec::new(),
                 ),
+                symbol(
+                    "public_html/assets/runtime-AbCd12Ef.js",
+                    "isRecord",
+                    SymbolKind::Function,
+                    "function isRecord(value: unknown): boolean",
+                    Vec::new(),
+                ),
             ],
             ..ScanReport::default()
         };
@@ -323,6 +333,7 @@ mod tests {
                 && alias.names.contains(&"FluidRetainedPlane".to_string())
         }));
         assert_eq!(report.callable_candidates[0].names, ["isRecord"]);
+        assert_eq!(report.callable_candidates[0].symbols.len(), 2);
         assert_eq!(report.public_symbols.len(), 1);
         assert_eq!(
             report.public_symbols[0].export_paths,

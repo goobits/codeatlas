@@ -96,6 +96,7 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     let docs_project = ProjectId("@fixture/docs".to_string());
     let root_docs = NodeId::file(&docs_project, "index.ts");
     let a_entry = NodeId::file(&package_a, "src/index.ts");
+    let a_svelte_config = NodeId::file(&package_a, "svelte.config.js");
     let a_i18n = NodeId::file(&package_a, "src/i18n/messages.ts");
     let b_entry = NodeId::file(&package_b, "src/index.ts");
     let b_absolute = NodeId::file(&package_b, "src/absolute.ts");
@@ -109,6 +110,16 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     assert!(graph.edges.iter().any(|edge| {
         edge.from == a_entry
             && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.to == EdgeTarget::Node(b_entry.clone())
+    }));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.from == a_svelte_config
+            && edge.kind == SourceEdgeKind::ModuleDependency
+            && edge.to == EdgeTarget::Node(b_entry.clone())
+    }));
+    assert!(!graph.edges.iter().any(|edge| {
+        edge.from == a_svelte_config
+            && edge.kind == SourceEdgeKind::WorkspaceSourceBypass
             && edge.to == EdgeTarget::Node(b_entry.clone())
     }));
     assert!(graph.edges.iter().any(|edge| {
@@ -245,6 +256,17 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
     assert!(report.findings.iter().any(|finding| {
         finding.kind == DeadCodeFindingKind::WorkspaceSourceBypass && finding.gates
     }));
+    let identity_witness = report
+        .findings
+        .iter()
+        .find(|finding| {
+            finding.project == "@fixture/a"
+                && finding.path == "tests/moduleIdentity.test.ts"
+                && finding.kind == DeadCodeFindingKind::WorkspaceSourceBypass
+        })
+        .expect("test identity witness");
+    assert!(!identity_witness.gates);
+    assert!(identity_witness.message.contains("identity witness"));
     let workspace_root_bypass = report
         .findings
         .iter()

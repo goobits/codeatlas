@@ -19,6 +19,26 @@ pub(super) fn connect_module(
     connect_local_references(graph, module);
     connect_local_exports(graph, module);
 
+    let mut resolved_configured_alias_targets = BTreeSet::new();
+    for (specifier, targets) in &module.info.reachability.configured_aliases {
+        for target in targets {
+            let resolution = resolver.resolve_configured_alias(module, specifier, target);
+            if let Resolution::Resolved(target) = &resolution {
+                resolved_configured_alias_targets.insert(target.clone());
+            }
+            if resolution.resolved().is_some() || matches!(resolution, Resolution::Unscanned(_)) {
+                connect_module_resolution(
+                    graph,
+                    module,
+                    specifier,
+                    &resolution,
+                    SourceEdgeKind::ModuleDependency,
+                    None,
+                );
+            }
+        }
+    }
+
     for import in &module.info.imports {
         let resolution = resolver.resolve(module, &import.source);
         connect_module_resolution(
@@ -140,6 +160,15 @@ pub(super) fn connect_module(
             parser::DynamicDependencyKind::RuntimeUrl => SourceEdgeKind::DynamicImport,
         };
         for resolution in resolver.resolve_dynamic(module, &dependency.target, dependency.kind) {
+            if dependency.kind == parser::DynamicDependencyKind::RuntimeUrl
+                && matches!(
+                    &resolution,
+                    Resolution::WorkspaceSource(target)
+                        if resolved_configured_alias_targets.contains(target)
+                )
+            {
+                continue;
+            }
             connect_module_resolution(
                 graph,
                 module,
@@ -165,21 +194,6 @@ pub(super) fn connect_module(
                         ),
                     });
                 }
-            }
-        }
-    }
-    for (specifier, targets) in &module.info.reachability.configured_aliases {
-        for target in targets {
-            let resolution = resolver.resolve_configured_alias(module, specifier, target);
-            if resolution.resolved().is_some() {
-                connect_module_resolution(
-                    graph,
-                    module,
-                    specifier,
-                    &resolution,
-                    SourceEdgeKind::ModuleDependency,
-                    None,
-                );
             }
         }
     }

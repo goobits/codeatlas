@@ -81,7 +81,7 @@ fn analyze(
     })?;
     let dependencies = workspace_dependencies(source_graph, &reachability);
     let package_bindings = npm_package_bindings(architecture);
-    let mut findings = intrinsic_findings(source_graph);
+    let mut findings = intrinsic_findings(source_graph, &reachability);
     let mut evaluated_constraints = 0;
     let mut skipped_constraints = 0;
 
@@ -238,7 +238,10 @@ fn workspace_dependencies(
     dependencies
 }
 
-fn intrinsic_findings(graph: &SourceGraph) -> Vec<SourceConformanceFinding> {
+fn intrinsic_findings(
+    graph: &SourceGraph,
+    reachability: &Reachability,
+) -> Vec<SourceConformanceFinding> {
     graph
         .edges
         .iter()
@@ -272,16 +275,26 @@ fn intrinsic_findings(graph: &SourceGraph) -> Vec<SourceConformanceFinding> {
                     {
                         return None;
                     }
+                    let identity_witness = reachability.is_test_identity_witness(graph, edge);
                     Some(SourceConformanceFinding {
                         kind: SourceConformanceFindingKind::WorkspaceSourceBypass,
-                        severity: Severity::Error,
+                        severity: if identity_witness {
+                            Severity::Advisory
+                        } else {
+                            Severity::Error
+                        },
                         constraint_id: None,
                         source_project: source.clone(),
                         target_project: target.clone(),
                         dependency_path: vec![source, target],
                         evidence: vec![edge.evidence.clone()],
-                        message: "Workspace source import bypasses the target package exports."
-                            .to_string(),
+                        message: if identity_witness {
+                            "Test identity witness compares a public package export with its source module."
+                                .to_string()
+                        } else {
+                            "Workspace source import bypasses the target package exports."
+                                .to_string()
+                        },
                     })
                 }
                 _ => None,

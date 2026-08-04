@@ -263,10 +263,11 @@ export default {
             "@installed-adapter": installedAdapter
         }
     },
-    test: {
-        aliases: [
-            { find: "shared", replacement: sharedMock },
-            {
+        test: {
+            aliases: [
+                { find: "shared", replacement: sharedMock },
+                { find: /^@goobits\/goo$/, replacement: "./tests/mocks/empty.ts" },
+                {
                 find: "@swc/helpers",
                 replacement: resolveInstalledPackageFile("@swc/helpers", "esm/$1.js")
             }
@@ -278,21 +279,23 @@ export default {
         )
         .expect("module info");
 
-        assert_eq!(
-            info.reachability.configured_test_entrypoints,
-            [
-                "./tests/mocks/environment.ts".to_string(),
-                "./tests/mocks/shared.ts".to_string()
-            ]
-            .into_iter()
-            .collect()
-        );
+        assert!(info.reachability.configured_test_entrypoints.is_empty());
         assert!(info.reachability.configures_tests);
+        assert_eq!(
+            info.reachability.configured_aliases["$app/environment"],
+            ["./tests/mocks/environment.ts".to_string()]
+                .into_iter()
+                .collect()
+        );
         assert_eq!(
             info.reachability.configured_aliases["shared"],
             ["./tests/mocks/shared.ts".to_string()]
                 .into_iter()
                 .collect()
+        );
+        assert_eq!(
+            info.reachability.configured_aliases["@goobits/goo"],
+            ["./tests/mocks/empty.ts".to_string()].into_iter().collect()
         );
         assert!(!info
             .reachability
