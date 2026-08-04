@@ -42,6 +42,15 @@ fn compute_sha256(content: &str) -> String {
 }
 
 #[test]
+fn removed_tests_group_is_rejected_without_an_alias() {
+    let output = run(&["tests", "inventory"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unrecognized subcommand 'tests'"));
+}
+
+#[test]
 fn scan_writes_machine_readable_json_to_the_requested_directory() {
     let output_directory = TestDirectory::create("codeatlas-cli-contract");
     let fixture = fixture("ts");

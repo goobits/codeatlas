@@ -121,8 +121,12 @@ try {
 			]
 		},
 		{ id: 'lexicon-code', args: ['lexicon', 'code', '--format', 'json'] },
-		{ id: 'tests-inventory', args: ['tests', 'inventory', '--format', 'json'] },
-		{ id: 'tests-witnesses', args: ['tests', 'witnesses', '--format', 'json'] }
+		{ id: 'tests-inventory', args: ['scan', 'tests', '--format', 'json'] },
+		{
+			id: 'tests-witnesses',
+			args: ['check', 'tests', '--format', 'json'],
+			check: true
+		}
 	]
 	const failures = []
 	const summaries = []

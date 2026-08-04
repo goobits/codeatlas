@@ -1,5 +1,6 @@
 use crate::commands;
 use crate::commands::dead_code::DeadCodeFormat;
+use crate::commands::testing::TestingFormat;
 use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
@@ -48,6 +49,21 @@ pub(super) enum CheckSubject {
         #[command(subcommand)]
         check: ArchitectureCheck,
     },
+    /// Check public APIs for test witness evidence
+    Tests {
+        /// Discover package projects from the nearest pnpm workspace
+        #[arg(long)]
+        workspace: bool,
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = TestingFormat::Text)]
+        format: TestingFormat,
+        /// Write the report to a file instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Render only public APIs that fail the witness check
+        #[arg(long)]
+        gates_only: bool,
+    },
 }
 
 impl CheckSubject {
@@ -82,6 +98,19 @@ impl CheckSubject {
                 commands::postgres::run_check(root, out.as_deref(), squawk.as_deref(), config)
             }
             Self::Architecture { check } => check.run(root, config),
+            Self::Tests {
+                workspace,
+                format,
+                out,
+                gates_only,
+            } => commands::testing::run_witnesses(
+                root,
+                workspace,
+                format,
+                out.as_deref(),
+                gates_only,
+                config,
+            ),
         }
     }
 }

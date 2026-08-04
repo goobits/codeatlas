@@ -1,8 +1,8 @@
 use super::inventory::scripts_for_project;
 use super::{
-    compile_subject, configured_subjects, display_node, repository_path, ChangedPathImpact,
-    ChangedPathResolution, ImpactedTestContext, ImpactedTestProject, TestImpactEvidence,
-    TestImpactEvidenceKind, TestingImpactReport,
+    compile_subject, configured_subjects, display_node, render_diagnostics, repository_path,
+    ChangedPathImpact, ChangedPathResolution, ImpactedTestContext, ImpactedTestProject,
+    TestImpactEvidence, TestImpactEvidenceKind, TestingImpactReport,
 };
 use crate::analysis::reachability::{project_confidence, Reachability};
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
@@ -421,17 +421,4 @@ fn is_workspace_control_path(path: &str) -> bool {
             | "yarn.lock"
     ) || (path.starts_with("tsconfig.") && path.ends_with(".json"))
         || (path.starts_with("requirements") && path.ends_with(".txt"))
-}
-
-fn render_diagnostics(
-    diagnostics: Vec<crate::domain::source_graph::GraphDiagnostic>,
-) -> anyhow::Error {
-    anyhow::anyhow!(
-        "{}",
-        diagnostics
-            .into_iter()
-            .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
-            .collect::<Vec<_>>()
-            .join("; ")
-    )
 }

@@ -1,4 +1,5 @@
 use crate::commands;
+use crate::commands::testing::TestingFormat;
 use crate::commands::{OutputFormat, ScanScope};
 use clap::Subcommand;
 use std::path::{Path, PathBuf};
@@ -35,6 +36,18 @@ pub(super) enum ScanSubject {
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
+    /// Inventory test contexts, scripts, runners, and declarations
+    Tests {
+        /// Discover package projects from the nearest pnpm workspace
+        #[arg(long)]
+        workspace: bool,
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = TestingFormat::Text)]
+        format: TestingFormat,
+        /// Write the report to a file instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
 }
 
 impl ScanSubject {
@@ -52,6 +65,11 @@ impl ScanSubject {
             Self::Postgres { out } => {
                 commands::postgres::run_inventory(root, out.as_deref(), config)
             }
+            Self::Tests {
+                workspace,
+                format,
+                out,
+            } => commands::testing::run_inventory(root, workspace, format, out.as_deref(), config),
         }
     }
 }

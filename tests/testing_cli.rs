@@ -28,6 +28,17 @@ fn json(output: &Output) -> Value {
     serde_json::from_slice(&output.stdout).expect("testing report should be JSON")
 }
 
+fn json_with_exit(output: &Output, expected: i32) -> Value {
+    assert_eq!(
+        output.status.code(),
+        Some(expected),
+        "unexpected testing command exit:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).expect("testing report should be JSON")
+}
+
 fn write(root: &Path, relative: &str, content: &str) {
     let path = root.join(relative);
     fs::create_dir_all(path.parent().expect("fixture file should have a parent"))
@@ -57,8 +68,8 @@ fn testing_commands_share_one_versioned_read_only_contract() {
     let inventory = json(&run(&[
         "--root",
         root,
+        "scan",
         "tests",
-        "inventory",
         "--workspace",
         "--format",
         "json",
@@ -73,8 +84,8 @@ fn testing_commands_share_one_versioned_read_only_contract() {
     let impact = json(&run(&[
         "--root",
         root,
+        "usage",
         "tests",
-        "impact",
         "--workspace",
         "--changed",
         "packages/brush/src/brush.ts",
@@ -88,27 +99,94 @@ fn testing_commands_share_one_versioned_read_only_contract() {
         .iter()
         .any(|project| project["project"] == "@fixture/brush"));
 
-    let witnesses = json(&run(&[
-        "--root",
-        root,
-        "tests",
-        "witnesses",
-        "--workspace",
-        "--format",
-        "json",
-    ]));
+    let witnesses = json_with_exit(
+        &run(&[
+            "--root",
+            root,
+            "check",
+            "tests",
+            "--workspace",
+            "--format",
+            "json",
+        ]),
+        1,
+    );
+    assert_eq!(witnesses["summary"]["public_symbols"], 5);
+    assert_eq!(witnesses["summary"]["witnessed"], 2);
+    assert_eq!(witnesses["summary"]["declared_only"], 1);
+    assert_eq!(witnesses["summary"]["unwitnessed"], 1);
+    assert_eq!(witnesses["summary"]["unknown"], 1);
     assert!(witnesses["public_api"]
         .as_array()
         .expect("public API witnesses")
         .iter()
         .any(|witness| witness["symbol"] == "createBrush" && witness["status"] == "witnessed"));
 
-    let witness_text = run(&["--root", root, "tests", "witnesses", "--workspace"]);
-    assert!(witness_text.status.success());
+    let gates = json_with_exit(
+        &run(&[
+            "--root",
+            root,
+            "check",
+            "tests",
+            "--workspace",
+            "--gates-only",
+            "--format",
+            "json",
+        ]),
+        1,
+    );
+    assert_eq!(gates["summary"], witnesses["summary"]);
+    assert_eq!(gates["public_api"].as_array().map(Vec::len), Some(1));
+    assert!(gates["public_api"]
+        .as_array()
+        .expect("gate witnesses")
+        .iter()
+        .all(|witness| witness["status"] == "unwitnessed"));
+    assert_eq!(gates["detached_contexts"].as_array().map(Vec::len), Some(0));
+
+    let witness_text = run(&["--root", root, "check", "tests", "--workspace"]);
+    assert_eq!(witness_text.status.code(), Some(1));
     let witness_text = String::from_utf8_lossy(&witness_text.stdout);
     assert!(witness_text.contains("packages/docs/src/index.ts#renderDocs [unwitnessed"));
     assert!(!witness_text.contains("packages/brush/src/brush.ts#createBrush"));
     assert!(witness_text.contains("Use --format json for complete witness evidence."));
+}
+
+#[test]
+fn witnessed_public_api_does_not_fail_the_test_check() {
+    let directory = TestDirectory::create("codeatlas-testing-witnessed");
+    write(
+        directory.path(),
+        "package.json",
+        r#"{"name":"@fixture/witnessed","type":"module","exports":{".":"./src/index.ts"}}"#,
+    );
+    write(
+        directory.path(),
+        "src/index.ts",
+        "export function ready(): boolean { return true }\n",
+    );
+    write(
+        directory.path(),
+        "src/index.test.ts",
+        "import { ready } from './index.js'\nready()\n",
+    );
+
+    let report = json_with_exit(
+        &run(&[
+            "--root",
+            directory
+                .path()
+                .to_str()
+                .expect("fixture path should be UTF-8"),
+            "check",
+            "tests",
+            "--format",
+            "json",
+        ]),
+        0,
+    );
+    assert_eq!(report["summary"]["witnessed"], 1);
+    assert_eq!(report["summary"]["unwitnessed"], 0);
 }
 
 #[test]
@@ -153,8 +231,8 @@ fn testing_impact_can_discover_the_git_working_tree() {
     let output = json(&run(&[
         "--root",
         root.to_str().expect("fixture path should be UTF-8"),
+        "usage",
         "tests",
-        "impact",
         "--format",
         "json",
     ]));

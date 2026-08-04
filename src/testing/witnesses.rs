@@ -1,7 +1,7 @@
 use super::{
-    compile_subject, configured_subjects, display_node, repository_path, DeclaredTestWitness,
-    DetachedTestContext, ObservedTestWitness, PublicApiTestWitness, TestWitnessStatus,
-    TestingWitnessReport,
+    compile_subject, configured_subjects, display_node, render_diagnostics, repository_path,
+    DeclaredTestWitness, DetachedTestContext, ObservedTestWitness, PublicApiTestWitness,
+    TestWitnessStatus, TestingWitnessReport,
 };
 use crate::analysis::reachability::{symbol_confidence, Reachability};
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
@@ -208,17 +208,4 @@ fn subject_display(subject: &TestSubjectConfig) -> String {
         TestSubjectConfig::Project(project) => format!("project:{project}"),
         TestSubjectConfig::Source(pattern) => format!("source:{pattern}"),
     }
-}
-
-fn render_diagnostics(
-    diagnostics: Vec<crate::domain::source_graph::GraphDiagnostic>,
-) -> anyhow::Error {
-    anyhow::anyhow!(
-        "{}",
-        diagnostics
-            .into_iter()
-            .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
-            .collect::<Vec<_>>()
-            .join("; ")
-    )
 }

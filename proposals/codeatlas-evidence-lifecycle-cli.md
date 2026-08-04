@@ -257,18 +257,32 @@ module owns reusable execution/fuzz limit arguments.
 
 ## Phase 1: Hard-cut the testing grammar
 
-Status: [~] In progress
+Status: [x] Complete
 
 Execution checkpoint:
 
-- [ ] Add `tests` as a subject under scan/check/usage using the existing
+- [x] Add `tests` as a subject under scan/check/usage using the existing
   testing command owner.
-- [ ] Give `check tests` gate decisions and `--gates-only` rendering semantics.
-- [ ] Remove the top-level `tests` parser/module with no alias or forwarding
+- [x] Give `check tests` gate decisions and `--gates-only` rendering semantics.
+- [x] Remove the top-level `tests` parser/module with no alias or forwarding
   branch.
-- [ ] Update CLI/integration tests and the self-audit task to the stable forms.
-- [ ] Run focused testing/CLI/self-dogfood verification, record evidence here,
+- [x] Update CLI/integration tests and the self-audit task to the stable forms.
+- [x] Run focused testing/CLI/self-dogfood verification, record evidence here,
   and commit the coherent hard cut.
+
+Verified checkpoint (2026-08-04):
+
+- `cargo test --locked --jobs 1 --test testing_cli`: 3 passed. One versioned
+  report contains witnessed, declared-only, unwitnessed, and unknown cases;
+  only unwitnessed evidence gates and survives `--gates-only` rendering.
+- `cargo test --locked --jobs 1 --bin codeatlas testing::`: 7 passed, including
+  the four-class exit-policy table and the consolidated diagnostic renderer.
+- Binary CLI parser tests: 3 passed; `tests` is rejected. Full
+  `tests/cli_contract.rs`: 15 passed.
+- `node tasks/check-self.js` passed all seven private reports. Artifacts remain
+  mode-restricted below the external Cargo target at
+  `/tmp/codeatlas-xdo-cache.hTn1Nk/cargo-target/codeatlas-self-audit`; the
+  checkout received no generated state.
 
 LOC: +220-350 / -160-260
 
@@ -289,7 +303,7 @@ for every witness class.
 
 ## Phase 2: Hard-cut the architecture lifecycle
 
-Status: [ ] Not started
+Status: [~] In progress
 
 LOC: +350-600 / -200-350
 

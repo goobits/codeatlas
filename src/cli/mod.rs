@@ -13,8 +13,6 @@ mod lexicon;
 mod postgres;
 mod scan;
 mod test;
-#[path = "tests.rs"]
-mod test_commands;
 mod usage;
 
 #[derive(Parser)]
@@ -71,11 +69,6 @@ enum Command {
         #[command(subcommand)]
         subject: lexicon::LexiconSubject,
     },
-    /// Inventory tests, select affected suites, or report witnesses
-    Tests {
-        #[command(subcommand)]
-        command: test_commands::TestsCommand,
-    },
     /// Generate or check API documentation
     Docs {
         #[command(subcommand)]
@@ -119,7 +112,6 @@ pub(crate) fn run() -> i32 {
         Command::Usage { subject } => subject.run(&cli.root, config),
         Command::Inspect { subject } => subject.run(&cli.root, config),
         Command::Lexicon { subject } => subject.run(&cli.root, config),
-        Command::Tests { command } => command.run(&cli.root, config),
         Command::Docs { subject } => subject.run(&cli.root, config),
         Command::Fuzz { subject } => subject.run(&cli.root, config),
         Command::Test { subject } => subject.run(&cli.root, config),
@@ -140,13 +132,15 @@ mod tests {
             vec!["codeatlas", "scan", "code"],
             vec!["codeatlas", "scan", "http", "--openapi", "openapi.json"],
             vec!["codeatlas", "scan", "postgres"],
+            vec!["codeatlas", "scan", "tests"],
             vec!["codeatlas", "check", "code", "--workspace"],
+            vec!["codeatlas", "check", "tests", "--gates-only"],
             vec!["codeatlas", "baseline", "code", "--out", "api.json"],
             vec!["codeatlas", "diff", "code", "--against", "api.json"],
             vec!["codeatlas", "usage", "code"],
+            vec!["codeatlas", "usage", "tests", "--changed", "src/lib.rs"],
             vec!["codeatlas", "inspect", "code", "src/lib.rs#run"],
             vec!["codeatlas", "lexicon", "code"],
-            vec!["codeatlas", "tests", "inventory"],
             vec!["codeatlas", "docs", "code"],
             vec!["codeatlas", "fuzz", "http"],
             vec!["codeatlas", "test", "postgres"],
@@ -170,8 +164,8 @@ mod tests {
             "packages/example",
             "--config",
             "codeatlas.json",
+            "usage",
             "tests",
-            "impact",
             "--workspace",
             "--changed",
             "src/index.ts",
@@ -190,6 +184,7 @@ mod tests {
             "http",
             "postgres",
             "testing",
+            "tests",
             "ci",
             "map",
         ] {

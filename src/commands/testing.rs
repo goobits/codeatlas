@@ -86,9 +86,17 @@ pub(crate) fn run_witnesses(
     workspace: bool,
     format: TestingFormat,
     out: Option<&Path>,
+    gates_only: bool,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(witnesses(path, workspace, format, out, config_path))
+    exit_code(witnesses(
+        path,
+        workspace,
+        format,
+        out,
+        gates_only,
+        config_path,
+    ))
 }
 
 fn witnesses(
@@ -96,16 +104,38 @@ fn witnesses(
     workspace: bool,
     format: TestingFormat,
     out: Option<&Path>,
+    gates_only: bool,
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let (projects, graph, _) = load_graph(path, workspace, config_path)?;
     let report = testing::analyze_witnesses(&graph, &projects)?;
+    let exit = witness_exit_code(&report);
+    let mut rendered_report = report.clone();
+    if gates_only {
+        rendered_report
+            .public_api
+            .retain(|witness| status_gates(witness.status));
+        rendered_report.detached_contexts.clear();
+    }
     let rendered = match format {
-        TestingFormat::Text => outputs::testing::render_witnesses(&report),
-        TestingFormat::Json => output::render_json(&report)?,
+        TestingFormat::Text => outputs::testing::render_witnesses(&rendered_report),
+        TestingFormat::Json => output::render_json(&rendered_report)?,
     };
     output::write_text_or_print(&rendered, out, "Testing witnesses")?;
-    Ok(0)
+    Ok(exit)
+}
+
+fn witness_exit_code(report: &testing::TestingWitnessReport) -> i32 {
+    i32::from(
+        report
+            .public_api
+            .iter()
+            .any(|witness| status_gates(witness.status)),
+    )
+}
+
+fn status_gates(status: testing::TestWitnessStatus) -> bool {
+    status == testing::TestWitnessStatus::Unwitnessed
 }
 
 fn load_graph(
@@ -205,7 +235,7 @@ fn apply_exact_source_family(projects: &mut [ResolvedAnalysisProject], family: S
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_exact_source_family, source_family, SourceFamily};
+    use super::{apply_exact_source_family, source_family, status_gates, SourceFamily};
     use crate::config::ResolvedAnalysisProject;
     use crate::domain::source_graph::ProjectId;
     use std::collections::BTreeMap;
@@ -227,6 +257,20 @@ mod tests {
             Some(SourceFamily::Python)
         ));
         assert!(source_family(Path::new("package.json")).is_none());
+    }
+
+    #[test]
+    fn only_unwitnessed_public_api_gates_the_test_check() {
+        use crate::testing::TestWitnessStatus;
+
+        for (status, gates) in [
+            (TestWitnessStatus::Witnessed, false),
+            (TestWitnessStatus::DeclaredOnly, false),
+            (TestWitnessStatus::Unwitnessed, true),
+            (TestWitnessStatus::Unknown, false),
+        ] {
+            assert_eq!(status_gates(status), gates);
+        }
     }
 
     #[test]

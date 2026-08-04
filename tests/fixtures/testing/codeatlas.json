@@ -39,6 +39,18 @@
       "id": "@fixture/docs",
       "root": "packages/docs",
       "languages": ["ts"]
+    },
+    {
+      "id": "@fixture/rust",
+      "root": "packages/rust",
+      "languages": ["rs"],
+      "contexts": {
+        "public-api": {
+          "role": "production",
+          "scope": "public_surface",
+          "entrypoints": ["src/lib.rs"]
+        }
+      }
     }
   ]
 }

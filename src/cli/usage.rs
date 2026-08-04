@@ -1,5 +1,6 @@
 use crate::commands;
 use crate::commands::dead_code::DeadCodeFormat;
+use crate::commands::testing::TestingFormat;
 use clap::{Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
 
@@ -34,6 +35,21 @@ pub(super) enum UsageSubject {
         /// Render only findings eligible for the code check
         #[arg(long)]
         gates_only: bool,
+    },
+    /// Select tests affected by repository-relative changed paths
+    Tests {
+        /// Repository-relative changed path; repeat for a set; omit for Git changes
+        #[arg(long)]
+        changed: Vec<PathBuf>,
+        /// Discover package projects from the nearest pnpm workspace
+        #[arg(long)]
+        workspace: bool,
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = TestingFormat::Text)]
+        format: TestingFormat,
+        /// Write the report to a file instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
     },
 }
 
@@ -74,6 +90,19 @@ impl UsageSubject {
                 ..
             } => invalid(
                 "--scope public supports --consumer-root only; use --scope all for workspace, JSON, output files, or gate filtering",
+            ),
+            Self::Tests {
+                changed,
+                workspace,
+                format,
+                out,
+            } => commands::testing::run_impact(
+                root,
+                &changed,
+                workspace,
+                format,
+                out.as_deref(),
+                config,
             ),
         }
     }

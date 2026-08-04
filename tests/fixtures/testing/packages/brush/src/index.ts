@@ -1,1 +1,1 @@
-export { createBrush } from './brush.js'
+export { createBrush, declaredBrush } from './brush.js'
