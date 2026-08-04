@@ -601,7 +601,7 @@ fn inspect_code_resumes_exact_directed_pages() {
 }
 
 #[test]
-fn workspace_public_api_baselines_are_compact_deterministic_and_exact() {
+fn workspace_public_api_baselines_are_reviewable_deterministic_and_exact() {
     let workspace = TestDirectory::create("codeatlas-cli-contract");
     write(
         &workspace,
@@ -661,7 +661,9 @@ fn workspace_public_api_baselines_are_compact_deterministic_and_exact() {
     ]);
     assert_success(&baseline, "workspace baseline");
     let baseline_bytes = fs::read(&baseline_path).expect("baseline output");
-    assert!(baseline_bytes.len() < 5_000, "baseline should stay compact");
+    let baseline_source = std::str::from_utf8(&baseline_bytes).expect("baseline should be UTF-8");
+    assert!(baseline_source.starts_with("{\n  \"format\""));
+    assert!(baseline_source.ends_with('\n'));
     let baseline: Value = serde_json::from_slice(&baseline_bytes).expect("baseline should be JSON");
     assert_eq!(baseline["format"], "codeatlas.public-api-baseline");
     assert_eq!(baseline["schema_version"], 1);

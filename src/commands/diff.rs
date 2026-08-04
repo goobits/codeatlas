@@ -93,9 +93,7 @@ pub(crate) fn create_baseline(
 }
 
 pub(crate) fn render_baseline(baseline: &PublicApiBaseline) -> Result<String> {
-    let mut rendered = serde_json::to_string(baseline)?;
-    rendered.push('\n');
-    Ok(rendered)
+    super::output::render_json(baseline)
 }
 
 fn create_single_baseline(path: &Path, config_path: Option<&Path>) -> Result<PublicApiBaseline> {
