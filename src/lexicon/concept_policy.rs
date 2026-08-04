@@ -33,10 +33,8 @@ pub(crate) struct LexiconPolicy {
     pub(super) sources: Vec<LexiconSource>,
 }
 
-impl Default for LexiconPolicy {
-    fn default() -> Self {
-        let identifier_grammar = compile_identifier_grammar(&Default::default())
-            .expect("the built-in identifier grammar must be valid");
+impl LexiconPolicy {
+    fn new(identifier_grammar: IdentifierGrammar) -> Self {
         Self {
             concepts: Vec::new(),
             term_owners: BTreeMap::new(),
@@ -50,6 +48,14 @@ impl Default for LexiconPolicy {
             mode: ConceptualAnalysisMode::LocalDeterministic,
             sources: Vec::new(),
         }
+    }
+}
+
+impl Default for LexiconPolicy {
+    fn default() -> Self {
+        let identifier_grammar = compile_identifier_grammar(&Default::default())
+            .expect("the built-in identifier grammar must be valid");
+        Self::new(identifier_grammar)
     }
 }
 
@@ -86,10 +92,7 @@ pub(crate) fn load_concept_policy(
     config_base: &Path,
 ) -> Result<LexiconPolicy> {
     validate_resource_counts(config)?;
-    let mut policy = LexiconPolicy {
-        identifier_grammar: compile_identifier_grammar(&config.grammar)?,
-        ..LexiconPolicy::default()
-    };
+    let mut policy = LexiconPolicy::new(compile_identifier_grammar(&config.grammar)?);
     load_concepts(config, &mut policy)?;
     load_suppressions(config, &mut policy)?;
     load_providers(config, config_base, &mut policy)?;
