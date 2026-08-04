@@ -253,7 +253,7 @@ fn compare(
     }
     if !changed.is_empty() {
         println!(
-            "{} {} BREAKING changed public symbol(s):\n",
+            "{} {} REVIEW changed public symbol(s):\n",
             "~".yellow().bold(),
             changed.len()
         );
@@ -265,17 +265,19 @@ fn compare(
         println!();
     }
 
-    let breaking_changes = removed.len() + removed_exports.len() + changed.len();
+    let breaking_changes = removed.len() + removed_exports.len();
+    let review_changes = changed.len();
     let additive_changes = added.len() + added_exports.len();
     println!("{}", "-".repeat(50).dimmed());
     println!("\n{}", "Summary:".white().bold());
     println!("  Baseline: {} symbols", baseline_symbols.len());
     println!("  Current:  {} symbols", current_symbols.len());
     println!("  Additive: {}", format!("+{}", additive_changes).green());
+    println!("  Review:   {}", format!("~{}", review_changes).yellow());
     println!("  Breaking: {}", format!("!{}", breaking_changes).red());
-    println!("  Policy:   {}", if exact { "exact" } else { "breaking" });
+    println!("  Policy:   {}", if exact { "exact" } else { "review" });
     Ok(i32::from(
-        breaking_changes > 0 || exact && additive_changes > 0,
+        breaking_changes > 0 || review_changes > 0 || exact && additive_changes > 0,
     ))
 }
 

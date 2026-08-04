@@ -459,9 +459,12 @@ codeatlas --root . diff code \
 
 The compact baseline stores stable public identities and deterministic
 contract fingerprints. Without `--exact`, additions are reported while
-removals and contract changes fail. Exact mode also fails on additions and
-export moves. Baseline creation is explicit; checks never update reviewed
-evidence.
+removals and contract changes fail. A fingerprint proves that a contract
+changed, not whether that language-specific change is source-compatible, so
+changed contracts are labeled `REVIEW` and remain fail-closed until reviewed or
+checked by a purpose-built compatibility tool. Exact mode also fails on
+additions and export moves. Baseline creation is explicit; checks never update
+reviewed evidence.
 
 ### API documentation
 

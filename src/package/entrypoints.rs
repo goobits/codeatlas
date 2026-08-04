@@ -114,6 +114,9 @@ fn discover_workspace_script_entrypoints(
     root_dir: &Path,
     include: impl Fn(&str) -> bool,
 ) -> Result<Vec<String>> {
+    let canonical_root = root_dir
+        .canonicalize()
+        .with_context(|| format!("Could not resolve {}", root_dir.display()))?;
     let Some(parent) = root_dir.parent() else {
         return Ok(Vec::new());
     };
@@ -122,11 +125,13 @@ fn discover_workspace_script_entrypoints(
     };
     let mut entrypoints = Vec::new();
     for workspace_path in discover_script_entrypoints(&workspace_root, include)? {
-        let absolute = workspace_root.join(&workspace_path);
+        let Ok(absolute) = workspace_root.join(&workspace_path).canonicalize() else {
+            continue;
+        };
         if !absolute.is_file() {
             continue;
         }
-        let Ok(relative) = absolute.strip_prefix(root_dir) else {
+        let Ok(relative) = absolute.strip_prefix(&canonical_root) else {
             continue;
         };
         entrypoints.push(crate::paths::normalize_path(relative));
@@ -356,6 +361,8 @@ fn is_shell_delimiter(character: char) -> bool {
 mod tests {
     use super::{discover_entrypoints, discover_tooling_entrypoints};
     use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -439,6 +446,18 @@ mod tests {
             discover_tooling_entrypoints(&root).expect("root tooling entrypoints"),
             ["packages/tool/index.ts", "tasks/build.ts"]
         );
+
+        #[cfg(unix)]
+        {
+            let linked_root = root.with_extension("linked");
+            symlink(&root, &linked_root).expect("linked workspace root");
+            assert_eq!(
+                discover_tooling_entrypoints(&linked_root.join("packages/tool"))
+                    .expect("linked workspace tooling entrypoints"),
+                ["bin/dev.js", "index.ts"]
+            );
+            fs::remove_file(linked_root).expect("linked workspace cleanup");
+        }
 
         fs::remove_dir_all(root).expect("temporary project cleanup");
     }

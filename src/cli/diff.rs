@@ -14,7 +14,7 @@ pub(super) enum DiffSubject {
         /// Discover public packages from the nearest pnpm workspace
         #[arg(long)]
         workspace: bool,
-        /// Fail on additive changes as well as breaking changes
+        /// Fail on additions as well as removals and changed contracts
         #[arg(long)]
         exact: bool,
     },

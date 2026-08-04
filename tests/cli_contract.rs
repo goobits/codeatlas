@@ -719,6 +719,28 @@ fn workspace_public_api_baselines_are_compact_deterministic_and_exact() {
     ]);
     assert_eq!(exact.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&exact.stdout).contains("Policy:   exact"));
+
+    write(
+        &workspace,
+        "packages/sdk/src/index.ts",
+        "export interface PublicAPI { readonly ready: string }\n",
+    );
+    let changed = run(&[
+        "--root",
+        workspace_path,
+        "diff",
+        "code",
+        "--against",
+        baseline_arg,
+        "--workspace",
+    ]);
+    assert_eq!(changed.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&changed.stdout);
+    assert!(stdout.contains("REVIEW changed public symbol(s)"));
+    assert!(!stdout.contains("BREAKING changed public symbol(s)"));
+    assert!(stdout.contains("Review:   ~"));
+    assert!(stdout.contains("Breaking: !0"));
+    assert!(stdout.contains("Policy:   review"));
 }
 
 #[test]
