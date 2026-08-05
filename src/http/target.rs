@@ -47,6 +47,7 @@ pub(crate) struct ResolvedHttpFuzzTarget {
     pub base_url: Url,
     pub openapi_url: Url,
     pub environment: BTreeMap<String, String>,
+    pub secret_environment: BTreeMap<String, String>,
     pub headers: Vec<ResolvedHttpFuzzHeader>,
     pub report_root: Option<PathBuf>,
     pub server: Option<ResolvedHttpFuzzServer>,
@@ -74,7 +75,8 @@ pub(crate) enum ResolvedHttpFuzzOperationSelection {
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedHttpFuzzHeader {
     pub name: String,
-    pub value: String,
+    pub value: Option<String>,
+    pub value_reference: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +91,44 @@ pub(crate) struct ResolvedHttpFuzzServer {
     pub command: ResolvedHttpFuzzCommand,
     pub prepare: Vec<ResolvedHttpFuzzCommand>,
     pub startup_timeout_seconds: u64,
+}
+
+impl ResolvedHttpFuzzTarget {
+    pub(crate) fn resolve_runtime_environment(&self) -> Result<BTreeMap<String, String>> {
+        let mut environment = self.environment.clone();
+        for (name, reference) in &self.secret_environment {
+            let value = std::env::var(reference).with_context(|| {
+                format!(
+                    "HTTP fuzz target {} needs secret environment reference {} for {}",
+                    self.id, reference, name
+                )
+            })?;
+            environment.insert(name.clone(), value);
+        }
+        Ok(environment)
+    }
+
+    pub(crate) fn resolve_runtime_headers(&self) -> Result<Vec<(String, String)>> {
+        self.headers
+            .iter()
+            .map(|header| {
+                let value = match (&header.value, &header.value_reference) {
+                    (Some(value), None) => value.clone(),
+                    (None, Some(reference)) => std::env::var(reference).with_context(|| {
+                        format!(
+                            "HTTP fuzz target {} needs header secret reference {}",
+                            self.id, reference
+                        )
+                    })?,
+                    _ => anyhow::bail!(
+                        "HTTP fuzz target {} has an invalid resolved header source",
+                        self.id
+                    ),
+                };
+                Ok((header.name.clone(), value))
+            })
+            .collect()
+    }
 }
 
 impl ProjectConfig {
@@ -386,6 +426,11 @@ impl ProjectConfig {
             &target.environment,
             &format!("HTTP fuzz target {}", target.id),
         )?;
+        validate_secret_environment(
+            &target.secret_environment,
+            &target.environment,
+            &format!("HTTP fuzz target {}", target.id),
+        )?;
         let operation_selection = match &target.operations {
             HttpFuzzOperationSelectionConfig::Explicit(configured) => {
                 let mut operation_names = BTreeSet::new();
@@ -443,26 +488,19 @@ impl ProjectConfig {
                     header.name
                 );
             }
-            let value = match (&header.value, &header.value_env) {
-                (Some(value), None) => value.clone(),
-                (None, Some(name)) if !name.is_empty() => target
-                    .environment
-                    .get(name)
-                    .cloned()
-                    .or_else(|| std::env::var(name).ok())
-                    .with_context(|| {
-                        format!(
-                            "HTTP fuzz target {} header {} needs environment variable {}",
-                            target.id, header.name, name
-                        )
-                    })?,
+            let (value, value_reference) = match (&header.value, &header.value_env) {
+                (Some(value), None) => (Some(value.clone()), None),
+                (None, Some(name)) if is_environment_name(name) => (None, Some(name.clone())),
                 _ => anyhow::bail!(
                     "HTTP fuzz target {} header {} needs exactly one of `value` or `value_env`",
                     target.id,
                     header.name
                 ),
             };
-            if value.contains(['\r', '\n', '\0']) {
+            if value
+                .as_deref()
+                .is_some_and(|value| value.contains(['\r', '\n', '\0']))
+            {
                 anyhow::bail!(
                     "HTTP fuzz target {} header {} contains an invalid value",
                     target.id,
@@ -472,6 +510,7 @@ impl ProjectConfig {
             headers.push(ResolvedHttpFuzzHeader {
                 name: header.name.clone(),
                 value,
+                value_reference,
             });
         }
 
@@ -499,6 +538,7 @@ impl ProjectConfig {
             base_url,
             openapi_url,
             environment: target.environment.clone(),
+            secret_environment: target.secret_environment.clone(),
             headers,
             report_root,
             server,
@@ -537,6 +577,12 @@ impl ProjectConfig {
         if !cwd.is_dir() {
             anyhow::bail!(
                 "HTTP fuzz target {target_id} {label} working directory is not a directory: {}",
+                cwd.display()
+            );
+        }
+        if cwd.strip_prefix(&self.root).is_err() {
+            anyhow::bail!(
+                "HTTP fuzz target {target_id} {label} working directory must stay within the project root: {}",
                 cwd.display()
             );
         }
@@ -621,8 +667,7 @@ fn is_safe_id(value: &str) -> bool {
 
 fn validate_environment(environment: &BTreeMap<String, String>, label: &str) -> Result<()> {
     for (name, value) in environment {
-        if name.is_empty()
-            || name.contains(['=', '\0'])
+        if !is_environment_name(name)
             || value.contains('\0')
             || matches!(
                 name.as_str(),
@@ -633,6 +678,34 @@ fn validate_environment(environment: &BTreeMap<String, String>, label: &str) -> 
         }
     }
     Ok(())
+}
+
+fn validate_secret_environment(
+    secret_environment: &BTreeMap<String, String>,
+    literal_environment: &BTreeMap<String, String>,
+    label: &str,
+) -> Result<()> {
+    for (name, reference) in secret_environment {
+        if !is_environment_name(name)
+            || !is_environment_name(reference)
+            || literal_environment.contains_key(name)
+            || matches!(
+                name.as_str(),
+                REQUEST_HOOK_CONFIG_ENV | SCHEMATHESIS_HOOKS_ENV
+            )
+        {
+            anyhow::bail!("{label} contains an invalid secret environment entry");
+        }
+    }
+    Ok(())
+}
+
+fn is_environment_name(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    bytes
+        .next()
+        .is_some_and(|byte| byte == b'_' || byte.is_ascii_alphabetic())
+        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
 }
 
 fn parse_http_url(value: &str, label: &str, base: bool) -> Result<Url> {

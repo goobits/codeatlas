@@ -8,6 +8,7 @@ fn project_config(config: CodeAtlasConfig) -> ProjectConfig {
         config,
         config_dir: root,
         config_path: None,
+        config_evidence: json!({"kind": "test"}),
         validated_analysis_projects: None,
     }
 }
@@ -163,6 +164,17 @@ fn fuzz_target_rejects_unsafe_runtime_configuration() {
             "invalid environment entry",
         ),
         (
+            "ambiguous secret environment",
+            json!({
+                "id": "public-local",
+                "contract": "public-api",
+                "base_url": "http://127.0.0.1:3443",
+                "environment": {"TOKEN": "literal"},
+                "secret_environment": {"TOKEN": "LOCAL_API_TOKEN"}
+            }),
+            "invalid secret environment entry",
+        ),
+        (
             "invalid header name",
             json!({
                 "id": "public-local",
@@ -207,6 +219,16 @@ fn fuzz_target_rejects_unsafe_runtime_configuration() {
             "needs a valid `command`",
         ),
         (
+            "request adapter outside project root",
+            json!({
+                "id": "public-local",
+                "contract": "public-api",
+                "base_url": "http://127.0.0.1:3443",
+                "request_adapter": { "command": "adapter", "cwd": ".." }
+            }),
+            "must stay within the project root",
+        ),
+        (
             "invalid server startup timeout",
             json!({
                 "id": "public-local",
@@ -228,4 +250,44 @@ fn fuzz_target_rejects_unsafe_runtime_configuration() {
             "{label} produced unexpected error: {error}"
         );
     }
+}
+
+#[test]
+fn fuzz_target_preserves_secret_reference_provenance() {
+    let config = serde_json::from_value::<CodeAtlasConfig>(json!({
+        "http": {
+            "contracts": [{"id": "public-api"}],
+            "fuzz": {"targets": [{
+                "id": "public-local",
+                "contract": "public-api",
+                "base_url": "http://127.0.0.1:3443",
+                "environment": {"MODE": "test"},
+                "secret_environment": {"API_TOKEN": "LOCAL_API_TOKEN"},
+                "headers": [
+                    {"name": "Authorization", "value_env": "LOCAL_API_TOKEN"},
+                    {"name": "X-Literal", "value": "literal-value"}
+                ]
+            }]}
+        }
+    }))
+    .expect("HTTP fuzz config");
+
+    let target = project_config(config)
+        .http_fuzz_target(None)
+        .expect("resolved fuzz target");
+
+    assert_eq!(
+        target
+            .secret_environment
+            .get("API_TOKEN")
+            .map(String::as_str),
+        Some("LOCAL_API_TOKEN")
+    );
+    assert_eq!(
+        target.headers[0].value_reference.as_deref(),
+        Some("LOCAL_API_TOKEN")
+    );
+    assert!(target.headers[0].value.is_none());
+    assert!(target.headers[1].value_reference.is_none());
+    assert_eq!(target.headers[1].value.as_deref(), Some("literal-value"));
 }

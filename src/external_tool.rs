@@ -3,6 +3,51 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const MAX_TOOL_FINGERPRINT_BYTES: u64 = 512 * 1024 * 1024;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ExternalToolFingerprint {
+    pub name: String,
+    pub version: String,
+    pub digest: String,
+}
+
+pub(crate) fn fingerprint_bytes(
+    name: &str,
+    version: &str,
+    bytes: &[u8],
+) -> Result<ExternalToolFingerprint> {
+    if name.trim().is_empty() || version.trim().is_empty() {
+        anyhow::bail!("External tool fingerprint needs a name and version");
+    }
+    Ok(ExternalToolFingerprint {
+        name: name.to_string(),
+        version: version.to_string(),
+        digest: crate::execution::artifact::digest_bytes(
+            "atlas.codeatlas.dev/external-tool/v1",
+            bytes,
+        )?,
+    })
+}
+
+pub(crate) fn fingerprint_file(name: &str, path: &Path) -> Result<ExternalToolFingerprint> {
+    let path = existing(path, "explicit tool fingerprint")?;
+    if name.trim().is_empty() {
+        anyhow::bail!("External tool fingerprint needs a name");
+    }
+    let (digest, _) = crate::execution::artifact::digest_file(
+        "atlas.codeatlas.dev/external-tool/v1",
+        &path,
+        MAX_TOOL_FINGERPRINT_BYTES,
+    )
+    .with_context(|| format!("Could not fingerprint external tool {}", path.display()))?;
+    Ok(ExternalToolFingerprint {
+        name: name.to_string(),
+        version: "content-addressed".to_string(),
+        digest,
+    })
+}
+
 pub(crate) fn resolve(
     explicit: Option<&Path>,
     environment: &str,

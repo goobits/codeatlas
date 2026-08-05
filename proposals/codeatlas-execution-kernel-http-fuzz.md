@@ -133,7 +133,8 @@ The generic envelope contains:
 - Workspace, source, config, target, contract, tool, and engine digests.
 - Concrete seed and strategy identity.
 - Required effects and isolation capabilities.
-- External destinations, managed commands, and writable scratch roots.
+- External destinations, managed commands, and logical writable-scratch
+  requirements; the executor assigns volatile physical roots after authorization.
 - Common limits and HTTP-specific case/shrink limits.
 - Expected calls by category where enumerable and a hard whole-run maximum.
 - Authorization mode.
@@ -194,9 +195,9 @@ The first execution artifact locks the byte contract for the namespace. An
    destinations, tool/engine identities, policy digest, explicit ceilings, and
    eligibility decision.
 2. Exclude only the derived `id` and `content_digest`. A plan contains no
-   timestamp, local artifact path, checkout path, display command, or other
-   volatile metadata; identical accepted evidence must produce identical plan
-   bytes.
+   timestamp, local artifact path, checkout path, physical scratch path,
+   display command, or other volatile metadata; identical accepted evidence
+   must produce identical plan bytes.
 3. Serialize the identity body with RFC 8785 JSON Canonicalization Scheme.
    Ordinary `serde_json` map ordering or the architecture subsystem's current
    restricted-integer helper is not assumed to be RFC 8785 conformance.
@@ -369,6 +370,16 @@ Budgets are pre-call permits, not post-run counters:
    new permit.
 7. A hard limit cancels remaining work and produces `partial`.
 
+The kernel owns one bounded asynchronous scheduler per execution. Domains do
+not create private runtimes, thread pools, semaphores, or work queues. Network
+connections may be reused and HTTP/2 streams may be multiplexed, but each
+decoded logical call obtains its own permit and monotonic sequence number
+before dispatch. Bounded channels provide backpressure; blocking engine,
+filesystem, and CPU work uses one separately bounded blocking pool. Receipts
+serialize call evidence by permit sequence rather than completion order, so
+runtime multiplexing cannot change canonical output. Structured cancellation
+stops admission, drains owned tasks, and enters the reserved cleanup path.
+
 Before the first target call, the ledger carves a finite cleanup allowance out
 of the same whole-run call and time ceilings. Setup, cases, retries, and
 reduction cannot spend that allowance. Cleanup still acquires permits and may
@@ -426,6 +437,10 @@ Environment-variable redirection alone does not satisfy this contract.
 Secret values never enter plans, receipts, reports, command lines, or captured
 output; the plan records only the reference and exact destination/header scope,
 and execution fails closed when redaction or scoping cannot be proven.
+HTTP `environment` and literal header values are explicitly non-secret semantic
+evidence. `secret_environment` maps a target variable to an ambient reference,
+and header `value_env` names an ambient reference; zero-call planning never
+resolves either value.
 
 ### Capability matrix
 
@@ -636,9 +651,78 @@ or unrelated Git change exists.
 
 ## Phase 2: Immutable plans, receipts, and private artifacts
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +700-1,000 / -150-250
+Execution checklist:
+
+- [x] Confirm existing owners and pin the minimum Phase 2 model surface.
+- [x] Add strict execution/fuzz configuration and shared CLI limit arguments.
+- [x] Add canonical artifact identity, private storage, typed references, and
+  prospective schema registration.
+- [x] Add the shared target classifier, redaction, leases, resource evidence,
+  and non-passing incomplete outcomes.
+- [x] Add zero-call target/replay planning and the reviewed execution entry
+  contract without performing target work before later enforcement phases.
+- [x] Pass focused and full checks, mutation/error-path proofs, CodeAtlas
+  dogfood, generated-state audit, and a clean phase commit.
+
+Current checkpoint, 2026-08-04:
+
+- The exact CodeAtlas plan vector is
+  `plan_acd56385b3cb19b6498051f28c60e4f90b3c7236b0d2daea21543d16177fcf2c`;
+  RFC 8785, safe-integer, immutable-collision, tamper, and private-permission
+  tests pass.
+- Target and replay planning, reviewed execution, and stale-evidence rejection
+  are target-observed zero-call paths. Reviewed execution currently emits a
+  blocked receipt because proxy and isolation enforcement are continuation
+  phases, not review-time exceptions.
+- HTTP configuration now separates semantic literal `environment`/header
+  values from reference-only `secret_environment`/`value_env` inputs. Planning
+  never resolves ambient secret values, literal changes invalidate the plan,
+  and ordinary rotation behind an unchanged reference does not alter plan
+  identity. Phase 5 resolves and scopes those references only inside the
+  authorized executor, where argument/output redaction can be proven against
+  the actual values.
+- Omitted HTTP seeds materialize deterministically from strategy and exact
+  evidence, so repeated planning is byte-identical and every saved workload is
+  replayable. Plan v1 also reserves canonical expected-call and logical scratch
+  requirements; receipt v1 already carries creation-tool, runtime backend,
+  environment, capability, rootless/nested, peak-rate, and peak-concurrency
+  fields needed by the enforcing continuation phases.
+- Managed-command evidence covers the engine, every server preparation step,
+  the server, and the request adapter. Its digest is exact over owner,
+  executable, arguments, and workspace-relative working directory, remains
+  stable when the checkout moves, and rejects a working directory outside the
+  project root.
+- Artifact reads and file digests are streaming and bounded, reject mutation
+  during collection, and share one metadata-stability predicate. The store
+  rejects symlinked kind directories; artifact-link validation has one owner
+  and rejects conflicting digests for one ID.
+- Focused kernel/config/CLI/schema/security tests and warning-denying Clippy
+  pass with all generated state under `/tmp/codeatlas-xdo-cache.hTn1Nk`.
+- `pnpm check` passed: 15 Node tests, 324 passing Rust unit tests with two
+  intentional ignores, all non-live integration suites, architecture/schema
+  drift checks, formatter, warning-denying Clippy, self-audit, and package
+  assembly. The two live integration cases remain explicitly ignored for their
+  documented Phase 5 and opt-in PostgreSQL reasons.
+- The final full-gate dogfood artifacts cover 255 files, 2,480 scan symbols,
+  2,913 lexicon symbols, seven test contexts, three scripts, and zero duplicate
+  scripts. The new Phase 2 paths have 21 non-gating findings: six conservative
+  conditional-compilation boundaries, 11 test-only helpers, three analyzer
+  reachability gaps for associated constructors that production code calls,
+  and one Phase 3 JSON redaction verifier retained behind the reasoned module
+  boundary. Exact inspection resolved the managed-command, artifact-link, and
+  call-count owners under an explicit 80-node bound and reported 1,043 omitted
+  nodes and 5,676 omitted edges rather than hiding the cap.
+- Git diff checks and the generated-state audit pass; build, cache, state,
+  report, and inspection artifacts remain outside the checkout.
+- The disconnected HTTP executor is retained only for Phase 5 migration behind
+  five reasoned module-level dead-code annotations; the obsolete live script
+  is not advertised. Phase 5 must remove the annotations, delete the private
+  filesystem owner, and reconnect a kernel-backed smoke suite.
+
+Actual LOC: +6,122 / -200, including 1,312 generated schema lines and the
+security, artifact, CLI, integration, and dogfood acceptance surface.
 
 Verify: Target and replay preview make zero calls; RFC 8785 and CodeAtlas
 domain-separation vectors pin canonical plan IDs; canonical artifact IDs and
@@ -649,6 +733,12 @@ work cannot pass; every new artifact passes prospective schema registration
 with one namespaced version and no parallel API version.
 
 ```text
++ Cargo.lock
+~ Cargo.toml
++ schemas/codeatlas-execution-plan-v1.schema.json
++ schemas/codeatlas-execution-receipt-v1.schema.json
++ schemas/codeatlas-http-fuzz-workload-v1.schema.json
++ schemas/codeatlas-reproducer-v1.schema.json
 + src/config/execution.rs
 + src/config/fuzz.rs
 + src/execution/mod.rs
@@ -656,24 +746,46 @@ with one namespaced version and no parallel API version.
 + src/execution/policy.rs
 + src/execution/target.rs
 + src/execution/artifact.rs
++ src/execution/artifact/identity.rs
++ src/execution/artifact/store.rs
 + src/execution/redaction.rs
 + src/execution/lease.rs
 + src/execution/resource.rs
 + src/execution/runner.rs
 + src/fuzz/mod.rs
 + src/fuzz/model.rs
-+ src/fuzz/report.rs
 + src/fuzz/reproducer.rs
++ src/cli/execution.rs
 + src/commands/fuzz.rs
++ src/http/planning.rs
 + tests/fuzz_plan.rs
+~ README.md
+~ docs/concepts/lexicon.md
+~ package.json
 ~ src/published_schemas.rs
-~ schemas/
 ~ src/main.rs
 ~ src/config/mod.rs
-~ src/cli/execution.rs
+~ src/config/http.rs
 ~ src/cli/fuzz.rs
+~ src/cli/mod.rs
+~ src/commands/http.rs
+~ src/commands/mod.rs
 ~ src/environment.rs
 ~ src/external_tool.rs
+~ src/http/mod.rs
+~ src/http/model.rs
+~ src/http/provider.rs
+~ src/http/runtime.rs
+~ src/http/schemathesis/mod.rs
+~ src/http/schemathesis/request_adapter.rs
+~ src/http/schemathesis/tests.rs
+~ src/http/schemathesis/toolchain.rs
+~ src/http/target.rs
+~ src/http/target/tests.rs
+~ src/http/transport_schema.rs
+~ tests/http_cli.rs
+~ proposals/codeatlas-execution-kernel-http-fuzz.md
+~ proposals/codeatlas-fuzz-performance.md
 ```
 
 ## Phase 3: Pre-call budgets and enforcing HTTP proxy
@@ -685,8 +797,9 @@ LOC: +700-1,050 / -100-200
 Verify: The target never observes call `max_calls + 1`; rate and concurrency
 bursts remain bounded; setup, health, authentication, stateful, reduction,
 retry, and cleanup calls are counted; HTTPS is terminated and counted per
-decoded request with exact-host/upstream verification; budget exhaustion is
-`partial`.
+decoded request with exact-host/upstream verification; bounded queues apply
+backpressure; multiplexed completion order cannot change receipt bytes; budget
+exhaustion is `partial`.
 
 ```text
 + src/execution/budget.rs
@@ -788,7 +901,8 @@ The implementation is intentionally net higher because it adds a real sandbox,
 budget proxy, immutable artifacts, and security conformance tests. It must not
 be higher because old HTTP-private and new shared mechanisms coexist.
 
-Total LOC: +4,100-6,300 / -820-1,550
+Projected total LOC after the measured Phase 2 result: +9,522-11,422 /
+-870-1,500.
 
 ## Layman's wins
 

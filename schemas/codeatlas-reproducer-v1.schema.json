@@ -1,0 +1,292 @@
+{
+  "$defs": {
+    "ArtifactLink": {
+      "additionalProperties": false,
+      "properties": {
+        "content_digest": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "content_digest"
+      ],
+      "type": "object"
+    },
+    "ArtifactPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "body": true,
+        "content_digest": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "content_digest",
+        "body"
+      ],
+      "type": "object"
+    },
+    "EvidenceDigests": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "type": "string"
+        },
+        "contract": {
+          "type": "string"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace",
+        "config",
+        "target",
+        "contract",
+        "tool",
+        "engine",
+        "policy"
+      ],
+      "type": "object"
+    },
+    "ExecutionLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "calls_per_second": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_artifact_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_call_result_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_calls": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_concurrency": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_cpu_time_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_open_files": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_output_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_processes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_rss_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "run_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_calls",
+        "calls_per_second",
+        "max_concurrency",
+        "run_timeout_ms",
+        "max_cpu_time_ms",
+        "max_rss_bytes",
+        "max_processes",
+        "max_open_files",
+        "max_call_result_bytes",
+        "max_output_bytes",
+        "max_artifact_bytes"
+      ],
+      "type": "object"
+    },
+    "ExecutionSubject": {
+      "enum": [
+        "code",
+        "http",
+        "postgres",
+        "performance"
+      ],
+      "type": "string"
+    },
+    "FuzzLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "case_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_cases": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_failures": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_shrinks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_cases",
+        "max_shrinks",
+        "max_failures",
+        "case_timeout_ms"
+      ],
+      "type": "object"
+    },
+    "ReproducerArtifactKind": {
+      "enum": [
+        "reproducer"
+      ],
+      "type": "string"
+    },
+    "ToolIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "digest"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.reproducer/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "content_digest": {
+      "type": "string"
+    },
+    "evidence": {
+      "$ref": "#/$defs/EvidenceDigests"
+    },
+    "execution_limits": {
+      "$ref": "#/$defs/ExecutionLimits"
+    },
+    "fuzz_limits": {
+      "$ref": "#/$defs/FuzzLimits"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ReproducerArtifactKind"
+    },
+    "links": {
+      "items": {
+        "$ref": "#/$defs/ArtifactLink"
+      },
+      "type": "array"
+    },
+    "oracle_digest": {
+      "type": "string"
+    },
+    "parent_plan_content_digest": {
+      "type": "string"
+    },
+    "parent_plan_id": {
+      "type": "string"
+    },
+    "result_digest": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "codeatlas.reproducer/v1",
+      "type": "string"
+    },
+    "subject": {
+      "$ref": "#/$defs/ExecutionSubject"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolIdentity"
+    },
+    "workload": {
+      "$ref": "#/$defs/ArtifactPayload"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "id",
+    "content_digest",
+    "subject",
+    "tool",
+    "parent_plan_id",
+    "parent_plan_content_digest",
+    "evidence",
+    "workload",
+    "execution_limits",
+    "fuzz_limits",
+    "oracle_digest",
+    "result_digest",
+    "links"
+  ],
+  "title": "Reproducer",
+  "type": "object"
+}

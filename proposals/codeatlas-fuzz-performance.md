@@ -484,9 +484,9 @@ detailed checklist.
   `6845a24`.
 - [x] Governance, lexicon, standalone Cargo boundary, self-configuration, and
   external self-audit foundation.
-- [~] Evidence lifecycle CLI: testing and architecture hard cuts are complete;
-  shared execution flags and PostgreSQL observation routing wait for their
-  accepted owners.
+- [~] Evidence lifecycle CLI: testing and architecture hard cuts plus shared
+  execution flags are complete; PostgreSQL observation routing waits for its
+  accepted owner.
 - [x] Eleven-child proposal/schema convergence pass: four child proposals, RFC
   8785 plan identity, interop corrections, extracted callable ownership, links,
   and exact LOC arithmetic are internally verified.
@@ -495,8 +495,9 @@ detailed checklist.
   complete.
 - [x] CodeAtlas HQA application-inventory renderer; deterministic external-v1
   projection complete with no HQA repository edits.
-- [~] Execution kernel: governance Phase 1 is complete; immutable plan/artifact
-  Phase 2 is next, followed by sandbox and HTTP migration.
+- [~] Execution kernel: governance and immutable plan/artifact Phases 1-2 are
+  complete; pre-call budgets/proxy, verified sandbox, and HTTP migration are
+  next.
 - [ ] Structured callable/effect evidence and lexicon v4.
 - [ ] Advisory semantic-role sibling evidence and CodeAtlas dogfood.
 - [ ] Callable code fuzzing and shared boundary corpus.
@@ -566,9 +567,9 @@ all repository checks and bounded CodeAtlas dogfood pass with zero gates.
 
 ## Program stage 4: Execution kernel and HTTP migration
 
-Status: [~] Accepted; Phase 1 governance complete, Phase 2 next
+Status: [~] Accepted; governance and immutable artifact Phases 1-2 complete
 
-LOC: +4,100-6,300 / -820-1,550
+Projected LOC after measured Phase 2: +9,522-11,422 / -870-1,500
 
 Verify: One sandbox backend passes the full isolation suite; HTTP requests
 cannot exceed call/rate/resource ceilings; source remains read-only; plans,

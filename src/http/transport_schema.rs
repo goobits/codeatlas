@@ -170,6 +170,7 @@ mod tests {
             openapi_url: url::Url::parse("http://127.0.0.1:3443/openapi.json")
                 .expect("OpenAPI URL"),
             environment: BTreeMap::new(),
+            secret_environment: BTreeMap::new(),
             headers: Vec::new(),
             report_root: None,
             server: None,

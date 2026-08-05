@@ -1,19 +1,12 @@
 use super::{exit_code, load_project, output};
 use crate::http::{
-    FuzzRunOptions, HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpDiffReport,
-    HttpInventoryReport, HTTP_BASELINE_API_VERSION,
+    HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpDiffReport, HttpInventoryReport,
+    HTTP_BASELINE_API_VERSION,
 };
 use crate::{http, outputs};
 use anyhow::Result;
 use clap::ValueEnum;
 use std::path::{Path, PathBuf};
-
-#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
-pub(crate) enum HttpFuzzProfile {
-    Standard,
-    Stateful,
-    Thorough,
-}
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, ValueEnum)]
 pub(crate) enum HttpInventoryFormat {
@@ -22,28 +15,6 @@ pub(crate) enum HttpInventoryFormat {
     Json,
     /// HQA application-inventory v1 JSON
     HqaInventory,
-}
-
-impl HttpFuzzProfile {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Standard => "standard",
-            Self::Stateful => "stateful",
-            Self::Thorough => "thorough",
-        }
-    }
-
-    fn max_examples(self) -> u32 {
-        match self {
-            Self::Standard => 75,
-            Self::Stateful => 25,
-            Self::Thorough => 750,
-        }
-    }
-
-    fn includes_stateful_workflows(self) -> bool {
-        matches!(self, Self::Stateful)
-    }
 }
 
 pub(crate) fn run_inventory(
@@ -83,21 +54,6 @@ pub(crate) fn run_diff(
     config_path: Option<&Path>,
 ) -> i32 {
     exit_code(diff(baseline, path, openapi, out, config_path))
-}
-
-pub(crate) struct FuzzOptions<'a> {
-    pub path: &'a Path,
-    pub target: Option<&'a str>,
-    pub profile: HttpFuzzProfile,
-    pub max_examples: Option<u32>,
-    pub seed: Option<u128>,
-    pub operation: Option<&'a str>,
-    pub schemathesis: Option<&'a Path>,
-    pub config_path: Option<&'a Path>,
-}
-
-pub(crate) fn run_fuzz(options: &FuzzOptions<'_>) -> i32 {
-    exit_code(fuzz(options))
 }
 
 fn inventory(
@@ -194,27 +150,6 @@ fn print_diff_summary(report: &HttpDiffReport) {
             );
         }
     }
-}
-
-fn fuzz(options: &FuzzOptions<'_>) -> Result<i32> {
-    let project = load_project(options.path, options.config_path)?;
-    let target = project.http_fuzz_target(options.target)?;
-    let contracts = project.http_contracts(&[])?;
-    let contract = http::fuzz_contract(&contracts, &target.contract)?;
-    http::run_fuzz(
-        &target,
-        &contract,
-        &FuzzRunOptions {
-            max_examples: options
-                .max_examples
-                .unwrap_or_else(|| options.profile.max_examples()),
-            profile: options.profile.as_str(),
-            stateful: options.profile.includes_stateful_workflows(),
-            seed: options.seed,
-            operation: options.operation,
-            schemathesis: options.schemathesis,
-        },
-    )
 }
 
 fn build_inventory(

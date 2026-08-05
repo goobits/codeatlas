@@ -6,6 +6,24 @@ pub(crate) const HTTP_BASELINE_API_VERSION: &str = "codeatlas.http-baseline/v1";
 pub(crate) const HTTP_BASELINE_SCHEMA_VERSION: u32 = 1;
 pub(crate) const HTTP_FUZZ_API_VERSION: &str = "codeatlas.http-fuzz/v2";
 pub(crate) const HTTP_FUZZ_SCHEMA_VERSION: u32 = 2;
+pub(crate) const HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION: &str = "codeatlas.http-fuzz-workload/v1";
+
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HttpFuzzWorkload {
+    pub schema_version: String,
+    pub target_id: String,
+    pub contract_id: String,
+    pub profile: String,
+    pub stateful: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
+    pub engine: String,
+    pub engine_source: String,
+    pub limits: crate::fuzz::FuzzLimits,
+}
 
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

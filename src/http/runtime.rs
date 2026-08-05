@@ -1,5 +1,6 @@
 use super::target::{ResolvedHttpFuzzCommand, ResolvedHttpFuzzServer, ResolvedHttpFuzzTarget};
 use anyhow::{Context, Result};
+use std::collections::BTreeMap;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -21,8 +22,9 @@ impl OwnedHttpServer {
     }
 
     fn spawn(server: &ResolvedHttpFuzzServer, target: &ResolvedHttpFuzzTarget) -> Result<Self> {
+        let environment = target.resolve_runtime_environment()?;
         for (index, command) in server.prepare.iter().enumerate() {
-            run_prepare_command(command, target, index + 1)?;
+            run_prepare_command(command, target, &environment, index + 1)?;
         }
         let addresses = server_addresses(&target.base_url)?;
         if is_listening(&addresses) {
@@ -36,7 +38,7 @@ impl OwnedHttpServer {
         command
             .args(&server.command.args)
             .current_dir(&server.command.cwd)
-            .envs(&target.environment);
+            .envs(&environment);
         configure_process_group(&mut command);
         let mut child = command.spawn().with_context(|| {
             format!(
@@ -85,12 +87,13 @@ impl OwnedHttpServer {
 fn run_prepare_command(
     command: &ResolvedHttpFuzzCommand,
     target: &ResolvedHttpFuzzTarget,
+    environment: &BTreeMap<String, String>,
     index: usize,
 ) -> Result<()> {
     let status = Command::new(&command.command)
         .args(&command.args)
         .current_dir(&command.cwd)
-        .envs(&target.environment)
+        .envs(environment)
         .status()
         .with_context(|| {
             format!(

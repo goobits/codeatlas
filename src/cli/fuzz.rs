@@ -1,24 +1,65 @@
+use super::execution::FuzzLimitArgs;
 use crate::commands;
-use crate::commands::http::HttpFuzzProfile;
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub(crate) enum HttpFuzzProfile {
+    #[default]
+    Standard,
+    Stateful,
+    Thorough,
+}
+
+impl HttpFuzzProfile {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Stateful => "stateful",
+            Self::Thorough => "thorough",
+        }
+    }
+
+    pub(crate) fn profile_max_cases(self) -> u64 {
+        match self {
+            Self::Standard => 75,
+            Self::Stateful => 25,
+            Self::Thorough => 750,
+        }
+    }
+
+    pub(crate) fn includes_stateful_workflows(self) -> bool {
+        matches!(self, Self::Stateful)
+    }
+}
 
 #[derive(Subcommand)]
 pub(super) enum FuzzSubject {
-    /// Fuzz a configured live HTTP target
+    /// Plan or execute bounded HTTP contract fuzzing
     Http {
-        #[arg(long)]
+        /// Configured HTTP target; planning is the default
+        #[arg(long, conflicts_with_all = ["replay", "plan"])]
         target: Option<String>,
-        #[arg(long, value_enum, default_value_t = HttpFuzzProfile::Standard)]
+        /// Derive a new zero-call plan from a saved reproducer
+        #[arg(long, conflicts_with_all = ["target", "plan", "execute"])]
+        replay: Option<String>,
+        /// Execute one exact reviewed plan ID or file
+        #[arg(long, conflicts_with_all = ["target", "replay"], requires = "execute")]
+        plan: Option<String>,
+        /// Execute instead of stopping after plan persistence
+        #[arg(long)]
+        execute: bool,
+        #[arg(long, value_enum, default_value_t)]
         profile: HttpFuzzProfile,
-        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
-        max_examples: Option<u32>,
         #[arg(long)]
         seed: Option<u128>,
         #[arg(long)]
         operation: Option<String>,
+        /// Exact Schemathesis executable to fingerprint; no tool is run while planning
         #[arg(long)]
         schemathesis: Option<PathBuf>,
+        #[command(flatten)]
+        limits: FuzzLimitArgs,
     },
 }
 
@@ -27,19 +68,25 @@ impl FuzzSubject {
         match self {
             Self::Http {
                 target,
+                replay,
+                plan,
+                execute,
                 profile,
-                max_examples,
                 seed,
                 operation,
                 schemathesis,
-            } => commands::http::run_fuzz(&commands::http::FuzzOptions {
+                limits,
+            } => commands::fuzz::run_http(&commands::fuzz::HttpOptions {
                 path: root,
                 target: target.as_deref(),
+                replay: replay.as_deref(),
+                plan: plan.as_deref(),
+                execute,
                 profile,
-                max_examples,
                 seed,
                 operation: operation.as_deref(),
                 schemathesis: schemathesis.as_deref(),
+                limits: &limits,
                 config_path: config,
             }),
         }

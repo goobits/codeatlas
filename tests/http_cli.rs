@@ -441,7 +441,7 @@ fn target_provider_starts_fetches_and_stops_its_server() {
 }
 
 #[test]
-#[ignore = "managed Schemathesis smoke; run `pnpm test:http-fuzz`"]
+#[ignore = "Phase 5 reconnects this managed smoke through the execution kernel"]
 fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -645,7 +645,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "http",
             "--target",
             "fixture-local",
-            "--max-examples",
+            "--max-cases",
             "12",
             "--seed",
             "424242",
@@ -808,7 +808,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "fixture-local",
             "--profile",
             "stateful",
-            "--max-examples",
+            "--max-cases",
             "12",
             "--seed",
             "424242",
@@ -852,7 +852,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "http",
             "--target",
             "fixture-local",
-            "--max-examples",
+            "--max-cases",
             "4",
             "--seed",
             "424242",
@@ -893,7 +893,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "http",
             "--target",
             "fixture-source-local",
-            "--max-examples",
+            "--max-cases",
             "6",
             "--seed",
             "424242",
@@ -943,7 +943,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "http",
             "--target",
             "fixture-source-denied-local",
-            "--max-examples",
+            "--max-cases",
             "6",
             "--seed",
             "424242",
@@ -988,7 +988,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "http",
             "--target",
             "fixture-source-unsafe-local",
-            "--max-examples",
+            "--max-cases",
             "6",
             "--seed",
             "424242",
@@ -1030,7 +1030,7 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
             "http",
             "--target",
             "fixture-server-error-local",
-            "--max-examples",
+            "--max-cases",
             "1",
             "--seed",
             "424242",

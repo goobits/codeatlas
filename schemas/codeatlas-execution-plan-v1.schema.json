@@ -1,0 +1,515 @@
+{
+  "$defs": {
+    "ArtifactLink": {
+      "additionalProperties": false,
+      "properties": {
+        "content_digest": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "content_digest"
+      ],
+      "type": "object"
+    },
+    "ArtifactPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "body": true,
+        "content_digest": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "content_digest",
+        "body"
+      ],
+      "type": "object"
+    },
+    "CallCategory": {
+      "enum": [
+        "setup",
+        "readiness",
+        "authentication",
+        "generated_case",
+        "stateful_step",
+        "reduction",
+        "retry",
+        "validation",
+        "cleanup"
+      ],
+      "type": "string"
+    },
+    "CallCount": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/CallCategory"
+        },
+        "count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "category",
+        "count"
+      ],
+      "type": "object"
+    },
+    "EvidenceDigests": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "type": "string"
+        },
+        "contract": {
+          "type": "string"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace",
+        "config",
+        "target",
+        "contract",
+        "tool",
+        "engine",
+        "policy"
+      ],
+      "type": "object"
+    },
+    "ExecutionCapability": {
+      "enum": [
+        "cleanup_verification",
+        "network_allowlist",
+        "process_allowlist",
+        "read_only_checkout",
+        "read_only_runtime",
+        "resource_limits",
+        "scratch_filesystem",
+        "tls_interception"
+      ],
+      "type": "string"
+    },
+    "ExecutionEffect": {
+      "enum": [
+        "filesystem_scratch",
+        "managed_process",
+        "network_target_call",
+        "target_mutation",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ExecutionLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "calls_per_second": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_artifact_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_call_result_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_calls": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_concurrency": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_cpu_time_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_open_files": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_output_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_processes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_rss_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "run_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_calls",
+        "calls_per_second",
+        "max_concurrency",
+        "run_timeout_ms",
+        "max_cpu_time_ms",
+        "max_rss_bytes",
+        "max_processes",
+        "max_open_files",
+        "max_call_result_bytes",
+        "max_output_bytes",
+        "max_artifact_bytes"
+      ],
+      "type": "object"
+    },
+    "ExecutionSubject": {
+      "enum": [
+        "code",
+        "http",
+        "postgres",
+        "performance"
+      ],
+      "type": "string"
+    },
+    "IsolationPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "type": "string"
+        },
+        "filesystem": {
+          "type": "string"
+        },
+        "network": {
+          "type": "string"
+        },
+        "processes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "backend",
+        "filesystem",
+        "network",
+        "processes"
+      ],
+      "type": "object"
+    },
+    "ManagedCommandEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "owner",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "NetworkDestination": {
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scheme": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scheme",
+        "host",
+        "port"
+      ],
+      "type": "object"
+    },
+    "PlanArtifactKind": {
+      "enum": [
+        "plan"
+      ],
+      "type": "string"
+    },
+    "PlannedTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "class": {
+          "$ref": "#/$defs/TargetClass"
+        },
+        "id": {
+          "type": "string"
+        },
+        "secret_references": {
+          "items": {
+            "$ref": "#/$defs/SecretReference"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "class",
+        "secret_references"
+      ],
+      "type": "object"
+    },
+    "SecretReference": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "scope"
+      ],
+      "type": "object"
+    },
+    "TargetClass": {
+      "enum": [
+        "local_disposable",
+        "remote_disposable",
+        "staging",
+        "production",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "TargetDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "class": {
+          "$ref": "#/$defs/TargetClass"
+        },
+        "disposition": {
+          "$ref": "#/$defs/TargetDisposition"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "class",
+        "disposition",
+        "reasons"
+      ],
+      "type": "object"
+    },
+    "TargetDisposition": {
+      "enum": [
+        "reviewed_plan_required",
+        "preauthorized_isolated",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "ToolIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "WritableScratchRoot": {
+      "additionalProperties": false,
+      "properties": {
+        "logical_name": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "logical_name",
+        "owner"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.execution-plan/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authorization": {
+      "$ref": "#/$defs/TargetDecision"
+    },
+    "content_digest": {
+      "type": "string"
+    },
+    "destinations": {
+      "items": {
+        "$ref": "#/$defs/NetworkDestination"
+      },
+      "type": "array"
+    },
+    "effects": {
+      "items": {
+        "$ref": "#/$defs/ExecutionEffect"
+      },
+      "type": "array"
+    },
+    "engine": {
+      "$ref": "#/$defs/ToolIdentity"
+    },
+    "evidence": {
+      "$ref": "#/$defs/EvidenceDigests"
+    },
+    "expected_calls": {
+      "items": {
+        "$ref": "#/$defs/CallCount"
+      },
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    },
+    "isolation": {
+      "$ref": "#/$defs/IsolationPolicy"
+    },
+    "kind": {
+      "$ref": "#/$defs/PlanArtifactKind"
+    },
+    "limits": {
+      "$ref": "#/$defs/ExecutionLimits"
+    },
+    "links": {
+      "items": {
+        "$ref": "#/$defs/ArtifactLink"
+      },
+      "type": "array"
+    },
+    "managed_commands": {
+      "items": {
+        "$ref": "#/$defs/ManagedCommandEvidence"
+      },
+      "type": "array"
+    },
+    "operation": {
+      "type": "string"
+    },
+    "required_capabilities": {
+      "items": {
+        "$ref": "#/$defs/ExecutionCapability"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "codeatlas.execution-plan/v1",
+      "type": "string"
+    },
+    "subject": {
+      "$ref": "#/$defs/ExecutionSubject"
+    },
+    "target": {
+      "$ref": "#/$defs/PlannedTarget"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolIdentity"
+    },
+    "workload": {
+      "$ref": "#/$defs/ArtifactPayload"
+    },
+    "writable_scratch_roots": {
+      "items": {
+        "$ref": "#/$defs/WritableScratchRoot"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "id",
+    "content_digest",
+    "subject",
+    "operation",
+    "tool",
+    "engine",
+    "evidence",
+    "target",
+    "workload",
+    "effects",
+    "required_capabilities",
+    "destinations",
+    "managed_commands",
+    "expected_calls",
+    "writable_scratch_roots",
+    "limits",
+    "isolation",
+    "authorization"
+  ],
+  "title": "ExecutionPlan",
+  "type": "object"
+}

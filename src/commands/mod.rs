@@ -3,6 +3,7 @@ pub(crate) mod context_slice;
 pub(crate) mod dead_code;
 pub(crate) mod diff;
 pub(crate) mod docs;
+pub(crate) mod fuzz;
 pub(crate) mod http;
 pub(crate) mod lexicon;
 mod output;

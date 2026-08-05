@@ -89,6 +89,12 @@ pub(crate) struct RunOptions<'a> {
     pub schemathesis: Option<&'a Path>,
 }
 
+pub(crate) fn fingerprint_engine(
+    override_path: Option<&Path>,
+) -> Result<crate::external_tool::ExternalToolFingerprint> {
+    toolchain::fingerprint_schemathesis(override_path)
+}
+
 pub(crate) fn run(
     target: &ResolvedHttpFuzzTarget,
     contract: &Contract,
@@ -166,7 +172,9 @@ pub(crate) fn run(
         contract_expected_non_success_operations,
     )?;
     let schemathesis = ensure_schemathesis(options.schemathesis)?;
-    let hooks = request_adapter::prepare(target, &available_operations)?;
+    let runtime_environment = target.resolve_runtime_environment()?;
+    let runtime_headers = target.resolve_runtime_headers()?;
+    let hooks = request_adapter::prepare(target, &available_operations, &runtime_headers)?;
     request_adapter::validate(&schemathesis, &hooks)?;
     let config_path = prepare_schemathesis_config(&report_dir, options.stateful, &hooks.hook_path)?;
     let seed = options.seed.unwrap_or_else(generate_seed);
@@ -189,7 +197,7 @@ pub(crate) fn run(
     command
         .args(&args)
         .current_dir(&report_dir)
-        .envs(&target.environment);
+        .envs(&runtime_environment);
     command
         .env_remove(SCHEMATHESIS_HOOKS_ENV)
         .env(REQUEST_HOOK_CONFIG_ENV, hooks.config_path());
@@ -204,10 +212,9 @@ pub(crate) fn run(
     };
     report::sanitize_events(
         &report_dir,
-        target
-            .headers
+        runtime_headers
             .iter()
-            .map(|header| (header.name.as_str(), header.value.as_str())),
+            .map(|(name, value)| (name.as_str(), value.as_str())),
     )?;
     let mut code = status.code().unwrap_or(1);
     println!("Replay this run by adding `--seed {seed}` to the same CodeAtlas command.");

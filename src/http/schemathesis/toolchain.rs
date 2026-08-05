@@ -37,6 +37,19 @@ pub(super) fn ensure_schemathesis(override_path: Option<&Path>) -> Result<PathBu
     provision_schemathesis(&toolchain_root)
 }
 
+pub(super) fn fingerprint_schemathesis(
+    override_path: Option<&Path>,
+) -> Result<crate::external_tool::ExternalToolFingerprint> {
+    match override_path {
+        Some(path) => crate::external_tool::fingerprint_file("schemathesis", path),
+        None => crate::external_tool::fingerprint_bytes(
+            "schemathesis",
+            SCHEMATHESIS_VERSION,
+            LOCKED_REQUIREMENTS.as_bytes(),
+        ),
+    }
+}
+
 fn provision_schemathesis(toolchain_root: &Path) -> Result<PathBuf> {
     let parent = toolchain_root
         .parent()

@@ -10,10 +10,18 @@ use crate::commands::diff::{
 use crate::context_slice::{ContextSliceReport, CONTEXT_SLICE_SCHEMA_VERSION};
 use crate::dead_code::{DeadCodeReport, DEAD_CODE_SCHEMA_VERSION};
 use crate::domain::{ScanReport, SCAN_SCHEMA_VERSION};
+use crate::execution::artifact::is_namespaced_artifact_version;
+use crate::execution::{
+    ExecutionPlan, ExecutionReceipt, EXECUTION_PLAN_SCHEMA_VERSION,
+    EXECUTION_RECEIPT_SCHEMA_VERSION,
+};
+use crate::fuzz::reproducer::Reproducer;
+use crate::fuzz::FUZZ_REPRODUCER_SCHEMA_VERSION;
 use crate::http::{
-    HttpBaselineReport, HttpCheckReport, HttpDiffReport, HttpFuzzReport, HttpInventoryReport,
-    HTTP_API_VERSION, HTTP_BASELINE_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION,
-    HTTP_FUZZ_API_VERSION, HTTP_FUZZ_SCHEMA_VERSION, HTTP_SCHEMA_VERSION,
+    HttpBaselineReport, HttpCheckReport, HttpDiffReport, HttpFuzzReport, HttpFuzzWorkload,
+    HttpInventoryReport, HTTP_API_VERSION, HTTP_BASELINE_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION,
+    HTTP_FUZZ_API_VERSION, HTTP_FUZZ_SCHEMA_VERSION, HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION,
+    HTTP_SCHEMA_VERSION,
 };
 use crate::lexicon::{LexiconReport, LEXICON_SCHEMA_VERSION};
 use crate::postgres::{
@@ -279,30 +287,6 @@ impl PublishedSchema {
     }
 }
 
-fn is_namespaced_artifact_version(value: &str) -> bool {
-    let Some(remainder) = value.strip_prefix("codeatlas.") else {
-        return false;
-    };
-    let Some((kind, version)) = remainder.rsplit_once("/v") else {
-        return false;
-    };
-    if kind.is_empty()
-        || kind.starts_with('-')
-        || kind.ends_with('-')
-        || kind.contains("--")
-        || !kind
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-    {
-        return false;
-    }
-    version
-        .parse::<u32>()
-        .ok()
-        .filter(|parsed| *parsed > 0 && parsed.to_string() == version)
-        .is_some()
-}
-
 fn is_valid_annotation_key(value: &str) -> bool {
     let Some(name) = value.strip_prefix("codeatlas.") else {
         return false;
@@ -317,6 +301,30 @@ fn is_valid_annotation_key(value: &str) -> bool {
 }
 
 const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
+    PublishedSchema::new_artifact(
+        EXECUTION_PLAN_SCHEMA_VERSION,
+        "codeatlas-execution-plan-v1.schema.json",
+        "execution",
+        generate_schema::<ExecutionPlan>,
+    ),
+    PublishedSchema::new_artifact(
+        EXECUTION_RECEIPT_SCHEMA_VERSION,
+        "codeatlas-execution-receipt-v1.schema.json",
+        "execution",
+        generate_schema::<ExecutionReceipt>,
+    ),
+    PublishedSchema::new_artifact(
+        FUZZ_REPRODUCER_SCHEMA_VERSION,
+        "codeatlas-reproducer-v1.schema.json",
+        "fuzz",
+        generate_schema::<Reproducer>,
+    ),
+    PublishedSchema::new_artifact(
+        HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION,
+        "codeatlas-http-fuzz-workload-v1.schema.json",
+        "http",
+        generate_schema::<HttpFuzzWorkload>,
+    ),
     PublishedSchema::new(
         "codeatlas.scan/v2",
         "codeatlas-scan-v2.schema.json",

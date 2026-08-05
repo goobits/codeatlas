@@ -1,7 +1,7 @@
 use super::environment::configured_python;
 use super::openapi::{self, LoadedOpenApi};
 use super::runtime::OwnedHttpServer;
-use super::target::{ResolvedHttpFuzzHeader, ResolvedHttpOpenApiSource};
+use super::target::ResolvedHttpOpenApiSource;
 use anyhow::{Context, Result};
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -82,7 +82,9 @@ pub(super) fn read(source: &ResolvedHttpOpenApiSource, label: &str) -> Result<Ve
         ResolvedHttpOpenApiSource::Url { url } => fetch_url(url, &BTreeMap::new(), &[]),
         ResolvedHttpOpenApiSource::Target(target) => {
             let _server = OwnedHttpServer::start(target)?;
-            fetch_url(&target.openapi_url, &target.environment, &target.headers)
+            let environment = target.resolve_runtime_environment()?;
+            let headers = target.resolve_runtime_headers()?;
+            fetch_url(&target.openapi_url, &environment, &headers)
         }
     }
 }
@@ -90,12 +92,12 @@ pub(super) fn read(source: &ResolvedHttpOpenApiSource, label: &str) -> Result<Ve
 fn fetch_url(
     url: &Url,
     environment: &BTreeMap<String, String>,
-    headers: &[ResolvedHttpFuzzHeader],
+    headers: &[(String, String)],
 ) -> Result<Vec<u8>> {
     let python = configured_python();
     let header_values = headers
         .iter()
-        .map(|header| (header.name.as_str(), header.value.as_str()))
+        .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect::<BTreeMap<_, _>>();
     let input = serde_json::to_vec(&serde_json::json!({
         "url": url.as_str(),

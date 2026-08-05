@@ -6,7 +6,8 @@ mod baseline;
 mod check;
 mod diff;
 mod docs;
-mod fuzz;
+pub(crate) mod execution;
+pub(crate) mod fuzz;
 mod init;
 mod inspect;
 mod lexicon;
@@ -74,10 +75,10 @@ enum Command {
         #[command(subcommand)]
         subject: docs::DocsSubject,
     },
-    /// Exercise HTTP contracts with generated requests
+    /// Plan or execute bounded contract fuzzing
     Fuzz {
         #[command(subcommand)]
-        subject: fuzz::FuzzSubject,
+        subject: Box<fuzz::FuzzSubject>,
     },
     /// Exercise PostgreSQL contracts in an isolated database
     Test {
@@ -103,7 +104,7 @@ pub(crate) fn run() -> i32 {
         Command::Inspect { subject } => subject.run(&cli.root, config),
         Command::Lexicon { subject } => subject.run(&cli.root, config),
         Command::Docs { subject } => subject.run(&cli.root, config),
-        Command::Fuzz { subject } => subject.run(&cli.root, config),
+        Command::Fuzz { subject } => (*subject).run(&cli.root, config),
         Command::Test { subject } => subject.run(&cli.root, config),
         Command::Init { subject } => subject.run(&cli.root, config),
     }
@@ -171,6 +172,26 @@ mod tests {
             vec!["codeatlas", "lexicon", "code"],
             vec!["codeatlas", "docs", "code"],
             vec!["codeatlas", "fuzz", "http"],
+            vec![
+                "codeatlas",
+                "fuzz",
+                "http",
+                "--target",
+                "local",
+                "--max-cases",
+                "5",
+                "--max-calls",
+                "8",
+            ],
+            vec!["codeatlas", "fuzz", "http", "--replay", "reproducer.json"],
+            vec![
+                "codeatlas",
+                "fuzz",
+                "http",
+                "--plan",
+                "plan.json",
+                "--execute",
+            ],
             vec!["codeatlas", "test", "postgres"],
             vec!["codeatlas", "init", "postgres"],
         ] {
@@ -214,5 +235,19 @@ mod tests {
         ] {
             assert!(Cli::try_parse_from(["codeatlas", command]).is_err());
         }
+        assert!(
+            Cli::try_parse_from(["codeatlas", "fuzz", "http", "--max-examples", "10"]).is_err()
+        );
+        assert!(Cli::try_parse_from(["codeatlas", "fuzz", "http", "--plan", "plan.json"]).is_err());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "fuzz",
+            "http",
+            "--target",
+            "local",
+            "--replay",
+            "reproducer.json"
+        ])
+        .is_err());
     }
 }

@@ -1,0 +1,415 @@
+{
+  "$defs": {
+    "ArtifactLink": {
+      "additionalProperties": false,
+      "properties": {
+        "content_digest": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "content_digest"
+      ],
+      "type": "object"
+    },
+    "ArtifactPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "body": true,
+        "content_digest": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "content_digest",
+        "body"
+      ],
+      "type": "object"
+    },
+    "AuthorizationMode": {
+      "enum": [
+        "reviewed",
+        "preauthorized_isolated"
+      ],
+      "type": "string"
+    },
+    "CallCategory": {
+      "enum": [
+        "setup",
+        "readiness",
+        "authentication",
+        "generated_case",
+        "stateful_step",
+        "reduction",
+        "retry",
+        "validation",
+        "cleanup"
+      ],
+      "type": "string"
+    },
+    "CallCount": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/CallCategory"
+        },
+        "count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "category",
+        "count"
+      ],
+      "type": "object"
+    },
+    "CallUsage": {
+      "additionalProperties": false,
+      "properties": {
+        "by_category": {
+          "items": {
+            "$ref": "#/$defs/CallCount"
+          },
+          "type": "array"
+        },
+        "consumed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reserved": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reserved",
+        "consumed",
+        "by_category"
+      ],
+      "type": "object"
+    },
+    "CleanupEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner": {
+          "type": "string"
+        },
+        "released": {
+          "type": "boolean"
+        },
+        "resource": {
+          "type": "string"
+        },
+        "verified": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "owner",
+        "resource",
+        "released",
+        "verified"
+      ],
+      "type": "object"
+    },
+    "ExecutionCapability": {
+      "enum": [
+        "cleanup_verification",
+        "network_allowlist",
+        "process_allowlist",
+        "read_only_checkout",
+        "read_only_runtime",
+        "resource_limits",
+        "scratch_filesystem",
+        "tls_interception"
+      ],
+      "type": "string"
+    },
+    "ExecutionOutcome": {
+      "enum": [
+        "passed",
+        "failed",
+        "partial",
+        "blocked",
+        "cancelled"
+      ],
+      "type": "string"
+    },
+    "ExecutionSubject": {
+      "enum": [
+        "code",
+        "http",
+        "postgres",
+        "performance"
+      ],
+      "type": "string"
+    },
+    "ReceiptArtifactKind": {
+      "enum": [
+        "receipt"
+      ],
+      "type": "string"
+    },
+    "ResourceEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cpu_time_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "elapsed_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "output_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "peak_calls_per_second_milli": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "peak_concurrency": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "peak_open_files": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "peak_processes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "peak_rss_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "result_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "elapsed_ms",
+        "result_bytes",
+        "output_bytes",
+        "artifact_bytes"
+      ],
+      "type": "object"
+    },
+    "RuntimeEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/ExecutionCapability"
+          },
+          "type": "array"
+        },
+        "environment_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nested": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "rootless": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "capabilities"
+      ],
+      "type": "object"
+    },
+    "ToolIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "digest"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.execution-receipt/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authorization_mode": {
+      "$ref": "#/$defs/AuthorizationMode"
+    },
+    "calls": {
+      "$ref": "#/$defs/CallUsage"
+    },
+    "cleanup": {
+      "items": {
+        "$ref": "#/$defs/CleanupEvidence"
+      },
+      "type": "array"
+    },
+    "content_digest": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ReceiptArtifactKind"
+    },
+    "links": {
+      "items": {
+        "$ref": "#/$defs/ArtifactLink"
+      },
+      "type": "array"
+    },
+    "operation": {
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/ExecutionOutcome"
+    },
+    "plan_content_digest": {
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string"
+    },
+    "reasons": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "resources": {
+      "$ref": "#/$defs/ResourceEvidence"
+    },
+    "result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArtifactPayload"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "runtime": {
+      "$ref": "#/$defs/RuntimeEvidence"
+    },
+    "schema_version": {
+      "const": "codeatlas.execution-receipt/v1",
+      "type": "string"
+    },
+    "subject": {
+      "$ref": "#/$defs/ExecutionSubject"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolIdentity"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "id",
+    "content_digest",
+    "subject",
+    "operation",
+    "tool",
+    "plan_id",
+    "plan_content_digest",
+    "authorization_mode",
+    "outcome",
+    "calls",
+    "runtime",
+    "resources",
+    "cleanup",
+    "links"
+  ],
+  "title": "ExecutionReceipt",
+  "type": "object"
+}

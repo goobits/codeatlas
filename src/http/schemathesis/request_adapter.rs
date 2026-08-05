@@ -87,6 +87,7 @@ impl<'a> From<&'a ResolvedHttpFuzzCommand> for AdapterConfig<'a> {
 pub(super) fn prepare(
     target: &ResolvedHttpFuzzTarget,
     operations: &[HttpFuzzOperation],
+    headers: &[(String, String)],
 ) -> Result<PreparedRequestHooks> {
     let hook_root = crate::http::environment::cache_base()
         .join("codeatlas")
@@ -110,13 +111,9 @@ pub(super) fn prepare(
     }
     let config = serde_json::to_vec(&RequestHooksConfig {
         api_version: API_VERSION,
-        headers: target
-            .headers
+        headers: headers
             .iter()
-            .map(|header| HeaderConfig {
-                name: &header.name,
-                value: &header.value,
-            })
+            .map(|(name, value)| HeaderConfig { name, value })
             .collect(),
         adapter: target.request_adapter.as_ref().map(AdapterConfig::from),
         methods_by_path: methods_by_path(operations),

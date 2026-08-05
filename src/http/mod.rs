@@ -1,14 +1,35 @@
 mod conformance;
 mod diff;
 mod environment;
+#[allow(
+    dead_code,
+    reason = "Phase 2 disconnects direct HTTP execution; Phase 5 migrates its report model into the kernel"
+)]
 mod model;
 mod openapi;
+mod planning;
+#[allow(
+    dead_code,
+    reason = "Phase 2 disconnects direct HTTP execution; Phase 5 moves this behavior to the artifact owner"
+)]
 mod private_fs;
 mod provider;
 mod runtime;
+#[allow(
+    dead_code,
+    reason = "Phase 2 disconnects direct HTTP execution; Phase 5 connects this adapter to the kernel"
+)]
 mod schemathesis;
 mod source;
+#[allow(
+    dead_code,
+    reason = "Phase 2 disconnects direct HTTP execution; Phase 5 migrates the remaining runtime target fields"
+)]
 mod target;
+#[allow(
+    dead_code,
+    reason = "Phase 2 disconnects direct HTTP execution; Phase 5 reconnects source-transport execution"
+)]
 mod transport_schema;
 
 use self::target::ResolvedHttpContract;
@@ -21,16 +42,18 @@ pub(crate) use conformance::check;
 pub(crate) use diff::compare;
 pub(crate) use model::{
     HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpConfidence, HttpDiffReport,
-    HttpInventoryReport, HttpSourceCompleteness, HttpSourceOperationKind,
-    HTTP_BASELINE_API_VERSION,
+    HttpFuzzWorkload, HttpInventoryReport, HttpSourceCompleteness, HttpSourceOperationKind,
+    HTTP_BASELINE_API_VERSION, HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION,
 };
 #[cfg(test)]
 pub(crate) use model::{
     HttpFuzzReport, HTTP_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION, HTTP_FUZZ_API_VERSION,
     HTTP_FUZZ_SCHEMA_VERSION, HTTP_SCHEMA_VERSION,
 };
-pub(crate) use schemathesis::{
-    run as run_fuzz, Contract as FuzzContract, RunOptions as FuzzRunOptions,
+pub(crate) use planning::{build_fuzz_execution_plan, rebuild_fuzz_execution_plan};
+pub(crate) use schemathesis::{fingerprint_engine, Contract as FuzzContract};
+pub(crate) use target::{
+    ResolvedHttpFuzzOperationSelection, ResolvedHttpFuzzTarget, ResolvedHttpOpenApiSource,
 };
 
 pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInventoryReport> {
@@ -150,6 +173,53 @@ pub(crate) fn fuzz_contract(
         .pop()
         .ok_or_else(|| anyhow::anyhow!("HTTP contract {contract_id:?} produced no inventory"))?;
     Ok(FuzzContract::SourceTransport(contract.source))
+}
+
+pub(crate) fn validate_fuzz_workload(workload: &HttpFuzzWorkload) -> Result<()> {
+    if workload.schema_version != HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION {
+        anyhow::bail!(
+            "Unsupported HTTP fuzz workload schema {:?}; expected {:?}",
+            workload.schema_version,
+            HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION
+        );
+    }
+    for (label, value) in [
+        ("target ID", workload.target_id.as_str()),
+        ("contract ID", workload.contract_id.as_str()),
+    ] {
+        if value.is_empty() || value.trim() != value || value.chars().any(char::is_control) {
+            anyhow::bail!("HTTP fuzz workload {label} must be nonblank and canonical");
+        }
+    }
+    let expected_stateful = match workload.profile.as_str() {
+        "standard" | "thorough" => false,
+        "stateful" => true,
+        profile => anyhow::bail!("Unsupported HTTP fuzz profile {profile:?}"),
+    };
+    if workload.stateful != expected_stateful {
+        anyhow::bail!("HTTP fuzz workload profile and stateful flag disagree");
+    }
+    if workload.engine != "schemathesis" {
+        anyhow::bail!("Unsupported HTTP fuzz engine {:?}", workload.engine);
+    }
+    if !matches!(workload.engine_source.as_str(), "managed" | "explicit") {
+        anyhow::bail!(
+            "Unsupported HTTP fuzz engine source {:?}",
+            workload.engine_source
+        );
+    }
+    if let Some(seed) = &workload.seed {
+        let parsed = seed
+            .parse::<u128>()
+            .map_err(|_| anyhow::anyhow!("HTTP fuzz seed must be an unsigned 128-bit integer"))?;
+        if parsed.to_string() != *seed {
+            anyhow::bail!("HTTP fuzz seed must use canonical unsigned decimal form");
+        }
+    }
+    if let Some(operation) = &workload.operation {
+        target::parse_http_fuzz_operation(operation)?;
+    }
+    Ok(())
 }
 
 fn compile_patterns(

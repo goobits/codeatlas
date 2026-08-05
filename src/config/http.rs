@@ -65,6 +65,7 @@ pub(crate) struct HttpFuzzTargetConfig {
     pub base_url: String,
     pub openapi_path: String,
     pub environment: BTreeMap<String, String>,
+    pub secret_environment: BTreeMap<String, String>,
     pub headers: Vec<HttpFuzzHeaderConfig>,
     pub report_dir: Option<PathBuf>,
     pub server: Option<HttpFuzzServerConfig>,
@@ -84,6 +85,7 @@ impl Default for HttpFuzzTargetConfig {
             base_url: String::new(),
             openapi_path: "/openapi.json".to_string(),
             environment: BTreeMap::new(),
+            secret_environment: BTreeMap::new(),
             headers: Vec::new(),
             report_dir: None,
             server: None,
@@ -192,7 +194,10 @@ mod tests {
                             "contract": "public-api",
                             "base_url": "http://127.0.0.1:3443",
                             "environment": {
-                                "LOCAL_API_TOKEN": "test-token"
+                                "MODE": "test"
+                            },
+                            "secret_environment": {
+                                "API_TOKEN": "LOCAL_API_TOKEN"
                             },
                             "headers": [{
                                 "name": "Authorization",
@@ -243,6 +248,13 @@ mod tests {
         assert_eq!(target.openapi_path, "/openapi.json");
         assert_eq!(
             target.headers[0].value_env.as_deref(),
+            Some("LOCAL_API_TOKEN")
+        );
+        assert_eq!(
+            target
+                .secret_environment
+                .get("API_TOKEN")
+                .map(String::as_str),
             Some("LOCAL_API_TOKEN")
         );
         assert_eq!(

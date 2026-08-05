@@ -1,0 +1,90 @@
+{
+  "$defs": {
+    "FuzzLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "case_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_cases": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_failures": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_shrinks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_cases",
+        "max_shrinks",
+        "max_failures",
+        "case_timeout_ms"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.http-fuzz-workload/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "contract_id": {
+      "type": "string"
+    },
+    "engine": {
+      "type": "string"
+    },
+    "engine_source": {
+      "type": "string"
+    },
+    "limits": {
+      "$ref": "#/$defs/FuzzLimits"
+    },
+    "operation": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "profile": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "codeatlas.http-fuzz-workload/v1",
+      "type": "string"
+    },
+    "seed": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stateful": {
+      "type": "boolean"
+    },
+    "target_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "target_id",
+    "contract_id",
+    "profile",
+    "stateful",
+    "engine",
+    "engine_source",
+    "limits"
+  ],
+  "title": "HttpFuzzWorkload",
+  "type": "object"
+}

@@ -27,6 +27,7 @@ fn target_with_operations(operations: &[&str]) -> ResolvedHttpFuzzTarget {
         base_url: url::Url::parse("http://127.0.0.1:3443").expect("base URL"),
         openapi_url: url::Url::parse("http://127.0.0.1:3443/openapi.json").expect("OpenAPI URL"),
         environment: BTreeMap::new(),
+        secret_environment: BTreeMap::new(),
         headers: Vec::new(),
         report_root: None,
         server: None,
@@ -80,7 +81,8 @@ fn schemathesis_arguments_centralize_the_http_fuzz_policy() {
     let mut target = target_with_operations(&["GET /health", "POST /widgets/{id}"]);
     target.headers.push(ResolvedHttpFuzzHeader {
         name: "Authorization".to_string(),
-        value: "Bearer invalid".to_string(),
+        value: Some("Bearer invalid".to_string()),
+        value_reference: None,
     });
     target.suppress_health_checks = vec![HttpFuzzHealthCheck::FilterTooMuch];
     target.suppress_warnings = true;

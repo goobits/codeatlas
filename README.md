@@ -33,8 +33,9 @@ CODEATLAS_BINARY_PATH="$CARGO_TARGET_DIR/debug/codeatlas" node bin/codeatlas.js 
 ```
 
 Node.js 22 or newer is required by the wrapper. PostgreSQL live tests also
-require `psql`. Managed HTTP fuzzing requires Python 3.10 or newer and
-provisions its locked Schemathesis toolchain in the CodeAtlas cache.
+require `psql`. HTTP planning fingerprints the locked Schemathesis contract
+without installing or starting it; managed execution fails closed unless the
+required kernel enforcement is available.
 
 ## CLI
 
@@ -56,7 +57,7 @@ present.
 | `inspect code\|architecture` | Explain an exact target and its bounded neighborhood |
 | `lexicon code` | Report deterministic naming, structural, and declared conceptual overlap |
 | `docs code` | Generate or check public API documentation |
-| `fuzz http` | Exercise a configured HTTP target with generated requests |
+| `fuzz http` | Persist or execute a bounded HTTP fuzz plan |
 | `test postgres` | Replay migrations and prepare queries in a disposable database |
 | `init postgres` | Discover and optionally write PostgreSQL configuration |
 
@@ -71,9 +72,10 @@ Run `codeatlas <command> <subject> --help` for the complete option set.
 | Static HTTP route inventory | yes | yes | yes | yes |
 | Static PostgreSQL application-query extraction | yes | no | no | no |
 
-HTTP fuzzing operates at a configured transport boundary. PostgreSQL live
-testing validates database contracts; it is not SQL fuzzing. CodeAtlas does
-not fuzz in-process code APIs.
+HTTP fuzz planning operates at a configured transport boundary and makes zero
+target calls. PostgreSQL live testing validates database contracts; it is not
+SQL fuzzing. CodeAtlas does not yet fuzz SQL parameters or in-process code
+APIs.
 
 ## Code Evidence
 
@@ -640,6 +642,9 @@ baselines, and schema-backed fuzzing.
             "NODE_ENV": "test",
             "PORT": "3443"
           },
+          "secret_environment": {
+            "API_TOKEN": "LOCAL_API_TOKEN"
+          },
           "server": {
             "command": "node",
             "args": ["src/test-server.js"],
@@ -669,7 +674,16 @@ codeatlas --root . baseline http --out http-baseline.json
 codeatlas --root . diff http --against http-baseline.json
 codeatlas --root . fuzz http --target public-local --seed 42
 codeatlas --root . fuzz http --target public-local --profile stateful
+# After reviewing the emitted plan:
+codeatlas --root . fuzz http --plan plan_ABC --execute
 ```
+
+The target and `--replay` forms only gather current evidence and persist an
+immutable content-addressed plan under the external state root. `--plan ...
+--execute` revalidates that exact plan before any target work. Missing proxy or
+isolation enforcement produces a blocked zero-call receipt; review never
+waives a missing capability. Set `CODEATLAS_STATE_DIR` to choose the external
+private artifact base.
 
 The `hqa-inventory` format projects the same bounded source and OpenAPI union
 into HQA application-inventory v1. Endpoint and OpenAPI-only operations are
@@ -685,27 +699,33 @@ Explicit OpenAPI adds schema conformance, authentication probes, declared
 status checks, and optional stateful traversal through OpenAPI Links.
 
 The target's operation list is the fuzz authority. `--operation` may narrow it
-for local diagnosis but cannot expand it. Every run reports its seed. Retained
-reports exclude request and response bodies, sensitive headers, and URL query
-values.
+for local diagnosis but cannot expand it. Every plan contains its concrete
+seed and finite limits. Plans and receipts exclude secret values; future run
+reports also exclude request and response bodies, sensitive headers, and URL
+query values.
 
 HTTP configuration also supports:
 
 - OpenAPI providers from a file, command, URL, or configured fuzz target
 - exact source operation filters after path filters
 - an explicit operation list or `"operations": "contract"`
-- literal test headers or `value_env` references to target environment values
+- literal non-secret process environment plus `secret_environment` mappings
+  from target variable name to ambient secret-reference name
+- literal test headers or `value_env` secret references; planning records the
+  reference and does not require or persist its value
 - expected non-success operations and positive-coverage budgets
 - ordered `server.prepare` commands before an owned local server starts
 - a long-lived request adapter over the
   `codeatlas.http-request-adapter/v2` JSONL protocol for project-owned fixture,
   signing, and authentication logic
 
-`standard` generates 75 examples per operation, `thorough` generates 750, and
-`stateful` runs 25 scenarios across explicit OpenAPI Links. `--max-examples`
-provides a focused override. The retained `codeatlas.http-fuzz/v2` summary
-separates positive successes, expected denials, negative rejections, server
-errors, authentication-only results, and stateful coverage.
+The profile ceilings are 75 cases for `standard`, 750 for `thorough`, and 25
+stateful cases across explicit OpenAPI Links. Checked-in `fuzz.limits.max_cases`
+(50 by default) remains the hard ceiling, and `--max-cases` may only tighten
+it. The retained `codeatlas.http-fuzz/v2` summary separates positive successes,
+expected denials, negative rejections, server errors, authentication-only
+results, and stateful coverage; the execution-kernel migration reconnects its
+producer without preserving a direct executor.
 
 ## PostgreSQL Contracts
 
@@ -820,7 +840,16 @@ Common top-level fields are:
 - `no_default_ignore`: include normally ignored source classes
 - `package_exports`: discover package entrypoints from `package.json`
 - `projects`: named reachability projects and contexts
+- `execution`: finite call, rate, concurrency, time, memory, process, output,
+  artifact, and isolation ceilings
+- `fuzz`: finite case, shrink, failure, and per-case time ceilings shared by
+  fuzz subjects
 - `docs`, `http`, and `postgres`: domain-specific contracts
+
+CLI limit flags may only tighten their checked-in values. Zero, unlimited
+sentinels, and command-line increases are rejected. The built-in defaults are
+materialized into every saved plan, so a later default change cannot alter a
+reviewed artifact.
 
 Package exports are enabled by default. TypeScript declaration or JavaScript
 export targets are mapped back to maintained source when the project's
@@ -835,6 +864,7 @@ Source-graph analysis uses a bounded external index by default. Set
 | --- | --- |
 | `CODEATLAS_SOURCE_INDEX_DIR` | Overrides the index root. The path must be absolute and disjoint from every analyzed project. |
 | `CODEATLAS_CACHE_DIR` | Supplies the cache base when no source-index root is set. Otherwise CodeAtlas uses the platform or XDG cache location. |
+| `CODEATLAS_STATE_DIR` | Supplies the external base for private content-addressed plans, receipts, and reproducers. The resulting execution root must be disjoint from the analyzed workspace. |
 | `CODEATLAS_SOURCE_INDEX_MAX_BYTES` | Sets the byte limit. The default is 512 MiB; accepted values range from 16 MiB through 16 GiB. |
 | `CODEATLAS_METRICS=1` | Writes one source-index metrics record as JSON to stderr after each source-graph analysis. |
 
@@ -898,13 +928,13 @@ Useful focused checks:
 pnpm test
 pnpm run spec:check
 pnpm run self:check
-pnpm run test:http-fuzz
 pnpm run test:postgres-live
 ```
 
-`pnpm test` runs wrapper tests and the default Rust suite. The two live smoke
-commands are explicit because they may provision tools or require a local
-service. `pnpm run self:check` writes its report below `CARGO_TARGET_DIR`.
+`pnpm test` runs wrapper tests and the default Rust suite. The PostgreSQL live
+smoke is explicit because it requires a local service. HTTP execution remains
+blocked until the kernel enforcement and migrated smoke suite are available.
+`pnpm run self:check` writes its report below `CARGO_TARGET_DIR`.
 
 Verification is local. The repository does not use automatic hosted CI, and no
 hosted workflow should be dispatched as part of ordinary development.
