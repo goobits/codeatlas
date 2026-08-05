@@ -49,6 +49,46 @@ impl LexiconPolicy {
             sources: Vec::new(),
         }
     }
+
+    pub(super) fn matching_terms(&self, tokens: &[String]) -> BTreeSet<String> {
+        let mut matched = BTreeSet::new();
+        for start in 0..tokens.len() {
+            let final_index = tokens.len().min(start.saturating_add(self.max_term_words));
+            for end in (start + 1)..=final_index {
+                let term = tokens[start..end].join(" ");
+                if self.known_terms.contains(&term) {
+                    matched.insert(term);
+                }
+            }
+        }
+        matched
+    }
+
+    pub(super) fn matching_concept_ids(&self, tokens: &[String]) -> BTreeSet<String> {
+        self.matching_terms(tokens)
+            .into_iter()
+            .filter_map(|term| {
+                self.term_owners
+                    .get(&term)
+                    .map(|owner| owner.concept_id.clone())
+            })
+            .collect()
+    }
+
+    pub(super) fn distinct_concept_reason(
+        &self,
+        left: &BTreeSet<String>,
+        right: &BTreeSet<String>,
+    ) -> Option<String> {
+        left.iter().find_map(|left| {
+            right.iter().find_map(|right| {
+                (left != right)
+                    .then(|| canonicalize_term_pair(left, right))
+                    .and_then(|pair| self.distinct_concepts.get(&pair))
+                    .map(|suppression| suppression.reason.clone())
+            })
+        })
+    }
 }
 
 impl Default for LexiconPolicy {

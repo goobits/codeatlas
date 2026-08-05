@@ -25,7 +25,11 @@ struct TermAccumulator {
     names: BTreeSet<String>,
 }
 
-pub(crate) fn analyze(scan: &ScanReport, policy: &LexiconPolicy) -> LexiconReport {
+pub(crate) fn analyze(
+    scan: &ScanReport,
+    policy: &LexiconPolicy,
+    semantic_sibling_analysis: SemanticSiblingAnalysis,
+) -> LexiconReport {
     let mut symbols = Vec::new();
     collect_symbols(&scan.symbols, true, &mut symbols);
 
@@ -47,7 +51,6 @@ pub(crate) fn analyze(scan: &ScanReport, policy: &LexiconPolicy) -> LexiconRepor
         })
         .collect::<Vec<_>>();
     let conceptual_analysis = analyze_concepts(&observations, policy);
-    let semantic_sibling_analysis = SemanticSiblingAnalysis::default();
     let mut public_symbols = symbols
         .iter()
         .filter(|view| !view.symbol.export_paths.is_empty())
@@ -236,7 +239,7 @@ mod tests {
         Constructibility, Language, ParameterRequirement, ParameterRole, ReceiverContract,
         ScanReport, SemanticType, Symbol, SymbolKind, Visibility,
     };
-    use crate::lexicon::concept_policy::LexiconPolicy;
+    use crate::lexicon::{concept_policy::LexiconPolicy, SemanticSiblingAnalysis};
 
     fn symbol(
         file_path: &str,
@@ -359,7 +362,11 @@ mod tests {
             ..ScanReport::default()
         };
 
-        let report = analyze(&scan, &LexiconPolicy::default());
+        let report = analyze(
+            &scan,
+            &LexiconPolicy::default(),
+            SemanticSiblingAnalysis::default(),
+        );
 
         assert_eq!(report.name_collisions[0].name, "FluidSurfaceState");
         assert!(report.shape_aliases.iter().any(|alias| {

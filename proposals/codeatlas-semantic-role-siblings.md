@@ -1,6 +1,6 @@
 # Semantic-role sibling evidence
 
-Status: Accepted advisory child; Phase 1 complete, Phase 2 pending
+Status: Accepted advisory child; Phase 2 complete, Phase 3 pending
 
 Decision scope: Deterministic evidence for conceptually duplicated
 implementations across explicitly configured sibling packages or modules
@@ -301,9 +301,9 @@ Checkpoint evidence:
 
 ## Phase 2: Tier 1 analyzer and renderers
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +450-700 / -30-80
+Measured LOC: +1,765 / -50 authored code and fixtures
 
 Verify: Bounded nominations, discrete corroboration, mandatory counterevidence,
 all three dispositions, JSON/text output, lexicon v5 population, and
@@ -320,6 +320,25 @@ non-gating CLI behavior pass the conformance fixtures.
 ~ schemas/codeatlas-lexicon-*.schema.json
 ~ tests/cli_contract.rs
 ```
+
+Checkpoint evidence:
+
+- Nomination indexes expand only configured cross-member keys, stop at the
+  per-key and comparison-set ceilings before evaluation, and report exact
+  omitted counts without sampling or body parsing.
+- Every evaluated pair carries the ordered eight-check counterevidence set;
+  shared-contract facts cannot corroborate, and the model derives all three
+  dispositions without a score or gate.
+- Graph boundaries are indexed once before fact collection rather than scanned
+  once per callable. An ordinary unconfigured `lexicon code` run still avoids
+  source-graph construction entirely.
+- Nine focused config/model/analyzer tests pass. The real Rust CLI fixture
+  emits 43 bounded evaluations (3 review candidates, 22 separated by evidence,
+  18 inconclusive, 0 omitted), including exact action-role examples for every
+  disposition.
+- Reversing configured member order produces byte-identical JSON; every fixture
+  evaluation contains eight checks; text and JSON renderers agree; the command
+  remains exit-zero; lexicon v5 schema drift and warning-denying Clippy pass.
 
 ## Phase 3: CodeAtlas dogfood and consolidation
 

@@ -3,6 +3,9 @@ use crate::domain::EvidenceClass;
 use crate::lexicon::{
     CallableCandidateKind, ConceptCandidate, ConceptCandidateConfidence, ConceptCandidateRule,
     ConceptEvidenceRelation, ConceptSuppressionKind, LexiconReport, LexiconSymbol,
+    SemanticSiblingCorroborationKind, SemanticSiblingCounterevidenceKind,
+    SemanticSiblingCounterevidenceState, SemanticSiblingDisposition, SemanticSiblingEvidence,
+    SemanticSiblingNominationKind, SemanticSiblingOmissionKind,
 };
 
 pub(crate) fn render_text(report: &LexiconReport) -> String {
@@ -95,7 +98,179 @@ pub(crate) fn render_text(report: &LexiconReport) -> String {
         ));
     }
     render_conceptual_analysis(report, &mut output);
+    render_semantic_sibling_analysis(report, &mut output);
     output
+}
+
+fn render_semantic_sibling_analysis(report: &LexiconReport, output: &mut String) {
+    output.push_str(&format!(
+        "\nSemantic sibling analysis ({} sets · {} evaluations · {} review candidates · {} omitted)\n",
+        report.stats.semantic_sibling_comparison_sets,
+        report.stats.semantic_sibling_evaluations,
+        report.stats.semantic_sibling_review_candidates,
+        report.stats.semantic_sibling_omitted_nominations
+    ));
+    if report
+        .semantic_sibling_analysis
+        .comparison_sets()
+        .is_empty()
+    {
+        output.push_str("  none configured\n");
+        return;
+    }
+    for comparison_set in report.semantic_sibling_analysis.comparison_sets() {
+        let purpose = comparison_set
+            .purpose()
+            .map(|purpose| format!(" · {purpose}"))
+            .unwrap_or_default();
+        output.push_str(&format!(
+            "- {}{purpose}: {} members, {} / {} nominations, {} omitted\n",
+            comparison_set.id(),
+            comparison_set.members().len(),
+            comparison_set.nominations_considered(),
+            comparison_set.maximum_nominations(),
+            comparison_set.omitted_nominations()
+        ));
+        for member in comparison_set.members() {
+            output.push_str(&format!(
+                "  member {}: {}\n",
+                member.id(),
+                member.paths().join(", ")
+            ));
+        }
+        for evaluation in comparison_set.evaluations() {
+            let [left, right] = evaluation.targets();
+            output.push_str(&format!(
+                "  [{} · {} corroborations] {} <-> {}\n",
+                disposition_label(evaluation.disposition()),
+                evaluation.corroboration_count(),
+                left.id(),
+                right.id()
+            ));
+            output.push_str(&format!(
+                "    targets: {}/{} ({}) · {}/{} ({})\n",
+                left.member_id(),
+                left.file_path(),
+                left.id(),
+                right.member_id(),
+                right.file_path(),
+                right.id()
+            ));
+            output.push_str(&format!(
+                "    nomination: {} {:?} · {}\n",
+                nomination_label(evaluation.nomination().kind()),
+                evaluation.nomination().key(),
+                format_semantic_evidence(evaluation.nomination().evidence())
+            ));
+            for corroboration in evaluation.corroborations() {
+                output.push_str(&format!(
+                    "    corroboration: {} · {}\n",
+                    corroboration_label(corroboration.kind()),
+                    format_semantic_evidence(corroboration.evidence())
+                ));
+            }
+            for check in evaluation.counterevidence_checks() {
+                output.push_str(&format!(
+                    "    counterevidence: {}={} · {} · {}\n",
+                    counterevidence_label(check.kind()),
+                    counterevidence_state_label(check.state()),
+                    check.reason(),
+                    format_semantic_evidence(check.evidence())
+                ));
+            }
+        }
+        for omission in comparison_set.omissions() {
+            output.push_str(&format!(
+                "  omitted: {} {} {:?} · {} · {}\n",
+                omission.count(),
+                omission_label(omission.kind()),
+                omission.key(),
+                nomination_label(omission.nomination()),
+                omission.reason()
+            ));
+        }
+    }
+}
+
+fn format_semantic_evidence(evidence: &[SemanticSiblingEvidence]) -> String {
+    evidence
+        .iter()
+        .map(|evidence| format!("{}: {}", evidence.source().id(), evidence.fact()))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn nomination_label(kind: SemanticSiblingNominationKind) -> &'static str {
+    match kind {
+        SemanticSiblingNominationKind::SameDeclaredContract => "same_declared_contract",
+        SemanticSiblingNominationKind::CanonicalActionObject => "canonical_action_object",
+        SemanticSiblingNominationKind::NamedModelRole => "named_model_role",
+        SemanticSiblingNominationKind::ConfiguredConcept => "configured_concept",
+    }
+}
+
+fn corroboration_label(kind: SemanticSiblingCorroborationKind) -> &'static str {
+    match kind {
+        SemanticSiblingCorroborationKind::ImplementationRoleMatch => "implementation_role_match",
+        SemanticSiblingCorroborationKind::EffectSetMatch => "effect_set_match",
+        SemanticSiblingCorroborationKind::ModelRoleMatch => "model_role_match",
+        SemanticSiblingCorroborationKind::ProducerPositionMatch => "producer_position_match",
+        SemanticSiblingCorroborationKind::ConsumerPositionMatch => "consumer_position_match",
+        SemanticSiblingCorroborationKind::DependencyRoleMatch => "dependency_role_match",
+        SemanticSiblingCorroborationKind::LifecycleRoleMatch => "lifecycle_role_match",
+    }
+}
+
+fn counterevidence_label(kind: SemanticSiblingCounterevidenceKind) -> &'static str {
+    match kind {
+        SemanticSiblingCounterevidenceKind::ConflictingOrUnknownEffects => {
+            "conflicting_or_unknown_effects"
+        }
+        SemanticSiblingCounterevidenceKind::DifferentAuthorityOrSecurityBoundaries => {
+            "different_authority_or_security_boundaries"
+        }
+        SemanticSiblingCounterevidenceKind::DifferentLifecycleOrCleanupOwnership => {
+            "different_lifecycle_or_cleanup_ownership"
+        }
+        SemanticSiblingCounterevidenceKind::IncompatibleResultOrErrorSemantics => {
+            "incompatible_result_or_error_semantics"
+        }
+        SemanticSiblingCounterevidenceKind::DisjointProducerOrConsumerRoles => {
+            "disjoint_producer_or_consumer_roles"
+        }
+        SemanticSiblingCounterevidenceKind::DifferentExternallyOwnedProtocolObligations => {
+            "different_externally_owned_protocol_obligations"
+        }
+        SemanticSiblingCounterevidenceKind::DistinctConfiguredConcepts => {
+            "distinct_configured_concepts"
+        }
+        SemanticSiblingCounterevidenceKind::IncompleteGraphOrTypeEvidence => {
+            "incomplete_graph_or_type_evidence"
+        }
+    }
+}
+
+fn counterevidence_state_label(state: SemanticSiblingCounterevidenceState) -> &'static str {
+    match state {
+        SemanticSiblingCounterevidenceState::Present => "present",
+        SemanticSiblingCounterevidenceState::Absent => "absent",
+        SemanticSiblingCounterevidenceState::Unknown => "unknown",
+    }
+}
+
+fn disposition_label(disposition: SemanticSiblingDisposition) -> &'static str {
+    match disposition {
+        SemanticSiblingDisposition::ReviewCandidate => "review_candidate",
+        SemanticSiblingDisposition::SeparateByEvidence => "separate_by_evidence",
+        SemanticSiblingDisposition::Inconclusive => "inconclusive",
+    }
+}
+
+fn omission_label(kind: SemanticSiblingOmissionKind) -> &'static str {
+    match kind {
+        SemanticSiblingOmissionKind::PerKeyLimit => "per_key_limit",
+        SemanticSiblingOmissionKind::ComparisonSetLimit => "comparison_set_limit",
+    }
 }
 
 fn resolve_evidence_name(evidence: EvidenceClass) -> &'static str {

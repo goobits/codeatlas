@@ -31,6 +31,10 @@ impl SemanticSiblingAnalysis {
         self.comparison_sets.len()
     }
 
+    pub(crate) fn comparison_sets(&self) -> &[SemanticSiblingComparisonSetAnalysis] {
+        &self.comparison_sets
+    }
+
     pub(crate) fn review_candidate_count(&self) -> usize {
         self.comparison_sets
             .iter()
@@ -115,23 +119,22 @@ impl SemanticSiblingComparisonSetAnalysis {
                 .then_with(|| left.nomination.key.cmp(&right.nomination.key))
         });
         omissions.sort();
-        let omitted_nominations = omissions.iter().map(|omission| omission.count).sum();
-        let bounded_total = evaluations
-            .len()
-            .checked_add(omitted_nominations)
-            .ok_or_else(|| anyhow::anyhow!("Semantic sibling nomination count overflow"))?;
+        let omitted_nominations = omissions.iter().try_fold(0usize, |total, omission| {
+            total
+                .checked_add(omission.count)
+                .ok_or_else(|| anyhow::anyhow!("Semantic sibling omission count overflow"))
+        })?;
+        if nominations_considered > maximum_nominations {
+            bail!(
+                "Semantic sibling comparison set {id:?} considered {nominations_considered} nominations above its limit {maximum_nominations}"
+            );
+        }
         if nominations_considered != evaluations.len() {
             bail!(
                 "Semantic sibling comparison set {id:?} considered {nominations_considered} nominations but contains {} evaluations",
                 evaluations.len()
             );
         }
-        if bounded_total > maximum_nominations {
-            bail!(
-                "Semantic sibling comparison set {id:?} accounts for {bounded_total} nominations above its limit {maximum_nominations}"
-            );
-        }
-
         Ok(Self {
             id,
             purpose,
@@ -142,6 +145,38 @@ impl SemanticSiblingComparisonSetAnalysis {
             omitted_nominations,
             omissions,
         })
+    }
+
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub(crate) fn purpose(&self) -> Option<&str> {
+        self.purpose.as_deref()
+    }
+
+    pub(crate) fn members(&self) -> &[SemanticSiblingMember] {
+        &self.members
+    }
+
+    pub(crate) fn maximum_nominations(&self) -> usize {
+        self.maximum_nominations
+    }
+
+    pub(crate) fn nominations_considered(&self) -> usize {
+        self.nominations_considered
+    }
+
+    pub(crate) fn evaluations(&self) -> &[SemanticSiblingEvaluation] {
+        &self.evaluations
+    }
+
+    pub(crate) fn omitted_nominations(&self) -> usize {
+        self.omitted_nominations
+    }
+
+    pub(crate) fn omissions(&self) -> &[SemanticSiblingOmission] {
+        &self.omissions
     }
 }
 
@@ -159,6 +194,14 @@ impl SemanticSiblingMember {
         paths.sort();
         paths.dedup();
         Ok(Self { id, paths })
+    }
+
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub(crate) fn paths(&self) -> &[String] {
+        &self.paths
     }
 }
 
@@ -204,6 +247,30 @@ impl SemanticSiblingEvaluation {
             disposition,
         })
     }
+
+    pub(crate) fn targets(&self) -> &[SemanticSiblingTarget; 2] {
+        &self.targets
+    }
+
+    pub(crate) fn nomination(&self) -> &SemanticSiblingNomination {
+        &self.nomination
+    }
+
+    pub(crate) fn corroborations(&self) -> &[SemanticSiblingCorroboration] {
+        &self.corroborations
+    }
+
+    pub(crate) fn counterevidence_checks(&self) -> &[SemanticSiblingCounterevidenceCheck] {
+        &self.counterevidence_checks
+    }
+
+    pub(crate) fn corroboration_count(&self) -> usize {
+        self.corroboration_count
+    }
+
+    pub(crate) fn disposition(&self) -> SemanticSiblingDisposition {
+        self.disposition
+    }
 }
 
 #[derive(JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -223,6 +290,18 @@ impl SemanticSiblingTarget {
             member_id,
             file_path,
         })
+    }
+
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub(crate) fn member_id(&self) -> &str {
+        &self.member_id
+    }
+
+    pub(crate) fn file_path(&self) -> &str {
+        &self.file_path
     }
 }
 
@@ -249,6 +328,18 @@ impl SemanticSiblingNomination {
             key,
             evidence,
         })
+    }
+
+    pub(crate) fn kind(&self) -> SemanticSiblingNominationKind {
+        self.kind
+    }
+
+    pub(crate) fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub(crate) fn evidence(&self) -> &[SemanticSiblingEvidence] {
+        &self.evidence
     }
 }
 
@@ -286,6 +377,14 @@ impl SemanticSiblingCorroboration {
         evidence.sort();
         evidence.dedup();
         Ok(Self { kind, evidence })
+    }
+
+    pub(crate) fn kind(&self) -> SemanticSiblingCorroborationKind {
+        self.kind
+    }
+
+    pub(crate) fn evidence(&self) -> &[SemanticSiblingEvidence] {
+        &self.evidence
     }
 }
 
@@ -326,6 +425,14 @@ impl SemanticSiblingEvidence {
             source,
             fact,
         })
+    }
+
+    pub(crate) fn source(&self) -> &SemanticSiblingTarget {
+        &self.source
+    }
+
+    pub(crate) fn fact(&self) -> &str {
+        &self.fact
     }
 }
 
@@ -371,6 +478,22 @@ impl SemanticSiblingCounterevidenceCheck {
             reason: "required evidence was not supplied".to_string(),
             evidence: Vec::new(),
         }
+    }
+
+    pub(crate) fn kind(&self) -> SemanticSiblingCounterevidenceKind {
+        self.kind
+    }
+
+    pub(crate) fn state(&self) -> SemanticSiblingCounterevidenceState {
+        self.state
+    }
+
+    pub(crate) fn reason(&self) -> &str {
+        &self.reason
+    }
+
+    pub(crate) fn evidence(&self) -> &[SemanticSiblingEvidence] {
+        &self.evidence
     }
 }
 
@@ -443,6 +566,26 @@ impl SemanticSiblingOmission {
             count,
             reason,
         })
+    }
+
+    pub(crate) fn kind(&self) -> SemanticSiblingOmissionKind {
+        self.kind
+    }
+
+    pub(crate) fn nomination(&self) -> SemanticSiblingNominationKind {
+        self.nomination
+    }
+
+    pub(crate) fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub(crate) fn count(&self) -> usize {
+        self.count
+    }
+
+    pub(crate) fn reason(&self) -> &str {
+        &self.reason
     }
 }
 
@@ -678,7 +821,7 @@ mod tests {
             members,
             3,
             1,
-            vec![evaluation],
+            vec![evaluation.clone()],
             vec![omission],
         )
         .expect("comparison set");
@@ -698,17 +841,10 @@ mod tests {
                 SemanticSiblingMember::new("beta".to_string(), vec!["b".to_string()])
                     .expect("member"),
             ],
+            1,
             2,
-            0,
+            vec![evaluation],
             Vec::new(),
-            vec![SemanticSiblingOmission::new(
-                SemanticSiblingOmissionKind::ComparisonSetLimit,
-                SemanticSiblingNominationKind::ConfiguredConcept,
-                "overflow".to_string(),
-                3,
-                "comparison-set ceiling reached".to_string(),
-            )
-            .expect("omission")],
         );
         assert!(invalid.is_err());
     }

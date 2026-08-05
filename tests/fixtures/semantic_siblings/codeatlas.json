@@ -1,0 +1,22 @@
+{
+  "root": ".",
+  "languages": ["rs"],
+  "entrypoints": ["src/lib.rs"],
+  "include_private": true,
+  "package_exports": false,
+  "lexicon": {
+    "semantic_siblings": {
+      "comparison_sets": [
+        {
+          "id": "fixture_adapters",
+          "purpose": "exercise every semantic sibling disposition deterministically",
+          "members": [
+            { "id": "alpha", "paths": ["src/alpha.rs"] },
+            { "id": "beta", "paths": ["src/beta.rs"] }
+          ],
+          "maximum_nominations": 100
+        }
+      ]
+    }
+  }
+}

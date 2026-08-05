@@ -641,13 +641,15 @@ Status: [x] Complete
 
 Active child: semantic-role siblings Phases 2 and 3.
 
-- [ ] Build bounded nomination indexes from contract roles, effects, named
+Status: [~] In progress
+
+- [x] Build bounded nomination indexes from contract roles, effects, named
   models, graph positions, and configured concepts without all-pairs scanning.
-- [ ] Evaluate each nomination with discrete independent corroborations and the
+- [x] Evaluate each nomination with discrete independent corroborations and the
   complete mandatory counterevidence checklist.
-- [ ] Produce exact `review_candidate`, `separate_by_evidence`, and
+- [x] Produce exact `review_candidate`, `separate_by_evidence`, and
   `inconclusive` dispositions with stable truncation and omission evidence.
-- [ ] Add deterministic JSON and text rendering, lexicon schema publication,
+- [x] Add deterministic JSON and text rendering, lexicon schema publication,
   report statistics, and permanently non-gating CLI behavior.
 - [ ] Declare CodeAtlas's language-adapter and HTTP-source-detector comparison
   sets and classify every bounded dogfood result.
@@ -1079,6 +1081,11 @@ Phases 1 through 3.
 - 2026-08-05: semantic-sibling Phase 1 passes strict config/model/schema/CLI
   checks and static self-dogfood; lexicon v5 is the sole published schema and
   shared-contract evidence cannot become corroboration.
+- 2026-08-05: semantic-sibling Phase 2 passes bounded nomination and complete
+  counterevidence tests, deterministic real-source CLI fixtures for all three
+  dispositions, lexicon v5 drift checks, and warning-denying Clippy. Graph
+  boundary evidence is indexed once and unconfigured lexicon runs retain their
+  existing scan-only path.
 
 ## Existing-first check
 
@@ -1168,7 +1175,7 @@ is deleted; lexicon/cache/schema identities are exact.
 
 ## Program stage 6: Semantic-role siblings
 
-Status: [~] Accepted advisory analysis; Phase 1 complete, analyzer next
+Status: [~] Accepted advisory analysis; Phases 1-2 complete, dogfood next
 
 LOC: +850-1,350 / -100-250
 

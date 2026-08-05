@@ -530,6 +530,109 @@ fn lexicon_rejects_provider_bytes_that_do_not_match_the_manifest_digest() {
 }
 
 #[test]
+fn semantic_sibling_analysis_is_deterministic_complete_and_non_gating() {
+    let fixture = fixture("semantic_siblings");
+    let config_path = fixture.join("codeatlas.json");
+    let fixture_root = fixture.to_str().expect("fixture path should be UTF-8");
+    let config = config_path
+        .to_str()
+        .expect("fixture config path should be UTF-8");
+    let first = run(&[
+        "--root",
+        fixture_root,
+        "lexicon",
+        "code",
+        "--format",
+        "json",
+        "--config",
+        config,
+    ]);
+    assert_success(&first, "semantic sibling JSON report");
+
+    let report: Value = serde_json::from_slice(&first.stdout)
+        .expect("semantic sibling report should be valid JSON");
+    assert_eq!(report["schema_version"], 5);
+    assert_eq!(report["stats"]["semantic_sibling_comparison_sets"], 1);
+    let analysis = &report["semantic_sibling_analysis"];
+    let comparison_sets = analysis["comparison_sets"]
+        .as_array()
+        .expect("semantic sibling comparison sets should be an array");
+    assert_eq!(comparison_sets.len(), 1);
+    let evaluations = comparison_sets[0]["evaluations"]
+        .as_array()
+        .expect("semantic sibling evaluations should be an array");
+    assert!(!evaluations.is_empty());
+    assert!(evaluations.iter().all(|evaluation| {
+        evaluation["counterevidence_checks"]
+            .as_array()
+            .is_some_and(|checks| checks.len() == 8)
+    }));
+
+    let disposition_for = |key: &str| {
+        evaluations
+            .iter()
+            .find(|evaluation| {
+                evaluation["nomination"]["kind"] == "canonical_action_object"
+                    && evaluation["nomination"]["key"] == key
+            })
+            .and_then(|evaluation| evaluation["disposition"].as_str())
+    };
+    assert_eq!(disposition_for("read_record"), Some("review_candidate"));
+    assert_eq!(
+        disposition_for("write_record"),
+        Some("separate_by_evidence")
+    );
+    assert_eq!(disposition_for("transform_record"), Some("inconclusive"));
+    assert!(!analysis.to_string().contains("\"gate"));
+
+    let reordered = TestDirectory::create("codeatlas-semantic-siblings-order");
+    let mut reordered_config: Value = serde_json::from_slice(
+        &fs::read(&config_path).expect("semantic sibling fixture config should be readable"),
+    )
+    .expect("semantic sibling fixture config should be JSON");
+    reordered_config["root"] = Value::String(fixture_root.to_string());
+    reordered_config["lexicon"]["semantic_siblings"]["comparison_sets"][0]["members"]
+        .as_array_mut()
+        .expect("semantic sibling fixture members should be an array")
+        .reverse();
+    write(
+        &reordered,
+        "codeatlas.json",
+        &serde_json::to_string_pretty(&reordered_config).expect("reordered fixture config"),
+    );
+    let reordered_config_path = reordered.path().join("codeatlas.json");
+    let second = run(&[
+        "--root",
+        fixture_root,
+        "lexicon",
+        "code",
+        "--format",
+        "json",
+        "--config",
+        reordered_config_path
+            .to_str()
+            .expect("reordered config path should be UTF-8"),
+    ]);
+    assert_success(&second, "reordered semantic sibling JSON report");
+    assert_eq!(first.stdout, second.stdout);
+
+    let text = run(&[
+        "--root",
+        fixture_root,
+        "lexicon",
+        "code",
+        "--config",
+        config,
+    ]);
+    assert_success(&text, "semantic sibling text report");
+    let text = String::from_utf8(text.stdout).expect("semantic sibling text should be UTF-8");
+    assert!(text.contains("Semantic sibling analysis"));
+    assert!(text.contains("review_candidate"));
+    assert!(text.contains("separate_by_evidence"));
+    assert!(text.contains("inconclusive"));
+}
+
+#[test]
 fn workspace_lexicon_preserves_package_ownership_and_public_exposure() {
     let fixture = fixture("testing");
     let config = fixture.join("codeatlas.json");

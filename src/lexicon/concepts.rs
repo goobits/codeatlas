@@ -158,19 +158,7 @@ fn collect_usages(
 ) -> BTreeMap<String, Vec<LexiconSymbol>> {
     let mut usages = BTreeMap::<String, BTreeMap<String, LexiconSymbol>>::new();
     for observation in observations {
-        let mut matched_terms = BTreeSet::new();
-        for start in 0..observation.tokens.len() {
-            let final_index = observation
-                .tokens
-                .len()
-                .min(start.saturating_add(policy.max_term_words));
-            for end in (start + 1)..=final_index {
-                let term = observation.tokens[start..end].join(" ");
-                if policy.known_terms.contains(&term) {
-                    matched_terms.insert(term);
-                }
-            }
-        }
+        let matched_terms = policy.matching_terms(observation.tokens);
         if !matched_terms.is_empty() {
             let symbol = project_symbol(observation.symbol);
             for term in matched_terms {

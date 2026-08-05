@@ -29,7 +29,9 @@ pub(crate) use postgres::{
     PostgresConfig, PostgresContractConfig, PostgresLintConfig, PostgresPsqlMetaCommandMode,
     PostgresSqlSourceConfig, PostgresTargetConfig, PostgresTransactionMode,
 };
-pub(crate) use semantic_siblings::ResolvedSemanticSiblingComparisonSet;
+pub(crate) use semantic_siblings::{
+    ResolvedSemanticSiblingComparisonSet, ResolvedSemanticSiblingPath, SemanticSiblingPathKind,
+};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -223,10 +225,6 @@ impl ProjectConfig {
         &self.config_evidence
     }
 
-    #[allow(
-        dead_code,
-        reason = "Phase 1 pins resolved comparison sets before the Phase 2 analyzer consumes them"
-    )]
     pub(crate) fn semantic_sibling_comparison_sets(
         &self,
     ) -> &[ResolvedSemanticSiblingComparisonSet] {

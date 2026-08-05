@@ -38,7 +38,22 @@ fn run_inner(
     } else {
         scan_source(&project)?
     };
-    let report = lexicon::analyze(&scan, &policy);
+    let semantic_sibling_analysis = if project.semantic_sibling_comparison_sets().is_empty() {
+        lexicon::SemanticSiblingAnalysis::default()
+    } else {
+        let projects = if workspace {
+            project.workspace_analysis_projects()?
+        } else {
+            project.analysis_projects()?
+        };
+        let graph = crate::languages::reachability::build_source_graph(&projects)?;
+        lexicon::analyze_semantic_siblings(
+            &graph,
+            project.semantic_sibling_comparison_sets(),
+            &policy,
+        )?
+    };
+    let report = lexicon::analyze(&scan, &policy, semantic_sibling_analysis);
     let rendered = match format {
         LexiconFormat::Text => outputs::lexicon::render_text(&report),
         LexiconFormat::Json => outputs::lexicon::render_json(&report)?,
