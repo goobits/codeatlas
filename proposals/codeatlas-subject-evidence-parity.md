@@ -1,7 +1,7 @@
 # HTTP and PostgreSQL evidence parity
 
-Status: Accepted follow-on; implementation waits for stable callable and
-PostgreSQL contract evidence
+Status: Accepted follow-on; repository-scope Phase 1 is ready, and later public
+reports wait for stable query and runtime artifact identities
 
 Decision scope: Repository scope, HTTP/PostgreSQL usage and inspection,
 HTTP/PostgreSQL docs, truthful code/HTTP initialization, and cross-subject
@@ -14,9 +14,12 @@ Depends on:
 - [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md)
   for typed artifact references when an optional observation enriches static
   PostgreSQL evidence.
-- [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) and
-  [`codeatlas-postgres-fuzzing.md`](codeatlas-postgres-fuzzing.md) for the final
-  callable/query contract identities consumed by inspection and lexicon.
+- [`codeatlas-structured-callable-evidence.md`](codeatlas-structured-callable-evidence.md)
+  and [`codeatlas-postgres-fuzzing.md`](codeatlas-postgres-fuzzing.md) Phase 1
+  for static callable/query identities consumed by usage and docs.
+- [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) and the live
+  PostgreSQL phases for final report/observation identities consumed by
+  inspection and repository lexicon evidence.
 
 Unblocks: Richer performance attribution and repository-wide target selection
 

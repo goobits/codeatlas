@@ -1,7 +1,7 @@
 # PostgreSQL parameter fuzzing
 
-Status: Accepted follow-on; implementation waits for callable corpus and the
-execution kernel
+Status: Accepted follow-on; static Phase 1 is ready, live phases wait for the
+execution sandbox, and generated fuzzing also waits for the shared corpus
 
 Decision scope: Typed PostgreSQL parameter contracts, deterministic value
 generation, guarded execution, reduction, and `fuzz postgres`
@@ -9,8 +9,9 @@ generation, guarded execution, reduction, and `fuzz postgres`
 Depends on:
 
 - [`codeatlas-evidence-lifecycle-cli.md`](codeatlas-evidence-lifecycle-cli.md)
-- [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md),
-  including a passing Phase 4 isolation backend
+- [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md)
+  for the existing target/artifact contracts in static Phase 1 and a passing
+  Phase 4 isolation backend before live Phases 2 through 4
 
 Phase 3 additionally consumes only the shared `src/fuzz/corpus.rs` foundation
 from [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) Phase 1; PostgreSQL

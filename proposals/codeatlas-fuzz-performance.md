@@ -459,12 +459,16 @@ governance + CLI lifecycle hard cut
                                            cost-guided isolated search
 ```
 
-The recommended single-worker order is: finish the proposal/schema contract
-pass; publish current schemas; add the CodeAtlas HQA renderer; build the kernel
-and migrate HTTP; complete the kernel-owned CLI normalization; land structured
-callable evidence; dogfood semantic-role siblings; add code fuzzing; add
-PostgreSQL fuzzing and finish its observation-dependent CLI cut; fill static
-subject parity; then add performance and separately gated cost search.
+The recommended single-worker order is dependency driven, with one deliberate
+gate-preemption rule. Finish the currently dirty structured-callable slice,
+take the OCI backend to its locally verifiable boundary, and run the live
+isolation suite as soon as a capable runner exists. While that external
+capability is unavailable, continue only the independent static lane:
+semantic-role siblings, the static PostgreSQL query contract, and the first
+subject-parity foundation phase. After isolation passes, finish HTTP migration,
+code fuzzing, PostgreSQL live execution and fuzzing, the observation-dependent
+CLI cut, remaining subject parity, performance, separately gated profiler
+attribution, and cost-guided search.
 
 The static schema/HQA and structured-evidence/sibling branches do not require a
 sandbox. Their position minimizes later artifact and adapter churn. PostgreSQL
@@ -474,38 +478,580 @@ but intentionally follows parity so its first attribution model is not
 immediately replaced. Cost-guided work waits for explicit accepted
 metric-feedback and threshold-preserving shrink capabilities.
 
-## Live execution checklist
+## Canonical v1 completion tracker
 
-Keep this program-level checkpoint synchronized whenever a child phase starts,
-finishes, blocks, or changes order. The active child proposal holds its more
-detailed checklist.
+Tracker date: 2026-08-04
 
-- [x] Original seven-document fuzz/performance suite corrected and committed as
-  `6845a24`.
-- [x] Governance, lexicon, standalone Cargo boundary, self-configuration, and
-  external self-audit foundation.
-- [~] Evidence lifecycle CLI: testing and architecture hard cuts plus shared
-  execution flags are complete; PostgreSQL observation routing waits for its
-  accepted owner.
-- [x] Eleven-child proposal/schema convergence pass: four child proposals, RFC
-  8785 plan identity, interop corrections, extracted callable ownership, links,
-  and exact LOC arithmetic are internally verified.
-- [x] Published CodeAtlas schemas and drift enforcement: 25 current roots,
-  prospective artifact identity, and the CodeAtlas annotation namespace are
-  complete.
-- [x] CodeAtlas HQA application-inventory renderer; deterministic external-v1
-  projection complete with no HQA repository edits.
-- [~] Execution kernel: governance, immutable artifacts, and pre-call
-  budget/proxy Phases 1-3 are complete; verified isolation Phase 4 is active,
-  with HTTP migration next.
-- [ ] Structured callable/effect evidence and lexicon v4.
-- [ ] Advisory semantic-role sibling evidence and CodeAtlas dogfood.
-- [ ] Callable code fuzzing and shared boundary corpus.
-- [ ] PostgreSQL fuzzing and observation lifecycle.
-- [ ] HTTP/PostgreSQL evidence parity.
-- [ ] Performance curves, regressions, candidates, and gated profiler evidence.
-- [ ] Cost-guided isolated search.
-- [ ] Whole-program consolidation, dogfood, docs honesty, and release hardening.
+This is the one cross-program ordering and progress tracker. Child proposals
+remain the normative owners for behavior, acceptance evidence, and file
+manifests. Their phase statuses are subordinate checkpoints and must be updated
+with this section when a phase starts, completes, blocks, or changes order. Do
+not create another program roadmap or copy these tasks into a scratch document.
+
+### Current verdict
+
+The public grammar, schema registry, HQA renderer, immutable execution
+artifacts, and enforcing HTTP call budget are complete. Structured callable
+evidence is the active dirty slice. The current host cannot grant an OCI
+isolation capability, so live execution remains plan-only here, but that does
+not block the static evidence lane. On implementation progress rather than
+proposal-design progress, the complete program is approximately 30 percent
+done.
+
+### Order and ownership rules
+
+1. Finish and commit the active dirty slice before changing product areas.
+2. Shared contracts land before their second consumer. No child creates a
+   private callable parser, corpus lattice, executor, artifact resolver,
+   limiter, paginator, config editor, or metrics owner.
+3. The OCI proof is the execution critical path. A capable runner preempts the
+   independent static queue so the isolation gate closes as soon as possible.
+4. Missing isolation always means plan-only. Static work may continue, but no
+   HTTP, callable, PostgreSQL, performance, profiler, or cost workload runs.
+5. PostgreSQL Phase 1 and subject-parity Phase 1 are static and may run before
+   the live sandbox gate. Usage, docs, and inspection wait for the accepted
+   observation identity so their first public schema is not knowingly replaced.
+6. The evidence-lifecycle CLI closes only after `PostgresObservation` has one
+   published owner. Baseline and diff never create that observation.
+7. Profiler attribution and domain cost-search bridges start only after their
+   named capability evidence passes. The full-program authorization does not
+   turn an unproved backend feature into a capability.
+8. Every public JSON change updates its model, namespaced identity, generated
+   schema, fixture, drift check, and retired schema in one commit.
+9. Every implementation phase ends with focused tests, applicable acceptance
+   tests, bounded CodeAtlas self-dogfood, an external-state audit, staged and
+   unstaged diff review, and one scoped commit. Full output stays under the
+   external task root and only status, counts, digests, and short failure tails
+   enter the working context.
+10. Stable Mill is considered only at a clean committed HEAD and only when it
+    advertises the exact deterministic refactor needed. It is never a phase
+    dependency or a reason to delay ordinary reviewed edits.
+
+### Phase 1: Finish structured callable effects and public evidence
+
+Active child:
+[`codeatlas-structured-callable-evidence.md`](codeatlas-structured-callable-evidence.md)
+Phase 1.
+
+- [ ] Implement the bounded `src/analysis/effects.rs` owner over the existing
+  source graph, with stable node, edge, effect, and work-queue ceilings.
+- [ ] Collect conservative direct filesystem, network, database, process,
+  environment, time, randomness, ambient-state, and unsupported sink facts in
+  the Rust, Python, JavaScript, and TypeScript adapters.
+- [ ] Represent unresolved dynamic call boundaries as explicit unknown evidence
+  without claiming that the absence of a known sink proves purity.
+- [ ] Propagate known effects from callee to caller through resolved lexical
+  edges with deterministic cycle handling, provenance, and ordering.
+- [ ] Attach the enriched contract once to the cached source snapshot and
+  reject stale parser, graph, and analysis identities.
+- [ ] Extend the four-language conformance table for equivalent direct,
+  propagated, unknown, receiver, overload, and block-reason behavior.
+- [ ] Generate scan v3 and context-slice v4 schemas, delete the replaced schema
+  files, and update package drift assertions in the same slice.
+- [ ] Prove zero target calls, deterministic bytes, bounded failure behavior,
+  external-only generated state, and exact target stability through focused
+  tests and CodeAtlas dogfood.
+- [ ] Synchronize the child and umbrella checkpoints and commit callable Phase
+  1 without unrelated paths.
+
+### Phase 2: Migrate every callable consumer
+
+Active child: structured callable evidence Phase 2.
+
+- [ ] Move lexicon callable shape and role evidence to `CallableContract`.
+- [ ] Move public API witness parameter and constructibility evidence to the
+  same contract and existing symbol identity.
+- [ ] Confirm scan and inspect expose one shared serialized callable rather
+  than a presentation-specific projection used as policy evidence.
+- [ ] Measure the lexicon JSON change. Bump to v4 only when bytes or meaning
+  actually change, then regenerate the exact schema and fixtures.
+- [ ] Delete `src/lexicon/callable_contract.rs` and every display-signature
+  policy parser, import, fallback, stale cache identity, and compatibility
+  projection.
+- [ ] Search the repository for a second callable/type/effect owner and rehome
+  any discovered logic before adding another consumer.
+- [ ] Run focused lexicon, witness, scan, inspect, schema, and CLI checks plus
+  the bounded self-dogfood set.
+- [ ] Commit consumer migration and the retired heuristic as one clean Phase 2
+  checkpoint.
+
+### Phase 3: Harden and dogfood structured callable evidence
+
+Active child: structured callable evidence Phase 3.
+
+- [ ] Add only exact, digest-bound CodeAtlas receiver, invariant, or known
+  effect declarations that the self-dogfood corpus genuinely needs.
+- [ ] Classify CodeAtlas's own callable and effect findings, including unknown
+  boundaries, rather than suppressing inconvenient evidence.
+- [ ] Confirm exact scan, witness, lexicon, and inspect target identities remain
+  stable across cold and warm source-index runs.
+- [ ] Update the canonical lexicon, user-facing contract docs, dependent
+  proposal assumptions, and self-audit task with the accepted evidence shape.
+- [ ] Verify no duplicate model, parser, cache identity, old schema, stale
+  fixture, target call, or checkout-local generated state remains.
+- [ ] Run the required full checks and self-dogfood, synchronize statuses, and
+  commit structured-callable Phase 3.
+
+### Phase 4: Complete the locally verifiable OCI implementation
+
+Active child: [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md)
+Phase 4. This phase remains incomplete until Phase 9's live proof passes.
+
+- [ ] Implement one OCI sandbox command owner with exact runtime fingerprint,
+  digest-pinned image, cleared client environment, and no ambient context or
+  credential lookup.
+- [ ] Enforce a read-only checkout and runtime, one external writable scratch
+  root, path confinement, and symlink/traversal rejection in the planned mount
+  set.
+- [ ] Enforce default-denied environment, process, and network policy with
+  exact planned exceptions and no child-visible runtime control socket.
+- [ ] Bound captured output, elapsed time, CPU, RSS, processes, descriptors,
+  result bytes, cancellation, and reserved cleanup through the shared runner.
+- [ ] Connect sandbox capability evidence, resource samples, cleanup leases,
+  and non-passing partial outcomes to the canonical receipt.
+- [ ] Build target-observed conformance fixtures for every advertised
+  capability without granting a capability from declarations or fake runtime
+  health alone.
+- [ ] Prove command construction, fail-closed selection, zero-call blocking,
+  lease release, and receipt evidence with deterministic fake-runtime tests on
+  this plan-only host.
+- [ ] Record the still-unproved live matrix explicitly and commit a scoped
+  implementation checkpoint only when all locally runnable checks pass.
+
+### Phase 5: Add semantic-sibling configuration and evidence contracts
+
+Active child: [`codeatlas-semantic-role-siblings.md`](codeatlas-semantic-role-siblings.md)
+Phase 1. This static phase depends on Phase 3, not on OCI isolation.
+
+- [ ] Add strict, path-confined, nonoverlapping comparison-set configuration
+  with finite nomination ceilings and exact validation diagnostics.
+- [ ] Define nomination, corroboration, counterevidence, disposition, omission,
+  and provenance models without a score, probability, or gate field.
+- [ ] Exclude a shared trait or interface contract from its own corroboration
+  evidence by construction.
+- [ ] Register the prospective lexicon report/schema transition and cover model
+  ordering and bound behavior with the smallest fixture layer.
+- [ ] Run focused config/model/schema checks and commit the Phase 1 contract.
+
+### Phase 6: Implement and dogfood semantic-role siblings
+
+Active child: semantic-role siblings Phases 2 and 3.
+
+- [ ] Build bounded nomination indexes from contract roles, effects, named
+  models, graph positions, and configured concepts without all-pairs scanning.
+- [ ] Evaluate each nomination with discrete independent corroborations and the
+  complete mandatory counterevidence checklist.
+- [ ] Produce exact `review_candidate`, `separate_by_evidence`, and
+  `inconclusive` dispositions with stable truncation and omission evidence.
+- [ ] Add deterministic JSON and text rendering, lexicon schema publication,
+  report statistics, and permanently non-gating CLI behavior.
+- [ ] Declare CodeAtlas's language-adapter and HTTP-source-detector comparison
+  sets and classify every bounded dogfood result.
+- [ ] Rehome only demonstrated shared helpers through their real owner. Keep
+  intentional adapters separate when counterevidence supports the boundary.
+- [ ] Refuse Tier 2 body-skeleton work unless a named accepted counterexample
+  proves Tier 1 cannot answer the required question.
+- [ ] Run focused and full dogfood, delete duplicate or speculative residue,
+  and commit child Phases 2 and 3 as separate verified checkpoints.
+
+### Phase 7: Land the static PostgreSQL query contract
+
+Active child: [`codeatlas-postgres-fuzzing.md`](codeatlas-postgres-fuzzing.md)
+Phase 1. This phase is static and does not open a database connection.
+
+- [ ] Extend existing query inventory with stable query identity, placeholder
+  order, statement class, parameter and result shapes, referenced objects,
+  constraint evidence, effects, and exact block reasons.
+- [ ] Keep SQL discovery in `src/postgres/source`, query policy in the
+  PostgreSQL contract owner, and generic target/effect classification in the
+  kernel owner.
+- [ ] Classify dynamic SQL, DDL, transaction control, privileged operations,
+  filesystem/program access, external links, and unknown functions as blocked
+  before generated execution.
+- [ ] Make DML checked-policy eligible but always reviewed-plan only, never
+  single-shot, even for a local disposable target.
+- [ ] Prove deterministic IDs, parameter order, constraints, effects, and
+  eligibility against static or checked-in catalog fixtures with zero live
+  calls.
+- [ ] Publish any changed public schema, dogfood the static inventory, and
+  commit PostgreSQL Phase 1.
+
+### Phase 8: Build the repository-scope and config-edit foundation
+
+Active child: [`codeatlas-subject-evidence-parity.md`](codeatlas-subject-evidence-parity.md)
+Phase 1. This phase can start after the CLI hard cut and must not predeclare
+the later observation-backed report shapes.
+
+- [ ] Extract one ordered `RepositoryScope` for root/member ownership, config
+  digests, code contexts, HTTP contracts, PostgreSQL contracts, and truthful
+  discovery completeness.
+- [ ] Flatten one `RepositoryScopeArgs` across code, tests, lexicon, HTTP, and
+  PostgreSQL consumers without rescanning or reinterpreting `--workspace`.
+- [ ] Extract one strict JSON config-edit owner from PostgreSQL init, with
+  preview-first behavior, exact ownership refusal, reparse validation, and one
+  selected-file write.
+- [ ] Preserve single-project and pnpm-workspace code/test behavior while HTTP
+  and PostgreSQL contracts resolve through the same ordered member scope.
+- [ ] Prove generic config preview writes nothing, explicit insertion touches
+  only one selected strict config, and every repository input is bounded and
+  reused.
+- [ ] Run focused repository-scope/config tests and dogfood, then commit
+  subject-parity Phase 1 without advertising the later public commands.
+
+### Phase 9: Pass the live OCI isolation continuation gate
+
+Active child: execution kernel Phase 4. This task preempts Phases 5 through 8
+as soon as an eligible runner is available.
+
+- [ ] Resolve an exact rootful, rootless, or nested OCI runner with a local
+  socket, digest-pinned probe image, external writable state, and no need to
+  expose its control socket inside the child.
+- [ ] Run target-observed mount, absolute-path, traversal, symlink, scratch,
+  home, environment, network, subprocess, CPU, RSS, PID, descriptor, output,
+  interruption, cancellation, and cleanup conformance cases.
+- [ ] Verify every advertised capability comes from successful target-side
+  evidence and that each failed or missing probe blocks before the first call.
+- [ ] Verify rootless and nested behavior explicitly for every state the
+  backend claims rather than extrapolating from one host mode.
+- [ ] Record the runtime, client, server, image, kernel, cgroup, capability,
+  fixture, and result digests needed to reproduce the matrix.
+- [ ] Fix any backend or fixture defect and rerun the narrow failed case before
+  rerunning the complete conformance matrix.
+- [ ] Run full execution checks, CodeAtlas dogfood, and the generated-state
+  audit, then mark and commit execution Phase 4 complete.
+
+### Phase 10: Migrate HTTP fully onto the kernel
+
+Active child: execution kernel Phases 5 and 6.
+
+- [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
+  effect evidence into the shared target classifier.
+- [ ] Route reviewed and eligible single-shot HTTP runs through the same
+  persisted plan, sandbox, scheduler, permit ledger, TLS-terminating proxy,
+  redactor, lease registry, and receipt path.
+- [ ] Preserve positive, negative, boundary, unsupported-method, stateful, and
+  exact OpenAPI operation behavior while enforcing finite calls and rates.
+- [ ] Prove changed evidence refusal, managed/remote/production blocks,
+  cancellation, incomplete cleanup, and budget exhaustion from the target
+  side.
+- [ ] Delete HTTP-private plan, budget, artifact, private-filesystem, direct
+  executor, `max_examples`, and unsafe fallback owners rather than wrapping
+  them.
+- [ ] Synchronize public help, config, schemas, README, lexicon, tests, and
+  self-audit commands with the one kernel path.
+- [ ] Run focused HTTP/execution checks, the full required suite, dogfood, and
+  the checkout-state audit, then commit Phases 5 and 6 separately.
+
+### Phase 11: Build the shared corpus and callable harness foundation
+
+Active child: [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) Phase 1.
+
+- [ ] Define domain-neutral scalar and collection boundary descriptors,
+  canonical ordering, finite depth/size limits, and deterministic pairwise
+  selection in `src/fuzz/corpus.rs`.
+- [ ] Map only supported `CallableContract` types and constructibility evidence
+  into descriptors. Keep native value materialization domain-owned.
+- [ ] Persist exact deterministic prefix, seed, engine fingerprint, scheduling,
+  limits, evidence digests, and block reasons in the zero-call plan.
+- [ ] Generate all harness, manifest, compiler, package, bytecode, corpus, and
+  reproducer state under external scratch/cache roots with a read-only
+  checkout.
+- [ ] Use the shared reproducer envelope and kernel replay derivation with
+  unchanged-evidence checks and no implicit execution.
+- [ ] Require a pre-call permit for every case, retry, reduction, readiness,
+  and cleanup action, with bounded watchdog and captured output.
+- [ ] Prove path, symlink, home, `/tmp`, network, subprocess, resource, and
+  cancellation escape behavior against controlled fixtures.
+- [ ] Register report/reproducer schema changes, run foundation acceptance
+  tests, dogfood zero-call planning, and commit code-fuzz Phase 1.
+
+### Phase 12: Add four native callable fuzz adapters and self-fuzzing
+
+Active child: code fuzzing Phases 2 and 3.
+
+- [ ] Implement one pinned Rust engine adapter with exact capability,
+  deterministic-prefix, budget, replay, reduction, and oracle translation.
+- [ ] Implement the equivalent pinned Python adapter without a private parser,
+  limiter, cache, artifact, or execution path.
+- [ ] Implement one shared JavaScript/TypeScript adapter boundary with exact
+  language capability evidence and no duplicated engine provisioning.
+- [ ] Pass one cross-language semantic-type, unknown, effect, harness, engine,
+  and sandbox conformance table for every advertised feature.
+- [ ] Normalize crashes, panics, exceptions, sanitizer findings, timeouts,
+  resource limits, result-shape violations, forbidden effects, and cleanup
+  failures without calling type validity a semantic oracle.
+- [ ] Minimize only when the native adapter proves capable replay and preserve
+  the exact named oracle and remaining budget.
+- [ ] Fuzz real safe CodeAtlas CLI/config/report parsing boundaries without
+  manufacturing a public library or changing internal visibility.
+- [ ] Prove no source-local harness, dependency, cache, corpus, fake export,
+  language-private budget, unsafe fallback, or compatibility alias remains.
+- [ ] Run focused adapter suites, full checks, live isolated dogfood, and commit
+  code-fuzz Phases 2 and 3 separately.
+
+### Phase 13: Add guarded PostgreSQL execution and close the CLI lifecycle
+
+Active children: PostgreSQL fuzzing Phase 2 and evidence-lifecycle CLI Phases 3
+and 4.
+
+- [ ] Add one persistent typed PostgreSQL client for generated parameters while
+  retaining psql only for bootstrap, migrations, and psql meta-command rules.
+- [ ] Plan `test postgres` with zero database calls and bind execution to exact
+  query, catalog, target, tool, policy, and migration evidence.
+- [ ] Run psql and the typed session inside the verified sandbox with a
+  restricted role, exact network destination, shared permits, redaction,
+  resource limits, and cleanup leases.
+- [ ] Enforce parse, describe, execute, transaction, row, result-byte,
+  connection, output, cancellation, and interruption ceilings from the
+  database side.
+- [ ] Create, migrate, exercise, close, drop, and verify one disposable database
+  on every outcome, reserving cleanup capacity before ordinary work.
+- [ ] Persist one complete namespaced `PostgresObservation` with a typed content
+  ID, exact schema, source/catalog/tool digests, receipt linkage, and private
+  artifact addressing.
+- [ ] Make PostgreSQL baseline and diff load an exact `ArtifactRef`, reject
+  wrong-kind or changed evidence, and make zero live database calls.
+- [ ] Finish subject-neutral `--out`, `--format`, `--gates-only`, `--exact`, and
+  flattened execution-limit semantics with parse-time rejection of invalid
+  combinations.
+- [ ] Remove every old tests/compile/observe spelling, duplicate output option,
+  generation command, stale help example, and migration compatibility branch.
+- [ ] Run live PostgreSQL cleanup tests, CLI contract tests, schema drift,
+  self-dogfood, and full required checks, then commit PostgreSQL Phase 2 and CLI
+  Phases 3 and 4 as separate scoped checkpoints.
+
+### Phase 14: Add PostgreSQL fuzzing and harden the database boundary
+
+Active child: PostgreSQL fuzzing Phases 3 and 4.
+
+- [ ] Map catalog OIDs, domains, nullability, enums, lengths, precision, scale,
+  temporal, JSON, byte, network, array, and supported composite evidence into
+  shared corpus descriptors and PostgreSQL-native protocol values.
+- [ ] Execute deterministic boundary and bounded pairwise cases before seeded
+  adaptive cases, using one permit per SQL interaction.
+- [ ] Distinguish expected rejection from SQLSTATE, result-shape, connection,
+  resource, forbidden-effect, transaction, session, and cleanup failures.
+- [ ] Reduce and replay only against unchanged source, catalog, target, tool,
+  and policy evidence with the shared reproducer contract.
+- [ ] Prove DML remains reviewed-only, every case rolls back, nontransactional
+  residue disappears with database drop, and external effects stay blocked.
+- [ ] Prove statement, call, rate, burst, concurrency, timeout, row,
+  result-byte, output, cancellation, and cleanup limits from the database side.
+- [ ] Dogfood controlled CodeAtlas PostgreSQL fixtures and classify every
+  failure or unsupported type honestly.
+- [ ] Delete any parallel query executor, corpus lattice, budget, artifact
+  owner, `fuzz sql` alias, hidden live baseline/diff, or database residue.
+- [ ] Run focused and full static/live gates, external-state audit, and commit
+  PostgreSQL Phases 3 and 4 separately.
+
+### Phase 15: Add HTTP and PostgreSQL usage, docs, init, and inspection
+
+Active child: subject evidence parity Phases 2 through 4.
+
+- [ ] Implement truthful `init code` and `init http` proposals without URLs,
+  secrets, execution targets, completeness claims, or effect policy.
+- [ ] Implement `usage http` as known repository consumer evidence with
+  visible external/dynamic incompleteness and no `unused_route` claim.
+- [ ] Implement `usage postgres` as known static query touches with visible
+  dynamic/catalog incompleteness and no `unused_table` or `unused_column`
+  claim.
+- [ ] Render deterministic sourced HTTP and PostgreSQL Markdown/HTML docs,
+  including visible missing descriptions or catalog evidence, with zero hidden
+  live calls.
+- [ ] Prove docs `--check` never writes, init preview writes nothing, and an
+  explicit init writes only one selected strict configuration file.
+- [ ] Enrich PostgreSQL usage/docs only from an explicitly supplied exact
+  observation reference, with no hidden target or database execution.
+- [ ] Extract one generic bounded graph projection owner from code context
+  slicing without merging code, HTTP, and PostgreSQL graph semantics.
+- [ ] Keep existing code inspection bytes and cursor behavior exact after the
+  shared projection extraction.
+- [ ] Build HTTP contract, operation, schema, handler, caller, test, and
+  optional fuzz-evidence graph nodes and typed edges.
+- [ ] Build PostgreSQL contract, migration, query, parameter, table, column,
+  constraint, callsite, and optional observation graph nodes and typed edges.
+- [ ] Implement exact `inspect http` and `inspect postgres` target resolution,
+  stable ambiguity errors, depth/node limits, digested cursors, and wrong-kind
+  observation rejection.
+- [ ] Prove inspection, usage, and docs remain bounded, deterministic,
+  workspace-aware, and zero-call across cold and warm snapshots.
+- [ ] Publish each final report shape once, run focused parity dogfood, and
+  commit subject-parity Phases 2, 3, and 4 separately.
+
+### Phase 16: Add the repository lexicon and harden subject parity
+
+Active child: subject evidence parity Phases 5 and 6.
+
+- [ ] Extract typed code, HTTP, and PostgreSQL term evidence with exact subject,
+  owner, target, source, confidence, and completeness provenance.
+- [ ] Reuse one normalization and concept-policy engine while keeping subject
+  extraction in each domain adapter.
+- [ ] Implement `lexicon repository --subjects code,http,postgres` as one
+  bounded analysis, not subprocess composition or a code-command alias.
+- [ ] Treat cross-subject term relationships as evidence only and require
+  explicit policy or corroboration before semantic-equivalence claims.
+- [ ] Publish the report/schema transition and preserve focused `lexicon code`
+  behavior.
+- [ ] Search for subject-private workspace discovery, config insertion,
+  paginator, term normalization, hidden live calls, false unused labels,
+  invented descriptions, and compatibility commands, then consolidate each
+  real duplicate through its canonical owner.
+- [ ] Run full checks and code/HTTP/PostgreSQL dogfood, update the public matrix
+  and lexicon, audit external state, and commit Phases 5 and 6 separately.
+
+### Phase 17: Add base performance observations, curves, and candidates
+
+Active child: [`codeatlas-performance-evidence.md`](codeatlas-performance-evidence.md)
+Phases 1 through 3.
+
+- [ ] Define strict fixed-workload, size-ladder, cache-preparation, warmup,
+  sample, metric-capability, noise, and regression configuration.
+- [ ] Plan performance scans with zero workload calls and exact source, config,
+  target, tool, environment, dataset, and policy evidence.
+- [ ] Persist namespaced observations through the shared artifact store and
+  make check, baseline, and diff consume them with zero workload calls.
+- [ ] Execute fixed cold/warm workloads only through the verified sandbox,
+  finite kernel budgets, shared resource sampling, leases, redaction, and
+  receipts.
+- [ ] Record individual elapsed, CPU, RSS, and supported domain metrics plus
+  robust aggregates, noise floors, comparability, and inconclusive states.
+- [ ] Fit bounded size curves and gate only comparable, sufficiently stable
+  regression evidence.
+- [ ] Generate deterministic static optimization candidates from existing
+  complexity, fan, allocation, blocking-I/O, query, and call-path facts without
+  labeling them hotspots.
+- [ ] Prove source-index telemetry remains a reused primitive rather than a
+  second performance report owner.
+- [ ] Run focused lifecycle/curve/candidate tests and isolated CodeAtlas
+  performance dogfood, then commit Phases 1, 2, and 3 separately.
+
+### Phase 18: Pass the profiler continuation gate and add attribution
+
+Active child: performance evidence Phase 4.
+
+- [ ] Select one exact profiler backend only after Phase 17 records accepted
+  base measurement evidence and the backend can satisfy the sandbox contract.
+- [ ] Pin tool discovery, fingerprint, target/environment support, bounded
+  capture, output size, cleanup, and unsupported capability behavior.
+- [ ] Measure profiler overhead and rootless/nested-container behavior instead
+  of assuming ordinary measurement comparability.
+- [ ] Map frames to exact source targets where proven, retain unmapped frames,
+  and report attribution confidence and completeness.
+- [ ] Label a location a hotspot only when material runtime evidence supports
+  the claim. Keep static candidates and missing metrics visibly distinct.
+- [ ] Run focused profiler capability/attribution tests, isolated dogfood,
+  schema drift, and external-state checks, then commit Phase 4.
+
+### Phase 19: Establish CodeAtlas performance baselines
+
+Active child: performance evidence Phase 5.
+
+- [ ] Define representative CodeAtlas scan, check, usage, inspect, lexicon,
+  tests, and accepted HTTP/PostgreSQL fixture workloads with recorded file,
+  symbol, byte, and dataset scale.
+- [ ] Capture reviewed cold and warm observations and baseline artifacts on a
+  named reproducible environment.
+- [ ] Verify optimized paths preserve canonical static evidence, plan IDs,
+  decisions, errors, reports, receipts, and artifact digests.
+- [ ] Remove hidden execution, duplicate metrics owners, false hotspot labels,
+  unbounded profiles, stale observe vocabulary, and checkout-generated state.
+- [ ] Run full performance and repository checks, update docs and self-audit,
+  and commit Phase 5.
+
+### Phase 20: Add the separately gated cost-search bridge
+
+Active child: [`codeatlas-cost-guided-search.md`](codeatlas-cost-guided-search.md)
+Phases 1 through 3.
+
+- [ ] Prove at least one accepted domain adapter has a typed
+  `CostSearchCapability` for external metric feedback, threshold-preserving
+  reduction, and replay. Do not infer it from ordinary fuzz support.
+- [ ] For callable engines, state exact metric feedback, deterministic or
+  sampled objective, shrink, replay, and unsupported capability evidence.
+- [ ] For PostgreSQL, export typed supported rows, buffers, planner, and
+  execution metrics before enabling the corresponding bridge.
+- [ ] Define validated cost objectives, search-plan identity, candidate order,
+  remaining-budget accounting, confirmation, variance, and inconclusive
+  outcomes over accepted performance observations.
+- [ ] Keep target and reproducer forms zero-call until the exact persisted plan
+  is executed through the kernel.
+- [ ] Charge every candidate, retry, confirmation, reduction, and cleanup
+  interaction to finite permits without consuming the reserved cleanup share.
+- [ ] Reuse existing code/PostgreSQL contracts, corpora, materializers,
+  shrinkers, runners, metrics, reproducer envelope, and artifact resolver
+  without creating another generator or execution loop.
+- [ ] Preserve the named cost threshold during reduction and never relabel a
+  cost result as a correctness failure without a separate violated oracle.
+- [ ] Dogfood controlled parser and PostgreSQL fixtures, remove duplicate or
+  stale paths, run full checks, and commit cost-search Phases 1, 2, and 3
+  separately.
+
+### Phase 21: Whole-program v1 consolidation and signoff
+
+- [ ] Confirm every child status, phase checklist, schema version, CLI example,
+  LOC record, and dependency statement matches the implemented repository.
+- [ ] Regenerate every published schema externally and prove exact registry,
+  fixture, package, and drift-test agreement with no retired schema shipped.
+- [ ] Verify the final CLI subject matrix and reject every retired command,
+  alias, force path, unlimited sentinel, duplicate output flag, and hidden live
+  lifecycle action.
+- [ ] Search for and remove second owners of callable evidence, effects, corpus
+  primitives, plans, target classification, limits, sandboxing, artifacts,
+  replay, redaction, cleanup, tools, resource sampling, graph projection,
+  config edits, query execution, and performance metrics.
+- [ ] Run target-observed isolation, call-budget, filesystem, network, process,
+  resource, cancellation, interruption, and cleanup conformance across HTTP,
+  callable, PostgreSQL, performance, profiler, and cost-search capabilities.
+- [ ] Reprove that plan-only hosts block before the first target call and that
+  review never substitutes for a missing capability.
+- [ ] Run the complete static CodeAtlas dogfood surface and classify all gates,
+  candidates, sibling evaluations, unknown boundaries, omissions, and target
+  identities honestly.
+- [ ] Run isolated HTTP, callable, PostgreSQL, performance, profiler, and cost
+  dogfood only against exact disposable fixtures and retain plan, receipt,
+  observation, baseline, report, and reproducer digests.
+- [ ] Audit README, AGENTS.md, the canonical lexicon, architecture docs,
+  package tasks, and every proposal for truthful current behavior and one
+  preferred vocabulary.
+- [ ] Verify builds, caches, package stores, harnesses, corpora, databases,
+  profiles, observations, temporary files, and reports never appeared under
+  `/workspace`.
+- [ ] Run formatting, package checks, focused integration suites, the complete
+  required test suite, schema drift, self-audit, and release-build dogfood with
+  concise externally stored logs.
+- [ ] Inspect Git status plus staged and unstaged diffs, confirm only intended
+  source and docs remain, commit the final hardening slice, and record the
+  clean v1 evidence checkpoint.
+
+### Completed foundations
+
+- [x] Corrected and committed the original proposal suite as `6845a24`.
+- [x] Established governance, the canonical lexicon, standalone Cargo
+  ownership, external generated-state policy, and reproducible self-audit.
+- [x] Hard-cut testing and architecture into the evidence lifecycle.
+- [x] Published and drift-tested the current CodeAtlas schemas and annotation
+  namespace.
+- [x] Added the deterministic CodeAtlas HQA application-inventory renderer
+  without modifying HQA.
+- [x] Added immutable plans, receipts, typed private artifacts, canonical RFC
+  8785 plan identity, replay ownership, target classification, redaction,
+  leases, resource evidence, and shared CLI limit arguments.
+- [x] Added finite pre-call budgets, the bounded scheduler, and the enforcing
+  TLS-terminating HTTP proxy with target-observed call accounting.
+- [x] Proved fail-closed capability selection and plan-only receipts on the
+  current host without granting an unverified sandbox capability.
+- [x] Mapped callable owners, pinned the language-neutral model, and emitted
+  initial Rust, Python, JavaScript, and TypeScript contracts with conformance
+  coverage.
+
+### Verification log
+
+- 2026-08-04: proposal/schema convergence, published schemas, and HQA renderer
+  completed and committed with external generated state.
+- 2026-08-04: execution Phases 1 through 3 completed; fail-closed Phase 4
+  checkpoint committed through `c4fac1b`.
+- 2026-08-04: structured-callable conformance currently passes three focused
+  four-language cases; effect propagation and final Phase 1 verification remain.
 
 ## Existing-first check
 
@@ -581,7 +1127,7 @@ receipts, cleanup, reviewed execution, and eligible one-shot execution pass.
 
 ## Program stage 5: Structured callable evidence
 
-Status: [ ] Accepted; independent of the sandbox track
+Status: [~] Accepted; Phase 1 active independently of the sandbox track
 
 LOC: +900-1,300 / -200-350
 
@@ -623,7 +1169,8 @@ self-fuzzing pass.
 
 ## Program stage 8: PostgreSQL fuzzing
 
-Status: [ ] Accepted; runs after the callable corpus foundation
+Status: [ ] Accepted; static Phase 1 is ready, live execution waits for
+isolation, and generated cases wait for the callable corpus foundation
 
 LOC: +2,150-3,350 / -410-830
 
@@ -637,7 +1184,8 @@ baseline/diff pass.
 
 ## Program stage 9: HTTP and PostgreSQL evidence parity
 
-Status: [ ] Accepted; runs after callable and PostgreSQL contract evidence
+Status: [ ] Accepted; repository-scope Phase 1 is ready, later reports wait for
+callable, PostgreSQL, and observation identities
 
 LOC: +3,400-5,250 / -840-1,590
 
