@@ -26,7 +26,10 @@ use crate::http::{
     HTTP_FUZZ_SCHEMA_VERSION, HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION, HTTP_INSPECTION_SCHEMA_VERSION,
     HTTP_SCHEMA_VERSION, HTTP_USAGE_SCHEMA_VERSION,
 };
-use crate::lexicon::{LexiconReport, LEXICON_SCHEMA_VERSION};
+use crate::lexicon::{
+    LexiconReport, RepositoryLexiconReport, LEXICON_SCHEMA_VERSION,
+    REPOSITORY_LEXICON_SCHEMA_VERSION,
+};
 use crate::postgres::{
     PostgresBaselineReport, PostgresCheckReport, PostgresDiffReport, PostgresInspectionReport,
     PostgresInventoryReport, PostgresTestReport, PostgresUsageReport, POSTGRES_API_VERSION,
@@ -405,6 +408,12 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         PayloadVersion::from_schema(LEXICON_SCHEMA_VERSION),
         "lexicon",
         generate_schema::<LexiconReport>,
+    ),
+    PublishedSchema::new_artifact(
+        REPOSITORY_LEXICON_SCHEMA_VERSION,
+        "codeatlas-repository-lexicon-v1.schema.json",
+        "lexicon::repository",
+        generate_schema::<RepositoryLexiconReport>,
     ),
     PublishedSchema::new(
         "codeatlas.testing-inventory/v1",

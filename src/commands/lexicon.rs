@@ -4,7 +4,7 @@ use crate::domain::{ScanReport, Symbol};
 use crate::{lexicon, outputs};
 use anyhow::{Context, Result};
 use clap::ValueEnum;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -22,6 +22,70 @@ pub(crate) fn run(
     config_path: Option<&Path>,
 ) -> i32 {
     exit_code(run_inner(path, workspace, format, out, config_path))
+}
+
+pub(crate) fn run_repository(
+    path: &Path,
+    workspace: bool,
+    subjects: Vec<lexicon::RepositoryLexiconSubject>,
+    format: LexiconFormat,
+    out: Option<&Path>,
+    config_path: Option<&Path>,
+) -> i32 {
+    exit_code(run_repository_inner(
+        path,
+        workspace,
+        subjects,
+        format,
+        out,
+        config_path,
+    ))
+}
+
+fn run_repository_inner(
+    path: &Path,
+    workspace: bool,
+    subjects: Vec<lexicon::RepositoryLexiconSubject>,
+    format: LexiconFormat,
+    out: Option<&Path>,
+    config_path: Option<&Path>,
+) -> Result<i32> {
+    let selected = subjects.iter().copied().collect::<BTreeSet<_>>();
+    if selected.len() != subjects.len() {
+        anyhow::bail!("Repository lexicon subjects must be unique");
+    }
+    if selected.is_empty() {
+        anyhow::bail!("Repository lexicon requires at least one subject");
+    }
+    let project = load_project(path, config_path)?;
+    let scope = crate::config::RepositoryScope::resolve(&project, workspace)?;
+    let policy = lexicon::load_concept_policy(&project.config.lexicon, project.config_base())?;
+    let mut collections = Vec::with_capacity(selected.len());
+    for subject in selected {
+        collections.push(match subject {
+            lexicon::RepositoryLexiconSubject::Code => {
+                let scan = if workspace {
+                    scan_workspace(&project, &scope)?
+                } else {
+                    scan_source(&project)?
+                };
+                lexicon::collect_code_terms(&scan)?
+            }
+            lexicon::RepositoryLexiconSubject::Http => {
+                crate::http::collect_repository_lexicon_terms(&scope)?
+            }
+            lexicon::RepositoryLexiconSubject::Postgres => {
+                crate::postgres::collect_repository_lexicon_terms(&scope)?
+            }
+        });
+    }
+    let report = lexicon::analyze_repository(scope.evidence(), collections, &policy)?;
+    let rendered = match format {
+        LexiconFormat::Text => outputs::repository_lexicon::render_text(&report),
+        LexiconFormat::Json => outputs::repository_lexicon::render_json(&report)?,
+    };
+    super::output::write_text_or_print(&rendered, out, "Repository lexicon report")?;
+    Ok(0)
 }
 
 fn run_inner(

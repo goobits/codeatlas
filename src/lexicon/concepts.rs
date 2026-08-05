@@ -219,7 +219,7 @@ fn collect_project_candidates(
     candidates
 }
 
-fn relation_evidence(
+pub(super) fn relation_evidence(
     domain: &[SourcedRelation],
     general: &[SourcedRelation],
 ) -> Vec<ConceptEvidence> {

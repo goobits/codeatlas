@@ -8,6 +8,7 @@ mod repository;
 mod source;
 mod static_schema;
 mod target;
+mod terms;
 mod usage;
 
 use crate::config::ProjectConfig;
@@ -30,6 +31,7 @@ pub(crate) use model::{
     POSTGRES_DIFF_SCHEMA_VERSION, POSTGRES_SCHEMA_VERSION, POSTGRES_TEST_API_VERSION,
     POSTGRES_TEST_SCHEMA_VERSION,
 };
+pub(crate) use terms::collect_repository_terms as collect_repository_lexicon_terms;
 #[cfg(test)]
 pub(crate) use usage::POSTGRES_USAGE_SCHEMA_VERSION;
 pub(crate) use usage::{

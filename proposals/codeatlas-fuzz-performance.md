@@ -508,10 +508,13 @@ implementation are done. Repository scope, config editing, HTTP/PostgreSQL
 usage and docs, truthful code/HTTP initialization, and the static HTTP and
 PostgreSQL inspection graphs are also complete. One bounded projection owner
 now serves code, HTTP, and PostgreSQL without merging their graph semantics.
+The repository lexicon now relates bounded code, HTTP, and PostgreSQL naming
+evidence through the canonical concept policy without claiming semantic
+equivalence.
 The current host cannot grant a live OCI isolation capability, so execution
 remains plan-only here and Phase 9 retains the hard continuation gate. On
 implementation progress rather than proposal-design progress, the complete
-program is approximately 61 percent done. That estimate is weighted by the
+program is approximately 63 percent done. That estimate is weighted by the
 accepted implementation phases, not by raw checkbox count. One hundred percent
 means every remaining tracker item is either verified and checked here or
 removed through an accepted scope change; a child status line alone is not
@@ -983,15 +986,15 @@ Active child: subject evidence parity Phases 2 through 4.
 
 Active child: subject evidence parity Phases 5 and 6.
 
-- [ ] Extract typed code, HTTP, and PostgreSQL term evidence with exact subject,
+- [x] Extract typed code, HTTP, and PostgreSQL term evidence with exact subject,
   owner, target, source, confidence, and completeness provenance.
-- [ ] Reuse one normalization and concept-policy engine while keeping subject
+- [x] Reuse one normalization and concept-policy engine while keeping subject
   extraction in each domain adapter.
-- [ ] Implement `lexicon repository --subjects code,http,postgres` as one
+- [x] Implement `lexicon repository --subjects code,http,postgres` as one
   bounded analysis, not subprocess composition or a code-command alias.
-- [ ] Treat cross-subject term relationships as evidence only and require
+- [x] Treat cross-subject term relationships as evidence only and require
   explicit policy or corroboration before semantic-equivalence claims.
-- [ ] Publish the report/schema transition and preserve focused `lexicon code`
+- [x] Publish the report/schema transition and preserve focused `lexicon code`
   behavior.
 - [ ] Search for subject-private workspace discovery, config insertion,
   paginator, term normalization, hidden live calls, false unused labels,

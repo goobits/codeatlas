@@ -24,6 +24,7 @@ pub(super) struct LoadedOpenApi {
 pub(super) struct HttpOpenApiDocumentation {
     pub(super) title: Option<String>,
     pub(super) description: Option<String>,
+    pub(super) schema_names: Vec<String>,
     pub(super) operations: BTreeMap<String, HttpOperationDocumentation>,
 }
 
@@ -67,8 +68,16 @@ pub(super) fn parse(source: &str, label: &str) -> Result<LoadedOpenApi> {
     let mut documentation = HttpOpenApiDocumentation {
         title: sourced_text(info, "title", "OpenAPI info.title")?,
         description: sourced_text(info, "description", "OpenAPI info.description")?,
+        schema_names: root
+            .get("components")
+            .and_then(Value::as_object)
+            .and_then(|components| components.get("schemas"))
+            .and_then(Value::as_object)
+            .map(|schemas| schemas.keys().cloned().collect())
+            .unwrap_or_default(),
         operations: BTreeMap::new(),
     };
+    documentation.schema_names.sort();
 
     for (path, path_item) in paths {
         if !path.starts_with('/') {

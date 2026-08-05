@@ -29,6 +29,7 @@ mod source;
     reason = "Phase 2 disconnects direct HTTP execution; Phase 5 migrates the remaining runtime target fields"
 )]
 mod target;
+mod terms;
 #[allow(
     dead_code,
     reason = "Phase 2 disconnects direct HTTP execution; Phase 5 reconnects source-transport execution"
@@ -64,6 +65,7 @@ pub(crate) use schemathesis::{fingerprint_engine, Contract as FuzzContract};
 pub(crate) use target::{
     ResolvedHttpFuzzOperationSelection, ResolvedHttpFuzzTarget, ResolvedHttpOpenApiSource,
 };
+pub(crate) use terms::collect_repository_terms as collect_repository_lexicon_terms;
 #[cfg(test)]
 pub(crate) use usage::HTTP_USAGE_SCHEMA_VERSION;
 pub(crate) use usage::{analyze as usage, HttpUsageClassification, HttpUsageReport};

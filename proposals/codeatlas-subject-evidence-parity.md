@@ -1,7 +1,8 @@
 # HTTP and PostgreSQL evidence parity
 
-Status: Accepted follow-on; repository-scope Phase 1 is complete. Later public
-reports wait for stable query and runtime artifact identities.
+Status: Accepted follow-on; static Phases 1-5 are complete. Phase 6 release
+hardening is next; optional observation enrichment still waits for stable
+runtime artifact identities.
 
 Decision scope: Repository scope, HTTP/PostgreSQL usage and inspection,
 HTTP/PostgreSQL docs, truthful code/HTTP initialization, and cross-subject
@@ -574,28 +575,61 @@ generated state remains.
 
 ## Phase 5: Cross-subject repository lexicon
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +500-800 / -80-160
+LOC: +2,152 / -15 product, tests, and canonical lexicon, plus 455 generated
+schema lines (measured)
 
 Verify: Code/HTTP/PostgreSQL term evidence retains exact subject ownership and
 provenance; configured subject selection is deterministic; unsupported or
 incomplete domains stay visible; cross-subject candidates never assert
 semantic equivalence without policy; focused `lexicon code` remains exact.
 
+Completion checkpoint (2026-08-05): `lexicon repository` now runs one bounded
+analysis over explicitly selected code, HTTP, and PostgreSQL evidence. The
+domain adapters reuse the existing code scan, local HTTP repository collector,
+static PostgreSQL repository collector, graph identities, and one canonical
+normalization/concept-policy engine; they do not invoke providers, targets, or
+databases. Every normalized term retains its observed source spelling, subject,
+role, owner, exact target, source, confidence, and completeness. Relationships
+claim only `related_evidence`, use stable content identities, retain at most
+128 round-robin occurrence references without erasing a smaller subject, and
+publish exact retained/omitted counts. The report also enforces finite seed,
+input-byte, normalized-term, relationship, and JSON-output ceilings.
+
+The focused acceptance surface passed 415 unit tests with two intentional
+ignores plus 26 CLI/domain integration tests. Warning-denying all-target Clippy
+and the full `pnpm check` surface passed, including 15 Node tests, every
+non-live Rust integration suite, schema/spec drift, self-audit, and packaging.
+Self-dogfood emitted 15,948 term records and one cross-subject relationship;
+the 288-target relationship retained 128 references and reported 160 omitted.
+Reordered subject selection was byte-identical, focused `lexicon code` remained
+exact at `44ccd9540c24e73135763e3a00f70994f26e607c1fb5e09ce066d6804a527fee`,
+and no checkout-local Cargo or Node state remained.
+
 ```text
++ schemas/codeatlas-repository-lexicon-v1.schema.json
++ src/http/terms.rs
++ src/lexicon/code_terms.rs
 + src/lexicon/repository.rs
 + src/lexicon/subject_terms.rs
++ src/outputs/repository_lexicon.rs
++ src/postgres/terms.rs
 + tests/lexicon_repository.rs
+~ docs/concepts/lexicon.md
+~ src/cli/mod.rs
 ~ src/lexicon/mod.rs
-~ src/lexicon/model.rs
-~ src/lexicon/analyze.rs
 ~ src/cli/lexicon.rs
 ~ src/commands/lexicon.rs
 ~ src/http/mod.rs
+~ src/http/openapi/mod.rs
+~ src/lexicon/concepts.rs
+~ src/outputs/mod.rs
+~ src/postgres/graph.rs
+~ src/postgres/graph/identity.rs
 ~ src/postgres/mod.rs
-~ tests/cli_contract.rs
-~ docs/concepts/lexicon.md
+~ src/postgres/usage.rs
+~ src/published_schemas.rs
 ```
 
 ## Phase 6: Consolidation, docs, and release hardening
@@ -630,10 +664,10 @@ and reference documentation are new product evidence. It must not be higher
 because code, HTTP, and PostgreSQL retain separate workspace discovery, config
 editing, pagination, or term-normalization mechanics.
 
-Measured through Phase 4: +9,891 / -1,444 product and test lines, plus 2,759
-generated schema lines. Remaining forecast: +700-1,150 / -260-510.
-Projected total: +10,591-11,041 / -1,704-1,954 product and test lines, plus the
-generated schema required by the final repository-lexicon report shape.
+Measured through Phase 5: +12,043 / -1,459 product, test, and canonical-doc
+lines, plus 3,214 generated schema lines. Remaining Phase 6 forecast:
++200-350 / -180-350. Projected total: +12,243-12,393 / -1,639-1,809 plus the
+generated schemas already required by the accepted report shapes.
 
 ## Layman's wins
 

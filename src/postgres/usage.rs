@@ -351,7 +351,7 @@ fn analyze_member(
     })
 }
 
-fn usage_identity(
+pub(super) fn usage_identity(
     object: &super::static_schema::StaticSchemaObjectIdentity,
 ) -> Option<PostgresUsageObjectIdentity> {
     let kind = match object.kind {

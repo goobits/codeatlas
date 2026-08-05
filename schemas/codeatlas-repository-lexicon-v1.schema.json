@@ -1,0 +1,455 @@
+{
+  "$defs": {
+    "ConceptEvidence": {
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "relation": {
+          "$ref": "#/$defs/ConceptEvidenceRelation"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "source_version": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "tier": {
+          "$ref": "#/$defs/ConceptEvidenceTier"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_version",
+        "tier",
+        "relation",
+        "subject",
+        "object"
+      ],
+      "type": "object"
+    },
+    "ConceptEvidenceRelation": {
+      "enum": [
+        "exact_alias",
+        "retired_term",
+        "canonical_grammar",
+        "morphological_variant",
+        "abbreviation_expansion",
+        "compatible_symbol_kind",
+        "shared_callable_role_shape",
+        "shared_callable_shape",
+        "shared_structural_shape",
+        "preferential_equivalent",
+        "related_equivalent",
+        "synonym"
+      ],
+      "type": "string"
+    },
+    "ConceptEvidenceTier": {
+      "enum": [
+        "project",
+        "grammar",
+        "structural",
+        "domain",
+        "general"
+      ],
+      "type": "string"
+    },
+    "RepositoryDiscoveryKind": {
+      "enum": [
+        "project",
+        "pnpm_workspace"
+      ],
+      "type": "string"
+    },
+    "RepositoryLexiconSubject": {
+      "enum": [
+        "code",
+        "http",
+        "postgres"
+      ],
+      "type": "string"
+    },
+    "RepositoryLexiconSubjectSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "completeness": {
+          "$ref": "#/$defs/RepositoryTermCompleteness"
+        },
+        "evidenceCount": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "subject": {
+          "$ref": "#/$defs/RepositoryLexiconSubject"
+        }
+      },
+      "required": [
+        "subject",
+        "evidenceCount",
+        "completeness"
+      ],
+      "type": "object"
+    },
+    "RepositoryMemberEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "configDigest": {
+          "type": "string"
+        },
+        "configPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "httpContracts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "postgresContracts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "root",
+        "configDigest",
+        "httpContracts",
+        "postgresContracts"
+      ],
+      "type": "object"
+    },
+    "RepositoryRelationshipBasis": {
+      "enum": [
+        "exact_normalized_term",
+        "declared_concept",
+        "pinned_domain_relation"
+      ],
+      "type": "string"
+    },
+    "RepositoryRelationshipClaim": {
+      "enum": [
+        "related_evidence"
+      ],
+      "type": "string"
+    },
+    "RepositoryRelationshipEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "subject": {
+          "$ref": "#/$defs/RepositoryLexiconSubject"
+        },
+        "target": {
+          "type": "string"
+        },
+        "term": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject",
+        "term",
+        "target"
+      ],
+      "type": "object"
+    },
+    "RepositoryScopeEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "diagnostics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "discovery": {
+          "$ref": "#/$defs/RepositoryDiscoveryKind"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/$defs/RepositoryMemberEvidence"
+          },
+          "type": "array"
+        },
+        "selectedRoot": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selectedRoot",
+        "discovery",
+        "complete",
+        "diagnostics",
+        "members"
+      ],
+      "type": "object"
+    },
+    "RepositoryTermCompleteness": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "complete",
+        "reasons"
+      ],
+      "type": "object"
+    },
+    "RepositoryTermConfidence": {
+      "enum": [
+        "high",
+        "medium"
+      ],
+      "type": "string"
+    },
+    "RepositoryTermEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "completeness": {
+          "$ref": "#/$defs/RepositoryTermCompleteness"
+        },
+        "confidence": {
+          "$ref": "#/$defs/RepositoryTermConfidence"
+        },
+        "observed": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/RepositoryTermRole"
+        },
+        "source": {
+          "$ref": "#/$defs/RepositoryTermSource"
+        },
+        "subject": {
+          "$ref": "#/$defs/RepositoryLexiconSubject"
+        },
+        "target": {
+          "type": "string"
+        },
+        "term": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "term",
+        "observed",
+        "subject",
+        "role",
+        "owner",
+        "target",
+        "source",
+        "confidence",
+        "completeness"
+      ],
+      "type": "object"
+    },
+    "RepositoryTermRelationship": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "$ref": "#/$defs/RepositoryRelationshipBasis"
+        },
+        "claim": {
+          "$ref": "#/$defs/RepositoryRelationshipClaim"
+        },
+        "conceptIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "corroboration": {
+          "items": {
+            "$ref": "#/$defs/ConceptEvidence"
+          },
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/RepositoryRelationshipEvidence"
+          },
+          "type": "array"
+        },
+        "evidenceCount": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "omittedEvidence": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "subjects": {
+          "items": {
+            "$ref": "#/$defs/RepositoryLexiconSubject"
+          },
+          "type": "array"
+        },
+        "terms": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "basis",
+        "claim",
+        "terms",
+        "subjects",
+        "evidenceCount",
+        "omittedEvidence",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "RepositoryTermRole": {
+      "enum": [
+        "code_symbol",
+        "code_callable_parameter",
+        "code_documentation",
+        "http_contract",
+        "http_path_segment",
+        "http_operation",
+        "http_parameter",
+        "http_schema",
+        "http_documentation",
+        "postgres_contract",
+        "postgres_source",
+        "postgres_query",
+        "postgres_parameter",
+        "postgres_schema",
+        "postgres_table",
+        "postgres_column",
+        "postgres_constraint",
+        "postgres_index",
+        "postgres_documentation"
+      ],
+      "type": "string"
+    },
+    "RepositoryTermSource": {
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/RepositoryTermSourceKind"
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "RepositoryTermSourceKind": {
+      "enum": [
+        "declaration",
+        "documentation",
+        "configuration",
+        "contract",
+        "bootstrap",
+        "migration",
+        "query"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "codeatlas.repository-lexicon/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "relationships": {
+      "items": {
+        "$ref": "#/$defs/RepositoryTermRelationship"
+      },
+      "type": "array"
+    },
+    "repository": {
+      "$ref": "#/$defs/RepositoryScopeEvidence"
+    },
+    "schemaVersion": {
+      "const": "codeatlas.repository-lexicon/v1",
+      "type": "string"
+    },
+    "subjects": {
+      "items": {
+        "$ref": "#/$defs/RepositoryLexiconSubjectSummary"
+      },
+      "type": "array"
+    },
+    "terms": {
+      "items": {
+        "$ref": "#/$defs/RepositoryTermEvidence"
+      },
+      "type": "array"
+    },
+    "toolVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "toolVersion",
+    "repository",
+    "subjects",
+    "terms",
+    "relationships"
+  ],
+  "title": "RepositoryLexiconReport",
+  "type": "object"
+}

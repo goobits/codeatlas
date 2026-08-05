@@ -22,15 +22,19 @@ pub(super) fn add_edge(
     });
 }
 
-pub(super) fn contract_node_id(project: &str, contract: &str) -> InspectionNodeId {
+pub(in crate::postgres) fn contract_node_id(project: &str, contract: &str) -> InspectionNodeId {
     InspectionNodeId::new("postgres", &["contract", project, contract])
 }
 
-pub(super) fn query_node_id(project: &str, contract: &str, query: &str) -> InspectionNodeId {
+pub(in crate::postgres) fn query_node_id(
+    project: &str,
+    contract: &str,
+    query: &str,
+) -> InspectionNodeId {
     InspectionNodeId::new("postgres", &["query", project, contract, query])
 }
 
-pub(super) fn source_node_id(
+pub(in crate::postgres) fn source_node_id(
     project: &str,
     contract: &str,
     role: PostgresInspectionSourceRole,
@@ -42,7 +46,7 @@ pub(super) fn source_node_id(
     )
 }
 
-pub(super) fn parameter_node_id(
+pub(in crate::postgres) fn parameter_node_id(
     project: &str,
     contract: &str,
     query: &str,

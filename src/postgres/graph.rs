@@ -7,13 +7,12 @@ pub(super) use model::{
 };
 pub(crate) use model::{PostgresInspectionReport, POSTGRES_INSPECTION_SCHEMA_VERSION};
 
-use self::identity::{
-    add_edge, callsite_node_id, contract_node_id, object_node_id, parameter_node_id, query_node_id,
-    source_node_id, static_object_node_id,
+use self::identity::{add_edge, callsite_node_id, object_node_id, static_object_node_id};
+pub(super) use self::identity::{
+    contract_node_id, parameter_node_id, query_node_id, source_node_id,
 };
-use self::model::{
-    PostgresInspectionEdgeKind, PostgresInspectionSourceRole, PostgresInspectionStaticObjectKind,
-};
+pub(super) use self::model::PostgresInspectionSourceRole;
+use self::model::{PostgresInspectionEdgeKind, PostgresInspectionStaticObjectKind};
 use super::repository::RepositoryPostgresMember;
 use super::static_schema::{StaticSchemaObject, StaticSchemaObjectKind, StaticSchemaSourceKind};
 use super::usage::{
@@ -386,6 +385,20 @@ fn static_kind(kind: StaticSchemaObjectKind) -> Result<PostgresInspectionStaticO
             anyhow::bail!("table or column entered PostgreSQL static-object graph path")
         }
     }
+}
+
+pub(super) fn resolve_schema_object_node_id(
+    project: &str,
+    object: &StaticSchemaObject,
+) -> Result<InspectionNodeId> {
+    if let Some(identity) = super::usage::usage_identity(&object.identity) {
+        return Ok(object_node_id(project, &object.contract, &identity));
+    }
+    Ok(static_object_node_id(
+        project,
+        object,
+        static_kind(object.identity.kind)?,
+    ))
 }
 
 fn object_matches_reference(

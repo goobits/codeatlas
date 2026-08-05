@@ -182,6 +182,13 @@ mod tests {
                 "incoming",
             ],
             vec!["codeatlas", "lexicon", "code"],
+            vec![
+                "codeatlas",
+                "lexicon",
+                "repository",
+                "--subjects",
+                "code,http,postgres",
+            ],
             vec!["codeatlas", "docs", "code"],
             vec!["codeatlas", "docs", "http", "--workspace"],
             vec!["codeatlas", "docs", "postgres", "--format", "html"],
