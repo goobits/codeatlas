@@ -8,6 +8,7 @@ use super::{
     STATEFUL_CONFIG,
 };
 use crate::config::{HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig};
+use crate::execution::CALL_CATEGORY_HEADER;
 use crate::http::model::{
     HttpFuzzContractMode, HttpFuzzOperationSummary, HttpFuzzPositiveCoverage, HttpFuzzTotals,
 };
@@ -198,6 +199,13 @@ fn every_selected_codeatlas_check_is_registered_by_the_managed_hook() {
     }
     assert!(HOOK_SOURCE.contains("if _negative_body_revalidated_positive(case):"));
     assert!(!HOOK_SOURCE.contains("_stateful_body_revalidated_positive"));
+}
+
+#[test]
+fn managed_hook_preserves_kernel_owned_call_classification() {
+    assert!(HOOK_SOURCE.contains("def _set_call_category("));
+    assert!(HOOK_SOURCE.contains("prepared.headers[_CALL_CATEGORY_HEADER] = self._call_category"));
+    assert_eq!(CALL_CATEGORY_HEADER, "x-codeatlas-call-category");
 }
 
 #[test]

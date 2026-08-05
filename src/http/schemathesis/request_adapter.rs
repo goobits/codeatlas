@@ -1,3 +1,4 @@
+use crate::execution::CALL_CATEGORY_HEADER;
 use crate::http::private_fs;
 use crate::http::target::{
     HttpFuzzOperation, ResolvedHttpFuzzCommand, ResolvedHttpFuzzTarget, REQUEST_HOOK_CONFIG_ENV,
@@ -10,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub(super) const API_VERSION: &str = "codeatlas.http-request-adapter/v2";
+pub(super) const API_VERSION: &str = "codeatlas.http-request-adapter/v3";
 pub(super) const HOOK_SOURCE: &str = include_str!("hooks.py");
 static CONFIG_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -55,6 +56,7 @@ impl Drop for PrivateConfig {
 #[serde(rename_all = "camelCase")]
 struct RequestHooksConfig<'a> {
     api_version: &'static str,
+    call_category_header: &'static str,
     headers: Vec<HeaderConfig<'a>>,
     adapter: Option<AdapterConfig<'a>>,
     methods_by_path: BTreeMap<String, Vec<String>>,
@@ -111,6 +113,7 @@ pub(super) fn prepare(
     }
     let config = serde_json::to_vec(&RequestHooksConfig {
         api_version: API_VERSION,
+        call_category_header: CALL_CATEGORY_HEADER,
         headers: headers
             .iter()
             .map(|(name, value)| HeaderConfig { name, value })
@@ -125,6 +128,7 @@ pub(super) fn prepare(
 pub(super) fn validate(schemathesis: &Path, hooks: &PreparedRequestHooks) -> Result<()> {
     let smoke_config = serde_json::to_vec(&RequestHooksConfig {
         api_version: API_VERSION,
+        call_category_header: CALL_CATEGORY_HEADER,
         headers: Vec::new(),
         adapter: None,
         methods_by_path: BTreeMap::new(),
@@ -179,7 +183,7 @@ fn methods_by_path(operations: &[HttpFuzzOperation]) -> BTreeMap<String, Vec<Str
 mod tests {
     use super::{
         methods_by_path, AdapterConfig, HeaderConfig, PrivateConfig, RequestHooksConfig,
-        API_VERSION,
+        API_VERSION, CALL_CATEGORY_HEADER,
     };
     use crate::http::target::parse_http_fuzz_operation;
 
@@ -191,6 +195,7 @@ mod tests {
         let args = vec!["adapter.js".to_string()];
         let config = serde_json::to_value(RequestHooksConfig {
             api_version: API_VERSION,
+            call_category_header: CALL_CATEGORY_HEADER,
             headers: vec![HeaderConfig {
                 name: "Authorization",
                 value: "Bearer test-token",
@@ -208,6 +213,7 @@ mod tests {
         .expect("request adapter configuration");
 
         assert_eq!(config["apiVersion"], API_VERSION);
+        assert_eq!(config["callCategoryHeader"], CALL_CATEGORY_HEADER);
         assert_eq!(config["headers"][0]["name"], "Authorization");
         assert_eq!(config["headers"][0]["value"], "Bearer test-token");
         assert_eq!(config["adapter"]["command"], "node");

@@ -495,9 +495,9 @@ detailed checklist.
   complete.
 - [x] CodeAtlas HQA application-inventory renderer; deterministic external-v1
   projection complete with no HQA repository edits.
-- [~] Execution kernel: governance and immutable plan/artifact Phases 1-2 are
-  complete; pre-call budgets/proxy, verified sandbox, and HTTP migration are
-  next.
+- [~] Execution kernel: governance, immutable artifacts, and pre-call
+  budget/proxy Phases 1-3 are complete; verified isolation and HTTP migration
+  are next.
 - [ ] Structured callable/effect evidence and lexicon v4.
 - [ ] Advisory semantic-role sibling evidence and CodeAtlas dogfood.
 - [ ] Callable code fuzzing and shared boundary corpus.
@@ -567,9 +567,9 @@ all repository checks and bounded CodeAtlas dogfood pass with zero gates.
 
 ## Program stage 4: Execution kernel and HTTP migration
 
-Status: [~] Accepted; governance and immutable artifact Phases 1-2 complete
+Status: [~] Accepted; execution Phases 1-3 complete, verified isolation next
 
-Projected LOC after measured Phase 2: +9,522-11,422 / -870-1,500
+Projected LOC after measured Phase 3: +11,760-13,310 / -878-1,408
 
 Verify: One sandbox backend passes the full isolation suite; HTTP requests
 cannot exceed call/rate/resource ceilings; source remains read-only; plans,
@@ -683,7 +683,7 @@ sandbox, three execution domains, four language adapters, a typed database
 client, and a performance evidence product. Each child has a final hardening
 phase that removes replaced owners and refuses compatibility residue.
 
-Total authored LOC: +19,698-29,528 / -4,175-7,905
+Total authored LOC: +21,936-31,416 / -4,183-7,813
 
 Generated current-schema JSON: +7,706 LOC
 

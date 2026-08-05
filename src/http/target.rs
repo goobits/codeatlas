@@ -3,6 +3,7 @@ use crate::config::{
     HttpFuzzOperationSelectionConfig, HttpFuzzPositiveCoverageConfig, HttpFuzzServerConfig,
     HttpOpenApiProviderConfig, HttpOpenApiSourceConfig, ProjectConfig,
 };
+use crate::execution::CALL_CATEGORY_HEADER;
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -481,6 +482,13 @@ impl ProjectConfig {
 
         let mut headers = Vec::with_capacity(target.headers.len());
         for header in &target.headers {
+            if header.name.eq_ignore_ascii_case(CALL_CATEGORY_HEADER) {
+                anyhow::bail!(
+                    "HTTP fuzz target {} cannot configure reserved internal header {}",
+                    target.id,
+                    header.name
+                );
+            }
             if !is_http_token(&header.name) {
                 anyhow::bail!(
                     "HTTP fuzz target {} contains invalid header name {:?}",

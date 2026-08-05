@@ -143,6 +143,23 @@ pub(crate) struct ExecutionLimits {
     pub max_artifact_bytes: u64,
 }
 
+#[cfg(test)]
+pub(crate) fn sample_execution_limits() -> ExecutionLimits {
+    ExecutionLimits {
+        max_calls: 3,
+        calls_per_second: 2,
+        max_concurrency: 1,
+        run_timeout_ms: 10_000,
+        max_cpu_time_ms: 9_000,
+        max_rss_bytes: 1024,
+        max_processes: 1,
+        max_open_files: 8,
+        max_call_result_bytes: 1024,
+        max_output_bytes: 1024,
+        max_artifact_bytes: 1024,
+    }
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct IsolationPolicy {

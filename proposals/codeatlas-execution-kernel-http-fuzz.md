@@ -365,7 +365,8 @@ Budgets are pre-call permits, not post-run counters:
    time, and resource state.
 3. Failed and rejected calls are not refunded, closing retry-loop evasion.
 4. A semaphore bounds in-flight work.
-5. A token bucket bounds call rate.
+5. One monotonic admission clock spaces calls at the configured rate without a
+   burst allowance.
 6. No automatic retry exists unless it is explicit in the plan and consumes a
    new permit.
 7. A hard limit cancels remaining work and produces `partial`.
@@ -374,17 +375,22 @@ The kernel owns one bounded asynchronous scheduler per execution. Domains do
 not create private runtimes, thread pools, semaphores, or work queues. Network
 connections may be reused and HTTP/2 streams may be multiplexed, but each
 decoded logical call obtains its own permit and monotonic sequence number
-before dispatch. Bounded channels provide backpressure; blocking engine,
-filesystem, and CPU work uses one separately bounded blocking pool. Receipts
-serialize call evidence by permit sequence rather than completion order, so
-runtime multiplexing cannot change canonical output. Structured cancellation
-stops admission, drains owned tasks, and enters the reserved cleanup path.
+before dispatch. Bounded semaphores and engine queues provide backpressure;
+blocking engine, filesystem, and CPU work uses one separately bounded blocking
+pool. Receipts serialize call evidence by permit sequence rather than completion
+order, so runtime multiplexing cannot change canonical output. Structured
+cancellation stops admission, drains owned tasks, and enters the reserved
+cleanup path.
 
 Before the first target call, the ledger carves a finite cleanup allowance out
 of the same whole-run call and time ceilings. Setup, cases, retries, and
 reduction cannot spend that allowance. Cleanup still acquires permits and may
 never exceed the plan's global maximum; there is no hidden emergency budget.
 If required cleanup cannot be bounded and reserved up front, execution blocks.
+For plan schema v1, cleanup time is exactly 20 percent of `run_timeout_ms`,
+clamped to 1 millisecond through 10 seconds. The plan-owned cleanup call count
+must fit that window at the same paced call rate with time remaining to finish;
+an arithmetically impossible reservation blocks before execution.
 
 Every acquired process, proxy, container, temporary database, scratch root, or
 other managed resource registers an `ExecutionLease` before it becomes visible.
@@ -399,6 +405,16 @@ stateful work, and future behavior may exceed its visible `max_examples`
 setting. All Schemathesis traffic and CodeAtlas health/authentication probes
 route through a local enforcing proxy. The fuzz sandbox can reach only that
 proxy; the proxy forwards only to exact planned destinations.
+
+The managed hook carries a kernel-owned internal call-category header and
+overwrites project adapter or authenticator attempts to claim it. The proxy
+strips that control header before forwarding. Unsupported-method probes and
+CodeAtlas authentication probes have exact categories. When Schemathesis does
+not expose trustworthy stateful or reduction provenance, the call is still
+counted but remains a `generated_case`; CodeAtlas never fabricates a more
+specific subtype. Phase 3 target-proves this routing contract while public
+execution remains blocked; Phase 5 connects the sandboxed engine, readiness,
+and cleanup lifecycle to the same boundary.
 
 HTTPS is terminated at the enforcing proxy, not counted at CONNECT-tunnel
 level. CONNECT cannot count individual HTTP/1.1 keep-alive or multiplexed
@@ -790,28 +806,100 @@ with one namespaced version and no parallel API version.
 
 ## Phase 3: Pre-call budgets and enforcing HTTP proxy
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +700-1,050 / -100-200
+Execution checklist:
 
-Verify: The target never observes call `max_calls + 1`; rate and concurrency
-bursts remain bounded; setup, health, authentication, stateful, reduction,
-retry, and cleanup calls are counted; HTTPS is terminated and counted per
-decoded request with exact-host/upstream verification; bounded queues apply
+- [x] Pin the one call-category, permit-sequence, cleanup-reservation, and
+  cancellation contract against the Phase 2 artifacts.
+- [x] Add the bounded shared scheduler and atomic pre-call budget ledger.
+- [x] Add an exact-destination HTTP/HTTPS enforcing proxy with bounded
+  request/response capture and per-decoded-request permits.
+- [x] Pin and target-prove the Schemathesis, readiness, authentication,
+  stateful, reduction, retry, validation, and cleanup routing contract while
+  keeping public execution blocked until verified isolation exists.
+- [x] Prove call and cancellation enforcement from the target side; prove
+  rate, concurrency, backpressure, and deterministic sequencing at their
+  budget/scheduler owners; then pass full checks, dogfood, residue audit, and
+  a clean phase commit.
+
+Verified checkpoint, 2026-08-04:
+
+- `CallBudget::from_plan` is the sole production constructor. It derives the
+  cleanup allowance from canonical expected-call evidence, admits every call
+  through a finite pre-call permit, strictly paces admission without a burst,
+  bounds concurrency, records sequence order independently of completion, and
+  never refunds failed, rejected, timed-out, or cancelled work.
+- The scheduler creates one Tokio runtime per execution. Its asynchronous
+  workers and separately permitted blocking work are both bounded by the
+  lesser of planned concurrency and observed host parallelism; process limits
+  remain a distinct sandbox concern.
+- The loopback TLS-terminating proxy supports HTTP/1.1 and HTTP/2, verifies
+  upstream TLS and exact origin, strips hop-by-hop and kernel control headers,
+  rejects off-origin redirects, bounds request and response bodies, and
+  obtains one permit per decoded logical request. Target-side tests observed
+  two calls—not `max_calls + 1`—zero oversized-request or untrusted-TLS calls,
+  and prompt cancellation of an active call.
+- The request-hook protocol is hard-cut to
+  `codeatlas.http-request-adapter/v3`. The managed hook overwrites adapter and
+  authenticator attempts to reclassify calls; unsupported-method and
+  authentication probes have exact categories, while unavailable
+  stateful/reduction provenance remains honestly classified as a generated
+  case. A sandbox request cannot claim the cleanup reserve.
+- All 34 focused execution tests and warning-denying Clippy pass. `pnpm check`
+  passes 15 Node tests, 346 Rust unit tests with two intentional ignores, all
+  non-live integration suites, schema/spec drift checks, formatter, Clippy,
+  self-audit, and package assembly. Live HTTP and PostgreSQL cases retain
+  their documented Phase 5 and opt-in reasons.
+- Refreshed dogfood covers 258 files, 2,552 scan symbols, 3,022 lexicon
+  symbols, seven test contexts, three scripts, and zero duplicate scripts.
+  The execution owner has zero callable candidates, name collisions, or shape
+  aliases. Its 51 non-gating findings are 12 explicit dynamic boundaries, 28
+  test-only symbols, and 11 known associated/async reachability gaps; none is
+  deletion evidence.
+- Exact inspection resolved `CallBudget`, `EnforcingProxy`, and
+  `ExecutionScheduler` into a bounded 120-node/1,179-edge slice with graph
+  digest
+  `sha256:f78cb5613c8c1a13c0fc746a1e03da4c8f149c8db19d6751ebf516354c79a780`;
+  877 nodes, 4,074 edges, and six boundaries were explicitly omitted by the
+  cap.
+- Cargo resolves one Tokio version and the ring-backed TLS stack without an
+  `aws-lc-rs` backend. `budget.rs` and `proxy.rs` remain cohesive invariant
+  owners: their production halves own one ledger and one forwarding boundary,
+  while their colocated halves are target-observing conformance tests. A split
+  would separate the safety invariant from its proof without reducing product
+  surface.
+- Git diff and generated-state audits pass. TLS material is ephemeral only;
+  no key, certificate, build, cache, report, or temporary artifact exists in
+  the checkout.
+
+Actual LOC: +2,938 / -108
+
+Verify: The target never observes call `max_calls + 1`; deterministic budget
+tests prove that rate and concurrency bursts remain bounded; setup, health,
+authentication, stateful, reduction, retry, validation, and kernel-owned
+cleanup work have one call vocabulary; HTTPS is terminated and counted per
+decoded request with exact-host/upstream verification; bounded schedulers apply
 backpressure; multiplexed completion order cannot change receipt bytes; budget
 exhaustion is `partial`.
 
 ```text
++ Cargo.lock
+~ Cargo.toml
 + src/execution/budget.rs
 + src/execution/proxy.rs
-+ tests/execution_policy.rs
++ src/execution/scheduler.rs
+~ src/execution/artifact.rs
+~ src/execution/mod.rs
 ~ src/execution/model.rs
 ~ src/execution/runner.rs
-~ src/http/schemathesis/mod.rs
 ~ src/http/schemathesis/hooks.py
 ~ src/http/schemathesis/request_adapter.rs
 ~ src/http/schemathesis/tests.rs
-~ tests/http_cli.rs
+~ src/http/target.rs
+~ src/http/target/tests.rs
+~ tests/fixtures/http/request_adapter.py
+~ README.md
 ```
 
 ## Phase 4: Verified isolation backend and capability matrix
@@ -901,8 +989,8 @@ The implementation is intentionally net higher because it adds a real sandbox,
 budget proxy, immutable artifacts, and security conformance tests. It must not
 be higher because old HTTP-private and new shared mechanisms coexist.
 
-Projected total LOC after the measured Phase 2 result: +9,522-11,422 /
--870-1,500.
+Projected total LOC after the measured Phase 3 result: +11,760-13,310 /
+-878-1,408.
 
 ## Layman's wins
 

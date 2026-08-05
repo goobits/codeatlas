@@ -1,4 +1,5 @@
 use super::artifact::ArtifactStore;
+use super::budget::{BudgetTermination, CallSnapshot};
 use super::lease::LeaseRegistry;
 use super::model::{
     ArtifactLink, AuthorizationMode, CallUsage, EvidenceDigests, ExecutionOutcome, ExecutionPlan,
@@ -51,7 +52,7 @@ pub(crate) fn prepare_blocked_execution(
     let sampler = ResourceSampler::new();
     let mut leases = LeaseRegistry::default();
     let cleanup = leases.release_all();
-    let outcome = finalize_outcome(ExecutionOutcome::Blocked, &cleanup, false);
+    let outcome = finalize_outcome(ExecutionOutcome::Blocked, &cleanup, false, None);
     let receipt = ExecutionReceipt::new(ExecutionReceiptBody {
         subject: plan.body.subject,
         operation: plan.body.operation.clone(),
@@ -80,25 +81,51 @@ fn finalize_outcome(
     requested: ExecutionOutcome,
     cleanup: &[super::model::CleanupEvidence],
     execution_complete: bool,
+    budget_termination: Option<BudgetTermination>,
 ) -> ExecutionOutcome {
+    if requested == ExecutionOutcome::Blocked {
+        return ExecutionOutcome::Blocked;
+    }
+    if requested == ExecutionOutcome::Cancelled
+        || budget_termination == Some(BudgetTermination::Cancelled)
+    {
+        return ExecutionOutcome::Cancelled;
+    }
     let cleanup_complete = cleanup
         .iter()
         .all(|evidence| evidence.released && evidence.verified);
-    if requested == ExecutionOutcome::Passed && (!execution_complete || !cleanup_complete) {
+    if budget_termination.is_some() || !execution_complete || !cleanup_complete {
         return ExecutionOutcome::Partial;
     }
     requested
 }
 
+#[allow(
+    dead_code,
+    reason = "Phase 3 pins receipt mapping before Phase 4 isolation permits Phase 5 execution"
+)]
+fn apply_call_snapshot(
+    calls: &mut super::model::CallUsage,
+    resources: &mut super::model::ResourceEvidence,
+    snapshot: &CallSnapshot,
+) {
+    *calls = snapshot.usage.clone();
+    resources.peak_concurrency = Some(snapshot.peak_concurrency);
+    resources.peak_calls_per_second_milli = snapshot.peak_calls_per_second_milli;
+}
+
 #[cfg(test)]
 mod tests {
-    use super::finalize_outcome;
-    use crate::execution::model::{CleanupEvidence, ExecutionOutcome};
+    use super::{apply_call_snapshot, finalize_outcome};
+    use crate::execution::budget::{BudgetTermination, CallRecord, CallSnapshot};
+    use crate::execution::model::{
+        CallCategory, CallCount, CallUsage, CleanupEvidence, ExecutionOutcome, ResourceEvidence,
+    };
 
     #[test]
     fn incomplete_execution_or_cleanup_can_never_pass() {
         assert_eq!(
-            finalize_outcome(ExecutionOutcome::Passed, &[], false),
+            finalize_outcome(ExecutionOutcome::Passed, &[], false, None),
             ExecutionOutcome::Partial
         );
         let cleanup = [CleanupEvidence {
@@ -109,8 +136,54 @@ mod tests {
             message: None,
         }];
         assert_eq!(
-            finalize_outcome(ExecutionOutcome::Passed, &cleanup, true),
+            finalize_outcome(ExecutionOutcome::Passed, &cleanup, true, None),
             ExecutionOutcome::Partial
         );
+        assert_eq!(
+            finalize_outcome(
+                ExecutionOutcome::Passed,
+                &[],
+                true,
+                Some(BudgetTermination::CallsExhausted),
+            ),
+            ExecutionOutcome::Partial
+        );
+        assert_eq!(
+            finalize_outcome(
+                ExecutionOutcome::Passed,
+                &[],
+                true,
+                Some(BudgetTermination::Cancelled),
+            ),
+            ExecutionOutcome::Cancelled
+        );
+    }
+
+    #[test]
+    fn call_snapshot_maps_to_one_receipt_vocabulary() {
+        let snapshot = CallSnapshot {
+            usage: CallUsage {
+                reserved: 4,
+                consumed: 1,
+                by_category: vec![CallCount {
+                    category: CallCategory::GeneratedCase,
+                    count: 1,
+                }],
+            },
+            records: vec![CallRecord {
+                sequence: 1,
+                category: CallCategory::GeneratedCase,
+                disposition: crate::execution::budget::CallDisposition::Completed,
+            }],
+            peak_concurrency: 1,
+            peak_calls_per_second_milli: Some(2_000),
+            termination: None,
+        };
+        let mut calls = CallUsage::default();
+        let mut resources = ResourceEvidence::default();
+        apply_call_snapshot(&mut calls, &mut resources, &snapshot);
+        assert_eq!(calls, snapshot.usage);
+        assert_eq!(resources.peak_concurrency, Some(1));
+        assert_eq!(resources.peak_calls_per_second_milli, Some(2_000));
     }
 }

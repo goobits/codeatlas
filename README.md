@@ -716,7 +716,7 @@ HTTP configuration also supports:
 - expected non-success operations and positive-coverage budgets
 - ordered `server.prepare` commands before an owned local server starts
 - a long-lived request adapter over the
-  `codeatlas.http-request-adapter/v2` JSONL protocol for project-owned fixture,
+  `codeatlas.http-request-adapter/v3` JSONL protocol for project-owned fixture,
   signing, and authentication logic
 
 The profile ceilings are 75 cases for `standard`, 750 for `thorough`, and 25

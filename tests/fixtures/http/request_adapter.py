@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-API_VERSION = "codeatlas.http-request-adapter/v2"
+API_VERSION = "codeatlas.http-request-adapter/v3"
 
 if len(sys.argv) != 2:
     raise SystemExit("usage: request_adapter.py AUDIT_LOG")

@@ -34,10 +34,13 @@ from schemathesis.specs.openapi.checks import (
 )
 
 
-API_VERSION = "codeatlas.http-request-adapter/v2"
+API_VERSION = "codeatlas.http-request-adapter/v3"
 CONFIG_ENVIRONMENT_VARIABLE = "CODEATLAS_HTTP_REQUEST_ADAPTER_CONFIG"
 RESPONSE_TIMEOUT_SECONDS = 15
 STARTUP_RESPONSE_TIMEOUT_SECONDS = 90
+HTTP_TOKEN_CHARACTERS = frozenset(
+    "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+)
 POSITIVE_COVERAGE_SCENARIOS = frozenset(
     {
         "const_value",
@@ -89,6 +92,11 @@ def _read_config() -> dict[str, Any]:
         raise RuntimeError("CodeAtlas request hook configuration is invalid") from error
     if not isinstance(value, dict) or value.get("apiVersion") != API_VERSION:
         raise RuntimeError(f"{CONFIG_ENVIRONMENT_VARIABLE} must use {API_VERSION}")
+    call_category_header = value.get("callCategoryHeader")
+    if not isinstance(call_category_header, str) or not _is_http_token(
+        call_category_header
+    ):
+        raise RuntimeError("CodeAtlas call-category header is invalid")
     headers = value.get("headers")
     if not isinstance(headers, list) or not all(
         isinstance(header, dict)
@@ -131,6 +139,10 @@ def _read_config() -> dict[str, Any]:
     ):
         raise RuntimeError("CodeAtlas actual HTTP methods are invalid")
     return value
+
+
+def _is_http_token(value: str) -> bool:
+    return bool(value) and all(character in HTTP_TOKEN_CHARACTERS for character in value)
 
 
 class _Adapter:
@@ -363,6 +375,7 @@ class _Adapter:
 
 
 _CONFIG = _read_config()
+_CALL_CATEGORY_HEADER = _CONFIG["callCategoryHeader"]
 _STATIC_HEADERS = tuple(
     (header["name"], header["value"]) for header in _CONFIG["headers"]
 )
@@ -418,6 +431,7 @@ def _send_auth_probe(
     invalid_parameter: Mapping[str, Any] | None = None,
 ) -> None:
     probe = remove_auth(case, security_parameters)
+    _set_call_category(probe, "authentication")
     if invalid_parameter is not None:
         set_auth_for_case(probe, invalid_parameter)
     kwargs = build_retry_transport_kwargs(
@@ -809,6 +823,17 @@ def _preserve_actual_methods(case: Any) -> None:
     raise unittest.SkipTest(f"Every standard HTTP method is declared for {path}")
 
 
+def _call_category(case: Any) -> str:
+    # Schemathesis does not expose trustworthy shrink/stateful provenance at
+    # this boundary. Count those calls exactly, but never fabricate a subtype.
+    return "validation" if _is_unsupported_method_case(case) else "generated_case"
+
+
+def _set_call_category(case: Any, category: str) -> None:
+    case.headers = case.headers or {}
+    case.headers[_CALL_CATEGORY_HEADER] = category
+
+
 class _RequestAdapterAuth(requests.auth.AuthBase):
     def __init__(
         self,
@@ -825,6 +850,9 @@ class _RequestAdapterAuth(requests.auth.AuthBase):
         self._security_parameters = _public_security_parameters(case)
         self._apply_authentication = apply_authentication
         self._probe = probe
+        self._call_category = (
+            "authentication" if probe == "authentication" else _call_category(case)
+        )
 
     def __call__(self, prepared: requests.PreparedRequest) -> requests.PreparedRequest:
         if self._prior_auth is not None:
@@ -873,12 +901,16 @@ class _RequestAdapterAuth(requests.auth.AuthBase):
                 overrides["authentication"],
                 self._security_parameters,
             )
+        # This internal routing header is kernel-owned. Project adapters and
+        # authenticators cannot reclassify a call after CodeAtlas chooses it.
+        prepared.headers[_CALL_CATEGORY_HEADER] = self._call_category
         return prepared
 
 
 @schemathesis.hook
 def before_call(_context: Any, case: Any, kwargs: dict[str, Any]) -> None:
     _preserve_actual_methods(case)
+    _set_call_category(case, _call_category(case))
     if _ADAPTER is not None:
         kwargs["auth"] = _RequestAdapterAuth(case)
 

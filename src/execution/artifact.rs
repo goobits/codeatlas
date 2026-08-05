@@ -5,6 +5,11 @@ use anyhow::Result;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+#[cfg(test)]
+use crate::execution::model::{ArtifactPayload, ExecutionPlan, ExecutionPlanBody};
+#[cfg(test)]
+use serde_json::json;
+
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 
@@ -48,76 +53,75 @@ pub(super) fn has_file_metadata_changed(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{digest_value, ArtifactRef, ArtifactStore};
-    use crate::execution::model::{
-        ArtifactLink, ArtifactPayload, ExecutionPlan, ExecutionPlanBody, ManagedCommandEvidence,
-    };
-    use serde_json::json;
+pub(crate) fn sample_plan() -> ExecutionPlan {
+    let tool_digest = format!("sha256:{}", "1".repeat(64));
+    let engine_digest = format!("sha256:{}", "2".repeat(64));
+    let body: ExecutionPlanBody = serde_json::from_value(json!({
+        "subject": "http",
+        "operation": "fuzz",
+        "tool": {"name": "codeatlas", "version": "1.0.0", "digest": tool_digest.clone()},
+        "engine": {"name": "fixture", "version": "2.0.0", "digest": engine_digest.clone()},
+        "evidence": {
+            "workspace": format!("sha256:{}", "3".repeat(64)),
+            "config": format!("sha256:{}", "4".repeat(64)),
+            "target": format!("sha256:{}", "5".repeat(64)),
+            "contract": format!("sha256:{}", "6".repeat(64)),
+            "tool": tool_digest,
+            "engine": engine_digest,
+            "policy": format!("sha256:{}", "7".repeat(64))
+        },
+        "target": {
+            "id": "fixture",
+            "class": "local_disposable",
+            "secret_references": []
+        },
+        "workload": ArtifactPayload::from_serializable(
+            "codeatlas.fixture-workload/v1",
+            &json!({"nested": {"β": 2, "a": "€"}})
+        ).expect("fixture payload"),
+        "effects": ["filesystem_scratch", "network_target_call"],
+        "required_capabilities": ["cleanup_verification", "network_allowlist"],
+        "destinations": [{"scheme": "http", "host": "127.0.0.1", "port": 8080}],
+        "managed_commands": [],
+        "expected_calls": [],
+        "writable_scratch_roots": [{
+            "logical_name": "execution_scratch",
+            "owner": "execution_kernel"
+        }],
+        "limits": {
+            "max_calls": 2,
+            "calls_per_second": 1,
+            "max_concurrency": 1,
+            "run_timeout_ms": 1000,
+            "max_cpu_time_ms": 900,
+            "max_rss_bytes": 1048576,
+            "max_processes": 2,
+            "max_open_files": 16,
+            "max_call_result_bytes": 1024,
+            "max_output_bytes": 2048,
+            "max_artifact_bytes": 4096
+        },
+        "isolation": {
+            "backend": "container",
+            "filesystem": "scratch_only",
+            "network": "proxy_only",
+            "processes": "planned_only"
+        },
+        "authorization": {
+            "class": "local_disposable",
+            "disposition": "reviewed_plan_required",
+            "reasons": ["explicit review fixture"]
+        }
+    }))
+    .expect("fixture plan body");
+    ExecutionPlan::new(body).expect("fixture plan")
+}
 
-    fn sample_plan() -> ExecutionPlan {
-        let tool_digest = format!("sha256:{}", "1".repeat(64));
-        let engine_digest = format!("sha256:{}", "2".repeat(64));
-        let body: ExecutionPlanBody = serde_json::from_value(json!({
-            "subject": "http",
-            "operation": "fuzz",
-            "tool": {"name": "codeatlas", "version": "1.0.0", "digest": tool_digest.clone()},
-            "engine": {"name": "fixture", "version": "2.0.0", "digest": engine_digest.clone()},
-            "evidence": {
-                "workspace": format!("sha256:{}", "3".repeat(64)),
-                "config": format!("sha256:{}", "4".repeat(64)),
-                "target": format!("sha256:{}", "5".repeat(64)),
-                "contract": format!("sha256:{}", "6".repeat(64)),
-                "tool": tool_digest,
-                "engine": engine_digest,
-                "policy": format!("sha256:{}", "7".repeat(64))
-            },
-            "target": {
-                "id": "fixture",
-                "class": "local_disposable",
-                "secret_references": []
-            },
-            "workload": ArtifactPayload::from_serializable(
-                "codeatlas.fixture-workload/v1",
-                &json!({"nested": {"β": 2, "a": "€"}})
-            ).expect("fixture payload"),
-            "effects": ["filesystem_scratch", "network_target_call"],
-            "required_capabilities": ["cleanup_verification", "network_allowlist"],
-            "destinations": [{"scheme": "http", "host": "127.0.0.1", "port": 8080}],
-            "managed_commands": [],
-            "expected_calls": [],
-            "writable_scratch_roots": [{
-                "logical_name": "execution_scratch",
-                "owner": "execution_kernel"
-            }],
-            "limits": {
-                "max_calls": 2,
-                "calls_per_second": 1,
-                "max_concurrency": 1,
-                "run_timeout_ms": 1000,
-                "max_cpu_time_ms": 900,
-                "max_rss_bytes": 1048576,
-                "max_processes": 2,
-                "max_open_files": 16,
-                "max_call_result_bytes": 1024,
-                "max_output_bytes": 2048,
-                "max_artifact_bytes": 4096
-            },
-            "isolation": {
-                "backend": "container",
-                "filesystem": "scratch_only",
-                "network": "proxy_only",
-                "processes": "planned_only"
-            },
-            "authorization": {
-                "class": "local_disposable",
-                "disposition": "reviewed_plan_required",
-                "reasons": ["explicit review fixture"]
-            }
-        }))
-        .expect("fixture plan body");
-        ExecutionPlan::new(body).expect("fixture plan")
-    }
+#[cfg(test)]
+mod tests {
+    use super::{digest_value, sample_plan, ArtifactRef, ArtifactStore};
+    use crate::execution::model::{ArtifactLink, ExecutionPlan, ManagedCommandEvidence};
+    use serde_json::json;
 
     #[test]
     fn rfc_8785_vectors_and_integer_guard_are_exact() {

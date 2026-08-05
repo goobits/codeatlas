@@ -1,4 +1,5 @@
 use crate::config::{CodeAtlasConfig, ProjectConfig};
+use crate::execution::CALL_CATEGORY_HEADER;
 use serde_json::{json, Value};
 
 fn project_config(config: CodeAtlasConfig) -> ProjectConfig {
@@ -183,6 +184,16 @@ fn fuzz_target_rejects_unsafe_runtime_configuration() {
                 "headers": [{ "name": "Bad Header", "value": "value" }]
             }),
             "invalid header name",
+        ),
+        (
+            "reserved call-category header",
+            json!({
+                "id": "public-local",
+                "contract": "public-api",
+                "base_url": "http://127.0.0.1:3443",
+                "headers": [{ "name": CALL_CATEGORY_HEADER, "value": "setup" }]
+            }),
+            "reserved internal header",
         ),
         (
             "header injection",
