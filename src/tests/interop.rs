@@ -7,10 +7,27 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
+const RESOLUTION_SCHEMA_ID: &str =
+    "https://agentspeak.org/schemas/agentspeak-resolution-conformance-v1.schema.json";
+const SOURCE_TARGET_SCHEMA_ID: &str =
+    "https://agentspeak.org/schemas/agentspeak-source-target-v1.schema.json";
+
 #[test]
-#[ignore = "requires the sibling agentspeak-contracts repository"]
 fn agentspeak_resolution_conformance_matches_source_graph() {
     let contracts_root = super::agentspeak_contracts_root();
+    if !contracts_root.is_dir() {
+        assert!(
+            std::env::var_os("AGENTSPEAK_CONTRACTS_ROOT").is_none(),
+            "AGENTSPEAK_CONTRACTS_ROOT does not name an available contract repository: {}",
+            contracts_root.display()
+        );
+        eprintln!(
+            "skipping AgentSpeak resolution conformance: sibling repository is unavailable at {}",
+            contracts_root.display()
+        );
+        return;
+    }
+
     let conformance_root = contracts_root.join("conformance/resolution");
     let fixture_root = conformance_root.join("fixture");
     let expected: serde_json::Value = serde_json::from_slice(
@@ -18,12 +35,9 @@ fn agentspeak_resolution_conformance_matches_source_graph() {
             .expect("read neutral resolution expectation"),
     )
     .expect("parse neutral resolution expectation");
-    assert_eq!(
-        expected["schema_version"],
-        "agentspeak.resolution-conformance/v1"
-    );
 
-    validate_source_target(&contracts_root, &fixture_root, &expected["target"]);
+    validate_resolution_assertion(&contracts_root, &expected);
+    validate_source_target_evidence(&fixture_root, &expected["target"]);
 
     let project = ProjectConfig::load(&fixture_root, None).expect("load resolution fixture");
     let projects = project
@@ -46,7 +60,7 @@ fn agentspeak_resolution_conformance_matches_source_graph() {
         "CodeAtlas and the neutral contract disagree on test witnesses"
     );
 
-    let expected_unresolved = expected["unresolved"]
+    let expected_unresolved_entries = expected["unresolved"]
         .as_array()
         .expect("unresolved expectations")
         .iter()
@@ -60,16 +74,41 @@ fn agentspeak_resolution_conformance_matches_source_graph() {
                 .expect("unresolved path")
                 .to_string()
         })
+        .collect::<Vec<_>>();
+    let expected_unresolved = expected_unresolved_entries
+        .iter()
+        .cloned()
         .collect::<BTreeSet<_>>();
-    let actual_unresolved = graph
+    assert_eq!(
+        expected_unresolved_entries.len(),
+        expected_unresolved.len(),
+        "neutral unresolved boundaries repeat a path"
+    );
+
+    let actual_unresolved_entries = graph
         .boundaries
         .iter()
         .filter(|boundary| boundary.kind == BoundaryKind::DynamicImport)
         .map(|boundary| boundary.evidence.path.clone())
+        .collect::<Vec<_>>();
+    let actual_unresolved = actual_unresolved_entries
+        .iter()
+        .cloned()
         .collect::<BTreeSet<_>>();
+    assert_eq!(
+        actual_unresolved_entries.len(),
+        actual_unresolved.len(),
+        "CodeAtlas resolution evidence repeats an unresolved path"
+    );
     assert_eq!(
         actual_unresolved, expected_unresolved,
         "CodeAtlas and the neutral contract disagree on unresolved boundaries"
+    );
+    assert!(
+        consumers.is_disjoint(&witnesses)
+            && consumers.is_disjoint(&actual_unresolved)
+            && witnesses.is_disjoint(&actual_unresolved),
+        "consumer, witness, and unresolved path sets must be disjoint"
     );
     assert!(graph.edges.iter().any(|edge| {
         edge.evidence.path == "src/plugins/loader.ts"
@@ -80,23 +119,92 @@ fn agentspeak_resolution_conformance_matches_source_graph() {
     assert!(!witnesses.contains("src/plugins/loader.ts"));
 }
 
-fn validate_source_target(
-    contracts_root: &std::path::Path,
-    fixture_root: &std::path::Path,
-    target: &serde_json::Value,
-) {
-    let schema: serde_json::Value = serde_json::from_slice(
-        &fs::read(contracts_root.join("schemas/agentspeak-source-target-v1.schema.json"))
+fn validate_resolution_assertion(contracts_root: &std::path::Path, expected: &serde_json::Value) {
+    let schemas_root = contracts_root.join("schemas");
+    let resolution_schema: serde_json::Value = serde_json::from_slice(
+        &fs::read(schemas_root.join("agentspeak-resolution-conformance-v1.schema.json"))
+            .expect("read neutral resolution-conformance schema"),
+    )
+    .expect("parse neutral resolution-conformance schema");
+    let source_target_schema: serde_json::Value = serde_json::from_slice(
+        &fs::read(schemas_root.join("agentspeak-source-target-v1.schema.json"))
             .expect("read neutral source-target schema"),
     )
     .expect("parse neutral source-target schema");
-    let validator = jsonschema::validator_for(&schema).expect("compile source-target schema");
+
+    assert_eq!(resolution_schema["$id"], RESOLUTION_SCHEMA_ID);
+    assert_eq!(source_target_schema["$id"], SOURCE_TARGET_SCHEMA_ID);
+    assert!(source_target_schema["properties"]["range"]["description"]
+        .as_str()
+        .expect("source-target range description")
+        .contains("content_digest"));
+    assert_eq!(
+        source_target_schema["properties"]["annotations"]["propertyNames"]["pattern"],
+        r"^[a-z][a-z0-9]*\.[a-z0-9_.-]+$"
+    );
+
+    let registry = jsonschema::Registry::new()
+        .add(SOURCE_TARGET_SCHEMA_ID, source_target_schema)
+        .expect("register neutral source-target schema")
+        .prepare()
+        .expect("prepare neutral schema registry");
+    let validator = jsonschema::options()
+        .with_registry(&registry)
+        .build(&resolution_schema)
+        .expect("compile neutral resolution-conformance schema");
     let errors = validator
-        .iter_errors(target)
+        .iter_errors(expected)
         .map(|error| error.to_string())
         .collect::<Vec<_>>();
-    assert!(errors.is_empty(), "source-target violations: {errors:#?}");
+    assert!(
+        errors.is_empty(),
+        "resolution-conformance violations: {errors:#?}"
+    );
 
+    let mut invalid_annotation = expected.clone();
+    invalid_annotation["target"]["annotations"] = serde_json::json!({
+        "code-atlas.symbol": "createCheckout"
+    });
+    assert!(
+        !validator.is_valid(&invalid_annotation),
+        "the cross-file source-target annotation constraint was not applied"
+    );
+
+    for required in ["resolved_consumers", "test_witnesses", "unresolved"] {
+        let mut missing = expected.clone();
+        missing
+            .as_object_mut()
+            .expect("resolution assertion object")
+            .remove(required);
+        assert!(
+            !validator.is_valid(&missing),
+            "resolution assertion accepted a missing {required} field"
+        );
+    }
+
+    let mut unresolved_without_reason = expected.clone();
+    unresolved_without_reason["unresolved"][0]
+        .as_object_mut()
+        .expect("unresolved boundary object")
+        .remove("reason");
+    assert!(
+        !validator.is_valid(&unresolved_without_reason),
+        "resolution assertion accepted an unresolved boundary without a reason"
+    );
+
+    let mut duplicate_consumer = expected.clone();
+    let first_consumer = duplicate_consumer["resolved_consumers"][0].clone();
+    duplicate_consumer["resolved_consumers"]
+        .as_array_mut()
+        .expect("resolved consumer array")
+        .push(first_consumer);
+    assert!(
+        !validator.is_valid(&duplicate_consumer),
+        "resolution assertion accepted a duplicate consumer"
+    );
+}
+
+fn validate_source_target_evidence(fixture_root: &std::path::Path, target: &serde_json::Value) {
     let path = target["path"].as_str().expect("target path");
     let bytes = fs::read(fixture_root.join(path)).expect("read target bytes");
     assert_eq!(

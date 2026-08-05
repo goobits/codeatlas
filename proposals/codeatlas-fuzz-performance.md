@@ -158,6 +158,9 @@ remain domain-owned.
 - The obsolete source-target field draft is superseded by the external
   core-plus-annotations contract. CodeAtlas reserves registered `codeatlas.*`
   annotation keys and does not publish a competing schema.
+- A future HQA-hints producer validates every embedded source target through
+  the complete external contract and refuses duplicate `(kind, key)` pairs
+  before serialization; free-form sibling evidence never weakens either rule.
 - Any future TypeMill receipt verification must be closed over the exact plan
   and receipt alone. Moved-path digest verification remains an explicit
   dependency on TypeMill's publication audit rather than an assumed field.
@@ -725,24 +728,24 @@ Active children: [`codeatlas-hqa-seeding.md`](codeatlas-hqa-seeding.md) and the
 interop acceptance surface. CodeAtlas consumes the external contracts
 read-only and never edits their repository.
 
-- [ ] Validate the complete resolution assertion document against
+- [x] Validate the complete resolution assertion document against
   `agentspeak-resolution-conformance-v1.schema.json` from the sibling
   `agentspeak-contracts` repository, including its cross-file source-target
   `$ref`, instead of checking only the schema-version string.
-- [ ] Remove the resolution test's implementation-ignore gate now that the
+- [x] Remove the resolution test's implementation-ignore gate now that the
   schema exists, while retaining one explicit standalone-checkout diagnostic
   when the external contract repository is unavailable.
-- [ ] Verify the corrected `https://agentspeak.org/` source-target identity,
+- [x] Verify the corrected `https://agentspeak.org/` source-target identity,
   digest-bound range semantics, and lowercase-alphanumeric annotation namespace
   through the external schema. Do not generate, vendor, or publish a CodeAtlas
   copy.
 - [ ] Keep the HQA application-inventory golden's neutral-schema migration
   visibly blocked until that schema is actually published by the contract
   owner; do not reconstruct it from HQA's implementation tree.
-- [ ] Record that future hints producers must validate the full embedded target
+- [x] Record that future hints producers must validate the full embedded target
   and reject duplicate `(kind, key)` pairs before serialization. Free-form
   evidence never weakens the target block.
-- [ ] Run the focused interop/schema tests, full contract drift checks, bounded
+- [x] Run the focused interop/schema tests, full contract drift checks, bounded
   CodeAtlas dogfood, and commit the CodeAtlas-only wiring without modifying
   HQA, TypeMill, or `agentspeak-contracts`.
 
@@ -1082,6 +1085,9 @@ Active child: performance evidence Phase 4.
 
 Active child: performance evidence Phase 5.
 
+- [ ] Reproduce the Phase 8A warm exact-target `inspect code` latency lead with
+  named cold/warm observations before optimizing it. Keep it an optimization
+  candidate until accepted runtime attribution proves a hotspot.
 - [ ] Define representative CodeAtlas scan, check, usage, inspect, lexicon,
   tests, and accepted HTTP/PostgreSQL fixture workloads with recorded file,
   symbol, byte, and dataset scale.
@@ -1245,6 +1251,17 @@ Phases 1 through 3.
   warm checks are byte-identical with 334 advisories, zero gates, and no
   findings in the new inspection paths. Optional observation enrichment remains
   explicitly gated on the accepted artifact identities.
+- 2026-08-05: the neutral resolution-conformance gate consumes
+  `agentspeak-contracts` `ab62f51`, validates the complete assertion through
+  its source-target `$ref`, and passes with three runtime consumers, two test
+  witnesses, and one unresolved dynamic-import boundary. The ordinary test
+  path is no longer ignored; an absent default sibling checkout produces an
+  explicit standalone diagnostic. Corrected `agentspeak.org` identities,
+  digest-bound range wording, annotation namespace constraints, set uniqueness,
+  unresolved path uniqueness, and cross-set disjointness are checked without a
+  vendored schema. Bounded self-dogfood reports 308 files, 3,206 scan symbols,
+  337 advisory code findings, and zero gates. Its warm exact-target inspection
+  latency is retained as an unclassified Phase 19 performance lead.
 
 ## Existing-first check
 

@@ -282,9 +282,13 @@ Total implementation LOC: +1,463 / -226 authored
 Generated current-schema JSON: +7,706 LOC
 
 Interop follow-up (2026-08-05): the CodeAtlas resolution-conformance test
-validates its exact target against the neutral `agentspeak.source-target/v1`
-schema and consumes the neutral versioned expected-consumer artifact. The
-source-target schema is still not copied into CodeAtlas.
+validates the complete neutral assertion document against
+`agentspeak.resolution-conformance/v1`, resolving its source-target `$ref`
+through an in-memory registry. It also verifies the target's exact file digest
+and consumes unique, pairwise-disjoint runtime-consumer, test-witness, and
+unresolved-boundary path sets. Neither external schema is copied into CodeAtlas,
+and the normal test is active whenever the sibling contract repository is
+present.
 
 ## Layman's wins
 
