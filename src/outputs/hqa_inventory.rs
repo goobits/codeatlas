@@ -438,10 +438,10 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires the externally owned HQA application-inventory schema"]
+    #[ignore = "requires the neutral agentspeak application-inventory schema"]
     fn golden_inventory_validates_against_external_hqa_schema() {
-        let schema_path = std::env::var_os("CODEATLAS_HQA_APPLICATION_INVENTORY_SCHEMA")
-            .expect("set CODEATLAS_HQA_APPLICATION_INVENTORY_SCHEMA");
+        let schema_path = crate::tests::agentspeak_contracts_root()
+            .join("schemas/agentspeak-hqa-application-inventory-v1.schema.json");
         let schema: serde_json::Value = serde_json::from_slice(
             &std::fs::read(schema_path).expect("read external HQA inventory schema"),
         )

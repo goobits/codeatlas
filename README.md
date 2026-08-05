@@ -862,9 +862,16 @@ Existing reports retain their shipped integer and API version fields. Every
 new artifact instead uses one `codeatlas.<lower-kebab-kind>/v<positive-integer>`
 schema-version string and no parallel API version. CodeAtlas annotation keys
 are registered in the [canonical lexicon](docs/concepts/lexicon.md) before use.
-External schemas, including the pending source-target contract, are not
-vendored or re-published here. Schema publication adds packaged files, not a
-runtime `schemas` command.
+External schemas, including `agentspeak.source-target/v1`, are not vendored or
+re-published here. Explicit interop tests validate them from the neutral
+contracts repository. Schema publication adds packaged files, not a runtime
+`schemas` command.
+
+With `agentspeak-contracts` beside this repository (or
+`AGENTSPEAK_CONTRACTS_ROOT` set explicitly), run
+`pnpm test:interop:resolution`. The separate `pnpm test:interop:hqa` gate stays
+blocked until the neutral application-inventory schema is published; it never
+falls back to an HQA checkout.
 
 ## Configuration Rules
 

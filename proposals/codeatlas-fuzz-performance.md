@@ -1030,7 +1030,9 @@ Phases 1 through 3.
   schema. Keep the CodeAtlas golden in this repository, vendor no external
   schema, remove the HQA-tree coupling, and make no HQA or neutral-repository
   edit from CodeAtlas.
-- [ ] Add the CodeAtlas half of the cross-tool resolution conformance gate:
+  CodeAtlas now resolves only the neutral schema path; the gate remains open
+  because that external schema is not yet present in `agentspeak-contracts`.
+- [x] Add the CodeAtlas half of the cross-tool resolution conformance gate:
   one checked-in repository fixture with an exact symbol, resolved consumer
   owners, and explicit unresolved counterexamples; generate its evidence from
   the existing source graph rather than a second resolver, retain a versioned
@@ -1122,6 +1124,11 @@ Phases 1 through 3.
   zero-call fixture scans. The v2 contract records bounded placeholders,
   catalog/type shapes, statement/effect evidence, and exact eligibility; the
   old v1 schemas and duplicate baseline-query projection are removed.
+- 2026-08-05: CodeAtlas's neutral resolution-conformance half passes against
+  `agentspeak-contracts`: three runtime consumers, two test witnesses, and one
+  named dynamic-import boundary agree exactly. The fixture exposed and now
+  guards `.e2e.ts` test classification and extensionless computed-import
+  incompleteness without adding another resolver or vendored contract.
 
 ## Existing-first check
 

@@ -389,7 +389,10 @@ pub(super) fn is_conventional_test_module(path: &str) -> bool {
     matches!(
         extension,
         "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "svelte"
-    ) && (stem.ends_with(".test") || stem.ends_with(".spec") || stem.ends_with(".playwright"))
+    ) && (stem.ends_with(".test")
+        || stem.ends_with(".spec")
+        || stem.ends_with(".e2e")
+        || stem.ends_with(".playwright"))
 }
 
 pub(super) fn is_test_config_module(module: &Module, project_uses_vitest: bool) -> bool {

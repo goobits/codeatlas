@@ -1,6 +1,7 @@
 # HQA application-inventory seeding
 
-Status: Accepted CodeAtlas-side interop child; implementation complete
+Status: Accepted CodeAtlas-side interop child; renderer complete, neutral-schema
+drift follow-up waits for external publication
 
 Decision scope: One deterministic renderer from `codeatlas.http/v2` evidence to
 the published `agentspeak.hqa-application-inventory/v1` contract
@@ -222,6 +223,13 @@ The accepted estimate undercounted the fail-closed boundary checks and the
 explicit input/golden corpus. The added surface remains one renderer, one CLI
 format selector, and focused tests; it adds no scanner, parser, client, runtime
 dependency, or external-repository edit.
+
+The convergence test now resolves only
+`schemas/agentspeak-hqa-application-inventory-v1.schema.json` from the sibling
+neutral contracts repository, never a path inside HQA. As of 2026-08-05 that
+external file has not been published there, so the explicitly ignored
+cross-repository test remains a named continuation gate rather than falling
+back to the HQA checkout or a vendored copy.
 
 Total implementation LOC: +815 / -9
 

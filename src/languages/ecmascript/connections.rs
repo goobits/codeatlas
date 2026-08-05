@@ -351,9 +351,9 @@ fn connect_module_resolution(
                 module.path
             ),
         ),
-        Resolution::DynamicUnknown(_) => (
+        Resolution::DynamicUnknown(value) => (
             Some(BoundaryKind::DynamicImport),
-            format!("Dynamic module boundary in {}", module.path),
+            format!("Dynamic module boundary {value:?} in {}", module.path),
         ),
         Resolution::Unscanned(value) => (
             Some(BoundaryKind::UnsupportedDependency),

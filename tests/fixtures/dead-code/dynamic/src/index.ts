@@ -18,6 +18,10 @@ export async function loadPlugin(name: string): Promise<unknown> {
   return import(`./plugins/${name}.ts`);
 }
 
+export async function loadExtensionless(name: string): Promise<unknown> {
+  return import(`./${name}`);
+}
+
 export async function loadUnknown(specifier: string): Promise<unknown> {
   return import(specifier);
 }
@@ -33,5 +37,6 @@ void pages;
 void content;
 void (null as PageData | null);
 void loadPlugin("plugin");
+void loadExtensionless("plugin");
 void loadUnknown("./unknown");
 void loadCacheBusted();

@@ -35,11 +35,11 @@ an owning product change requires a new schema version. New execution artifacts
 start with one namespaced string such as `codeatlas.execution-plan/v1`; they do
 not copy the older integer-plus-API split.
 
-External schemas remain externally owned. In particular, CodeAtlas will bind
-to the current published source-target contract only after its superseding
-core-plus-annotations schema is available. CodeAtlas will not preserve or
-republish the obsolete draft that placed every producer-specific coordinate in
-the core block.
+External schemas remain externally owned. CodeAtlas binds its resolution
+conformance target to the published core-plus-annotations source-target schema
+in the neutral contracts repository. It does not preserve or republish the
+obsolete draft that placed every producer-specific coordinate in the core
+block.
 
 ## Why this is one owner
 
@@ -148,17 +148,19 @@ Registered keys use `codeatlas.<lower_snake_case_name>`; they may not shadow a
 core field, change the meaning of another producer's key, or carry a value
 whose shape is not documented and drift-tested.
 
-The first reserved key is `codeatlas.node_id`, whose value is an opaque exact
-CodeAtlas graph node ID. If the accepted external contract places symbol
-identity outside its core, CodeAtlas will additionally register
-`codeatlas.symbol`; that is one serialization choice, not a new target model.
-Unknown future `codeatlas.*` keys are not emitted until registered. CodeAtlas
-fills only coordinates it truthfully knows and never fabricates a UTF-16 range
-from a line or asks another tool to parse a CodeAtlas symbol selector.
+The first registered keys are `codeatlas.node_id`, whose value is an opaque
+exact CodeAtlas graph node ID, and `codeatlas.symbol`, whose value is the
+declared identifier exactly as observed in source. Symbol identity is an
+annotation under the accepted external contract; that is one serialization
+choice, not a new target model. Unknown future `codeatlas.*` keys are not
+emitted until registered. CodeAtlas fills only coordinates it truthfully knows
+and never fabricates a UTF-16 range from a line or asks another tool to parse a
+CodeAtlas symbol selector.
 
 The external core-plus-annotations schema remains the sole contract owner.
-CodeAtlas tests bind its serializer to that published schema when available;
-this repository does not check in a competing source-target draft.
+CodeAtlas's resolution-conformance test validates its versioned target payload
+against that published schema; this repository does not check in a competing
+source-target draft or claim a production serializer before one exists.
 
 ## TypeMill interoperability wording
 
@@ -259,11 +261,11 @@ Implementation diff: +320 / -8 non-proposal lines
 
 Verify: The prospective registry accepts one required namespaced schema string,
 rejects malformed versions and parallel API versions, and keeps registry and
-schema-directory identity exact. `codeatlas.node_id` has one documented value
-shape; `codeatlas.symbol` remains unregistered; no external source-target
-schema is vendored. Existing schema bytes are unchanged, the runtime has no
-`schemas` command, all repository checks pass, and final dogfood reports zero
-gates and zero schema-contract boundaries.
+schema-directory identity exact. `codeatlas.node_id` and `codeatlas.symbol`
+have one documented value shape each; no external source-target schema is
+vendored. Existing schema bytes are unchanged, the runtime has no `schemas`
+command, all repository checks pass, and final dogfood reports zero gates and
+zero schema-contract boundaries.
 
 ```text
 ~ src/published_schemas.rs
@@ -278,6 +280,11 @@ gates and zero schema-contract boundaries.
 Total implementation LOC: +1,463 / -226 authored
 
 Generated current-schema JSON: +7,706 LOC
+
+Interop follow-up (2026-08-05): the CodeAtlas resolution-conformance test
+validates its exact target against the neutral `agentspeak.source-target/v1`
+schema and consumes the neutral versioned expected-consumer artifact. The
+source-target schema is still not copied into CodeAtlas.
 
 ## Layman's wins
 

@@ -154,11 +154,18 @@ struct AnnotationKeyRegistration {
     description: &'static str,
 }
 
-const CODEATLAS_ANNOTATION_KEYS: &[AnnotationKeyRegistration] = &[AnnotationKeyRegistration {
-    key: "codeatlas.node_id",
-    value_shape: AnnotationValueShape::OpaqueString,
-    description: "opaque exact CodeAtlas graph node ID",
-}];
+const CODEATLAS_ANNOTATION_KEYS: &[AnnotationKeyRegistration] = &[
+    AnnotationKeyRegistration {
+        key: "codeatlas.node_id",
+        value_shape: AnnotationValueShape::OpaqueString,
+        description: "opaque exact CodeAtlas graph node ID",
+    },
+    AnnotationKeyRegistration {
+        key: "codeatlas.symbol",
+        value_shape: AnnotationValueShape::OpaqueString,
+        description: "declared identifier as written in source",
+    },
+];
 
 fn constrain_property(
     schema: &mut Value,
@@ -752,7 +759,10 @@ mod tests {
                 "accepted invalid annotation key {invalid}"
             );
         }
-        assert!(!keys.contains("codeatlas.symbol"));
+        assert_eq!(
+            keys,
+            BTreeSet::from(["codeatlas.node_id", "codeatlas.symbol"])
+        );
 
         for schema in PUBLISHED_SCHEMAS {
             assert!(

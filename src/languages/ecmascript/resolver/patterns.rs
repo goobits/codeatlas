@@ -32,6 +32,9 @@ impl ModuleResolver {
         if !is_bounded_local_pattern(prefix, suffix) {
             return vec![Resolution::DynamicUnknown(format!("{prefix}*{suffix}"))];
         }
+        if !has_supported_source_suffix(suffix) {
+            return vec![Resolution::DynamicUnknown(format!("{prefix}*{suffix}"))];
+        }
         let matches = self
             .module_specifiers(module, prefix.starts_with('/'))
             .into_iter()
@@ -169,4 +172,10 @@ impl ModuleResolver {
         specifiers.dedup();
         specifiers
     }
+}
+
+fn has_supported_source_suffix(suffix: &str) -> bool {
+    let suffix = source_path_specifier(suffix);
+    let candidate = format!("candidate{suffix}");
+    Path::new(&candidate).extension().is_some() && !unsupported_relative_specifier(&candidate)
 }

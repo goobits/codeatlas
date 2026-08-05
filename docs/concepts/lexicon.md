@@ -68,11 +68,12 @@ ambiguous: `code target`, `HTTP contract`, `PostgreSQL observation`,
 
 | Key | JSON value | Meaning | Status |
 |---|---|---|---|
-| `codeatlas.node_id` | string | Opaque exact CodeAtlas graph node ID; consumers must not parse it as a foreign symbol or range. | Reserved; emission waits for the accepted external source-target schema. |
+| `codeatlas.node_id` | string | Opaque exact CodeAtlas graph node ID; consumers must not parse it as a foreign symbol or range. | Registered; emit only when the exact graph node is known. |
+| `codeatlas.symbol` | string | Declared identifier of the addressed declaration, exactly as observed in source. | Registered; it is an annotation rather than a universal source-target core field. |
 
-`codeatlas.symbol` is not registered. It remains conditional on the external
-contract's final core fields. CodeAtlas publishes neither key in a local copy
-of that external schema.
+The external `agentspeak.source-target/v1` schema remains the sole target-block
+owner. CodeAtlas validates against it from the neutral contracts repository and
+publishes no local copy.
 
 ## Deliberately separate concepts
 

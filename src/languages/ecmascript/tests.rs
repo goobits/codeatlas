@@ -4,6 +4,7 @@ use super::contexts::{is_conventional_test_module, is_conventional_tooling_modul
 fn conventional_test_detection_excludes_test_helpers() {
     assert!(is_conventional_test_module("src/example.test.ts"));
     assert!(is_conventional_test_module("tests/example.spec.js"));
+    assert!(is_conventional_test_module("e2e/example.e2e.ts"));
     assert!(is_conventional_test_module("src/Example.test.svelte"));
     assert!(!is_conventional_test_module("src/__tests__/support.ts"));
     assert!(!is_conventional_test_module("src/contest.ts"));

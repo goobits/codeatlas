@@ -374,13 +374,16 @@ fn dynamic_ecmascript_boundaries_lower_certainty_without_false_gates() {
         .iter()
         .filter(|finding| finding.kind == DeadCodeFindingKind::DynamicBoundary)
         .collect::<Vec<_>>();
-    assert_eq!(boundaries.len(), 1);
+    assert_eq!(boundaries.len(), 2);
     assert!(boundaries
         .iter()
         .all(|finding| finding.confidence != FindingConfidence::High && !finding.gates));
     assert!(boundaries
         .iter()
         .any(|finding| finding.message.contains("<dynamic expression>")));
+    assert!(boundaries
+        .iter()
+        .any(|finding| finding.message.contains("./*")));
     assert!(!report
         .findings
         .iter()
