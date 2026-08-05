@@ -18,6 +18,7 @@ ambiguous: `code target`, `HTTP contract`, `PostgreSQL observation`,
 | **target block** | A versioned cross-tool source address whose external owner defines interoperable core coordinates and a producer-annotation map. | External source-target contract; producer adapters | Carry only coordinates the producer knows. CodeAtlas fabricates neither UTF-16 ranges nor foreign symbol handles. |
 | **annotation key** | A registered producer-namespaced key for tool-specific target-block evidence that cannot shadow or redefine a core field. | Publishing producer; CodeAtlas keys in the `codeatlas.` namespace | CodeAtlas keys use `codeatlas.<lower_snake_case_name>`. Do not emit unregistered keys or move shared coordinates into annotations. |
 | **contract** | A declared or inferred set of valid inputs, outputs, effects, and invariants owned by one subject adapter. | `languages`, `http`, `postgres`, or `architecture` | There is no universal contract schema. Do not use *type* as a synonym: a type is only evidence within a contract. |
+| **schema version** | The immutable identity of one published artifact shape. New artifacts use one `codeatlas.<lower-kebab-kind>/v<positive-integer>` string as both payload version and schema ID. | Published-schema registry and the artifact's domain owner | Existing integer-plus-API report versions remain legacy facts. A new artifact never adds a parallel API version. |
 | **evidence** | A deterministic, attributable fact used to build or evaluate a contract, finding, decision, or artifact. | Producing domain | Evidence is not proof of runtime behavior unless it was observed at runtime. |
 | **finding** | A versioned analysis result with exact evidence, classification, target linkage, and gate eligibility. | Producing analysis domain | Avoid generic *issue* or *problem* in schemas. A finding may be informational. |
 | **inventory** | A versioned, bounded list of currently known subject entities with explicit provenance and completeness. | Producing subject scan | An inventory is preparation evidence, not proof of exhaustive coverage or runtime reachability. |
@@ -48,6 +49,16 @@ ambiguous: `code target`, `HTTP contract`, `PostgreSQL observation`,
 | **lease** | Registered ownership of a managed resource with a bounded cleanup action and verification probe. | `execution::lease` | Dropping or killing a resource is not verified release. |
 | **redaction** | Fail-closed removal or non-capture of secret values and bounded sensitive payloads while preserving auditable references and scope. | `execution::redaction`; domain patterns | Masking after unrestricted persistence is not sufficient redaction. |
 | **report** | A versioned domain result intended for inspection or policy, rendered without changing its semantic content. | Producing domain; format in `outputs` | A report is not automatically an observation, baseline, receipt, or reproducer. |
+
+## Registered CodeAtlas annotation keys
+
+| Key | JSON value | Meaning | Status |
+|---|---|---|---|
+| `codeatlas.node_id` | string | Opaque exact CodeAtlas graph node ID; consumers must not parse it as a foreign symbol or range. | Reserved; emission waits for the accepted external source-target schema. |
+
+`codeatlas.symbol` is not registered. It remains conditional on the external
+contract's final core fields. CodeAtlas publishes neither key in a local copy
+of that external schema.
 
 ## Deliberately separate concepts
 

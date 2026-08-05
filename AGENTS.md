@@ -51,6 +51,14 @@ term is replaced, remove it and update all callers, schemas, tests, and docs in
 the same accepted phase. Do not add aliases, forwarding wrappers, deprecated
 spellings, `--force`, unlimited sentinels, or dual artifact formats.
 
+Every new public JSON artifact registers its owning model in
+`src/published_schemas.rs` before it can ship. Use one
+`codeatlas.<lower-kebab-kind>/v<positive-integer>` schema-version string as both
+payload identity and schema ID; do not add a parallel API version. Register a
+`codeatlas.*` annotation key and its value shape in the canonical lexicon
+before emission. External schemas remain external: bind to an accepted
+published contract, never vendor or reconstruct a draft locally.
+
 ## Architecture and ownership
 
 - `src/cli` owns command parsing and presentation-neutral argument types. It

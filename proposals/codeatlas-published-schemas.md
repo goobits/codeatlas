@@ -1,6 +1,6 @@
 # Published CodeAtlas schemas
 
-Status: Accepted program child; Phase 1 complete, Phase 2 next
+Status: Accepted program child; implementation complete
 
 Decision scope: Generated JSON Schemas for every public versioned CodeAtlas
 JSON artifact, a drift-tested schema registry, and CodeAtlas-owned annotation
@@ -253,17 +253,20 @@ boundaries across 235 files and 2,258 scan symbols.
 
 ## Phase 2: Prospective enforcement and interop registry
 
-Status: [ ] Not started
+Status: [x] Complete (2026-08-04)
 
-LOC: +150-250 / -0-30
+Implementation diff: +320 / -8 non-proposal lines
 
-Verify: New-artifact version rules, annotation-key registration, external
-source-target dependency checks, schema documentation, and whole-repository
-registration enforcement pass without changing existing payload bytes.
+Verify: The prospective registry accepts one required namespaced schema string,
+rejects malformed versions and parallel API versions, and keeps registry and
+schema-directory identity exact. `codeatlas.node_id` has one documented value
+shape; `codeatlas.symbol` remains unregistered; no external source-target
+schema is vendored. Existing schema bytes are unchanged, the runtime has no
+`schemas` command, all repository checks pass, and final dogfood reports zero
+gates and zero schema-contract boundaries.
 
 ```text
 ~ src/published_schemas.rs
-~ schemas/
 ~ docs/concepts/lexicon.md
 ~ README.md
 ~ AGENTS.md
@@ -272,7 +275,7 @@ registration enforcement pass without changing existing payload bytes.
 ~ tests/cli_contract.rs
 ```
 
-Total authored LOC: +1,293-1,393 / -218-248
+Total implementation LOC: +1,463 / -226 authored
 
 Generated current-schema JSON: +7,706 LOC
 

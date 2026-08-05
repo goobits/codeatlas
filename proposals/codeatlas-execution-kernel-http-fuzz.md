@@ -167,8 +167,9 @@ reproducer_<digest>
 report_<digest>
 ```
 
-Every envelope contains its kind, subject, schema/API version, canonical ID,
-content digest, parent/link digests, creation tool identity, and bounded payload.
+Every envelope contains its kind, subject, single namespaced schema version,
+canonical ID, content digest, parent/link digests, creation tool identity, and
+bounded payload.
 Managed artifacts live under the external CodeAtlas state root. `--out` exports
 the same envelope to one explicit file; it does not create a second identity.
 
@@ -219,6 +220,12 @@ there is no fallback reader under the same version.
 Every later artifact kind receives its own registered schema string and domain
 separator. It may reuse the canonicalization primitive but cannot reuse the
 execution-plan digest kind.
+
+Each new artifact uses the published-schema registry's prospective artifact
+mode. Its required schema-version string equals the schema `$id`, and the root
+cannot carry a parallel API-version field. An unregistered schema file, invalid
+namespace, reused ID, or payload drift under an unchanged version fails the
+read-only registry tests.
 
 ## Configuration is strict JSON
 
@@ -638,7 +645,8 @@ domain-separation vectors pin canonical plan IDs; canonical artifact IDs and
 typed references are stable; changed evidence refuses execution; the shared
 classifier cannot preauthorize remote/effectful targets; artifacts are private,
 bounded, redacted, and external; leases release on every outcome; incomplete
-work cannot pass.
+work cannot pass; every new artifact passes prospective schema registration
+with one namespaced version and no parallel API version.
 
 ```text
 + src/config/execution.rs

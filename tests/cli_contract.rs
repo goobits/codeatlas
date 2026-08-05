@@ -51,6 +51,14 @@ fn removed_tests_group_is_rejected_without_an_alias() {
 }
 
 #[test]
+fn published_schemas_do_not_create_a_runtime_command() {
+    let output = run(&["schemas"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unrecognized subcommand 'schemas'"));
+}
+
+#[test]
 fn scan_writes_machine_readable_json_to_the_requested_directory() {
     let output_directory = TestDirectory::create("codeatlas-cli-contract");
     let fixture = fixture("ts");

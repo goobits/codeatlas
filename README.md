@@ -774,6 +774,30 @@ lost query coverage, breaking catalog changes, required columns without
 defaults, new constraints, and unique indexes. Safe appended migrations and
 additive catalog changes remain additive.
 
+## Published JSON Schemas
+
+Every stable JSON report root has a generated Draft 2020-12 schema in
+[`schemas/`](schemas/). The schemas come from the same Rust models and serde
+attributes that write the reports. Normal tests regenerate them in memory and
+fail on byte drift; they never rewrite the checkout.
+
+After an intentional report-contract change, update the registered files with
+an external Cargo target:
+
+```bash
+schema_cache_root="$(mktemp -d /tmp/codeatlas-schema-cache.XXXXXX)"
+export CARGO_TARGET_DIR="$schema_cache_root/cargo-target"
+pnpm run schemas:write
+```
+
+Existing reports retain their shipped integer and API version fields. Every
+new artifact instead uses one `codeatlas.<lower-kebab-kind>/v<positive-integer>`
+schema-version string and no parallel API version. CodeAtlas annotation keys
+are registered in the [canonical lexicon](docs/concepts/lexicon.md) before use.
+External schemas, including the pending source-target contract, are not
+vendored or re-published here. Schema publication adds packaged files, not a
+runtime `schemas` command.
+
 ## Configuration Rules
 
 Configuration is strict JSON. Unknown fields fail validation so spelling

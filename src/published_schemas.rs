@@ -40,12 +40,19 @@ struct PublishedSchema {
 enum ContractVersion {
     Api(&'static str),
     Schema(u32),
+    Namespaced(&'static str),
+}
+
+#[derive(Clone, Copy)]
+enum SchemaFieldValue {
+    Integer(u32),
+    Namespaced(&'static str),
 }
 
 #[derive(Clone, Copy)]
 struct PayloadVersion {
     contract: ContractVersion,
-    schema: Option<u32>,
+    schema: Option<SchemaFieldValue>,
     api: Option<&'static str>,
     format: Option<&'static str>,
     kind: Option<&'static str>,
@@ -56,7 +63,7 @@ impl PayloadVersion {
     const fn from_schema(schema: u32) -> Self {
         Self {
             contract: ContractVersion::Schema(schema),
-            schema: Some(schema),
+            schema: Some(SchemaFieldValue::Integer(schema)),
             api: None,
             format: None,
             kind: None,
@@ -67,7 +74,7 @@ impl PayloadVersion {
     const fn from_schema_and_api(schema: u32, api: &'static str) -> Self {
         Self {
             contract: ContractVersion::Schema(schema),
-            schema: Some(schema),
+            schema: Some(SchemaFieldValue::Integer(schema)),
             api: Some(api),
             format: None,
             kind: None,
@@ -78,7 +85,7 @@ impl PayloadVersion {
     const fn from_api_with_schema(api: &'static str, schema: u32) -> Self {
         Self {
             contract: ContractVersion::Api(api),
-            schema: Some(schema),
+            schema: Some(SchemaFieldValue::Integer(schema)),
             api: Some(api),
             format: None,
             kind: None,
@@ -89,7 +96,7 @@ impl PayloadVersion {
     const fn from_schema_with_format(schema: u32, format: &'static str) -> Self {
         Self {
             contract: ContractVersion::Schema(schema),
-            schema: Some(schema),
+            schema: Some(SchemaFieldValue::Integer(schema)),
             api: None,
             format: Some(format),
             kind: None,
@@ -108,11 +115,40 @@ impl PayloadVersion {
         }
     }
 
+    const fn from_namespaced(schema_version: &'static str) -> Self {
+        Self {
+            contract: ContractVersion::Namespaced(schema_version),
+            schema: Some(SchemaFieldValue::Namespaced(schema_version)),
+            api: None,
+            format: None,
+            kind: None,
+            nested: false,
+        }
+    }
+
     const fn with_nested_identity(mut self) -> Self {
         self.nested = true;
         self
     }
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AnnotationValueShape {
+    OpaqueString,
+}
+
+#[derive(Clone, Copy)]
+struct AnnotationKeyRegistration {
+    key: &'static str,
+    value_shape: AnnotationValueShape,
+    description: &'static str,
+}
+
+const CODEATLAS_ANNOTATION_KEYS: &[AnnotationKeyRegistration] = &[AnnotationKeyRegistration {
+    key: "codeatlas.node_id",
+    value_shape: AnnotationValueShape::OpaqueString,
+    description: "opaque exact CodeAtlas graph node ID",
+}];
 
 fn constrain_property(
     schema: &mut Value,
@@ -169,7 +205,10 @@ fn generate_registered_schema(schema: &PublishedSchema) -> Value {
     for (names, constant, label) in [
         (
             &["schemaVersion", "schema_version"][..],
-            identity.schema.map(Value::from),
+            identity.schema.map(|value| match value {
+                SchemaFieldValue::Integer(value) => Value::from(value),
+                SchemaFieldValue::Namespaced(value) => Value::String(value.to_string()),
+            }),
             "schema version",
         ),
         (
@@ -223,6 +262,58 @@ impl PublishedSchema {
             generate,
         }
     }
+
+    const fn new_artifact(
+        schema_version: &'static str,
+        filename: &'static str,
+        owner: &'static str,
+        generate: fn() -> Value,
+    ) -> Self {
+        Self::new(
+            schema_version,
+            filename,
+            PayloadVersion::from_namespaced(schema_version),
+            owner,
+            generate,
+        )
+    }
+}
+
+fn is_namespaced_artifact_version(value: &str) -> bool {
+    let Some(remainder) = value.strip_prefix("codeatlas.") else {
+        return false;
+    };
+    let Some((kind, version)) = remainder.rsplit_once("/v") else {
+        return false;
+    };
+    if kind.is_empty()
+        || kind.starts_with('-')
+        || kind.ends_with('-')
+        || kind.contains("--")
+        || !kind
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return false;
+    }
+    version
+        .parse::<u32>()
+        .ok()
+        .filter(|parsed| *parsed > 0 && parsed.to_string() == version)
+        .is_some()
+}
+
+fn is_valid_annotation_key(value: &str) -> bool {
+    let Some(name) = value.strip_prefix("codeatlas.") else {
+        return false;
+    };
+    !name.is_empty()
+        && !name.starts_with('_')
+        && !name.ends_with('_')
+        && !name.contains("__")
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
 const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
@@ -421,7 +512,13 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
 
 #[cfg(test)]
 mod tests {
-    use super::{generate_registered_schema, ContractVersion, PublishedSchema, PUBLISHED_SCHEMAS};
+    use super::{
+        generate_registered_schema, generate_schema, is_namespaced_artifact_version,
+        is_valid_annotation_key, AnnotationValueShape, ContractVersion, PublishedSchema,
+        SchemaFieldValue, CODEATLAS_ANNOTATION_KEYS, PUBLISHED_SCHEMAS,
+    };
+    use schemars::JsonSchema;
+    use serde::Serialize;
     use serde_json::Value;
     use std::collections::BTreeSet;
     use std::fs;
@@ -478,6 +575,22 @@ mod tests {
                 .rsplit_once('/')
                 .map(|(_, version)| version.to_string())
                 .unwrap_or_else(|| panic!("API version has no path boundary: {api}")),
+            ContractVersion::Namespaced(version) => {
+                assert!(
+                    is_namespaced_artifact_version(version),
+                    "invalid namespaced artifact version {version}"
+                );
+                assert_eq!(schema.contract_id, version);
+                let expected_filename = format!(
+                    "{}.schema.json",
+                    version.replace(['.', '/'], "-")
+                );
+                assert_eq!(schema.filename, expected_filename);
+                version
+                    .rsplit_once('/')
+                    .map(|(_, version)| version.to_string())
+                    .expect("namespaced artifact version has a path boundary")
+            }
         };
         assert!(
             schema
@@ -494,7 +607,7 @@ mod tests {
             "schema filename {} disagrees with its owning payload version",
             schema.filename
         );
-        if let Some(version) = schema.payload_version.schema {
+        if let Some(SchemaFieldValue::Integer(version)) = schema.payload_version.schema {
             assert!(version > 0, "schema version must be positive");
         }
         if let Some(api) = schema.payload_version.api {
@@ -506,6 +619,153 @@ mod tests {
                 "contract ID {} disagrees with payload format {format}",
                 schema.contract_id
             );
+        }
+    }
+
+    fn assert_namespaced_artifact_shape(schema: &PublishedSchema, generated: &Value) {
+        let ContractVersion::Namespaced(version) = schema.payload_version.contract else {
+            return;
+        };
+        let properties = generated
+            .get("properties")
+            .and_then(Value::as_object)
+            .expect("artifact schema must have root properties");
+        let schema_fields = ["schemaVersion", "schema_version"]
+            .into_iter()
+            .filter(|name| properties.contains_key(*name))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            schema_fields.len(),
+            1,
+            "{} must have exactly one schema-version field",
+            schema.contract_id
+        );
+        let schema_field = schema_fields[0];
+        assert_eq!(properties[schema_field]["type"], "string");
+        assert_eq!(properties[schema_field]["const"], version);
+        assert!(
+            generated
+                .get("required")
+                .and_then(Value::as_array)
+                .is_some_and(|required| required.iter().any(|name| name == schema_field)),
+            "{} schema-version field must be required",
+            schema.contract_id
+        );
+        assert!(
+            ["apiVersion", "api_version"]
+                .into_iter()
+                .all(|name| !properties.contains_key(name)),
+            "{} must not carry a parallel API version",
+            schema.contract_id
+        );
+    }
+
+    #[derive(JsonSchema, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ProspectiveArtifact {
+        schema_version: String,
+        id: String,
+    }
+
+    #[derive(JsonSchema, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct InvalidDualVersionArtifact {
+        schema_version: String,
+        api_version: String,
+    }
+
+    #[test]
+    fn prospective_artifacts_require_one_namespaced_schema_identity() {
+        let schema = PublishedSchema::new_artifact(
+            "codeatlas.execution-plan/v1",
+            "codeatlas-execution-plan-v1.schema.json",
+            "execution",
+            generate_schema::<ProspectiveArtifact>,
+        );
+        assert_registered_identity(&schema);
+        assert_namespaced_artifact_shape(&schema, &generate_registered_schema(&schema));
+
+        for invalid in [
+            "1",
+            "execution-plan/v1",
+            "codeatlas./v1",
+            "codeatlas.Execution-plan/v1",
+            "codeatlas.execution_plan/v1",
+            "codeatlas.execution-plan/v0",
+            "codeatlas.execution-plan/v01",
+        ] {
+            assert!(
+                !is_namespaced_artifact_version(invalid),
+                "accepted invalid artifact schema version {invalid}"
+            );
+        }
+
+        let invalid = PublishedSchema::new_artifact(
+            "codeatlas.invalid-dual-version/v1",
+            "codeatlas-invalid-dual-version-v1.schema.json",
+            "test",
+            generate_schema::<InvalidDualVersionArtifact>,
+        );
+        assert!(
+            std::panic::catch_unwind(|| assert_namespaced_artifact_shape(
+                &invalid,
+                &generate_registered_schema(&invalid)
+            ))
+            .is_err(),
+            "accepted a namespaced artifact with a parallel API version"
+        );
+    }
+
+    #[test]
+    fn annotation_keys_are_registered_without_vendoring_the_external_contract() {
+        let mut keys = BTreeSet::new();
+        let lexicon = fs::read_to_string(repository_path("docs/concepts/lexicon.md"))
+            .expect("read canonical lexicon");
+        for registration in CODEATLAS_ANNOTATION_KEYS {
+            assert!(is_valid_annotation_key(registration.key));
+            assert!(keys.insert(registration.key), "duplicate annotation key");
+            assert_eq!(registration.value_shape, AnnotationValueShape::OpaqueString);
+            assert!(!registration.description.trim().is_empty());
+            assert!(
+                lexicon.contains(&format!("`{}`", registration.key)),
+                "annotation key {} is not documented in the lexicon",
+                registration.key
+            );
+        }
+        for invalid in [
+            "node_id",
+            "codeatlas.",
+            "codeatlas.NodeId",
+            "codeatlas.node-id",
+            "codeatlas._node_id",
+            "codeatlas.node__id",
+        ] {
+            assert!(
+                !is_valid_annotation_key(invalid),
+                "accepted invalid annotation key {invalid}"
+            );
+        }
+        assert!(!keys.contains("codeatlas.symbol"));
+
+        for schema in PUBLISHED_SCHEMAS {
+            assert!(
+                !schema.contract_id.contains("source-target"),
+                "external source-target schema must not be published by CodeAtlas"
+            );
+        }
+        for entry in fs::read_dir(repository_path("schemas")).expect("read schema directory") {
+            let entry = entry.expect("read schema entry");
+            if entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "json")
+            {
+                let schema = fs::read_to_string(entry.path()).expect("read published schema");
+                assert!(
+                    !schema.contains("source-target"),
+                    "external source-target schema must not be vendored by CodeAtlas"
+                );
+            }
         }
     }
 
@@ -528,6 +788,7 @@ mod tests {
             assert_registered_identity(schema);
 
             let generated = generate_registered_schema(schema);
+            assert_namespaced_artifact_shape(schema, &generated);
             jsonschema::meta::validate(&generated).unwrap_or_else(|error| {
                 panic!("invalid generated schema {}: {error}", schema.contract_id)
             });
