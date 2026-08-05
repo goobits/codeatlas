@@ -9,7 +9,7 @@ use self::contract::collect as collect_contract;
 use crate::config::{PostgresContractConfig, ProjectConfig};
 use crate::postgres::model::{
     PostgresContractInventory, PostgresFinding, PostgresFindingSeverity, PostgresInventoryReport,
-    PostgresQueryInventory, PostgresSqlSourceInventory,
+    PostgresQueryContract, PostgresSqlSourceInventory,
 };
 use anyhow::Result;
 use sha2::{Digest, Sha256};
@@ -43,7 +43,7 @@ pub(crate) struct CollectedSqlSource {
 
 pub(crate) struct CollectedQuery {
     pub contract_id: String,
-    pub inventory: PostgresQueryInventory,
+    pub contract: PostgresQueryContract,
     pub sql: Option<String>,
 }
 
@@ -71,7 +71,7 @@ pub(crate) fn collect(project: &ProjectConfig) -> Result<CollectedPostgres> {
 
     inventories.sort_by(|left, right| left.id.cmp(&right.id));
     queries.sort_by(|left, right| {
-        (&left.contract_id, &left.inventory.id).cmp(&(&right.contract_id, &right.inventory.id))
+        (&left.contract_id, &left.contract.id).cmp(&(&right.contract_id, &right.contract.id))
     });
     let report = PostgresInventoryReport::new(inventories);
     for contract in &report.contracts {

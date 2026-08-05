@@ -71,6 +71,8 @@ pub(crate) struct PostgresTargetConfig {
     pub id: String,
     pub contract: String,
     pub admin_url_env: String,
+    #[serde(skip_serializing_if = "PostgresQueryPolicyConfig::is_empty")]
+    pub query_policy: PostgresQueryPolicyConfig,
 }
 
 impl Default for PostgresTargetConfig {
@@ -79,7 +81,27 @@ impl Default for PostgresTargetConfig {
             id: String::new(),
             contract: String::new(),
             admin_url_env: "CODEATLAS_POSTGRES_URL".to_string(),
+            query_policy: PostgresQueryPolicyConfig::default(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct PostgresQueryPolicyConfig {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub dml_query_ids: Vec<String>,
+}
+
+impl PostgresQueryPolicyConfig {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.dml_query_ids.is_empty()
+    }
+
+    pub(crate) fn allows_dml(&self, query_id: &str) -> bool {
+        self.dml_query_ids
+            .iter()
+            .any(|candidate| candidate == query_id)
     }
 }
 
@@ -141,7 +163,10 @@ mod tests {
                     "targets": [{
                         "id": "accounts-local",
                         "contract": "accounts",
-                        "admin_url_env": "ACCOUNTS_CODEATLAS_POSTGRES_URL"
+                        "admin_url_env": "ACCOUNTS_CODEATLAS_POSTGRES_URL",
+                        "query_policy": {
+                            "dml_query_ids": ["query_0123456789abcdef"]
+                        }
                     }]
                 }
             }"#,
@@ -176,5 +201,8 @@ mod tests {
             config.postgres.targets[0].admin_url_env,
             "ACCOUNTS_CODEATLAS_POSTGRES_URL"
         );
+        assert!(config.postgres.targets[0]
+            .query_policy
+            .allows_dml("query_0123456789abcdef"));
     }
 }

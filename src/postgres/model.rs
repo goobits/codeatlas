@@ -1,14 +1,15 @@
 use crate::config::{PostgresPsqlMetaCommandMode, PostgresTransactionMode};
+use crate::execution::ExecutionEffect;
 use serde::{Deserialize, Serialize};
 
-pub(crate) const POSTGRES_API_VERSION: &str = "codeatlas.postgres/v1";
-pub(crate) const POSTGRES_SCHEMA_VERSION: u32 = 1;
-pub(crate) const POSTGRES_TEST_API_VERSION: &str = "codeatlas.postgres-test/v1";
-pub(crate) const POSTGRES_TEST_SCHEMA_VERSION: u32 = 1;
-pub(crate) const POSTGRES_BASELINE_API_VERSION: &str = "codeatlas.postgres-baseline/v1";
-pub(crate) const POSTGRES_BASELINE_SCHEMA_VERSION: u32 = 1;
-pub(crate) const POSTGRES_DIFF_API_VERSION: &str = "codeatlas.postgres-diff/v1";
-pub(crate) const POSTGRES_DIFF_SCHEMA_VERSION: u32 = 1;
+pub(crate) const POSTGRES_API_VERSION: &str = "codeatlas.postgres/v2";
+pub(crate) const POSTGRES_SCHEMA_VERSION: u32 = 2;
+pub(crate) const POSTGRES_TEST_API_VERSION: &str = "codeatlas.postgres-test/v2";
+pub(crate) const POSTGRES_TEST_SCHEMA_VERSION: u32 = 2;
+pub(crate) const POSTGRES_BASELINE_API_VERSION: &str = "codeatlas.postgres-baseline/v2";
+pub(crate) const POSTGRES_BASELINE_SCHEMA_VERSION: u32 = 2;
+pub(crate) const POSTGRES_DIFF_API_VERSION: &str = "codeatlas.postgres-diff/v2";
+pub(crate) const POSTGRES_DIFF_SCHEMA_VERSION: u32 = 2;
 
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,7 +42,7 @@ pub(crate) struct PostgresContractInventory {
     pub bootstraps: Vec<PostgresSqlSourceInventory>,
     pub migrations: Vec<PostgresSqlSourceInventory>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub queries: Vec<PostgresQueryInventory>,
+    pub queries: Vec<PostgresQueryContract>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub diagnostics: Vec<PostgresFinding>,
 }
@@ -71,26 +72,236 @@ pub(crate) struct PostgresPsqlDirective {
 
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct PostgresQueryInventory {
+pub(crate) struct PostgresQueryContract {
     pub id: String,
     pub path: String,
     pub line: u32,
     pub column: u32,
     pub sha256: String,
-    pub parameter_count: u32,
     pub dynamic: bool,
-    pub kind: PostgresQueryKind,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub placeholder_order: Vec<u32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parameters: Vec<PostgresQueryParameter>,
+    pub statement_class: PostgresStatementClass,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub referenced_objects: Vec<PostgresObjectReference>,
+    pub result: PostgresQueryResultShape,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub functions: Vec<PostgresFunctionEvidence>,
+    pub effects: Vec<ExecutionEffect>,
+    pub eligibility: PostgresQueryEligibility,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub eligibility_reasons: Vec<PostgresQueryEligibilityReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_digest: Option<String>,
 }
 
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum PostgresQueryKind {
+pub(crate) enum PostgresStatementClass {
     Select,
     Insert,
     Update,
     Delete,
-    With,
-    Other,
+    DataDefinition,
+    TransactionControl,
+    Privilege,
+    Administrative,
+    Unknown,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PostgresQueryParameter {
+    pub position: u32,
+    pub occurrence_count: u32,
+    pub roles: Vec<PostgresParameterRole>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_type: Option<PostgresTypeShape>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bindings: Vec<PostgresColumnBinding>,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PostgresColumnBinding {
+    pub role: PostgresParameterRole,
+    pub column: PostgresObjectReference,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_type: Option<PostgresTypeShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_nullable: Option<bool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub constraints: Vec<PostgresConstraintEvidence>,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PostgresParameterRole {
+    Predicate,
+    InsertValue,
+    UpdateValue,
+    Expression,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PostgresTypeShape {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    pub name: String,
+    pub formatted: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_type: Option<PostgresTypeName>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub enum_values: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub numeric_precision: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub numeric_scale: Option<u32>,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PostgresTypeName {
+    pub schema: String,
+    pub name: String,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PostgresConstraintEvidence {
+    pub name: String,
+    pub kind: String,
+    pub definition_digest: String,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PostgresObjectReference {
+    pub kind: PostgresObjectKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relation: Option<String>,
+    pub name: String,
+    pub resolved: bool,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PostgresObjectKind {
+    Table,
+    Column,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PostgresQueryResultShape {
+    pub complete: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub columns: Vec<PostgresQueryResultColumn>,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PostgresQueryResultColumn {
+    pub position: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<PostgresObjectReference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_type: Option<PostgresTypeShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nullable: Option<bool>,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PostgresFunctionEvidence {
+    pub name: String,
+    pub class: PostgresFunctionClass,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PostgresFunctionClass {
+    BuiltinReadOnly,
+    Filesystem,
+    ExternalLink,
+    Privileged,
+    Unknown,
+}
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PostgresQueryEligibility {
+    Eligible,
+    RequiresEvidence,
+    RequiresPolicy,
+    Blocked,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PostgresQueryEligibilityReason {
+    pub code: PostgresQueryEligibilityReasonCode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameter_position: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PostgresQueryEligibilityReasonCode {
+    DynamicSql,
+    UnbalancedSyntax,
+    MultipleStatements,
+    UnsupportedStatement,
+    DataDefinition,
+    TransactionControl,
+    PrivilegedOperation,
+    AdministrativeOperation,
+    FilesystemAccess,
+    ProgramExecution,
+    ExternalLink,
+    UnknownFunction,
+    DmlPolicyRequired,
+    ParameterPositionInvalid,
+    ParameterLimitExceeded,
+    ParameterPositionGap,
+    ParameterTypeUnresolved,
+    ReferencedObjectUnresolved,
+    ResultTypeUnresolved,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -225,7 +436,7 @@ pub(crate) struct PostgresCatalogColumn {
     pub table: String,
     pub name: String,
     pub position: u32,
-    pub data_type: String,
+    pub data_type: PostgresTypeShape,
     pub nullable: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_digest: Option<String>,
@@ -238,6 +449,7 @@ pub(crate) struct PostgresCatalogConstraint {
     pub table: String,
     pub name: String,
     pub kind: String,
+    pub columns: Vec<String>,
     pub definition_digest: String,
 }
 
@@ -261,7 +473,7 @@ pub(crate) struct PostgresBaselineReport {
     pub server_major: u32,
     pub bootstraps: Vec<PostgresBaselineBootstrap>,
     pub migrations: Vec<PostgresBaselineMigration>,
-    pub queries: Vec<PostgresBaselineQuery>,
+    pub queries: Vec<PostgresQueryContract>,
     pub lint_findings: Vec<PostgresBaselineLintFinding>,
     pub catalog: PostgresCatalogInventory,
 }
@@ -310,17 +522,7 @@ impl PostgresBaselineReport {
             })
             .collect::<Vec<_>>();
         bootstraps.sort_by(|left, right| left.name.cmp(&right.name));
-        let mut queries = contract
-            .queries
-            .iter()
-            .map(|query| PostgresBaselineQuery {
-                id: query.id.clone(),
-                sha256: query.sha256.clone(),
-                parameter_count: query.parameter_count,
-                dynamic: query.dynamic,
-                kind: query.kind,
-            })
-            .collect::<Vec<_>>();
+        let mut queries = contract.queries.clone();
         queries.sort_by(|left, right| left.id.cmp(&right.id));
         let mut lint_findings = report
             .findings
@@ -355,16 +557,6 @@ pub(crate) struct PostgresBaselineBootstrap {
 pub(crate) struct PostgresBaselineMigration {
     pub name: String,
     pub sha256: String,
-}
-
-#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct PostgresBaselineQuery {
-    pub id: String,
-    pub sha256: String,
-    pub parameter_count: u32,
-    pub dynamic: bool,
-    pub kind: PostgresQueryKind,
 }
 
 #[derive(

@@ -496,9 +496,9 @@ semantic-sibling analysis and self-dogfood, and locally verifiable OCI
 implementation are done. The current host cannot grant a live OCI isolation
 capability, so execution remains plan-only here and Phase 9 retains the hard
 continuation gate. Work now follows the independent static lane through the
-PostgreSQL query contract and repository-scope foundation. On implementation
-progress rather than proposal-design progress, the complete program is
-approximately 50 percent done.
+repository-scope foundation after completing the static PostgreSQL query
+contract. On implementation progress rather than proposal-design progress, the
+complete program is approximately 53 percent done.
 
 ### Order and ownership rules
 
@@ -665,21 +665,21 @@ Status: [x] Complete
 Active child: [`codeatlas-postgres-fuzzing.md`](codeatlas-postgres-fuzzing.md)
 Phase 1. This phase is static and does not open a database connection.
 
-- [ ] Extend existing query inventory with stable query identity, placeholder
+- [x] Extend existing query inventory with stable query identity, placeholder
   order, statement class, parameter and result shapes, referenced objects,
   constraint evidence, effects, and exact block reasons.
-- [ ] Keep SQL discovery in `src/postgres/source`, query policy in the
+- [x] Keep SQL discovery in `src/postgres/source`, query policy in the
   PostgreSQL contract owner, and generic target/effect classification in the
   kernel owner.
-- [ ] Classify dynamic SQL, DDL, transaction control, privileged operations,
+- [x] Classify dynamic SQL, DDL, transaction control, privileged operations,
   filesystem/program access, external links, and unknown functions as blocked
   before generated execution.
-- [ ] Make DML checked-policy eligible but always reviewed-plan only, never
+- [x] Make DML checked-policy eligible but always reviewed-plan only, never
   single-shot, even for a local disposable target.
-- [ ] Prove deterministic IDs, parameter order, constraints, effects, and
+- [x] Prove deterministic IDs, parameter order, constraints, effects, and
   eligibility against static or checked-in catalog fixtures with zero live
   calls.
-- [ ] Publish any changed public schema, dogfood the static inventory, and
+- [x] Publish any changed public schema, dogfood the static inventory, and
   commit PostgreSQL Phase 1.
 
 ### Phase 8: Build the repository-scope and config-edit foundation
@@ -1117,6 +1117,11 @@ Phases 1 through 3.
   dispositions, lexicon v5 drift checks, and warning-denying Clippy. Graph
   boundary evidence is indexed once and unconfigured lexicon runs retain their
   existing scan-only path.
+- 2026-08-05: PostgreSQL static Phase 1 passes focused query and CLI tests, all
+  29 schema drift tests, the full repository check, and two byte-identical
+  zero-call fixture scans. The v2 contract records bounded placeholders,
+  catalog/type shapes, statement/effect evidence, and exact eligibility; the
+  old v1 schemas and duplicate baseline-query projection are removed.
 
 ## Existing-first check
 
@@ -1234,10 +1239,11 @@ self-fuzzing pass.
 
 ## Program stage 8: PostgreSQL fuzzing
 
-Status: [ ] Accepted; static Phase 1 is ready, live execution waits for
+Status: [~] Accepted; static Phase 1 is complete, live execution waits for
 isolation, and generated cases wait for the callable corpus foundation
 
-LOC: +2,150-3,350 / -410-830
+LOC: +4,025-4,925 / -469-819 authored; Phase 1 additionally replaced
++3,544 / -1,778 generated schema lines
 
 Verify: Catalog-backed parameters, blocked SQL effects, guarded typed session,
 deterministic/adaptive values, disposable cleanup, replay, and zero-live-call
@@ -1296,7 +1302,7 @@ sandbox, three execution domains, four language adapters, a typed database
 client, and a performance evidence product. Each child has a final hardening
 phase that removes replaced owners and refuses compatibility residue.
 
-Total authored LOC: +21,936-31,416 / -4,183-7,813
+Total authored LOC: +23,811-32,991 / -4,242-7,802
 
 Generated current-schema JSON: +7,706 LOC
 

@@ -1,11 +1,15 @@
 mod catalog;
 mod psql;
+pub(super) mod query;
 
 use self::psql::{Connection, Psql};
-use crate::config::{PostgresPsqlMetaCommandMode, PostgresTargetConfig, PostgresTransactionMode};
+use crate::config::{
+    PostgresPsqlMetaCommandMode, PostgresQueryPolicyConfig, PostgresTargetConfig,
+    PostgresTransactionMode,
+};
 use crate::postgres::model::{
     PostgresCatalogInventory, PostgresEvidence, PostgresFinding, PostgresFindingSeverity,
-    PostgresQueryKind, PostgresQueryValidationSummary,
+    PostgresQueryValidationSummary, PostgresStatementClass,
 };
 use crate::postgres::source::{CollectedPostgres, CollectedQuery, CollectedSqlSource};
 use anyhow::{Context, Result};
@@ -237,20 +241,27 @@ fn validate_queries(
         ..PostgresQueryValidationSummary::default()
     };
     for query in queries {
-        if query.inventory.dynamic {
+        if query.contract.dynamic {
             summary.dynamic_skipped += 1;
             findings.push(PostgresFinding::new(
                 PostgresFindingSeverity::Warning,
                 "live/dynamic-query-skipped",
                 contract_id,
-                Some(query.inventory.id.clone()),
+                Some(query.contract.id.clone()),
                 "Query contains runtime interpolation and cannot be safely prepared from static source evidence".to_string(),
                 false,
                 Some(query_evidence(query)),
             ));
             continue;
         }
-        if query.inventory.kind == PostgresQueryKind::Other {
+        if matches!(
+            query.contract.statement_class,
+            PostgresStatementClass::DataDefinition
+                | PostgresStatementClass::TransactionControl
+                | PostgresStatementClass::Privilege
+                | PostgresStatementClass::Administrative
+                | PostgresStatementClass::Unknown
+        ) {
             summary.non_preparable_skipped += 1;
             continue;
         }
@@ -272,7 +283,7 @@ fn validate_queries(
                 PostgresFindingSeverity::Error,
                 "live/query-invalid",
                 contract_id,
-                Some(query.inventory.id.clone()),
+                Some(query.contract.id.clone()),
                 output.error,
                 true,
                 Some(query_evidence(query)),
@@ -284,9 +295,9 @@ fn validate_queries(
 
 fn query_evidence(query: &CollectedQuery) -> PostgresEvidence {
     PostgresEvidence {
-        path: query.inventory.path.clone(),
-        line: query.inventory.line,
-        column: Some(query.inventory.column),
+        path: query.contract.path.clone(),
+        line: query.contract.line,
+        column: Some(query.contract.column),
     }
 }
 
@@ -365,6 +376,7 @@ pub(super) struct ResolvedTarget {
     pub contract: String,
     pub execution_contracts: Vec<String>,
     pub admin_url_env: String,
+    pub query_policy: PostgresQueryPolicyConfig,
 }
 
 pub(super) fn resolve(
@@ -381,6 +393,11 @@ pub(super) fn resolve(
     let mut target = resolve_target(&project.config.postgres.targets, &contract_ids, target_id)?;
     target.execution_contracts =
         crate::postgres::source::dependency_order(&collected.report, &target.contract)?;
+    query::validate_query_policy(
+        &target.query_policy,
+        &collected.queries,
+        &target.execution_contracts,
+    )?;
     Ok(target)
 }
 
@@ -407,6 +424,7 @@ fn resolve_target(
             .to_string(),
             execution_contracts: Vec::new(),
             admin_url_env: "CODEATLAS_POSTGRES_URL".to_string(),
+            query_policy: PostgresQueryPolicyConfig::default(),
         });
     }
 
@@ -455,6 +473,7 @@ fn resolve_target(
         contract: target.contract.clone(),
         execution_contracts: Vec::new(),
         admin_url_env: target.admin_url_env.clone(),
+        query_policy: target.query_policy.clone(),
     })
 }
 
@@ -492,6 +511,7 @@ mod tests {
                 id: "accounts-local".to_string(),
                 contract: "accounts".to_string(),
                 admin_url_env: "ACCOUNTS_POSTGRES_URL".to_string(),
+                query_policy: crate::config::PostgresQueryPolicyConfig::default(),
             }],
             &contracts,
             None,

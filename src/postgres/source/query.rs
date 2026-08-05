@@ -4,9 +4,8 @@ use super::{
 };
 use crate::config::{PostgresContractConfig, ProjectConfig};
 use crate::paths;
-use crate::postgres::model::{
-    PostgresFinding, PostgresFindingSeverity, PostgresQueryInventory, PostgresQueryKind,
-};
+use crate::postgres::model::{PostgresFinding, PostgresFindingSeverity};
+use crate::postgres::target::query::{analyze_query, StaticQueryInput};
 use crate::source_discovery::{self, SourceDiscoveryRequest};
 use anyhow::{Context, Result};
 use std::collections::BTreeSet;
@@ -57,8 +56,8 @@ pub(super) fn collect(
             )),
         }
     }
-    queries.sort_by(|left, right| left.inventory.id.cmp(&right.inventory.id));
-    queries.dedup_by(|left, right| left.inventory.id == right.inventory.id);
+    queries.sort_by(|left, right| left.contract.id.cmp(&right.contract.id));
+    queries.dedup_by(|left, right| left.contract.id == right.contract.id);
     Ok(queries)
 }
 
@@ -196,26 +195,23 @@ fn collect_query_file(
 fn collected_query(contract_id: &str, sql: ecmascript::StaticSql) -> CollectedQuery {
     let parameters = parameters::analyze(&sql.text);
     let dynamic = sql.dynamic || parameters.dynamic;
-    let inventory = PostgresQueryInventory {
-        id: format!("{}:{}:{}", sql.path, sql.line, sql.column),
-        path: sql.path,
-        line: sql.line,
-        column: sql.column,
-        sha256: digest(&sql.text),
-        parameter_count: parameters.count,
-        dynamic,
-        kind: match ecmascript::sql_keyword(&sql.text) {
-            Some("select") => PostgresQueryKind::Select,
-            Some("insert") => PostgresQueryKind::Insert,
-            Some("update") => PostgresQueryKind::Update,
-            Some("delete") => PostgresQueryKind::Delete,
-            Some("with") => PostgresQueryKind::With,
-            _ => PostgresQueryKind::Other,
+    let sha256 = digest(&sql.text);
+    let contract = analyze_query(
+        StaticQueryInput {
+            contract_id,
+            path: &sql.path,
+            line: sql.line,
+            column: sql.column,
+            sha256: &sha256,
+            sql: &parameters.sql,
+            dynamic,
         },
-    };
+        None,
+        None,
+    );
     CollectedQuery {
         contract_id: contract_id.to_string(),
-        sql: (!inventory.dynamic).then_some(parameters.sql),
-        inventory,
+        sql: (!contract.dynamic).then_some(parameters.sql),
+        contract,
     }
 }

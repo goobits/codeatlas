@@ -1,10 +1,10 @@
 use super::model::{
     PostgresArtifactKind, PostgresBaselineBootstrap, PostgresBaselineLintFinding,
-    PostgresBaselineMigration, PostgresBaselineQuery, PostgresBaselineReport,
-    PostgresCatalogColumn, PostgresCatalogConstraint, PostgresCatalogIndex, PostgresCatalogTable,
-    PostgresChange, PostgresChangeKind, PostgresDiffReport, PostgresFinding,
-    PostgresQueryInventory, PostgresSqlSourceInventory, PostgresTestReport,
-    POSTGRES_DIFF_API_VERSION, POSTGRES_DIFF_SCHEMA_VERSION,
+    PostgresBaselineMigration, PostgresBaselineReport, PostgresCatalogColumn,
+    PostgresCatalogConstraint, PostgresCatalogIndex, PostgresCatalogTable, PostgresChange,
+    PostgresChangeKind, PostgresDiffReport, PostgresFinding, PostgresQueryContract,
+    PostgresSqlSourceInventory, PostgresTestReport, POSTGRES_DIFF_API_VERSION,
+    POSTGRES_DIFF_SCHEMA_VERSION,
 };
 use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
@@ -217,8 +217,8 @@ fn compare_migrations(
 }
 
 fn compare_queries(
-    baseline: &[PostgresBaselineQuery],
-    current: &[PostgresQueryInventory],
+    baseline: &[PostgresQueryContract],
+    current: &[PostgresQueryContract],
     changes: &mut Vec<PostgresChange>,
 ) {
     let baseline = baseline
@@ -273,11 +273,8 @@ fn compare_queries(
     }
 }
 
-fn query_changed(previous: &PostgresBaselineQuery, current: &PostgresQueryInventory) -> bool {
-    previous.sha256 != current.sha256
-        || previous.parameter_count != current.parameter_count
-        || previous.dynamic != current.dynamic
-        || previous.kind != current.kind
+fn query_changed(previous: &PostgresQueryContract, current: &PostgresQueryContract) -> bool {
+    previous != current
 }
 
 fn compare_catalogs(
@@ -453,12 +450,14 @@ mod tests {
         compare_queries,
     };
     use crate::config::{PostgresPsqlMetaCommandMode, PostgresTransactionMode};
+    use crate::execution::ExecutionEffect;
     use crate::postgres::model::{
         PostgresArtifactKind, PostgresBaselineBootstrap, PostgresBaselineLintFinding,
-        PostgresBaselineMigration, PostgresBaselineQuery, PostgresCatalogColumn,
-        PostgresCatalogIndex, PostgresCatalogInventory, PostgresChangeKind, PostgresEvidence,
-        PostgresFinding, PostgresFindingSeverity, PostgresQueryInventory, PostgresQueryKind,
-        PostgresSqlSourceInventory,
+        PostgresBaselineMigration, PostgresCatalogColumn, PostgresCatalogIndex,
+        PostgresCatalogInventory, PostgresChangeKind, PostgresEvidence, PostgresFinding,
+        PostgresFindingSeverity, PostgresQueryContract, PostgresQueryEligibility,
+        PostgresQueryResultShape, PostgresSqlSourceInventory, PostgresStatementClass,
+        PostgresTypeShape,
     };
 
     fn migration(name: &str, sha256: &str) -> PostgresSqlSourceInventory {
@@ -538,7 +537,17 @@ mod tests {
                 table: "users".to_string(),
                 name: "account_id".to_string(),
                 position: 1,
-                data_type: "bigint".to_string(),
+                data_type: PostgresTypeShape {
+                    oid: Some(20),
+                    schema: Some("pg_catalog".to_string()),
+                    name: "int8".to_string(),
+                    formatted: "bigint".to_string(),
+                    base_type: None,
+                    enum_values: Vec::new(),
+                    max_length: None,
+                    numeric_precision: Some(64),
+                    numeric_scale: Some(0),
+                },
                 nullable: false,
                 default_digest: None,
             }],
@@ -600,23 +609,8 @@ mod tests {
 
     #[test]
     fn query_diff_gates_lost_static_preparation_coverage() {
-        let baseline = vec![PostgresBaselineQuery {
-            id: "src/store.ts:10:4".to_string(),
-            sha256: "sha256:static".to_string(),
-            parameter_count: 1,
-            dynamic: false,
-            kind: PostgresQueryKind::Select,
-        }];
-        let current = vec![PostgresQueryInventory {
-            id: "src/store.ts:10:4".to_string(),
-            path: "src/store.ts".to_string(),
-            line: 10,
-            column: 4,
-            sha256: "sha256:dynamic".to_string(),
-            parameter_count: 0,
-            dynamic: true,
-            kind: PostgresQueryKind::Select,
-        }];
+        let baseline = vec![query_contract("sha256:static", false)];
+        let current = vec![query_contract("sha256:dynamic", true)];
         let mut changes = Vec::new();
 
         compare_queries(&baseline, &current, &mut changes);
@@ -624,5 +618,33 @@ mod tests {
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].kind, PostgresChangeKind::Breaking);
         assert_eq!(changes[0].artifact_kind, PostgresArtifactKind::Query);
+    }
+
+    fn query_contract(sha256: &str, dynamic: bool) -> PostgresQueryContract {
+        PostgresQueryContract {
+            id: "query_contract".to_string(),
+            path: "src/store.ts".to_string(),
+            line: 10,
+            column: 4,
+            sha256: sha256.to_string(),
+            dynamic,
+            placeholder_order: Vec::new(),
+            parameters: Vec::new(),
+            statement_class: PostgresStatementClass::Select,
+            referenced_objects: Vec::new(),
+            result: PostgresQueryResultShape {
+                complete: false,
+                columns: Vec::new(),
+            },
+            functions: Vec::new(),
+            effects: vec![ExecutionEffect::NetworkTargetCall],
+            eligibility: if dynamic {
+                PostgresQueryEligibility::Blocked
+            } else {
+                PostgresQueryEligibility::RequiresEvidence
+            },
+            eligibility_reasons: Vec::new(),
+            catalog_digest: None,
+        }
     }
 }

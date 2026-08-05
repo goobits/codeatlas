@@ -1,7 +1,7 @@
 # PostgreSQL parameter fuzzing
 
-Status: Accepted follow-on; static Phase 1 is ready, live phases wait for the
-execution sandbox, and generated fuzzing also waits for the shared corpus
+Status: Accepted follow-on; static Phase 1 is complete, live phases wait for
+the execution sandbox, and generated fuzzing also waits for the shared corpus
 
 Decision scope: Typed PostgreSQL parameter contracts, deterministic value
 generation, guarded execution, reduction, and `fuzz postgres`
@@ -335,25 +335,36 @@ reduction. Ordinary query fuzzing is not assumed to provide it.
 
 ## Phase 1: Typed query contract and safety classification
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +500-800 / -80-150
+Measured LOC: +2,375 / -139 authored; +3,544 / -1,778 generated schema
 
 Verify: Static query IDs, parameter order, statement class, catalog types,
 constraints, effect blocks, DML reviewed-only classification, and eligibility
 reasons are deterministic and covered by focused inventory/contract tests.
 
+Completed evidence: five focused query-classification tests, two PostgreSQL CLI
+tests with one explicitly ignored live test, all 29 published-schema drift
+tests, warning-denying Clippy, the complete repository check, and two exact
+static fixture scans passed. The scans made zero target connections and emitted
+the same 26,807 bytes with digest
+`sha256:4090376cc9b1387eb962886992f54f28e179bcd94b09a67aed40cb848228b830`.
+Their 13 queries classify as seven blocked, five requiring catalog evidence,
+and one DML query requiring exact policy. The classifier reports no invented
+DDL functions or cast-type result aliases.
+
 ```text
+~ README.md
+~ docs/concepts/lexicon.md
+~ schemas/codeatlas-postgres-{inventory,check,test,baseline,diff}-v1.schema.json -> v2
+~ src/config/{mod.rs,postgres.rs}
+~ src/postgres/{diff.rs,model.rs}
+~ src/postgres/source/{contract.rs,mod.rs,query.rs}
+~ src/postgres/target/{catalog.rs,mod.rs}
 + src/postgres/target/query.rs
-~ src/postgres/mod.rs
-~ src/postgres/model.rs
-~ src/postgres/source/parameters.rs
-~ src/postgres/source/mod.rs
-~ src/postgres/target/mod.rs
-~ src/config/postgres.rs
-~ src/config/mod.rs
++ src/postgres/target/query/{classification.rs,lexer.rs,shape.rs,tests.rs}
+~ src/published_schemas.rs
 ~ tests/postgres_cli.rs
-~ tests/fixtures/postgres/codeatlas.json
 ```
 
 ## Phase 2: Guarded typed session and disposable execution
@@ -446,7 +457,8 @@ contracts, one persistent guarded client, generated values, and live cleanup
 proof. It must not retain psql as a parallel query executor or create a generic
 SQL abstraction before another dialect exists.
 
-Total LOC: +2,150-3,350 / -410-830
+Total authored LOC: +4,025-4,925 / -469-819, plus the Phase 1 generated-schema
+replacement recorded above
 
 ## Layman's wins
 

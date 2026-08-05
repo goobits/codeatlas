@@ -127,7 +127,7 @@
       "type": "string"
     }
   },
-  "$id": "codeatlas.postgres-diff/v1",
+  "$id": "codeatlas.postgres-diff/v2",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "additiveChanges": {
@@ -136,7 +136,7 @@
       "type": "integer"
     },
     "apiVersion": {
-      "const": "codeatlas.postgres-diff/v1",
+      "const": "codeatlas.postgres-diff/v2",
       "type": "string"
     },
     "breakingChanges": {
@@ -171,7 +171,7 @@
       "type": "string"
     },
     "schemaVersion": {
-      "const": 1,
+      "const": 2,
       "format": "uint32",
       "minimum": 0,
       "type": "integer"

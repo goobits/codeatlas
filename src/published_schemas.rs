@@ -425,22 +425,22 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<HttpFuzzReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.postgres-inventory/v1",
-        "codeatlas-postgres-inventory-v1.schema.json",
+        "codeatlas.postgres-inventory/v2",
+        "codeatlas-postgres-inventory-v2.schema.json",
         PayloadVersion::from_schema_and_api(POSTGRES_SCHEMA_VERSION, POSTGRES_API_VERSION),
         "postgres",
         generate_schema::<PostgresInventoryReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.postgres-check/v1",
-        "codeatlas-postgres-check-v1.schema.json",
+        "codeatlas.postgres-check/v2",
+        "codeatlas-postgres-check-v2.schema.json",
         PayloadVersion::from_schema_and_api(POSTGRES_SCHEMA_VERSION, POSTGRES_API_VERSION),
         "postgres",
         generate_schema::<PostgresCheckReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.postgres-test/v1",
-        "codeatlas-postgres-test-v1.schema.json",
+        "codeatlas.postgres-test/v2",
+        "codeatlas-postgres-test-v2.schema.json",
         PayloadVersion::from_schema_and_api(
             POSTGRES_TEST_SCHEMA_VERSION,
             POSTGRES_TEST_API_VERSION,
@@ -449,8 +449,8 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<PostgresTestReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.postgres-baseline/v1",
-        "codeatlas-postgres-baseline-v1.schema.json",
+        "codeatlas.postgres-baseline/v2",
+        "codeatlas-postgres-baseline-v2.schema.json",
         PayloadVersion::from_schema_and_api(
             POSTGRES_BASELINE_SCHEMA_VERSION,
             POSTGRES_BASELINE_API_VERSION,
@@ -459,8 +459,8 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<PostgresBaselineReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.postgres-diff/v1",
-        "codeatlas-postgres-diff-v1.schema.json",
+        "codeatlas.postgres-diff/v2",
+        "codeatlas-postgres-diff-v2.schema.json",
         PayloadVersion::from_schema_and_api(
             POSTGRES_DIFF_SCHEMA_VERSION,
             POSTGRES_DIFF_API_VERSION,

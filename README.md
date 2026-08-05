@@ -797,6 +797,25 @@ templates, and database calls. Unresolved interpolation, identifier helpers,
 raw fragments, and dynamic SQL remain visible boundaries and are never
 executed.
 
+PostgreSQL inventory v2 gives every discovered application query one stable
+`query_<digest>` identity and one typed query contract. It records placeholder
+order, statement class, known parameter and result shapes, referenced objects,
+constraints, effects, eligibility, and exact block reasons. Static source alone
+does not invent catalog OIDs or prove answer correctness; unavailable catalog
+or result evidence remains explicit. Dynamic SQL, DDL, transaction control,
+privileged operations, filesystem/program access, external links, and unknown
+functions are blocked from generated execution.
+
+Placeholder evidence is bounded: only observed positions are materialized, and
+position zero, missing positions, or a position above 1,024 hard-blocks the
+query contract. This prevents hostile or malformed SQL from turning one token
+into an unbounded allocation.
+
+A target may name exact DML query IDs under
+`query_policy.dml_query_ids`. This records checked-in eligibility only: it does
+not make `test postgres` execute the query, does not waive the sandbox, and can
+never make mutating work eligible for single-shot execution.
+
 ```bash
 codeatlas --root . init postgres
 codeatlas --root . scan postgres --out postgres-inventory.json

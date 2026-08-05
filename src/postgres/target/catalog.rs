@@ -1,7 +1,7 @@
 use super::psql::{Connection, Psql};
 use crate::postgres::model::{
     PostgresCatalogColumn, PostgresCatalogConstraint, PostgresCatalogIndex,
-    PostgresCatalogInventory, PostgresCatalogTable,
+    PostgresCatalogInventory, PostgresCatalogTable, PostgresTypeName, PostgresTypeShape,
 };
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -29,16 +29,43 @@ SELECT json_build_object(
             'table', relation.relname,
             'name', attribute.attname,
             'position', attribute.attnum,
-            'data_type', format_type(attribute.atttypid, attribute.atttypmod),
+            'type_oid', attribute.atttypid::bigint,
+            'type_schema', type_namespace.nspname,
+            'type_name', type_row.typname,
+            'formatted_type', format_type(attribute.atttypid, attribute.atttypmod),
+            'base_type_schema', base_type_namespace.nspname,
+            'base_type_name', base_type.typname,
+            'enum_values', COALESCE((
+                SELECT json_agg(enum_row.enumlabel ORDER BY enum_row.enumsortorder)
+                FROM pg_enum enum_row
+                WHERE enum_row.enumtypid = CASE
+                    WHEN type_row.typtype = 'd' THEN type_row.typbasetype
+                    ELSE type_row.oid
+                END
+            ), '[]'::json),
+            'max_length', information_column.character_maximum_length,
+            'numeric_precision', information_column.numeric_precision,
+            'numeric_scale', information_column.numeric_scale,
             'nullable', NOT attribute.attnotnull,
             'default_expression', pg_get_expr(default_value.adbin, default_value.adrelid)
         ) ORDER BY namespace.nspname, relation.relname, attribute.attnum)
         FROM pg_attribute attribute
         JOIN pg_class relation ON relation.oid = attribute.attrelid
         JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+        JOIN pg_type type_row ON type_row.oid = attribute.atttypid
+        JOIN pg_namespace type_namespace ON type_namespace.oid = type_row.typnamespace
+        LEFT JOIN pg_type base_type
+          ON type_row.typtype = 'd'
+         AND base_type.oid = type_row.typbasetype
+        LEFT JOIN pg_namespace base_type_namespace
+          ON base_type_namespace.oid = base_type.typnamespace
         LEFT JOIN pg_attrdef default_value
           ON default_value.adrelid = attribute.attrelid
          AND default_value.adnum = attribute.attnum
+        LEFT JOIN information_schema.columns information_column
+          ON information_column.table_schema = namespace.nspname
+         AND information_column.table_name = relation.relname
+         AND information_column.column_name = attribute.attname
         WHERE namespace.nspname !~ '^pg_'
           AND namespace.nspname <> 'information_schema'
           AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
@@ -51,6 +78,13 @@ SELECT json_build_object(
             'table', relation.relname,
             'name', constraint_row.conname,
             'kind', constraint_row.contype::text,
+            'columns', COALESCE((
+                SELECT json_agg(column_attribute.attname ORDER BY key_column.ordinality)
+                FROM unnest(constraint_row.conkey) WITH ORDINALITY key_column(attnum, ordinality)
+                JOIN pg_attribute column_attribute
+                  ON column_attribute.attrelid = constraint_row.conrelid
+                 AND column_attribute.attnum = key_column.attnum
+            ), '[]'::json),
             'definition', pg_get_constraintdef(constraint_row.oid, true)
         ) ORDER BY namespace.nspname, relation.relname, constraint_row.conname)
         FROM pg_constraint constraint_row
@@ -113,7 +147,20 @@ pub(super) fn collect(psql: &Psql, connection: &Connection) -> Result<CatalogSna
             table: column.table,
             name: column.name,
             position: column.position,
-            data_type: column.data_type,
+            data_type: PostgresTypeShape {
+                oid: Some(column.type_oid),
+                schema: Some(column.type_schema),
+                name: column.type_name,
+                formatted: column.formatted_type,
+                base_type: column
+                    .base_type_schema
+                    .zip(column.base_type_name)
+                    .map(|(schema, name)| PostgresTypeName { schema, name }),
+                enum_values: column.enum_values,
+                max_length: column.max_length,
+                numeric_precision: column.numeric_precision,
+                numeric_scale: column.numeric_scale,
+            },
             nullable: column.nullable,
             default_digest: column.default_expression.as_deref().map(digest),
         })
@@ -126,6 +173,7 @@ pub(super) fn collect(psql: &Psql, connection: &Connection) -> Result<CatalogSna
             table: constraint.table,
             name: constraint.name,
             kind: constraint_kind(&constraint.kind).to_string(),
+            columns: constraint.columns,
             definition_digest: digest(&constraint.definition),
         })
         .collect::<Vec<_>>();
@@ -216,7 +264,17 @@ struct RawColumn {
     table: String,
     name: String,
     position: u32,
-    data_type: String,
+    type_oid: u32,
+    type_schema: String,
+    type_name: String,
+    formatted_type: String,
+    base_type_schema: Option<String>,
+    base_type_name: Option<String>,
+    #[serde(default)]
+    enum_values: Vec<String>,
+    max_length: Option<u32>,
+    numeric_precision: Option<u32>,
+    numeric_scale: Option<u32>,
     nullable: bool,
     default_expression: Option<String>,
 }
@@ -227,6 +285,8 @@ struct RawConstraint {
     table: String,
     name: String,
     kind: String,
+    #[serde(default)]
+    columns: Vec<String>,
     definition: String,
 }
 

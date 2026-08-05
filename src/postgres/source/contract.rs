@@ -146,10 +146,7 @@ pub(super) fn collect(
             .iter()
             .map(|migration| migration.inventory.clone())
             .collect(),
-        queries: queries
-            .iter()
-            .map(|query| query.inventory.clone())
-            .collect(),
+        queries: queries.iter().map(|query| query.contract.clone()).collect(),
         diagnostics,
     };
     Ok(CollectedContract {

@@ -2,6 +2,7 @@ mod support;
 
 use self::support::TestDirectory;
 use std::fs;
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -11,21 +12,44 @@ fn inventory_uses_explicit_runner_semantics_without_leaking_sql() {
         .join("tests")
         .join("fixtures")
         .join("postgres");
-    let output = Command::new(env!("CARGO_BIN_EXE_codeatlas"))
-        .args([
-            "--root",
-            fixture.to_str().expect("fixture path should be UTF-8"),
-            "scan",
-            "postgres",
-        ])
-        .output()
-        .expect("CodeAtlas PostgreSQL inventory should start");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind target observer");
+    listener
+        .set_nonblocking(true)
+        .expect("make target observer nonblocking");
+    let target = format!(
+        "postgresql://postgres:secret@{}/postgres",
+        listener.local_addr().expect("target observer address")
+    );
+    let run_inventory = || {
+        Command::new(env!("CARGO_BIN_EXE_codeatlas"))
+            .args([
+                "--root",
+                fixture.to_str().expect("fixture path should be UTF-8"),
+                "scan",
+                "postgres",
+            ])
+            .env("CODEATLAS_POSTGRES_URL", &target)
+            .output()
+            .expect("CodeAtlas PostgreSQL inventory should start")
+    };
+    let output = run_inventory();
     assert!(
         output.status.success(),
         "PostgreSQL inventory failed:\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    let repeated = run_inventory();
+    assert!(repeated.status.success(), "repeated inventory should pass");
+    assert_eq!(
+        output.stdout, repeated.stdout,
+        "inventory bytes must be exact"
+    );
+    match listener.accept() {
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+        Ok(_) => panic!("static PostgreSQL inventory contacted the configured target"),
+        Err(error) => panic!("could not observe PostgreSQL target: {error}"),
+    }
 
     let report: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("PostgreSQL inventory should be JSON");
@@ -36,7 +60,7 @@ fn inventory_uses_explicit_runner_semantics_without_leaking_sql() {
         .iter()
         .find(|migration| migration["name"] == "001_users.sql")
         .expect("raw SQL migration");
-    assert_eq!(report["apiVersion"], "codeatlas.postgres/v1");
+    assert_eq!(report["apiVersion"], "codeatlas.postgres/v2");
     assert_eq!(report["contracts"][0]["id"], "fixture-postgres");
     assert_eq!(
         report["contracts"][0]["bootstraps"]
@@ -75,10 +99,33 @@ fn inventory_uses_explicit_runner_semantics_without_leaking_sql() {
     assert_eq!(
         queries
             .iter()
-            .filter(|query| query["parameterCount"] == 1 && query["dynamic"] == false)
+            .filter(|query| {
+                query["parameters"].as_array().map(Vec::len) == Some(1) && query["dynamic"] == false
+            })
             .count(),
         5
     );
+    let static_parameterized = queries
+        .iter()
+        .find(|query| {
+            query["parameters"].as_array().map(Vec::len) == Some(1) && query["dynamic"] == false
+        })
+        .expect("static parameterized query");
+    assert_eq!(
+        static_parameterized["placeholderOrder"],
+        serde_json::json!([1])
+    );
+    assert!(static_parameterized["id"]
+        .as_str()
+        .is_some_and(|id| id.starts_with("query_") && id.len() == 70));
+    assert!(static_parameterized["effects"]
+        .as_array()
+        .is_some_and(|effects| effects.contains(&serde_json::json!("network_target_call"))));
+    assert!(static_parameterized["eligibilityReasons"]
+        .as_array()
+        .is_some_and(|reasons| reasons
+            .iter()
+            .any(|reason| { reason["code"] == "parameter_type_unresolved" })));
     assert!(!String::from_utf8_lossy(&output.stdout).contains("fixture_database"));
     assert!(!String::from_utf8_lossy(&output.stdout).contains("CREATE TABLE"));
 }
@@ -239,7 +286,7 @@ fn managed_postgres_smoke_covers_replay_baseline_diff_and_cleanup() {
     let diff_report: serde_json::Value = serde_json::from_str(&diff_source).expect("diff JSON");
     assert_eq!(
         baseline_report["apiVersion"],
-        "codeatlas.postgres-baseline/v1"
+        "codeatlas.postgres-baseline/v2"
     );
     assert!(baseline_report["serverMajor"].as_u64().is_some());
     assert_eq!(diff_report["breakingChanges"], 0);

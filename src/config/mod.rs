@@ -27,7 +27,8 @@ pub(crate) use lexicon::{
 };
 pub(crate) use postgres::{
     PostgresConfig, PostgresContractConfig, PostgresLintConfig, PostgresPsqlMetaCommandMode,
-    PostgresSqlSourceConfig, PostgresTargetConfig, PostgresTransactionMode,
+    PostgresQueryPolicyConfig, PostgresSqlSourceConfig, PostgresTargetConfig,
+    PostgresTransactionMode,
 };
 pub(crate) use semantic_siblings::{
     ResolvedSemanticSiblingComparisonSet, ResolvedSemanticSiblingPath, SemanticSiblingPathKind,
