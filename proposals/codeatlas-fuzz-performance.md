@@ -757,6 +757,34 @@ Active child: [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) Phase 1.
   selection in `src/fuzz/corpus.rs`.
 - [ ] Map only supported `CallableContract` types and constructibility evidence
   into descriptors. Keep native value materialization domain-owned.
+- [ ] Account for every discovered public callable with receiver/factory,
+  ordered-input, semantic-type, constructibility, result, effect, and oracle
+  evidence or an exact deterministic block reason; silently omitted APIs fail
+  the parity fixture.
+- [ ] Extend the one existing strict fuzz config owner with exact subject-shaped
+  `code`, `http`, and `postgres` exclusions. Reject wildcards and a shared
+  target mini-language; emit every denial as `blocked_by_policy` evidence.
+- [ ] Make config and interface exclusions monotonic: they may remove whole
+  targets/cases but never grant safety, override detected/unknown effects, skip
+  internal branches, waive review, or replace missing isolation.
+- [ ] Parse one source-adjacent
+  `@codeatlas-fuzz deny: <bounded reason>` grammar through the
+  existing Rust doc-comment, JavaScript/TypeScript JSDoc, and Python docstring
+  adapters. Only `deny` exists; malformed or conflicting
+  directives create `check code` findings and block planning.
+- [ ] Define `deny` as never fuzzing the exact target even with verified
+  disposable isolation. Keep ordinary mutation/effect evidence in the existing
+  callable and kernel target classifiers; reject a duplicative
+  `requires_disposable` directive. Make the vocabulary subtractive-only: source
+  comments may contract what runs but can never expand it, so no
+  stale-comment `allow` path exists.
+- [ ] Permit effectful dependency substitution only through an explicit
+  checked-in adapter with independently verifiable target, behavior, effects,
+  and oracle evidence; otherwise keep the callable blocked.
+- [ ] Supply the single planned `CODEATLAS_FUZZ=1` marker to sandboxed code
+  harnesses (or one exact protocol-equivalent marker) as evidence, never as a
+  safety boundary. When a target branches on it or skips an effect, label the
+  run `alternate_behavior` and do not claim production-path coverage.
 - [ ] Persist exact deterministic prefix, seed, engine fingerprint, scheduling,
   limits, evidence digests, and block reasons in the zero-call plan.
 - [ ] Generate all harness, manifest, compiler, package, bytecode, corpus, and
@@ -790,6 +818,9 @@ Active child: code fuzzing Phases 2 and 3.
   the exact named oracle and remaining budget.
 - [ ] Fuzz real safe CodeAtlas CLI/config/report parsing boundaries without
   manufacturing a public library or changing internal visibility.
+- [ ] Run every shipped CodeAtlas evidence feature against CodeAtlas during the
+  phase, classify whether each result is useful, fix defects in its canonical
+  owner, and rerun until the evidence is deterministic and actionable.
 - [ ] Prove no source-local harness, dependency, cache, corpus, fake export,
   language-private budget, unsafe fallback, or compatibility alias remains.
 - [ ] Run focused adapter suites, full checks, live isolated dogfood, and commit

@@ -76,6 +76,107 @@ differential oracle through the structured-evidence contract. That adds
 evidence; it does not add a force path, relax isolation, or let this fuzzer
 reparse source signatures.
 
+Every discovered public callable is accounted for. Its structured contract
+either supplies receiver/factory requirements, ordered inputs, semantic types,
+constructibility, results, effects, and supported oracle evidence, or it carries
+exact deterministic block reasons. Public APIs are never silently omitted from
+fuzzability evidence merely because a harness cannot yet invoke them.
+
+## One-way exclusions
+
+The existing strict `fuzz` config owner gains one subject-shaped exclusion
+block rather than engine-specific skip switches:
+
+```json
+{
+  "fuzz": {
+    "exclude": {
+      "code": ["src/path.rs#symbol"],
+      "http": ["POST /admin/export"],
+      "postgres": ["query_<digest>"]
+    }
+  }
+}
+```
+
+Each value is an exact canonical target for its subject; wildcards and a shared
+string mini-language are rejected. An exclusion removes a whole target or
+generated case before planning and remains visible as `blocked_by_policy` in
+inventory, plan, and report evidence. It never grants capability, suppresses a
+finding, or changes the analyzed public-API inventory.
+
+`deny` means CodeAtlas must never generate an invocation for that target, even
+when a disposable target and verified sandbox exist. It is reserved for
+maintainer knowledge the effect model cannot safely infer, such as a hardwired
+real provider, production-only credential dependency, or unacceptable external
+cost. It is not an effect annotation. Ordinary effects and mutation are
+represented by typed effects and handled by target classification; `deny` is
+only for targets that must not be fuzzed even against a disposable target under
+a verified sandbox. A second `requires_disposable` directive would duplicate
+that existing effect/target classifier and is therefore rejected.
+
+Source-adjacent API documentation may contribute the same one-way denial with
+one cross-language directive grammar:
+
+```text
+@codeatlas-fuzz deny: <maintainer reason>
+```
+
+The payload is byte-for-byte the same across language adapters. These are
+normative attachment examples; the reasons deliberately describe targets that
+must remain denied even under isolation:
+
+```rust
+/// @codeatlas-fuzz deny: invokes the real compiler toolchain
+pub fn compile_release(input: &str) -> Output { /* ... */ }
+```
+
+```javascript
+/** @codeatlas-fuzz deny: calls the real payment provider */
+export async function capturePayment(request) { /* ... */ }
+```
+
+```typescript
+export interface ArtifactPublisher {
+  /** @codeatlas-fuzz deny: publishes to the real artifact registry */
+  publish(bundle: Bundle): Promise<Publication>;
+}
+```
+
+```python
+def load_production_credentials(name: str) -> Credentials:
+    """@codeatlas-fuzz deny: requires production credentials"""
+    # ...
+```
+
+Rust doc comments, JavaScript/TypeScript JSDoc, and Python docstrings are
+associated with the exact declaration by their existing language
+adapter; there is no repository-wide comment scraper. The reason is required,
+bounded, and preserved as evidence. Malformed, duplicate-conflicting, or
+unsupported directives produce a `check code` finding and block fuzz planning
+for that callable.
+
+Only `deny` exists. The directive vocabulary is subtractive-only: a comment may
+contract what runs, but can never expand it. There is deliberately no `allow`
+because a stale source comment must never re-enable a callable after its
+implementation or propagated effects become unsafe. Source or interface
+metadata cannot declare itself pure, override detected or unknown effects,
+bypass a reviewed plan, or compensate for missing isolation. CodeAtlas never
+rewrites a callable to skip effectful lines or branches for fuzzing. A
+dependency may be substituted only by an explicit checked-in adapter whose
+target, behavior, effect boundary, and oracle are independently verifiable;
+otherwise the callable remains blocked.
+
+A fuzz-aware API uses ordinary explicit dependency/context injection. Every
+sandboxed code harness supplies the single planned `CODEATLAS_FUZZ=1` marker for
+audit logging or selection of an explicit injected fake; protocol adapters may
+carry an equivalent exact planned marker where environment is not the
+transport. The marker is plan evidence, never an isolation or authorization
+mechanism. If the target branches on it or skips an effect, the report
+classifies the run as `alternate_behavior` and does not claim production-path
+coverage. The unchanged effectful path remains blocked until separately
+isolated and exercised.
+
 ## Deterministic corpus
 
 `src/fuzz/corpus.rs` owns domain-neutral boundary descriptors, canonical
@@ -217,8 +318,19 @@ source files into the checkout.
 
 - Rust, Python, JavaScript, and TypeScript pass one semantic type conformance
   table for the supported parity set.
+- Every discovered public callable emits a complete structured fuzzability
+  contract or exact block evidence; the parity fixture has no silent omissions.
 - Unsupported constructs and effect evidence from the accepted callable
   contract have deterministic block reasons.
+- Exact config/interface exclusions are one-way, visible as
+  `blocked_by_policy`, and cannot override effects or missing isolation.
+- Rust doc comments, JavaScript/TypeScript JSDoc, and Python docstrings pass one
+  directive conformance table through their existing
+  language adapters; malformed directives create findings and block planning.
+- Exclusions skip whole targets/cases; no harness silently bypasses an internal
+  branch, and every dependency substitution has a verified adapter contract.
+- Fuzz-aware context is explicit and planned; any changed target behavior is
+  reported as `alternate_behavior`, never production-path coverage.
 - Boundary corpus ordering and seeded replay are exact for capable engines.
 - The target never observes a call without a kernel permit.
 - Checkout, home, absolute, traversal, symlink, `/tmp`, network, and subprocess
@@ -234,8 +346,9 @@ Status: [ ] Not started
 LOC: +900-1,400 / -80-180
 
 Verify: Boundary corpus ordering, size/depth limits, plan/reproducer artifacts,
-pre-call permits, watchdog limits, external-only harness state, and seed replay
-pass using controlled language-neutral fixtures.
+pre-call permits, exhaustive public-contract accounting, one-way exact
+exclusions, watchdog limits, external-only harness state, and seed replay pass
+using controlled language-neutral fixtures.
 
 ```text
 + src/fuzz/corpus.rs

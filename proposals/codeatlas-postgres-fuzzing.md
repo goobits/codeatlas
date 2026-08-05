@@ -86,6 +86,27 @@ An automatically fuzzable query requires:
 Dynamic SQL, unresolved fragments, and runtime-built identifier lists remain
 visible inventory findings but are not automatically fuzzed.
 
+PostgreSQL exclusions are config-first: `fuzz.exclude.postgres` names exact
+content-addressed query IDs and remains stable evidence outside SQL parsing. A
+single hand-written static query may use a leading SQL line or block comment
+whose payload is exactly `@codeatlas-fuzz deny: <bounded reason>` as a local
+maintenance convenience. The query lexer associates it only before that one
+statement's first token. Multi-statement sources, dynamic/ORM construction, and
+ambiguous attachment cannot use the shortcut and must use config. This is not
+presented as documentation-AST parity with code languages.
+
+```sql
+-- @codeatlas-fuzz deny: invokes an extension that sends real email
+SELECT send_account_email($1);
+```
+
+The directive means never fuzz the query even against a disposable database;
+ordinary DML is not a reason to use it. DML remains typed mutation evidence and
+can become checked-policy eligible while always requiring reviewed execution.
+The SQL shortcut is subtractive-only. There is no SQL `allow` directive because
+a stale comment must never override a newly detected effect, policy requirement,
+or block.
+
 The query contract records:
 
 ```text
