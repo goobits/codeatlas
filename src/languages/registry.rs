@@ -87,6 +87,16 @@ impl LanguageRegistry {
             .collect()
     }
 
+    pub(super) fn detect_language_ids(&self, root_dir: &Path) -> Vec<String> {
+        let mut ids = self
+            .detect_languages(root_dir)
+            .into_iter()
+            .map(|language| language.id().to_string())
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids
+    }
+
     /// Get scanners for specific languages by ID.
     ///
     /// If `lang_ids` is None, returns scanners for all registered languages.

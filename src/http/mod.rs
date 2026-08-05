@@ -1,5 +1,6 @@
 mod conformance;
 mod diff;
+mod docs;
 mod environment;
 #[allow(
     dead_code,
@@ -13,6 +14,7 @@ mod planning;
     reason = "Phase 2 disconnects direct HTTP execution; Phase 5 moves this behavior to the artifact owner"
 )]
 mod provider;
+mod repository;
 mod runtime;
 #[allow(
     dead_code,
@@ -37,9 +39,11 @@ use anyhow::Result;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use model::HttpContractInventory;
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 pub(crate) use conformance::check;
 pub(crate) use diff::compare;
+pub(crate) use docs::build as documentation;
 pub(crate) use model::{
     HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpConfidence, HttpDiffReport,
     HttpFuzzWorkload, HttpInventoryReport, HttpSourceCompleteness, HttpSourceOperationKind,
@@ -65,18 +69,138 @@ enum InventoryProviderAccess {
     LocalFilesOnly,
 }
 
+struct HttpContractEvidence {
+    inventory: HttpContractInventory,
+    documentation: Option<openapi::HttpOpenApiDocumentation>,
+}
+
 pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInventoryReport> {
     inventory_with_provider_access(contracts, InventoryProviderAccess::Configured)
 }
 
-fn inventory_local_files(contracts: &[ResolvedHttpContract]) -> Result<HttpInventoryReport> {
-    inventory_with_provider_access(contracts, InventoryProviderAccess::LocalFilesOnly)
+pub(crate) fn proposed_config(
+    project: &crate::config::ProjectConfig,
+) -> Result<crate::config::HttpConfig> {
+    let discovery =
+        crate::source_discovery::discover(crate::source_discovery::SourceDiscoveryRequest {
+            root: &project.root,
+            patterns: &[],
+            excluded_roots: &[],
+            no_default_ignore: project.config.no_default_ignore,
+        });
+    if let Some(warning) = discovery.warnings.first() {
+        anyhow::bail!("Could not discover HTTP configuration: {warning}");
+    }
+    let mut openapi = discovery
+        .files
+        .into_iter()
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    matches!(
+                        name.to_ascii_lowercase().as_str(),
+                        "openapi.json" | "openapi.yaml" | "openapi.yml"
+                    )
+                })
+        })
+        .collect::<Vec<_>>();
+    openapi.sort();
+    if openapi.len() > 1 {
+        anyhow::bail!(
+            "HTTP init found multiple conventional OpenAPI files; select one explicitly in codeatlas.json:\n  {}",
+            openapi
+                .iter()
+                .map(|path| crate::paths::normalize_relative_path(path, &project.root))
+                .collect::<Vec<_>>()
+                .join("\n  ")
+        );
+    }
+
+    let source = source::inventory(std::slice::from_ref(&project.root), &project.root, false)?;
+    let openapi = openapi.pop();
+    if source.operations.is_empty() && openapi.is_none() {
+        anyhow::bail!(
+            "No supported HTTP routes or conventional OpenAPI file were discovered in {}",
+            project.root.display()
+        );
+    }
+
+    let (id, openapi) = if let Some(path) = openapi {
+        let display = crate::paths::normalize_relative_path(&path, project.config_base());
+        provider::load(
+            &ResolvedHttpOpenApiSource::File(path.clone()),
+            &crate::paths::normalize_relative_path(&path, &project.root),
+        )?;
+        (
+            openapi_contract_id(&path),
+            Some(crate::config::HttpOpenApiSourceConfig::File(PathBuf::from(
+                display,
+            ))),
+        )
+    } else {
+        ("source".to_string(), None)
+    };
+
+    Ok(crate::config::HttpConfig {
+        contracts: vec![crate::config::HttpContractConfig {
+            id,
+            openapi,
+            source_complete: false,
+            ..crate::config::HttpContractConfig::default()
+        }],
+        fuzz: crate::config::HttpConfig::default().fuzz,
+    })
+}
+
+fn openapi_contract_id(path: &std::path::Path) -> String {
+    let stem = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("openapi");
+    let mut id = String::new();
+    let mut separator = false;
+    for character in stem.chars() {
+        if character.is_ascii_alphanumeric() {
+            if separator && !id.is_empty() {
+                id.push('-');
+            }
+            id.push(character.to_ascii_lowercase());
+            separator = false;
+        } else {
+            separator = true;
+        }
+    }
+    if id.is_empty() {
+        "openapi".to_string()
+    } else {
+        id
+    }
 }
 
 fn inventory_with_provider_access(
     contracts: &[ResolvedHttpContract],
     access: InventoryProviderAccess,
 ) -> Result<HttpInventoryReport> {
+    let evidence = collect_contract_evidence(contracts, access)?;
+    Ok(HttpInventoryReport::new(
+        evidence
+            .into_iter()
+            .map(|contract| contract.inventory)
+            .collect(),
+    ))
+}
+
+fn collect_local_contract_evidence(
+    contracts: &[ResolvedHttpContract],
+) -> Result<Vec<HttpContractEvidence>> {
+    collect_contract_evidence(contracts, InventoryProviderAccess::LocalFilesOnly)
+}
+
+fn collect_contract_evidence(
+    contracts: &[ResolvedHttpContract],
+    access: InventoryProviderAccess,
+) -> Result<Vec<HttpContractEvidence>> {
     let mut inventories = Vec::with_capacity(contracts.len());
     for contract in contracts {
         let openapi = contract
@@ -142,23 +266,29 @@ fn inventory_with_provider_access(
                 && !schema_operations.contains(operation.key.as_str());
         }
         let schema_missing = openapi.is_none();
-        inventories.push(HttpContractInventory {
-            id: contract.id.clone(),
-            contract_source: contract.openapi_display.clone(),
-            openapi_version: openapi.as_ref().map(|openapi| openapi.version.clone()),
-            operations: openapi
-                .as_ref()
-                .map(|openapi| openapi.operations.clone())
-                .unwrap_or_default(),
-            diagnostics: openapi
-                .map(|openapi| openapi.diagnostics)
-                .unwrap_or_default(),
-            schema_missing,
-            source,
+        let documentation = openapi
+            .as_ref()
+            .map(|openapi| openapi.documentation.clone());
+        inventories.push(HttpContractEvidence {
+            inventory: HttpContractInventory {
+                id: contract.id.clone(),
+                contract_source: contract.openapi_display.clone(),
+                openapi_version: openapi.as_ref().map(|openapi| openapi.version.clone()),
+                operations: openapi
+                    .as_ref()
+                    .map(|openapi| openapi.operations.clone())
+                    .unwrap_or_default(),
+                diagnostics: openapi
+                    .map(|openapi| openapi.diagnostics)
+                    .unwrap_or_default(),
+                schema_missing,
+                source,
+            },
+            documentation,
         });
     }
-    inventories.sort_by(|left, right| left.id.cmp(&right.id));
-    Ok(HttpInventoryReport::new(inventories))
+    inventories.sort_by(|left, right| left.inventory.id.cmp(&right.inventory.id));
+    Ok(inventories)
 }
 
 fn source_operation_matches_path_filters(

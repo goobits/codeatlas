@@ -196,6 +196,286 @@ pub(crate) fn render_with_options(
     output
 }
 
+pub(crate) fn render_evidence(
+    document: &reference::EvidenceDocument,
+    options: &DocsConfig,
+) -> anyhow::Result<String> {
+    document.validate()?;
+    let mut output = String::new();
+    let escaped_title = escape_html(&document.title);
+    let package_name = options.public_name.as_deref().unwrap_or("CodeAtlas");
+    let description = options
+        .description
+        .as_deref()
+        .or(document.summary.as_deref());
+    let description_meta = description
+        .map(|value| {
+            format!(
+                "\t<meta name=\"description\" content=\"{}\">\n",
+                escape_attr(value)
+            )
+        })
+        .unwrap_or_default();
+    let canonical_link = options
+        .canonical_url
+        .as_ref()
+        .map(|value| {
+            format!(
+                "\t<link rel=\"canonical\" href=\"{}\">\n",
+                escape_attr(value)
+            )
+        })
+        .unwrap_or_default();
+    let social_meta = render_social_meta(
+        &document.title,
+        description,
+        options.canonical_url.as_deref(),
+    );
+    let theme = render_theme(&options.theme);
+    let style_body = format!("\n{}{}\n", STYLE, theme);
+    let script_body = format!("\n{}\n", SCRIPT);
+    let content_security_policy = format!(
+        "default-src 'none'; style-src 'sha256-{}'; script-src 'sha256-{}'; img-src data:; base-uri 'none'; form-action 'none'",
+        csp_hash(&style_body),
+        csp_hash(&script_body)
+    );
+
+    write!(
+        output,
+        "<!doctype html>\n<html lang=\"en\">\n<head>\n\
+\t<meta charset=\"utf-8\">\n\
+\t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
+\t<meta name=\"generator\" content=\"CodeAtlas {}\">\n\
+\t<meta name=\"referrer\" content=\"no-referrer\">\n\
+\t<meta http-equiv=\"Content-Security-Policy\" content=\"{}\">\n\
+{}{}{}\
+\t<title>{}</title>\n\
+\t<style>{}</style>\n\
+</head>\n<body>\n<div class=\"atlas-layout\">\n",
+        escape_attr(env!("CARGO_PKG_VERSION")),
+        escape_attr(&content_security_policy),
+        description_meta,
+        canonical_link,
+        social_meta,
+        escaped_title,
+        style_body
+    )
+    .expect("writing to String cannot fail");
+
+    output.push_str("<a class=\"atlas-skip\" href=\"#main\">Skip to reference</a>\n");
+    render_evidence_sidebar(
+        &mut output,
+        document,
+        package_name,
+        options.home_url.as_deref(),
+    );
+    write!(
+        output,
+        "\t<main class=\"atlas-main\" id=\"main\">\n\
+\t\t<header class=\"atlas-header\">\n\
+\t\t\t<p class=\"atlas-header__eyebrow\">{} reference</p>\n\
+\t\t\t<h1>{}</h1>\n",
+        escape_html(&document.subject),
+        escaped_title
+    )
+    .expect("writing to String cannot fail");
+    if let Some(summary) = &document.summary {
+        writeln!(
+            output,
+            "\t\t\t<p class=\"atlas-header__meta\">{}</p>",
+            render_markdown(summary)
+        )
+        .expect("writing to String cannot fail");
+    }
+    output.push_str(
+        "\t\t</header>\n\t\t<p class=\"atlas-empty\" data-visible=\"false\">No matching evidence.</p>\n",
+    );
+
+    for group in &document.groups {
+        let count = group
+            .sections
+            .iter()
+            .map(|section| section.entries.len())
+            .sum::<usize>();
+        let group_id = evidence_anchor("group", &group.name);
+        write!(
+            output,
+            "\t\t<section class=\"atlas-group\" id=\"{}\">\n\
+\t\t\t<div class=\"atlas-group__header\">\n\
+\t\t\t\t<h2><code>{}</code></h2>\n\
+\t\t\t\t<span class=\"atlas-group__count\">{} entries</span>\n\
+\t\t\t</div>\n",
+            escape_attr(&group_id),
+            escape_html(&group.name),
+            count
+        )
+        .expect("writing to String cannot fail");
+        for section in &group.sections {
+            write!(
+                output,
+                "\t\t\t<section class=\"atlas-kind-section\">\n\
+\t\t\t\t<h3 class=\"atlas-kind-section__title\">{}</h3>\n",
+                escape_html(&section.name)
+            )
+            .expect("writing to String cannot fail");
+            for entry in &section.entries {
+                render_evidence_entry(&mut output, entry);
+            }
+            output.push_str("\t\t\t</section>\n");
+        }
+        output.push_str("\t\t</section>\n");
+    }
+    write!(
+        output,
+        "\t\t<p class=\"atlas-header__meta\">Generated from sourced {} evidence by CodeAtlas {}.</p>\n\
+\t</main>\n</div>\n<script>{}</script>\n</body>\n</html>\n",
+        escape_html(&document.subject),
+        escape_html(env!("CARGO_PKG_VERSION")),
+        script_body
+    )
+    .expect("writing to String cannot fail");
+    Ok(output)
+}
+
+fn render_evidence_sidebar(
+    output: &mut String,
+    document: &reference::EvidenceDocument,
+    product_name: &str,
+    home_url: Option<&str>,
+) {
+    write!(
+        output,
+        "\t<aside class=\"atlas-sidebar\">\n\
+\t\t<a class=\"atlas-brand\" href=\"{}\">\n\
+\t\t\t<span class=\"atlas-brand__product\">{}</span>\n\
+\t\t\t<span class=\"atlas-brand__title\">{}</span>\n\
+\t\t</a>\n\
+\t\t<input class=\"atlas-search\" type=\"search\" placeholder=\"Search evidence\" aria-label=\"Search evidence\">\n\
+\t\t<button class=\"atlas-nav-toggle\" type=\"button\" aria-controls=\"atlas-nav\" aria-expanded=\"false\">Browse evidence</button>\n\
+\t\t<nav class=\"atlas-nav\" id=\"atlas-nav\" aria-label=\"Evidence entries\">\n",
+        escape_attr(home_url.unwrap_or("#main")),
+        escape_html(product_name),
+        escape_html(&document.title)
+    )
+    .expect("writing to String cannot fail");
+    for group in &document.groups {
+        write!(
+            output,
+            "\t\t\t<div class=\"atlas-nav__group\">\n\t\t\t\t<p class=\"atlas-nav__title\">{}</p>\n",
+            escape_html(&group.name)
+        )
+        .expect("writing to String cannot fail");
+        for section in &group.sections {
+            writeln!(
+                output,
+                "\t\t\t\t<p class=\"atlas-nav__kind\">{}</p>",
+                escape_html(&section.name)
+            )
+            .expect("writing to String cannot fail");
+            for entry in &section.entries {
+                writeln!(
+                    output,
+                    "\t\t\t\t<a class=\"atlas-nav__link\" href=\"#{}\">{}</a>",
+                    escape_attr(&evidence_anchor("entry", &entry.id)),
+                    escape_html(&entry.name)
+                )
+                .expect("writing to String cannot fail");
+            }
+        }
+        output.push_str("\t\t\t</div>\n");
+    }
+    output.push_str("\t\t</nav>\n\t</aside>\n");
+}
+
+fn render_evidence_entry(output: &mut String, entry: &reference::EvidenceEntry) {
+    let mut search = vec![entry.name.clone(), entry.kind.clone()];
+    search.extend(entry.description.iter().cloned());
+    search.extend(
+        entry
+            .facts
+            .iter()
+            .flat_map(|fact| [fact.label.clone(), fact.value.clone()]),
+    );
+    write!(
+        output,
+        "\t\t\t<article class=\"atlas-symbol\" id=\"{}\" data-search=\"{}\">\n\
+\t\t\t\t<div class=\"atlas-symbol__heading\">\n\
+\t\t\t\t\t<h4><code>{}</code></h4>\n\
+\t\t\t\t\t<a class=\"atlas-permalink\" href=\"#{}\" aria-label=\"Permalink to {}\">#</a>\n\
+\t\t\t\t\t<span class=\"atlas-kind\">{}</span>\n\
+\t\t\t\t</div>\n",
+        escape_attr(&evidence_anchor("entry", &entry.id)),
+        escape_attr(&search.join(" ").to_lowercase()),
+        escape_html(&entry.name),
+        escape_attr(&evidence_anchor("entry", &entry.id)),
+        escape_attr(&entry.name),
+        escape_html(&entry.kind)
+    )
+    .expect("writing to String cannot fail");
+    if let Some(description) = &entry.description {
+        writeln!(
+            output,
+            "\t\t\t\t<p class=\"atlas-summary\">{}</p>",
+            render_markdown(description)
+        )
+        .expect("writing to String cannot fail");
+    } else if let Some(missing) = &entry.missing_description {
+        writeln!(
+            output,
+            "\t\t\t\t<p class=\"atlas-note\"><strong>Description unavailable:</strong> {}</p>",
+            render_markdown(missing)
+        )
+        .expect("writing to String cannot fail");
+    }
+    for fact in &entry.facts {
+        writeln!(
+            output,
+            "\t\t\t\t<p class=\"atlas-note\"><strong>{}:</strong> <code>{}</code></p>",
+            escape_html(&fact.label),
+            escape_html(&fact.value)
+        )
+        .expect("writing to String cannot fail");
+    }
+    for table in &entry.tables {
+        writeln!(
+            output,
+            "\t\t\t\t<p class=\"atlas-note\"><strong>{}</strong></p>",
+            escape_html(&table.title)
+        )
+        .expect("writing to String cannot fail");
+        output.push_str(
+            "\t\t\t\t<div class=\"atlas-table-wrap\"><table class=\"atlas-table\"><thead><tr>",
+        );
+        for column in &table.columns {
+            write!(output, "<th>{}</th>", escape_html(column))
+                .expect("writing to String cannot fail");
+        }
+        output.push_str("</tr></thead><tbody>\n");
+        for row in &table.rows {
+            output.push_str("\t\t\t\t\t<tr>");
+            for value in row {
+                write!(output, "<td>{}</td>", render_markdown(value))
+                    .expect("writing to String cannot fail");
+            }
+            output.push_str("</tr>\n");
+        }
+        output.push_str("\t\t\t\t</tbody></table></div>\n");
+    }
+    for note in &entry.notes {
+        writeln!(
+            output,
+            "\t\t\t\t<p class=\"atlas-note\">{}</p>",
+            render_markdown(note)
+        )
+        .expect("writing to String cannot fail");
+    }
+    output.push_str("\t\t\t</article>\n");
+}
+
+fn evidence_anchor(prefix: &str, value: &str) -> String {
+    format!("{prefix}-{}-{}", slug(value), short_hash(value))
+}
+
 fn render_social_meta(title: &str, description: Option<&str>, canonical: Option<&str>) -> String {
     let mut output = format!(
         "\t<meta property=\"og:type\" content=\"website\">\n\

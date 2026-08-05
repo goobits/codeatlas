@@ -901,17 +901,17 @@ Active child: PostgreSQL fuzzing Phases 3 and 4.
 
 Active child: subject evidence parity Phases 2 through 4.
 
-- [ ] Implement truthful `init code` and `init http` proposals without URLs,
+- [x] Implement truthful `init code` and `init http` proposals without URLs,
   secrets, execution targets, completeness claims, or effect policy.
 - [x] Implement `usage http` as known repository consumer evidence with
   visible external/dynamic incompleteness and no `unused_route` claim.
 - [x] Implement `usage postgres` as known static query touches with visible
   dynamic/catalog incompleteness and no `unused_table` or `unused_column`
   claim.
-- [ ] Render deterministic sourced HTTP and PostgreSQL Markdown/HTML docs,
+- [x] Render deterministic sourced HTTP and PostgreSQL Markdown/HTML docs,
   including visible missing descriptions or catalog evidence, with zero hidden
   live calls.
-- [ ] Prove docs `--check` never writes, init preview writes nothing, and an
+- [x] Prove docs `--check` never writes, init preview writes nothing, and an
   explicit init writes only one selected strict configuration file.
 - [ ] Enrich PostgreSQL usage/docs only from an explicitly supplied exact
   observation reference, with no hidden target or database execution.
@@ -1288,12 +1288,11 @@ baseline/diff pass.
 
 ## Program stage 9: HTTP and PostgreSQL evidence parity
 
-Status: [~] Accepted; repository-scope Phase 1, static callable/query
-identities, and HTTP/PostgreSQL usage evidence are complete; truthful docs and
-generalized initialization are next while observation-backed enrichment
-remains deferred
+Status: [~] Accepted; repository-scope, HTTP/PostgreSQL usage, truthful docs,
+and generalized initialization Phases 1-3 are complete; bounded inspection is
+next while observation-backed enrichment remains deferred
 
-LOC: +5,835-7,135 / -1,157-1,707 product and tests, plus generated schemas
+LOC: +8,738-9,688 / -1,556-1,986 product and tests, plus generated schemas
 
 Verify: One repository scope feeds code/HTTP/PostgreSQL; route and database
 usage claims expose completeness; docs contain only sourced facts; exact

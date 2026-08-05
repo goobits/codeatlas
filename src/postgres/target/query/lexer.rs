@@ -3,6 +3,7 @@ pub(in crate::postgres) enum Token {
     Identifier(String),
     Parameter(u32),
     Literal,
+    StringLiteral(String),
     Symbol(char),
     Operator(String),
 }
@@ -42,8 +43,8 @@ pub(in crate::postgres) fn lex_sql(sql: &str) -> LexedSql {
             }
             complete &= comment_depth == 0;
         } else if bytes[index] == b'\'' {
-            let (next, closed) = quoted_end(bytes, index, b'\'', b"''");
-            tokens.push(Token::Literal);
+            let (value, next, closed) = quoted_string(sql, index);
+            tokens.push(Token::StringLiteral(value));
             index = next;
             complete &= closed;
         } else if bytes[index] == b'"' {
@@ -140,20 +141,27 @@ pub(in crate::postgres) fn lex_sql(sql: &str) -> LexedSql {
     LexedSql { tokens, complete }
 }
 
-fn quoted_end(bytes: &[u8], mut index: usize, quote: u8, escaped: &[u8]) -> (usize, bool) {
+fn quoted_string(sql: &str, mut index: usize) -> (String, usize, bool) {
+    let bytes = sql.as_bytes();
     index += 1;
+    let mut value = String::new();
     while index < bytes.len() {
-        if bytes[index..].starts_with(escaped) {
-            index += escaped.len();
-        } else if bytes[index] == b'\\' && index + 1 < bytes.len() {
+        if bytes[index..].starts_with(b"''") {
+            value.push('\'');
             index += 2;
-        } else if bytes[index] == quote {
-            return (index + 1, true);
+        } else if bytes[index] == b'\'' {
+            return (value, index + 1, true);
+        } else if bytes[index] == b'\\' && index + 1 < bytes.len() {
+            let character = sql[index + 1..].chars().next().unwrap_or_default();
+            value.push(character);
+            index += 1 + character.len_utf8();
         } else {
-            index += 1;
+            let character = sql[index..].chars().next().unwrap_or_default();
+            value.push(character);
+            index += character.len_utf8();
         }
     }
-    (index, false)
+    (value, index, false)
 }
 
 fn quoted_identifier(sql: &str, mut index: usize) -> (String, usize, bool) {

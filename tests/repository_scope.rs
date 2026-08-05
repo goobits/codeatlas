@@ -61,5 +61,5 @@ fn init_preview_is_zero_write_and_write_uses_the_strict_config_editor() {
     assert_success(&inventory, "strict written config reload");
     let repeated = run(&["--root", root, "init", "postgres", "--write"]);
     assert_eq!(repeated.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&repeated.stderr).contains("already configured"));
+    assert!(String::from_utf8_lossy(&repeated.stderr).contains("already contains `postgres`"));
 }

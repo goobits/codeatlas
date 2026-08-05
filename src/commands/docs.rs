@@ -12,7 +12,7 @@ pub(crate) enum DocsFormat {
     Html,
 }
 
-pub(crate) fn run(
+pub(crate) fn run_code(
     path: &Path,
     out: Option<&Path>,
     format: DocsFormat,
@@ -20,10 +20,56 @@ pub(crate) fn run(
     title: Option<&str>,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(generate(path, out, format, check, title, config_path))
+    exit_code(generate_code(path, out, format, check, title, config_path))
 }
 
-fn generate(
+pub(crate) fn run_http(
+    path: &Path,
+    workspace: bool,
+    out: Option<&Path>,
+    format: DocsFormat,
+    check: bool,
+    config_path: Option<&Path>,
+) -> i32 {
+    exit_code(generate_evidence(
+        EvidenceDocsRequest {
+            path,
+            workspace,
+            out,
+            format,
+            check,
+            config_path,
+            label: "HTTP documentation",
+            subject: "http",
+        },
+        crate::http::documentation,
+    ))
+}
+
+pub(crate) fn run_postgres(
+    path: &Path,
+    workspace: bool,
+    out: Option<&Path>,
+    format: DocsFormat,
+    check: bool,
+    config_path: Option<&Path>,
+) -> i32 {
+    exit_code(generate_evidence(
+        EvidenceDocsRequest {
+            path,
+            workspace,
+            out,
+            format,
+            check,
+            config_path,
+            label: "PostgreSQL documentation",
+            subject: "postgres",
+        },
+        crate::postgres::documentation,
+    ))
+}
+
+fn generate_code(
     path: &Path,
     out: Option<&Path>,
     format: DocsFormat,
@@ -104,6 +150,52 @@ fn generate(
     }
 
     output::write_text_or_print(&rendered, output_path.as_deref(), "API documentation")?;
+    Ok(0)
+}
+
+struct EvidenceDocsRequest<'a> {
+    path: &'a Path,
+    workspace: bool,
+    out: Option<&'a Path>,
+    format: DocsFormat,
+    check: bool,
+    config_path: Option<&'a Path>,
+    label: &'static str,
+    subject: &'static str,
+}
+
+fn generate_evidence(
+    request: EvidenceDocsRequest<'_>,
+    build: fn(&crate::config::RepositoryScope) -> Result<outputs::reference::EvidenceDocument>,
+) -> Result<i32> {
+    let project = load_project(request.path, request.config_path)?;
+    let scope = crate::config::RepositoryScope::resolve(&project, request.workspace)?;
+    let document = build(&scope)?;
+    let rendered = match request.format {
+        DocsFormat::Markdown => outputs::markdown::render_evidence(&document)?,
+        DocsFormat::Html => outputs::html::render_evidence(&document, &project.config.docs)?,
+    };
+
+    if request.check {
+        let output_path = request
+            .out
+            .context("--check requires an explicit --out file")?;
+        let current = std::fs::read_to_string(output_path).with_context(|| {
+            format!("{} is missing at {}", request.label, output_path.display())
+        })?;
+        if current != rendered {
+            anyhow::bail!(
+                "{} is stale at {}. Run codeatlas docs {} without --check.",
+                request.label,
+                output_path.display(),
+                request.subject
+            );
+        }
+        println!("{} is current: {}", request.label, output_path.display());
+        return Ok(0);
+    }
+
+    output::write_text_or_print(&rendered, request.out, request.label)?;
     Ok(0)
 }
 

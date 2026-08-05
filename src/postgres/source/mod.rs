@@ -45,6 +45,13 @@ pub(crate) struct CollectedQuery {
     pub contract_id: String,
     pub contract: PostgresQueryContract,
     pub sql: Option<String>,
+    pub documentation: PostgresQueryDocumentation,
+}
+
+#[derive(Default)]
+pub(crate) struct PostgresQueryDocumentation {
+    pub description: Option<String>,
+    pub missing_reason: Option<String>,
 }
 
 pub(crate) fn collect(project: &ProjectConfig) -> Result<CollectedPostgres> {

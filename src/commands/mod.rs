@@ -5,6 +5,7 @@ pub(crate) mod diff;
 pub(crate) mod docs;
 pub(crate) mod fuzz;
 pub(crate) mod http;
+pub(crate) mod init;
 pub(crate) mod lexicon;
 mod output;
 pub(crate) mod postgres;

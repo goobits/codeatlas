@@ -1,5 +1,4 @@
 use super::{exit_code, load_project, output, UsageFormat};
-use crate::config::{ConfigEdit, ConfigSubject};
 use crate::postgres;
 use anyhow::Result;
 use std::path::Path;
@@ -11,10 +10,6 @@ pub(crate) struct PostgresLiveOptions<'a> {
     pub squawk: Option<&'a Path>,
     pub psql: Option<&'a Path>,
     pub config_path: Option<&'a Path>,
-}
-
-pub(crate) fn run_init(path: &Path, write: bool, config_path: Option<&Path>) -> i32 {
-    exit_code(init(path, write, config_path))
 }
 
 pub(crate) fn run_inventory(path: &Path, out: Option<&Path>, config_path: Option<&Path>) -> i32 {
@@ -74,27 +69,6 @@ fn usage(
         UsageFormat::Json => output::render_json(&report)?,
     };
     output::write_text_or_print(&rendered, out, "PostgreSQL usage report")?;
-    Ok(0)
-}
-
-fn init(path: &Path, write: bool, config_path: Option<&Path>) -> Result<i32> {
-    let project = load_project(path, config_path)?;
-    if !project.config.postgres.contracts.is_empty() {
-        anyhow::bail!("PostgreSQL contracts are already configured; init will not overwrite them");
-    }
-    let postgres = postgres::proposed_config(&project)?;
-    let edit = ConfigEdit::plan(&project, ConfigSubject::Postgres, &postgres)?;
-    if !write {
-        output::write_or_print(
-            &serde_json::json!({ "postgres": postgres }),
-            None,
-            "PostgreSQL config",
-        )?;
-        return Ok(0);
-    }
-
-    let destination = edit.write()?;
-    eprintln!("PostgreSQL config added to {}", destination.display());
     Ok(0)
 }
 

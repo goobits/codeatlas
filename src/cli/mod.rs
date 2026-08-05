@@ -86,7 +86,7 @@ enum Command {
         #[command(subcommand)]
         subject: test::TestSubject,
     },
-    /// Discover and optionally write PostgreSQL configuration
+    /// Discover and optionally write strict subject configuration
     Init {
         #[command(subcommand)]
         subject: init::InitSubject,
@@ -174,6 +174,8 @@ mod tests {
             vec!["codeatlas", "inspect", "code", "src/lib.rs#run"],
             vec!["codeatlas", "lexicon", "code"],
             vec!["codeatlas", "docs", "code"],
+            vec!["codeatlas", "docs", "http", "--workspace"],
+            vec!["codeatlas", "docs", "postgres", "--format", "html"],
             vec!["codeatlas", "fuzz", "http"],
             vec![
                 "codeatlas",
@@ -196,6 +198,8 @@ mod tests {
                 "--execute",
             ],
             vec!["codeatlas", "test", "postgres"],
+            vec!["codeatlas", "init", "code"],
+            vec!["codeatlas", "init", "http"],
             vec!["codeatlas", "init", "postgres"],
         ] {
             assert!(Cli::try_parse_from(args).is_ok());

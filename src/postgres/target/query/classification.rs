@@ -244,7 +244,9 @@ pub(super) fn add_token_effect_reasons(
     }
     if has_word(tokens, "copy")
         && (has_word(tokens, "from") || has_word(tokens, "to"))
-        && tokens.iter().any(|token| token == &Token::Literal)
+        && tokens
+            .iter()
+            .any(|token| matches!(token, Token::Literal | Token::StringLiteral(_)))
     {
         effects.insert(ExecutionEffect::Unknown);
         reasons.insert(reason(PostgresQueryEligibilityReasonCode::FilesystemAccess));

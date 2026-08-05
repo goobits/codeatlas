@@ -1,7 +1,9 @@
 mod diff;
+mod docs;
 mod lint;
 mod model;
 mod source;
+mod static_schema;
 mod target;
 mod usage;
 
@@ -10,6 +12,7 @@ use anyhow::Result;
 use std::path::Path;
 
 pub(crate) use diff::compare;
+pub(crate) use docs::build as documentation;
 pub(crate) use model::PostgresObjectKind;
 pub(crate) use model::{
     PostgresBaselineReport, POSTGRES_BASELINE_API_VERSION, POSTGRES_BASELINE_SCHEMA_VERSION,

@@ -1,36 +1,44 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct HttpConfig {
     pub contracts: Vec<HttpContractConfig>,
+    #[serde(skip_serializing_if = "HttpFuzzConfig::is_empty")]
     pub fuzz: HttpFuzzConfig,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct HttpContractConfig {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub openapi: Option<HttpOpenApiSourceConfig>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub external_operations: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_roots: Vec<PathBuf>,
     pub source_complete: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_include_paths: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_exclude_paths: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_include_operations: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_exclude_operations: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub(crate) enum HttpOpenApiSourceConfig {
     File(PathBuf),
     Provider(HttpOpenApiProviderConfig),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum HttpOpenApiProviderConfig {
     File {
@@ -52,13 +60,19 @@ pub(crate) enum HttpOpenApiProviderConfig {
     },
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct HttpFuzzConfig {
     pub targets: Vec<HttpFuzzTargetConfig>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+impl HttpFuzzConfig {
+    fn is_empty(&self) -> bool {
+        self.targets.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct HttpFuzzTargetConfig {
     pub id: String,
@@ -100,7 +114,7 @@ impl Default for HttpFuzzTargetConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub(crate) enum HttpFuzzOperationSelectionConfig {
     Explicit(Vec<String>),
@@ -113,20 +127,20 @@ impl Default for HttpFuzzOperationSelectionConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HttpFuzzOperationScopeConfig {
     Contract,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct HttpFuzzPositiveCoverageConfig {
     pub max_operations_without_success: Option<u64>,
     pub max_authentication_rejection_only_operations: Option<u64>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct HttpFuzzHeaderConfig {
     pub name: String,
@@ -134,7 +148,7 @@ pub(crate) struct HttpFuzzHeaderConfig {
     pub value_env: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct HttpFuzzCommandConfig {
     pub command: String,
@@ -142,7 +156,7 @@ pub(crate) struct HttpFuzzCommandConfig {
     pub cwd: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct HttpFuzzServerConfig {
     pub command: String,
@@ -152,7 +166,7 @@ pub(crate) struct HttpFuzzServerConfig {
     pub startup_timeout_seconds: Option<u64>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HttpFuzzHealthCheck {
     DataTooLarge,

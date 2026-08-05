@@ -1,6 +1,6 @@
 use super::{
     digest, discovery, ecmascript, parameters, require_project_path, source_error, CollectedQuery,
-    MAX_SQL_BYTES,
+    PostgresQueryDocumentation, MAX_SQL_BYTES,
 };
 use crate::config::{PostgresContractConfig, ProjectConfig};
 use crate::paths;
@@ -10,6 +10,8 @@ use crate::source_discovery::{self, SourceDiscoveryRequest};
 use anyhow::{Context, Result};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+
+const MAX_QUERY_DESCRIPTION_BYTES: usize = 64 * 1024;
 
 pub(super) fn collect(
     project: &ProjectConfig,
@@ -42,6 +44,13 @@ pub(super) fn collect(
                         &contract.id,
                         query.sql,
                         None,
+                        PostgresQueryDocumentation {
+                            description: None,
+                            missing_reason: Some(
+                                "No source-adjacent description is available for this embedded query."
+                                    .to_string(),
+                            ),
+                        },
                         &project.config.fuzz.exclude.postgres,
                     )
                 }));
@@ -185,7 +194,7 @@ fn collect_query_file(
             path.display()
         )
     })?;
-    let fuzz_policy = leading_sql_fuzz_policy(&text);
+    let leading = leading_sql_evidence(&text);
     Ok(collected_query(
         &contract.id,
         ecmascript::StaticSql {
@@ -195,7 +204,8 @@ fn collect_query_file(
             column: 1,
             dynamic: false,
         },
-        fuzz_policy,
+        leading.fuzz_policy,
+        leading.documentation,
         &project.config.fuzz.exclude.postgres,
     ))
 }
@@ -204,6 +214,7 @@ fn collected_query(
     contract_id: &str,
     sql: ecmascript::StaticSql,
     fuzz_policy: Option<crate::domain::FuzzPolicyEvidence>,
+    documentation: PostgresQueryDocumentation,
     fuzz_exclusions: &[String],
 ) -> CollectedQuery {
     let parameters = parameters::analyze(&sql.text);
@@ -228,10 +239,16 @@ fn collected_query(
         contract_id: contract_id.to_string(),
         sql: (!contract.dynamic).then_some(parameters.sql),
         contract,
+        documentation,
     }
 }
 
-fn leading_sql_fuzz_policy(source: &str) -> Option<crate::domain::FuzzPolicyEvidence> {
+struct LeadingSqlEvidence {
+    fuzz_policy: Option<crate::domain::FuzzPolicyEvidence>,
+    documentation: PostgresQueryDocumentation,
+}
+
+fn leading_sql_evidence(source: &str) -> LeadingSqlEvidence {
     let mut index = 0;
     let mut line = 1_u32;
     let bytes = source.as_bytes();
@@ -280,7 +297,48 @@ fn leading_sql_fuzz_policy(source: &str) -> Option<crate::domain::FuzzPolicyEvid
         }
         break;
     }
-    crate::fuzz::directive::parse_directive_lines(documentation)
+    let fuzz_policy = crate::fuzz::directive::parse_directive_lines(documentation.clone());
+    let description = documentation
+        .into_iter()
+        .map(|(_, value)| value)
+        .filter(|value| !is_fuzz_directive(value))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string();
+    let documentation = if description.is_empty() {
+        PostgresQueryDocumentation {
+            description: None,
+            missing_reason: Some(
+                "The static SQL file has no leading non-directive description comment.".to_string(),
+            ),
+        }
+    } else if description.len() > MAX_QUERY_DESCRIPTION_BYTES {
+        PostgresQueryDocumentation {
+            description: None,
+            missing_reason: Some(format!(
+                "The leading SQL description exceeds the {MAX_QUERY_DESCRIPTION_BYTES}-byte documentation limit."
+            )),
+        }
+    } else {
+        PostgresQueryDocumentation {
+            description: Some(description),
+            missing_reason: None,
+        }
+    };
+    LeadingSqlEvidence {
+        fuzz_policy,
+        documentation,
+    }
+}
+
+fn is_fuzz_directive(value: &str) -> bool {
+    value
+        .trim()
+        .strip_prefix(crate::fuzz::directive::FUZZ_DIRECTIVE_MARKER)
+        .is_some_and(|payload| {
+            payload.is_empty() || payload.chars().next().is_some_and(char::is_whitespace)
+        })
 }
 
 fn append_fuzz_policy_findings(
@@ -310,26 +368,49 @@ fn append_fuzz_policy_findings(
 
 #[cfg(test)]
 mod fuzz_directive_tests {
-    use super::leading_sql_fuzz_policy;
+    use super::leading_sql_evidence;
     use crate::domain::FuzzDirectiveIssueKind;
 
     #[test]
     fn sql_directive_is_leading_comment_convenience_only() {
-        let policy = leading_sql_fuzz_policy(
+        let evidence = leading_sql_evidence(
             "-- @codeatlas-fuzz deny: invokes an extension that sends real email\nWITH value AS (SELECT 1) SELECT * FROM value",
-        )
-        .expect("leading SQL directive");
+        );
+        let policy = evidence.fuzz_policy.expect("leading SQL directive");
         assert_eq!(
             policy.denial.as_ref().map(|denial| denial.reason.as_str()),
             Some("invokes an extension that sends real email")
         );
 
-        assert!(leading_sql_fuzz_policy("SELECT 1; -- @codeatlas-fuzz deny: too late").is_none());
-        let unsupported = leading_sql_fuzz_policy("/* @codeatlas-fuzz allow: stale */\nSELECT 1")
+        assert!(
+            leading_sql_evidence("SELECT 1; -- @codeatlas-fuzz deny: too late")
+                .fuzz_policy
+                .is_none()
+        );
+        let unsupported = leading_sql_evidence("/* @codeatlas-fuzz allow: stale */\nSELECT 1")
+            .fuzz_policy
             .expect("unsupported directive evidence");
         assert_eq!(
             unsupported.issues[0].kind,
             FuzzDirectiveIssueKind::UnsupportedAction
         );
+    }
+
+    #[test]
+    fn sql_description_excludes_the_fuzz_directive() {
+        let evidence = leading_sql_evidence(
+            "-- Load the account visible to the current tenant.\n-- @codeatlas-fuzz deny: invokes the real audit provider\nSELECT * FROM accounts",
+        );
+
+        assert_eq!(
+            evidence.documentation.description.as_deref(),
+            Some("Load the account visible to the current tenant.")
+        );
+        assert!(!evidence
+            .documentation
+            .description
+            .as_deref()
+            .unwrap_or_default()
+            .contains("codeatlas-fuzz"));
     }
 }

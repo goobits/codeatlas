@@ -133,9 +133,6 @@ fn is_nested_project_root(path: &Path) -> bool {
 }
 
 fn is_test_source(path: &Path, source_root: &Path) -> bool {
-    if sveltekit::is_route(path) {
-        return false;
-    }
     crate::source_policy::is_conventional_test_source(
         path.strip_prefix(source_root).unwrap_or(path),
     )
@@ -182,21 +179,179 @@ fn detect_annotations(
         )
         .expect("CodeAtlas HTTP annotation detector")
     });
-    for captures in annotation.captures_iter(source) {
-        let (Some(method), Some(route)) = (captures.get(1), captures.get(2)) else {
+    for_each_comment(path, source, |offset, comment| {
+        for captures in annotation.captures_iter(comment) {
+            let (Some(method), Some(route)) = (captures.get(1), captures.get(2)) else {
+                continue;
+            };
+            push_operation(
+                output,
+                method.as_str(),
+                route.as_str(),
+                "codeatlas_http_annotation",
+                HttpConfidence::High,
+                path,
+                repository_root,
+                line_at(source, offset.saturating_add(method.start())),
+            );
+        }
+    });
+}
+
+fn for_each_comment(path: &Path, source: &str, mut visit: impl FnMut(usize, &str)) {
+    let extension = path.extension().and_then(|value| value.to_str());
+    let is_python = extension == Some("py");
+    let is_rust = extension == Some("rs");
+    let is_svelte = extension == Some("svelte");
+    let bytes = source.as_bytes();
+    let mut index = 0;
+
+    while index < bytes.len() {
+        if is_python && bytes[index] == b'#' {
+            let start = index + 1;
+            let end = source[start..]
+                .find('\n')
+                .map_or(bytes.len(), |relative| start + relative);
+            visit(start, &source[start..end]);
+            index = end;
             continue;
+        }
+        if !is_python && bytes[index..].starts_with(b"//") {
+            let start = index + 2;
+            let end = source[start..]
+                .find('\n')
+                .map_or(bytes.len(), |relative| start + relative);
+            visit(start, &source[start..end]);
+            index = end;
+            continue;
+        }
+        if !is_python && bytes[index..].starts_with(b"/*") {
+            let start = index + 2;
+            let mut cursor = start;
+            let mut depth = 1_u32;
+            while cursor < bytes.len() && depth > 0 {
+                if is_rust && bytes[cursor..].starts_with(b"/*") {
+                    depth = depth.saturating_add(1);
+                    cursor += 2;
+                } else if bytes[cursor..].starts_with(b"*/") {
+                    depth -= 1;
+                    if depth == 0 {
+                        visit(start, &source[start..cursor]);
+                    }
+                    cursor += 2;
+                } else {
+                    cursor += 1;
+                }
+            }
+            index = cursor;
+            continue;
+        }
+        if is_svelte && bytes[index..].starts_with(b"<!--") {
+            let start = index + 4;
+            let end = source[start..]
+                .find("-->")
+                .map_or(bytes.len(), |relative| start + relative);
+            visit(start, &source[start..end]);
+            index = (end + 3).min(bytes.len());
+            continue;
+        }
+        if is_rust {
+            if let Some(end) = rust_char_literal_end(source, index) {
+                index = end;
+                continue;
+            }
+            if let Some(end) = rust_raw_string_end(source, index) {
+                index = end;
+                continue;
+            }
+        }
+
+        let quote = bytes[index];
+        let is_quote = if is_rust {
+            quote == b'"'
+        } else if is_python {
+            matches!(quote, b'\'' | b'"')
+        } else {
+            matches!(quote, b'\'' | b'"' | b'`')
         };
-        push_operation(
-            output,
-            method.as_str(),
-            route.as_str(),
-            "codeatlas_http_annotation",
-            HttpConfidence::High,
-            path,
-            repository_root,
-            line_at(source, method.start()),
-        );
+        if !is_quote {
+            index += 1;
+            continue;
+        }
+
+        let delimiter_len = if is_python && bytes[index..].starts_with(&[quote, quote, quote]) {
+            3
+        } else {
+            1
+        };
+        index += delimiter_len;
+        while index < bytes.len() {
+            if bytes[index] == b'\\' {
+                index = (index + 2).min(bytes.len());
+            } else if (delimiter_len == 1 && bytes[index] == quote)
+                || (delimiter_len == 3 && bytes[index..].starts_with(&[quote, quote, quote]))
+            {
+                index += delimiter_len;
+                break;
+            } else {
+                index += 1;
+            }
+        }
     }
+}
+
+fn rust_char_literal_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let quote = if bytes.get(start) == Some(&b'b') && bytes.get(start + 1) == Some(&b'\'') {
+        start + 1
+    } else if bytes.get(start) == Some(&b'\'') {
+        start
+    } else {
+        return None;
+    };
+    let mut cursor = quote + 1;
+    while cursor < bytes.len() && bytes[cursor] != b'\n' {
+        if bytes[cursor] == b'\\' {
+            cursor = (cursor + 2).min(bytes.len());
+        } else if bytes[cursor] == b'\'' {
+            return Some(cursor + 1);
+        } else {
+            cursor += 1;
+        }
+    }
+    None
+}
+
+fn rust_raw_string_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut cursor = start;
+    if bytes.get(cursor) == Some(&b'b') {
+        cursor += 1;
+    }
+    if bytes.get(cursor) != Some(&b'r') {
+        return None;
+    }
+    cursor += 1;
+    let hashes_start = cursor;
+    while bytes.get(cursor) == Some(&b'#') {
+        cursor += 1;
+    }
+    if bytes.get(cursor) != Some(&b'"') {
+        return None;
+    }
+    let hash_count = cursor - hashes_start;
+    cursor += 1;
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'"'
+            && bytes
+                .get(cursor + 1..cursor + 1 + hash_count)
+                .is_some_and(|suffix| suffix.iter().all(|byte| *byte == b'#'))
+        {
+            return Some(cursor + 1 + hash_count);
+        }
+        cursor += 1;
+    }
+    Some(bytes.len())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -312,8 +467,20 @@ fn exported_http_methods(source: &str) -> impl Iterator<Item = regex::Match<'_>>
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_file, ecmascript::object_literals_after};
+    use super::{detect_file, ecmascript::object_literals_after, is_test_source};
     use std::path::Path;
+
+    #[test]
+    fn sveltekit_routes_under_test_fixtures_are_not_runtime_operations() {
+        assert!(is_test_source(
+            Path::new("/repo/tests/fixtures/app/src/routes/+page.svelte"),
+            Path::new("/repo")
+        ));
+        assert!(!is_test_source(
+            Path::new("/repo/src/routes/+page.svelte"),
+            Path::new("/repo")
+        ));
+    }
 
     #[test]
     fn detects_create_route_descriptors_and_direct_typescript_routes() {
@@ -343,6 +510,74 @@ app.get("/health", handler)
         assert!(keys.contains(&"GET /exports/{id}"));
         assert!(!keys.contains(&"GET /ordinary"));
         assert_eq!(object_literals_after(source, "createRoute").len(), 1);
+    }
+
+    #[test]
+    fn annotations_attach_only_to_language_comments() {
+        for (path, source) in [
+            (
+                "/repo/src/fixture.rs",
+                "const FIXTURE: &str = r#\"// @codeatlas-http GET /rust-fixture\"#;\n",
+            ),
+            (
+                "/repo/src/fixture.ts",
+                "const fixture = `/* @codeatlas-http GET /typescript-fixture */`;\n",
+            ),
+            (
+                "/repo/src/fixture.py",
+                "fixture = '''# @codeatlas-http GET /python-fixture'''\n",
+            ),
+        ] {
+            let mut operations = Vec::new();
+            detect_file(Path::new(path), Path::new("/repo"), source, &mut operations);
+            assert!(operations.is_empty(), "{path}: {operations:?}");
+        }
+
+        for (path, source, expected) in [
+            (
+                "/repo/src/route.rs",
+                "/// @codeatlas-http GET /rust-comment\n",
+                "GET /rust-comment",
+            ),
+            (
+                "/repo/src/route.ts",
+                "/** @codeatlas-http POST /typescript-comment */\n",
+                "POST /typescript-comment",
+            ),
+            (
+                "/repo/src/route.py",
+                "# @codeatlas-http PATCH /python-comment\n",
+                "PATCH /python-comment",
+            ),
+        ] {
+            let mut operations = Vec::new();
+            detect_file(Path::new(path), Path::new("/repo"), source, &mut operations);
+            assert_eq!(
+                operations
+                    .iter()
+                    .map(|operation| operation.key.as_str())
+                    .collect::<Vec<_>>(),
+                [expected],
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn annotations_ignore_embedded_fixtures_in_this_rust_source() {
+        let mut operations = Vec::new();
+        detect_file(
+            Path::new("/repo/src/http/source.rs"),
+            Path::new("/repo"),
+            include_str!("source.rs"),
+            &mut operations,
+        );
+        assert!(
+            operations
+                .iter()
+                .all(|operation| operation.key != "GET /exports/{id}"),
+            "{operations:?}"
+        );
     }
 
     #[test]

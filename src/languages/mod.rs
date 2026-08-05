@@ -36,6 +36,11 @@ pub(crate) fn get_scanners_auto(root_dir: &Path) -> Vec<Box<dyn LanguageScanner>
     registry.get_scanners_auto(root_dir)
 }
 
+pub(crate) fn detect_language_ids(root_dir: &Path) -> Vec<String> {
+    let registry = LanguageRegistry::with_defaults();
+    registry.detect_language_ids(root_dir)
+}
+
 pub(crate) fn scan_all(
     root_dir: &Path,
     config: &ScanConfig,

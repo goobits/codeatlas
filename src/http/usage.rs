@@ -1,6 +1,4 @@
-use super::model::{
-    HttpConfidence, HttpInventoryReport, HttpOperation, HttpSourceCompleteness, HttpSourceOperation,
-};
+use super::model::{HttpConfidence, HttpSourceCompleteness, HttpSourceOperation};
 use super::target::{ResolvedHttpContract, ResolvedHttpOpenApiSource};
 use crate::analysis::reachability::Reachability;
 use crate::config::{RepositoryMember, RepositoryScope, RepositoryScopeEvidence};
@@ -115,12 +113,6 @@ pub(crate) struct HttpUsageEvidence {
     pub node_id: Option<NodeId>,
 }
 
-struct MemberInventory<'a> {
-    member: &'a RepositoryMember,
-    contracts: Vec<ResolvedHttpContract>,
-    inventory: HttpInventoryReport,
-}
-
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct OperationTarget {
     project: String,
@@ -128,14 +120,8 @@ struct OperationTarget {
     operation: String,
 }
 
-#[derive(Clone)]
-struct MergedOperation {
-    operation: HttpOperation,
-    declarations: Vec<HttpSourceOperation>,
-}
-
 pub(crate) fn analyze(scope: &RepositoryScope) -> Result<HttpUsageReport> {
-    let member_inventories = collect_member_inventories(scope)?;
+    let member_inventories = super::repository::collect(scope)?;
     let projects = scope.analysis_projects();
     let (graph, graph_digest, graph_diagnostics) =
         match crate::languages::reachability::build_source_graph(projects) {
@@ -158,7 +144,7 @@ pub(crate) fn analyze(scope: &RepositoryScope) -> Result<HttpUsageReport> {
     let mut merged_by_target = BTreeMap::new();
     for member in &member_inventories {
         for contract in &member.inventory.contracts {
-            for operation in merge_operations(contract) {
+            for operation in super::repository::merge_operations(contract) {
                 let target = OperationTarget {
                     project: member.member.id.0.clone(),
                     contract: contract.id.clone(),
@@ -208,7 +194,7 @@ pub(crate) fn analyze(scope: &RepositoryScope) -> Result<HttpUsageReport> {
                 .cloned()
                 .collect::<BTreeSet<_>>();
             let mut operations = Vec::new();
-            for merged in merge_operations(contract) {
+            for merged in super::repository::merge_operations(contract) {
                 let target = OperationTarget {
                     project: member.member.id.0.clone(),
                     contract: contract.id.clone(),
@@ -311,65 +297,9 @@ pub(crate) fn analyze(scope: &RepositoryScope) -> Result<HttpUsageReport> {
     })
 }
 
-fn collect_member_inventories(scope: &RepositoryScope) -> Result<Vec<MemberInventory<'_>>> {
-    let has_configured_owner = scope
-        .members()
-        .iter()
-        .any(|member| !member.http_contracts.is_empty());
-    let mut inventories = Vec::new();
-    for member in scope.members() {
-        if member.http_contracts.is_empty() && (has_configured_owner || member.root != scope.root) {
-            continue;
-        }
-        let contracts = member.project().http_contracts(&[])?;
-        let inventory = super::inventory_local_files(&contracts)?;
-        inventories.push(MemberInventory {
-            member,
-            contracts,
-            inventory,
-        });
-    }
-    Ok(inventories)
-}
-
-fn merge_operations(contract: &super::model::HttpContractInventory) -> Vec<MergedOperation> {
-    let mut operations = contract
-        .operations
-        .iter()
-        .cloned()
-        .map(|operation| {
-            (
-                operation.key.clone(),
-                MergedOperation {
-                    operation,
-                    declarations: Vec::new(),
-                },
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    for source in &contract.source.operations {
-        operations
-            .entry(source.key.clone())
-            .or_insert_with(|| MergedOperation {
-                operation: HttpOperation {
-                    key: source.key.clone(),
-                    method: source.method.clone(),
-                    path: source.path.clone(),
-                    operation_id: None,
-                    security: Vec::new(),
-                    parameters: Vec::new(),
-                    request_body: None,
-                    responses: Vec::new(),
-                },
-                declarations: Vec::new(),
-            })
-            .declarations
-            .push(source.clone());
-    }
-    operations.into_values().collect()
-}
-
-fn validate_external_operations(inventories: &[MemberInventory<'_>]) -> Result<()> {
+fn validate_external_operations(
+    inventories: &[super::repository::RepositoryHttpMember<'_>],
+) -> Result<()> {
     for member in inventories {
         for contract in &member.contracts {
             let mut seen = BTreeSet::new();
@@ -452,7 +382,7 @@ fn usage_completeness(
 fn collect_handler_references(
     graph: &SourceGraph,
     reachability: &Reachability,
-    operations: &BTreeMap<OperationTarget, MergedOperation>,
+    operations: &BTreeMap<OperationTarget, super::repository::RepositoryHttpOperation>,
     consumers: &mut BTreeMap<OperationTarget, BTreeSet<HttpUsageEvidence>>,
 ) {
     for (target, operation) in operations {
@@ -511,7 +441,7 @@ fn collect_literal_references(
     scope: &RepositoryScope,
     graph: &SourceGraph,
     reachability: &Reachability,
-    operations: &BTreeMap<OperationTarget, MergedOperation>,
+    operations: &BTreeMap<OperationTarget, super::repository::RepositoryHttpOperation>,
     consumers: &mut BTreeMap<OperationTarget, BTreeSet<HttpUsageEvidence>>,
 ) -> Result<BTreeMap<ProjectId, usize>> {
     let mut candidates = BTreeMap::<String, Vec<(OperationTarget, LiteralKind)>>::new();

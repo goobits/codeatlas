@@ -7,10 +7,6 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-mod schema;
-
-use schema::discover_schema_objects;
-
 pub(crate) const POSTGRES_USAGE_SCHEMA_VERSION: &str = "codeatlas.postgres-usage/v1";
 const INVENTORY_DIGEST_DOMAIN: &str = "atlas.codeatlas.dev/postgres-usage/inventory/v1";
 
@@ -175,13 +171,30 @@ fn analyze_member(member: &RepositoryMember) -> Result<PostgresUsageMember> {
     let collected = super::source::collect(member.project())?;
     let inventory_digest =
         crate::execution::artifact::digest_value(INVENTORY_DIGEST_DOMAIN, &collected.report)?;
-    let discovery = discover_schema_objects(member, &collected);
+    let discovery = super::static_schema::discover(member, &collected);
     let mut definitions = BTreeMap::<ObjectKey, BTreeSet<PostgresObjectDefinition>>::new();
     for discovered in discovery.objects {
+        let Some(object) = usage_identity(&discovered.identity) else {
+            continue;
+        };
         definitions
-            .entry(discovered.key)
+            .entry(ObjectKey {
+                contract: discovered.contract,
+                object,
+            })
             .or_default()
-            .insert(discovered.definition);
+            .insert(PostgresObjectDefinition {
+                source_kind: match discovered.definition.source_kind {
+                    super::static_schema::StaticSchemaSourceKind::Bootstrap => {
+                        PostgresSchemaSourceKind::Bootstrap
+                    }
+                    super::static_schema::StaticSchemaSourceKind::Migration => {
+                        PostgresSchemaSourceKind::Migration
+                    }
+                },
+                source_name: discovered.definition.source_name,
+                evidence: discovered.definition.evidence,
+            });
     }
 
     let mut touches_by_contract = BTreeMap::<String, BTreeSet<PostgresQueryTouch>>::new();
@@ -329,6 +342,23 @@ fn analyze_member(member: &RepositoryMember) -> Result<PostgresUsageMember> {
         config_digest: member.config_digest.clone(),
         inventory_digest,
         contracts,
+    })
+}
+
+fn usage_identity(
+    object: &super::static_schema::StaticSchemaObjectIdentity,
+) -> Option<PostgresUsageObjectIdentity> {
+    let kind = match object.kind {
+        super::static_schema::StaticSchemaObjectKind::Table => PostgresObjectKind::Table,
+        super::static_schema::StaticSchemaObjectKind::Column => PostgresObjectKind::Column,
+        super::static_schema::StaticSchemaObjectKind::Constraint
+        | super::static_schema::StaticSchemaObjectKind::Index => return None,
+    };
+    Some(PostgresUsageObjectIdentity {
+        kind,
+        schema: object.schema.clone(),
+        relation: object.relation.clone(),
+        name: object.name.clone()?,
     })
 }
 

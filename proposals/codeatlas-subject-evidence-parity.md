@@ -372,29 +372,95 @@ declares no PostgreSQL contract.
 
 ## Phase 3: Truthful docs and generalized init
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +700-1,050 / -100-220
+LOC: +3,603 / -499 product and tests (measured)
 
 Verify: HTTP/PostgreSQL Markdown and HTML contain only sourced evidence,
 surface missing descriptions/catalog evidence, and are deterministic; `--check`
 never writes; init code/HTTP preview is zero-write; `--write` changes only the
 selected strict config and refuses existing ownership.
 
+- [x] Extract one presentation-only reference-document renderer, one reusable
+  local HTTP inventory collector, and one subject-level static PostgreSQL
+  schema owner before adding their second consumers. Preserve current code
+  docs bytes and current public inventory schemas.
+- [x] Collect OpenAPI descriptions and source-route locations in the same
+  bounded HTTP parse/scan used by inventory; visibly label source-only or
+  undocumented operations without inventing text or invoking a provider.
+- [x] Reuse the collected PostgreSQL contracts, SQL lexer, query contracts,
+  migrations, and static schema facts to render tables, columns, constraints,
+  indexes, comments, parameters, and visible unavailable catalog evidence.
+- [x] Add deterministic Markdown/HTML `docs http|postgres` commands with one
+  explicit output path for `--check`; exact checks remain read-only.
+- [x] Generalize the one strict config editor to subject-owned fragments, then
+  add zero-write `init code|http` previews and exact `--write` behavior. HTTP
+  discovery remains local-file/source-only, defaults `source_complete` false,
+  and never proposes a target, URL, credential, secret, or effect policy.
+- [x] Prove ownership refusal, concurrent-config protection, ambiguous OpenAPI
+  refusal, bounded discovery, zero hidden calls, deterministic bytes, and
+  unchanged source/config during preview through focused integration tests.
+- [x] Run schema drift, CLI contract checks, the full required suite, bounded
+  CodeAtlas self-dogfood, generated-state audit, checklist synchronization,
+  and one scoped Phase 3 commit.
+
+Completion checkpoint (2026-08-05): one presentation-only evidence document
+model and renderer now serves HTTP and PostgreSQL without changing code-doc
+bytes. One local HTTP contract collector serves inventory, usage, and docs;
+one static PostgreSQL schema owner serves usage and docs, and the retired
+usage-private schema parser is deleted. HTTP/OpenAPI and static PostgreSQL
+descriptions remain sourced and bounded, absent evidence is visible, and docs
+never invoke configured providers or a database. The shared strict config edit
+path now owns deterministic preview/write for code, HTTP, and PostgreSQL;
+ambiguous or already-owned configuration fails before mutation.
+
+The final `pnpm check` passed 409 Rust unit tests, every non-live integration
+suite, all Node tests, published-schema and architecture drift, formatting,
+warning-denying all-target Clippy, self-audit, and package assembly. Bounded
+self-dogfood scanned 299 files and 3,139 symbols, retained 417 advisory code
+findings with zero gates, resolved the exact PostgreSQL docs builder into a
+128-node bounded slice, and reported 12 test contexts. Repeated HTTP and
+PostgreSQL Markdown was byte-identical and exact `--check` passed; the
+repository truthfully produced zero HTTP operations and no PostgreSQL members.
+Dogfooding exposed a route annotation embedded in this detector's own Rust
+test fixture; the existing annotation owner now accepts markers only from
+actual Rust, JavaScript/TypeScript/Svelte, or Python comments and regression
+tests cover string, raw-string, template, and triple-string counterexamples.
+No schema drift or generated checkout state remained.
+
 ```text
 + src/http/docs.rs
++ src/http/repository.rs
 + src/postgres/docs.rs
++ src/postgres/static_schema.rs
 + tests/docs_http_postgres.rs
 + tests/init_cli.rs
+- src/postgres/usage/schema.rs
 ~ src/cli/docs.rs
 ~ src/cli/init.rs
+~ src/cli/mod.rs
 ~ src/commands/docs.rs
-~ src/commands/http.rs
+~ src/commands/mod.rs
 ~ src/commands/postgres.rs
+~ src/config/edit.rs
 ~ src/config/http.rs
+~ src/config/mod.rs
+~ src/http/mod.rs
+~ src/http/openapi/mod.rs
+~ src/http/source.rs
+~ src/http/usage.rs
+~ src/languages/mod.rs
+~ src/languages/registry.rs
+~ src/postgres/mod.rs
+~ src/postgres/source/mod.rs
+~ src/postgres/source/query.rs
+~ src/postgres/target/query/classification.rs
+~ src/postgres/target/query/lexer.rs
+~ src/postgres/usage.rs
 ~ src/outputs/reference.rs
+~ src/outputs/markdown.rs
 ~ src/outputs/html.rs
-~ tests/cli_contract.rs
+~ tests/repository_scope.rs
 ```
 
 ## Phase 4: Shared bounded projection and domain inspection graphs
@@ -488,9 +554,9 @@ and reference documentation are new product evidence. It must not be higher
 because code, HTTP, and PostgreSQL retain separate workspace discovery, config
 editing, pagination, or term-normalization mechanics.
 
-Measured through Phase 2: +3,535 / -577 product and test lines, plus 786
-generated schema lines. Remaining forecast: +2,300-3,600 / -580-1,130.
-Projected total: +5,835-7,135 / -1,157-1,707 product and test lines, plus
+Measured through Phase 3: +7,138 / -1,076 product and test lines, plus 786
+generated schema lines. Remaining forecast: +1,600-2,550 / -480-910.
+Projected total: +8,738-9,688 / -1,556-1,986 product and test lines, plus
 generated schemas required by final public report shapes.
 
 ## Layman's wins

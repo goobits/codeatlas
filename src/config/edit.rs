@@ -1,22 +1,29 @@
 use super::{CodeAtlasConfig, ProjectConfig};
 use anyhow::{Context, Result};
 use serde::Serialize;
+use serde_json::{Map, Value};
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ConfigSubject {
+    Code,
+    Http,
     Postgres,
 }
 
 impl ConfigSubject {
-    fn property(self) -> &'static str {
+    fn properties(self) -> &'static [&'static str] {
         match self {
-            Self::Postgres => "postgres",
+            Self::Code => &["languages", "entrypoints", "projects"],
+            Self::Http => &["http"],
+            Self::Postgres => &["postgres"],
         }
     }
 
     fn label(self) -> &'static str {
         match self {
+            Self::Code => "code",
+            Self::Http => "HTTP",
             Self::Postgres => "PostgreSQL",
         }
     }
@@ -27,13 +34,14 @@ pub(crate) struct ConfigEdit {
     destination: PathBuf,
     rendered: String,
     source_digest: Option<String>,
+    fragment: Value,
 }
 
 impl ConfigEdit {
     pub(crate) fn plan(
         project: &ProjectConfig,
         subject: ConfigSubject,
-        value: &impl Serialize,
+        fragment: &impl Serialize,
     ) -> Result<Self> {
         let destination = project
             .config_path
@@ -44,7 +52,15 @@ impl ConfigEdit {
             (None, None) => ("{}\n", None),
             _ => anyhow::bail!("Loaded CodeAtlas config source and path must agree"),
         };
-        let property = subject.property();
+        let fragment = serde_json::to_value(fragment)
+            .with_context(|| format!("Could not encode proposed {} config", subject.label()))?;
+        let fragment_object = fragment.as_object().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Proposed {} config fragment must be a JSON object",
+                subject.label()
+            )
+        })?;
+        validate_fragment(subject, fragment_object)?;
         let existing_object = project
             .config_path
             .as_ref()
@@ -57,7 +73,11 @@ impl ConfigEdit {
                 })
             })
             .transpose()?;
-        if existing_object.is_some_and(|object| object.contains_key(property)) {
+        if let Some(property) = subject
+            .properties()
+            .iter()
+            .find(|property| existing_object.is_some_and(|object| object.contains_key(**property)))
+        {
             anyhow::bail!(
                 "CodeAtlas config at {} already contains `{property}`; init will not overwrite it",
                 destination.display()
@@ -65,7 +85,15 @@ impl ConfigEdit {
         }
         let object_is_empty = existing_object.is_none_or(serde_json::Map::is_empty);
 
-        let rendered = insert_property(source, object_is_empty, property, value)?;
+        let rendered = insert_properties(
+            source,
+            object_is_empty,
+            subject.properties().iter().filter_map(|property| {
+                fragment_object
+                    .get(*property)
+                    .map(|value| (*property, value))
+            }),
+        )?;
         let validated: CodeAtlasConfig = serde_json::from_str(&rendered).with_context(|| {
             format!(
                 "Proposed {} config did not satisfy the strict CodeAtlas contract",
@@ -83,7 +111,12 @@ impl ConfigEdit {
             destination,
             rendered,
             source_digest,
+            fragment,
         })
+    }
+
+    pub(crate) fn fragment(&self) -> &Value {
+        &self.fragment
     }
 
     pub(crate) fn write(self) -> Result<PathBuf> {
@@ -111,21 +144,42 @@ impl ConfigEdit {
     }
 }
 
-fn insert_property(
+fn validate_fragment(subject: ConfigSubject, fragment: &Map<String, Value>) -> Result<()> {
+    if fragment.is_empty() {
+        anyhow::bail!(
+            "Proposed {} config fragment must contain at least one owned property",
+            subject.label()
+        );
+    }
+    if let Some(property) = fragment
+        .keys()
+        .find(|property| !subject.properties().contains(&property.as_str()))
+    {
+        anyhow::bail!(
+            "Proposed {} config fragment contains unowned property `{property}`",
+            subject.label()
+        );
+    }
+    Ok(())
+}
+
+fn insert_properties<'a>(
     source: &str,
     object_is_empty: bool,
-    property: &str,
-    value: &impl Serialize,
+    properties: impl Iterator<Item = (&'a str, &'a Value)>,
 ) -> Result<String> {
     let closing = source
         .rfind('}')
         .context("CodeAtlas config object has no closing brace")?;
     let prefix = source[..closing].trim_end();
-    let property = render_property(property, value)?;
+    let properties = properties
+        .map(|(property, value)| render_property(property, value))
+        .collect::<Result<Vec<_>>>()?
+        .join(",\n");
     Ok(if object_is_empty {
-        format!("{prefix}\n{property}\n}}\n")
+        format!("{prefix}\n{properties}\n}}\n")
     } else {
-        format!("{prefix},\n{property}\n}}\n")
+        format!("{prefix},\n{properties}\n}}\n")
     })
 }
 
@@ -150,6 +204,7 @@ fn render_property(property: &str, value: &impl Serialize) -> Result<String> {
 mod tests {
     use super::{ConfigEdit, ConfigSubject};
     use crate::config::{PostgresConfig, PostgresContractConfig, ProjectConfig};
+    use serde_json::json;
     use std::fs;
 
     #[test]
@@ -178,8 +233,9 @@ mod tests {
             targets: Vec::new(),
         };
 
+        let fragment = json!({ "postgres": postgres });
         let edit =
-            ConfigEdit::plan(&project, ConfigSubject::Postgres, &postgres).expect("config edit");
+            ConfigEdit::plan(&project, ConfigSubject::Postgres, &fragment).expect("config edit");
         assert_eq!(edit.write().expect("write config edit"), path);
 
         let rendered = fs::read_to_string(&path).expect("written config");
@@ -191,7 +247,7 @@ mod tests {
         );
         let reloaded = ProjectConfig::load(&root, Some(&path)).expect("strict edited config");
         assert_eq!(reloaded.config.postgres.contracts.len(), 1);
-        assert!(ConfigEdit::plan(&reloaded, ConfigSubject::Postgres, &postgres).is_err());
+        assert!(ConfigEdit::plan(&reloaded, ConfigSubject::Postgres, &fragment).is_err());
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
@@ -216,8 +272,9 @@ mod tests {
             }],
             targets: Vec::new(),
         };
+        let fragment = json!({ "postgres": postgres });
         let edit =
-            ConfigEdit::plan(&project, ConfigSubject::Postgres, &postgres).expect("config edit");
+            ConfigEdit::plan(&project, ConfigSubject::Postgres, &fragment).expect("config edit");
         let changed = "{\n  \"package_exports\": false\n}\n";
         fs::write(&path, changed).expect("concurrent config edit");
 
@@ -228,6 +285,33 @@ mod tests {
             fs::read_to_string(&path).expect("preserved config"),
             changed
         );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn edit_accepts_only_the_selected_subject_properties() {
+        let root = std::env::temp_dir().join(format!(
+            "codeatlas-config-edit-{}-{}",
+            std::process::id(),
+            "subjects"
+        ));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("remove stale fixture");
+        }
+        fs::create_dir_all(&root).expect("fixture root");
+        let project = ProjectConfig::load(&root, None).expect("project config");
+
+        let code = json!({ "languages": ["rs"], "entrypoints": ["src/main.rs"] });
+        let edit = ConfigEdit::plan(&project, ConfigSubject::Code, &code).expect("code edit");
+        assert_eq!(edit.fragment(), &code);
+        assert!(ConfigEdit::plan(
+            &project,
+            ConfigSubject::Code,
+            &json!({ "http": { "contracts": [] } })
+        )
+        .is_err());
+        assert!(ConfigEdit::plan(&project, ConfigSubject::Http, &json!({})).is_err());
+
         fs::remove_dir_all(root).expect("remove fixture");
     }
 }

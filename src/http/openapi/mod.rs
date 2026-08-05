@@ -11,11 +11,29 @@ use std::collections::{BTreeMap, BTreeSet};
 const METHODS: &[&str] = &[
     "get", "put", "post", "delete", "options", "head", "patch", "trace",
 ];
+const MAX_DOCUMENTATION_TEXT_BYTES: usize = 64 * 1024;
 
 pub(super) struct LoadedOpenApi {
     pub(super) version: String,
     pub(super) operations: Vec<HttpOperation>,
     pub(super) diagnostics: Vec<HttpContractDiagnostic>,
+    pub(super) documentation: HttpOpenApiDocumentation,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct HttpOpenApiDocumentation {
+    pub(super) title: Option<String>,
+    pub(super) description: Option<String>,
+    pub(super) operations: BTreeMap<String, HttpOperationDocumentation>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct HttpOperationDocumentation {
+    pub(super) summary: Option<String>,
+    pub(super) description: Option<String>,
+    pub(super) parameters: BTreeMap<(String, String), String>,
+    pub(super) request_body: Option<String>,
+    pub(super) responses: BTreeMap<String, String>,
 }
 
 pub(super) fn response_status_can_succeed(status: &str) -> bool {
@@ -45,6 +63,12 @@ pub(super) fn parse(source: &str, label: &str) -> Result<LoadedOpenApi> {
     let inherited_security = root.get("security");
     let mut operations = Vec::new();
     let mut diagnostics = Vec::new();
+    let info = root.get("info").and_then(Value::as_object);
+    let mut documentation = HttpOpenApiDocumentation {
+        title: sourced_text(info, "title", "OpenAPI info.title")?,
+        description: sourced_text(info, "description", "OpenAPI info.description")?,
+        operations: BTreeMap::new(),
+    };
 
     for (path, path_item) in paths {
         if !path.starts_with('/') {
@@ -59,7 +83,7 @@ pub(super) fn parse(source: &str, label: &str) -> Result<LoadedOpenApi> {
             };
             let operation = resolve_object(operation, &document, &mut BTreeSet::new())
                 .with_context(|| format!("Invalid {method} {path} operation at {label}"))?;
-            let parsed = parse_operation(
+            let (parsed, operation_documentation) = parse_operation(
                 method,
                 path,
                 operation,
@@ -74,6 +98,9 @@ pub(super) fn parse(source: &str, label: &str) -> Result<LoadedOpenApi> {
                 path_parameters,
                 &document,
             )?);
+            documentation
+                .operations
+                .insert(parsed.key.clone(), operation_documentation);
             operations.push(parsed);
         }
     }
@@ -88,6 +115,7 @@ pub(super) fn parse(source: &str, label: &str) -> Result<LoadedOpenApi> {
         version: version.to_string(),
         operations,
         diagnostics,
+        documentation,
     })
 }
 
@@ -100,7 +128,7 @@ fn parse_operation(
     inherited_security: Option<&Value>,
     root: &Value,
     label: &str,
-) -> Result<HttpOperation> {
+) -> Result<(HttpOperation, HttpOperationDocumentation)> {
     let method = method.to_uppercase();
     let path = normalize_path(path);
     let operation_id = operation
@@ -113,6 +141,15 @@ fn parse_operation(
             .or(inherited_security)
             .unwrap_or(&Value::Array(Vec::new())),
     )?;
+    let mut documentation = HttpOperationDocumentation {
+        summary: sourced_text(Some(operation), "summary", "OpenAPI operation summary")?,
+        description: sourced_text(
+            Some(operation),
+            "description",
+            "OpenAPI operation description",
+        )?,
+        ..HttpOperationDocumentation::default()
+    };
 
     let mut parameters = BTreeMap::new();
     for value in path_parameters.into_iter().flatten().chain(
@@ -123,16 +160,32 @@ fn parse_operation(
             .flatten(),
     ) {
         let parameter = parse_parameter(value, root)?;
-        parameters.insert(
-            (parameter.location.clone(), parameter.name.clone()),
-            parameter,
-        );
+        let object = resolve_object(value, root, &mut BTreeSet::new())
+            .context("OpenAPI parameter must be an object")?;
+        let key = (parameter.location.clone(), parameter.name.clone());
+        if let Some(description) =
+            sourced_text(Some(object), "description", "OpenAPI parameter description")?
+        {
+            documentation.parameters.insert(key.clone(), description);
+        } else {
+            documentation.parameters.remove(&key);
+        }
+        parameters.insert(key, parameter);
     }
 
     let request_body = operation
         .get("requestBody")
         .map(|value| parse_request_body(value, root))
         .transpose()?;
+    if let Some(value) = operation.get("requestBody") {
+        let object = resolve_object(value, root, &mut BTreeSet::new())
+            .context("OpenAPI request body must be an object")?;
+        documentation.request_body = sourced_text(
+            Some(object),
+            "description",
+            "OpenAPI request body description",
+        )?;
+    }
     let responses_value = operation
         .get("responses")
         .with_context(|| format!("{method} {path} at {label} is missing `responses`"))?;
@@ -145,6 +198,15 @@ fn parse_operation(
     for (status, response) in responses_object {
         let response = resolve_object(response, root, &mut BTreeSet::new())
             .with_context(|| format!("Invalid response {status} for {method} {path}"))?;
+        if let Some(description) = sourced_text(
+            Some(response),
+            "description",
+            "OpenAPI response description",
+        )? {
+            documentation
+                .responses
+                .insert(status.to_string(), description);
+        }
         responses.push(HttpResponse {
             status: status.to_string(),
             content: parse_content(response.get("content"), root)?,
@@ -152,16 +214,40 @@ fn parse_operation(
     }
     responses.sort_by(|left, right| left.status.cmp(&right.status));
 
-    Ok(HttpOperation {
-        key: operation_key(&method, &path),
-        method,
-        path,
-        operation_id,
-        security,
-        parameters: parameters.into_values().collect(),
-        request_body,
-        responses,
-    })
+    Ok((
+        HttpOperation {
+            key: operation_key(&method, &path),
+            method,
+            path,
+            operation_id,
+            security,
+            parameters: parameters.into_values().collect(),
+            request_body,
+            responses,
+        },
+        documentation,
+    ))
+}
+
+fn sourced_text(
+    object: Option<&Map<String, Value>>,
+    key: &str,
+    label: &str,
+) -> Result<Option<String>> {
+    let Some(value) = object.and_then(|object| object.get(key)) else {
+        return Ok(None);
+    };
+    let value = value
+        .as_str()
+        .with_context(|| format!("{label} must be a string"))?
+        .trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.len() > MAX_DOCUMENTATION_TEXT_BYTES {
+        anyhow::bail!("{label} exceeds {MAX_DOCUMENTATION_TEXT_BYTES} UTF-8 bytes");
+    }
+    Ok(Some(value.to_string()))
 }
 
 pub(super) fn operation_key(method: &str, path: &str) -> String {
