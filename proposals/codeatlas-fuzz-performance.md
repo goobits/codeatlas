@@ -491,7 +491,7 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-05): 104 open CodeAtlas implementation checks
+Remaining-scope audit (2026-08-05): 105 open CodeAtlas implementation checks
 remain across Phases 9 through 21, including Phase 16A and the deferred Phase
 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
@@ -1184,6 +1184,12 @@ read-only and will not reconstruct or vendor it.
 - [ ] Verify the final CLI subject matrix and reject every retired command,
   alias, force path, unlimited sentinel, duplicate output flag, and hidden live
   lifecycle action.
+- [ ] Create one concise `docs/upgrade-guide.md` for user-visible hard cuts,
+  then remove internal legacy compatibility code, readers, aliases, fallbacks,
+  and schema shims. Explicitly resolve `digest_legacy_graph`, the context-slice
+  direction schema shim, and the Mermaid imports fallback. An external
+  dependency's required `legacy` module name is boundary vocabulary, not a
+  CodeAtlas compatibility path.
 - [ ] Search for and remove second owners of callable evidence, effects, corpus
   primitives, plans, target classification, limits, sandboxing, artifacts,
   replay, redaction, cleanup, tools, resource sampling, graph projection,
