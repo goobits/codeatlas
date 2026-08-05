@@ -196,6 +196,33 @@ pub(crate) enum ExecutionCapability {
     TlsInterception,
 }
 
+impl ExecutionCapability {
+    #[cfg(test)]
+    pub(crate) const ALL: [Self; 8] = [
+        Self::CleanupVerification,
+        Self::NetworkAllowlist,
+        Self::ProcessAllowlist,
+        Self::ReadOnlyCheckout,
+        Self::ReadOnlyRuntime,
+        Self::ResourceLimits,
+        Self::ScratchFilesystem,
+        Self::TlsInterception,
+    ];
+
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::CleanupVerification => "cleanup_verification",
+            Self::NetworkAllowlist => "network_allowlist",
+            Self::ProcessAllowlist => "process_allowlist",
+            Self::ReadOnlyCheckout => "read_only_checkout",
+            Self::ReadOnlyRuntime => "read_only_runtime",
+            Self::ResourceLimits => "resource_limits",
+            Self::ScratchFilesystem => "scratch_filesystem",
+            Self::TlsInterception => "tls_interception",
+        }
+    }
+}
+
 #[derive(
     schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
 )]

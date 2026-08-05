@@ -9,8 +9,9 @@ pub(crate) use analysis::{
     AnalysisContextConfig, AnalysisProjectConfig, ResolvedAnalysisProject, TestSubjectConfig,
 };
 pub(crate) use execution::{
-    ExecutionConfig, ExecutionFilesystemIsolation, ExecutionIsolationBackend,
-    ExecutionLimitsConfig, ExecutionNetworkIsolation, ExecutionProcessIsolation,
+    ExecutionConfig, ExecutionContainerIsolationConfig, ExecutionFilesystemIsolation,
+    ExecutionIsolationBackend, ExecutionIsolationConfig, ExecutionLimitsConfig,
+    ExecutionNetworkIsolation, ExecutionProcessIsolation,
 };
 pub(crate) use fuzz::{FuzzConfig, FuzzLimitsConfig};
 pub(crate) use http::{
@@ -278,7 +279,12 @@ mod tests {
                         "backend": "container",
                         "filesystem": "scratch_only",
                         "network": "proxy_only",
-                        "processes": "planned_only"
+                        "processes": "planned_only",
+                        "container": {
+                            "executable": "/usr/bin/docker",
+                            "socket": "/run/docker.sock",
+                            "probe_image": "codeatlas/probe@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        }
                     }
                 },
                 "fuzz": {"limits": {"max_cases": 4, "max_failures": 2}}
@@ -288,6 +294,15 @@ mod tests {
         configured.validate_values().expect("valid finite limits");
         assert_eq!(configured.execution.limits.max_calls, 8);
         assert_eq!(configured.fuzz.limits.max_cases, 4);
+        assert_eq!(
+            configured
+                .execution
+                .isolation
+                .container
+                .executable
+                .as_deref(),
+            Some(std::path::Path::new("/usr/bin/docker"))
+        );
 
         let unknown = serde_json::from_str::<CodeAtlasConfig>(
             r#"{"execution":{"limits":{"unbounded":true}}}"#,
@@ -300,6 +315,8 @@ mod tests {
             r#"{"execution":{"limits":{"max_calls":2,"max_concurrency":3}}}"#,
             r#"{"fuzz":{"limits":{"max_cases":2,"max_failures":3}}}"#,
             r#"{"execution":{"limits":{"run_timeout_ms":10}},"fuzz":{"limits":{"case_timeout_ms":11}}}"#,
+            r#"{"execution":{"isolation":{"container":{"executable":"docker"}}}}"#,
+            r#"{"execution":{"isolation":{"container":{"probe_image":"codeatlas/probe:latest"}}}}"#,
         ] {
             let config = serde_json::from_str::<CodeAtlasConfig>(invalid)
                 .expect("invalid values still have a typed shape");

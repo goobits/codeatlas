@@ -680,10 +680,18 @@ codeatlas --root . fuzz http --plan plan_ABC --execute
 
 The target and `--replay` forms only gather current evidence and persist an
 immutable content-addressed plan under the external state root. `--plan ...
---execute` revalidates that exact plan before any target work. Missing proxy or
-isolation enforcement produces a blocked zero-call receipt; review never
-waives a missing capability. Set `CODEATLAS_STATE_DIR` to choose the external
-private artifact base.
+--execute` revalidates that exact plan before any target work. A missing
+required isolation capability produces a blocked zero-call receipt; review
+never waives it. Set `CODEATLAS_STATE_DIR` to choose the external private
+artifact base.
+
+Isolation probes use one exact local container executable and Unix socket with
+a private, empty client configuration. Runtime version and security metadata
+are recorded as identity only; they are not isolation proof. A digest-pinned
+probe image must target-prove every required mount, network, process, resource,
+and cleanup control before the backend can grant a capability. A machine with
+no usable local runtime, including a development container without its host
+socket, remains plan-only.
 
 The `hqa-inventory` format projects the same bounded source and OpenAPI union
 into HQA application-inventory v1. Endpoint and OpenAPI-only operations are
@@ -829,7 +837,31 @@ runtime `schemas` command.
 ## Configuration Rules
 
 Configuration is strict JSON. Unknown fields fail validation so spelling
-errors cannot silently weaken analysis. Paths are relative to the config file.
+errors cannot silently weaken analysis. Paths are relative to the config file
+unless a field explicitly requires an absolute host path. Container-runtime
+executable and socket paths are absolute so execution never depends on an
+ambient client context:
+
+```json
+{
+  "execution": {
+    "isolation": {
+      "backend": "container",
+      "filesystem": "scratch_only",
+      "network": "proxy_only",
+      "processes": "planned_only",
+      "container": {
+        "executable": "/usr/bin/docker",
+        "socket": "/var/run/docker.sock",
+        "probe_image": "registry.example/codeatlas-probe@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  }
+}
+```
+
+The image pin is a prerequisite, not a declaration that enables execution.
+Incomplete conformance blocks before the first target call.
 
 Common top-level fields are:
 

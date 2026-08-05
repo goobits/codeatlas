@@ -1,6 +1,6 @@
 use super::model::{HttpSourceInventory, HttpSourceOperationKind};
-use super::private_fs;
 use super::target::ResolvedHttpFuzzTarget;
+use crate::execution::private_fs;
 use anyhow::{Context, Result};
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
@@ -17,7 +17,7 @@ pub(super) fn write(
     let mut rendered = serde_json::to_vec_pretty(&document)?;
     rendered.push(b'\n');
     let path = report_dir.join(FILENAME);
-    private_fs::write(&path, &rendered).with_context(|| {
+    private_fs::write_private_file(&path, &rendered).with_context(|| {
         format!(
             "Could not write generated source transport contract {}",
             path.display()

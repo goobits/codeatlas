@@ -12,7 +12,6 @@ mod planning;
     dead_code,
     reason = "Phase 2 disconnects direct HTTP execution; Phase 5 moves this behavior to the artifact owner"
 )]
-mod private_fs;
 mod provider;
 mod runtime;
 #[allow(

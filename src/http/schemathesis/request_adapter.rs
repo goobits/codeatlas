@@ -1,5 +1,5 @@
+use crate::execution::private_fs;
 use crate::execution::CALL_CATEGORY_HEADER;
-use crate::http::private_fs;
 use crate::http::target::{
     HttpFuzzOperation, ResolvedHttpFuzzCommand, ResolvedHttpFuzzTarget, REQUEST_HOOK_CONFIG_ENV,
 };
@@ -34,7 +34,7 @@ impl PrivateConfig {
     fn create(root: &Path, contents: &[u8]) -> Result<Self> {
         let sequence = CONFIG_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let path = root.join(format!("config-{}-{sequence}.json", std::process::id()));
-        let mut file = private_fs::create(&path)?;
+        let mut file = private_fs::create_private_file(&path)?;
         if let Err(error) = file.write_all(contents) {
             drop(file);
             let _ = std::fs::remove_file(&path);
@@ -101,7 +101,7 @@ pub(super) fn prepare(
             hook_root.display()
         )
     })?;
-    private_fs::secure_dir(&hook_root)?;
+    private_fs::secure_directory(&hook_root)?;
     let hook_path = hook_root.join("schemathesis_hooks.py");
     if std::fs::read_to_string(&hook_path).ok().as_deref() != Some(HOOK_SOURCE) {
         std::fs::write(&hook_path, HOOK_SOURCE).with_context(|| {

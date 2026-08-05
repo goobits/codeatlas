@@ -1,5 +1,5 @@
 use super::{EVENTS_FILENAME, JUNIT_FILENAME};
-use crate::http::private_fs;
+use crate::execution::private_fs;
 use anyhow::{Context, Result};
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -10,11 +10,11 @@ use std::path::{Path, PathBuf};
 pub(super) const REDACTED: &str = "[REDACTED]";
 
 pub(super) fn write_private(path: &Path, contents: &[u8]) -> Result<()> {
-    private_fs::write(path, contents)
+    private_fs::write_private_file(path, contents)
 }
 
 pub(super) fn set_private_dir(path: &Path) -> Result<()> {
-    private_fs::secure_dir(path)
+    private_fs::secure_directory(path)
 }
 
 pub(super) fn discard_raw(report_dir: &Path) {
@@ -113,7 +113,7 @@ pub(super) fn sanitize_events<'a>(
 }
 
 fn private_file(path: &Path) -> Result<File> {
-    private_fs::create(path)
+    private_fs::create_private_file(path)
 }
 
 fn set_private_file(path: &Path) -> Result<()> {

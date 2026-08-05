@@ -1,13 +1,16 @@
 use super::identity::{is_artifact_id, validate_artifact_id};
 use super::{has_file_metadata_changed, ManagedArtifact};
+use crate::execution::private_fs::{
+    create_private_directory, create_private_file, prepare_private_disjoint_directory,
+};
 use anyhow::{Context, Result};
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(unix)]
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::PermissionsExt;
 
 static TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -62,16 +65,7 @@ impl ArtifactStore {
         if max_artifact_bytes == 0 {
             anyhow::bail!("Execution artifact byte ceiling must be greater than zero");
         }
-        let workspace_root = workspace_root
-            .canonicalize()
-            .with_context(|| format!("Could not resolve workspace {}", workspace_root.display()))?;
-        let projected_root = resolve_future_path(&root)?;
-        validate_disjoint_root(&projected_root, &workspace_root)?;
-        create_private_directory(&root)?;
-        let root = root
-            .canonicalize()
-            .with_context(|| format!("Could not resolve artifact root {}", root.display()))?;
-        validate_disjoint_root(&root, &workspace_root)?;
+        let root = prepare_private_disjoint_directory(&root, workspace_root)?;
         Ok(Self {
             root,
             max_artifact_bytes,
@@ -140,60 +134,6 @@ impl ArtifactStore {
         }
         Ok(())
     }
-}
-
-fn create_private_directory(path: &Path) -> Result<()> {
-    std::fs::create_dir_all(path)
-        .with_context(|| format!("Could not create private directory {}", path.display()))?;
-    let metadata = std::fs::symlink_metadata(path)
-        .with_context(|| format!("Could not inspect private directory {}", path.display()))?;
-    if !metadata.file_type().is_dir() {
-        anyhow::bail!(
-            "Private artifact path {} is not a directory",
-            path.display()
-        );
-    }
-    #[cfg(unix)]
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-        .with_context(|| format!("Could not secure directory {}", path.display()))?;
-    Ok(())
-}
-
-fn resolve_future_path(path: &Path) -> Result<PathBuf> {
-    let absolute = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()?.join(path)
-    };
-    let mut existing = absolute.as_path();
-    let mut missing = Vec::new();
-    while !existing.exists() {
-        let name = existing
-            .file_name()
-            .with_context(|| format!("Could not resolve future path {}", absolute.display()))?;
-        missing.push(name.to_os_string());
-        existing = existing
-            .parent()
-            .with_context(|| format!("Could not resolve future path {}", absolute.display()))?;
-    }
-    let mut resolved = existing
-        .canonicalize()
-        .with_context(|| format!("Could not resolve existing path {}", existing.display()))?;
-    for component in missing.into_iter().rev() {
-        resolved.push(component);
-    }
-    Ok(resolved)
-}
-
-fn validate_disjoint_root(root: &Path, workspace_root: &Path) -> Result<()> {
-    if root.starts_with(workspace_root) || workspace_root.starts_with(root) {
-        anyhow::bail!(
-            "Execution artifact root {} must be disjoint from workspace {}",
-            root.display(),
-            workspace_root.display()
-        );
-    }
-    Ok(())
 }
 
 fn write_private_immutable(path: &Path, bytes: &[u8], max_bytes: u64) -> Result<()> {
@@ -291,14 +231,4 @@ fn verify_private_managed_file(path: &Path) -> Result<()> {
         );
     }
     Ok(())
-}
-
-fn create_private_file(path: &Path) -> Result<File> {
-    let mut options = OpenOptions::new();
-    options.create_new(true).write(true);
-    #[cfg(unix)]
-    options.mode(0o600);
-    options
-        .open(path)
-        .with_context(|| format!("Could not create private file {}", path.display()))
 }

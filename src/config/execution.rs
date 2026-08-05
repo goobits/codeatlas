@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde::Deserialize;
+use std::path::PathBuf;
 
 pub(crate) const MAX_JCS_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -12,7 +13,8 @@ pub(crate) struct ExecutionConfig {
 
 impl ExecutionConfig {
     pub(crate) fn validate_values(&self) -> Result<()> {
-        self.limits.validate_values()
+        self.limits.validate_values()?;
+        self.isolation.validate_values()
     }
 }
 
@@ -89,6 +91,54 @@ pub(crate) struct ExecutionIsolationConfig {
     pub filesystem: ExecutionFilesystemIsolation,
     pub network: ExecutionNetworkIsolation,
     pub processes: ExecutionProcessIsolation,
+    pub container: ExecutionContainerIsolationConfig,
+}
+
+impl ExecutionIsolationConfig {
+    fn validate_values(&self) -> Result<()> {
+        self.container.validate_values()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct ExecutionContainerIsolationConfig {
+    pub executable: Option<PathBuf>,
+    pub socket: PathBuf,
+    pub probe_image: Option<String>,
+}
+
+impl Default for ExecutionContainerIsolationConfig {
+    fn default() -> Self {
+        #[cfg(unix)]
+        let socket = PathBuf::from("/var/run/docker.sock");
+        #[cfg(windows)]
+        let socket = PathBuf::from(r"\\.\pipe\docker_engine");
+        #[cfg(not(any(unix, windows)))]
+        let socket = PathBuf::from("/var/run/docker.sock");
+        Self {
+            executable: None,
+            socket,
+            probe_image: None,
+        }
+    }
+}
+
+impl ExecutionContainerIsolationConfig {
+    fn validate_values(&self) -> Result<()> {
+        if let Some(executable) = &self.executable {
+            if executable.as_os_str().is_empty() || !executable.is_absolute() {
+                anyhow::bail!("execution.isolation.container.executable must be an absolute path");
+            }
+        }
+        if self.socket.as_os_str().is_empty() || !self.socket.is_absolute() {
+            anyhow::bail!("execution.isolation.container.socket must be an absolute path");
+        }
+        if let Some(image) = &self.probe_image {
+            validate_digest_pinned_image(image)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
@@ -128,6 +178,25 @@ pub(super) fn validate_positive_safe_integer(name: &str, value: u64) -> Result<(
     }
     if value > MAX_JCS_SAFE_INTEGER {
         anyhow::bail!("{name} must not exceed {MAX_JCS_SAFE_INTEGER}");
+    }
+    Ok(())
+}
+
+fn validate_digest_pinned_image(image: &str) -> Result<()> {
+    let Some((repository, digest)) = image.split_once("@sha256:") else {
+        anyhow::bail!(
+            "execution.isolation.container.probe_image must use repository@sha256:<digest>"
+        );
+    };
+    if repository.is_empty()
+        || digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        anyhow::bail!(
+            "execution.isolation.container.probe_image must contain one lowercase SHA-256 digest"
+        );
     }
     Ok(())
 }

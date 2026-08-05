@@ -3,8 +3,8 @@ use crate::cli::execution::FuzzLimitArgs;
 use crate::cli::fuzz::HttpFuzzProfile;
 use crate::config::{ExecutionLimitsConfig, FuzzLimitsConfig, ProjectConfig};
 use crate::execution::{
-    prepare_blocked_execution, resolve_execution_limits, verify_current_evidence, ArtifactLink,
-    ArtifactRef, ArtifactStore, AuthorizationMode, ExecutionLimits, ExecutionPlan,
+    prepare_isolation_checked_execution, resolve_execution_limits, verify_current_evidence,
+    ArtifactLink, ArtifactRef, ArtifactStore, AuthorizationMode, ExecutionLimits, ExecutionPlan,
     ExecutionSubject, TargetDisposition,
 };
 use crate::fuzz::reproducer::Reproducer;
@@ -121,8 +121,13 @@ fn plan_target(project: &ProjectConfig, options: &HttpOptions<'_>) -> Result<i32
             plan.id
         );
     }
-    let receipt =
-        prepare_blocked_execution(&store, &plan, AuthorizationMode::PreauthorizedIsolated)?;
+    let receipt = prepare_isolation_checked_execution(
+        &store,
+        &project.root,
+        &project.config.execution.isolation,
+        &plan,
+        AuthorizationMode::PreauthorizedIsolated,
+    )?;
     output::write_or_print(&receipt, None, "Execution receipt")?;
     Ok(2)
 }
@@ -145,7 +150,13 @@ fn execute_reviewed_plan(
             plan.id
         );
     }
-    let receipt = prepare_blocked_execution(&store, &plan, AuthorizationMode::Reviewed)?;
+    let receipt = prepare_isolation_checked_execution(
+        &store,
+        &project.root,
+        &project.config.execution.isolation,
+        &plan,
+        AuthorizationMode::Reviewed,
+    )?;
     output::write_or_print(&receipt, None, "Execution receipt")?;
     Ok(2)
 }

@@ -3,6 +3,9 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 const MAX_TOOL_FINGERPRINT_BYTES: u64 = 512 * 1024 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -63,6 +66,45 @@ pub(crate) fn resolve(
     Ok(PathBuf::from(fallback))
 }
 
+pub(crate) fn resolve_exact_executable(
+    explicit: Option<&Path>,
+    fallback: &str,
+    label: &str,
+) -> Result<PathBuf> {
+    let candidate = explicit.unwrap_or_else(|| Path::new(fallback));
+    let path = if candidate.components().count() == 1 {
+        let search = std::env::var_os("PATH").context("PATH is unavailable")?;
+        resolve_in_paths(candidate, std::env::split_paths(&search))?
+    } else {
+        existing(candidate, label)?
+    };
+    let metadata = std::fs::metadata(&path)
+        .with_context(|| format!("Could not inspect {label} executable {}", path.display()))?;
+    if !metadata.is_file() {
+        anyhow::bail!("{label} executable is not a file: {}", path.display());
+    }
+    #[cfg(unix)]
+    if metadata.permissions().mode() & 0o111 == 0 {
+        anyhow::bail!("{label} executable is not executable: {}", path.display());
+    }
+    Ok(path)
+}
+
+fn resolve_in_paths(executable: &Path, paths: impl Iterator<Item = PathBuf>) -> Result<PathBuf> {
+    for directory in paths {
+        let candidate = directory.join(executable);
+        if candidate.is_file() {
+            return candidate
+                .canonicalize()
+                .with_context(|| format!("Could not resolve executable {}", candidate.display()));
+        }
+    }
+    anyhow::bail!(
+        "Could not find executable {:?} in PATH",
+        executable.as_os_str()
+    )
+}
+
 fn existing(path: &Path, source: &str) -> Result<PathBuf> {
     if path.components().count() == 1
         && path
@@ -98,7 +140,7 @@ pub(crate) fn command(executable: &Path) -> Command {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve;
+    use super::{resolve, resolve_in_paths};
     use std::path::Path;
 
     #[test]
@@ -112,6 +154,18 @@ mod tests {
             )
             .expect("bare executable"),
             Path::new("tool-name")
+        );
+    }
+
+    #[test]
+    fn exact_executable_resolution_returns_a_canonical_file() {
+        let current = std::env::current_exe().expect("current test executable");
+        let parent = current.parent().expect("test executable parent");
+        let name = current.file_name().expect("test executable name");
+        assert_eq!(
+            resolve_in_paths(Path::new(name), [parent.to_path_buf()].into_iter())
+                .expect("exact executable"),
+            current.canonicalize().expect("canonical test executable")
         );
     }
 }

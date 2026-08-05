@@ -252,7 +252,12 @@ The proposed semantic shape is:
       "backend": "auto",
       "filesystem": "scratch_only",
       "network": "deny",
-      "processes": "deny"
+      "processes": "deny",
+      "container": {
+        "executable": "/usr/bin/docker",
+        "socket": "/var/run/docker.sock",
+        "probe_image": "registry.example/codeatlas-probe@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
     }
   },
   "fuzz": {
@@ -904,7 +909,73 @@ exhaustion is `partial`.
 
 ## Phase 4: Verified isolation backend and capability matrix
 
-Status: [ ] Not started
+Status: [~] In progress
+
+Execution checklist:
+
+- [x] Probe exact rootful, rootless, nested-container, user-namespace, cgroup,
+  mount, network, runtime-socket, and resource-control capabilities without
+  changing host state.
+- [x] Pin one capability model and fail-closed backend-selection contract;
+  absent or incomplete enforcement must block before the first target call.
+- [ ] Implement the OCI sandbox owner with read-only checkout/runtime mounts,
+  one external writable scratch root, exact environment/process/network
+  policy, bounded captured output, and no child-visible control socket.
+- [ ] Add target-observed conformance fixtures for mount and symlink escape,
+  network, process, environment, CPU, RSS, PID, descriptor, output,
+  interruption, cleanup, rootless, and nested-runtime behavior.
+- [ ] Connect capability evidence, resource sampling, leases, and receipts at
+  the shared runner boundary without enabling HTTP execution before Phase 5.
+- [ ] Pass focused and full checks, dogfood, generated-state audit, and a clean
+  phase commit; record unsupported hosts as plan-only rather than weakening
+  the backend contract.
+
+Starting checkpoint, 2026-08-04:
+
+- Phase 3 is committed as `ff1c2af`; the worktree was clean before this
+  checklist transition.
+- Build, cache, state, conformance, and container writable data remain under
+  `/tmp/codeatlas-xdo-cache.hTn1Nk`, never under the checkout.
+- The current host is a nested Docker container on Linux 6.12 with a Docker
+  client but no Docker, Podman, or containerd control socket. It has no
+  effective capabilities, its cgroup v2 mount is read-only and undelegated,
+  and user/mount namespace creation fails with `Operation not permitted`.
+  This host is therefore plan-only; it may prove fail-closed selection and a
+  fake-runtime boundary but cannot satisfy the live OCI conformance gate.
+
+Verified partial checkpoint, 2026-08-04 (fail-closed capability selection):
+
+- Configuration accepts only an absolute optional runtime executable, an
+  absolute local socket, and an optional exact
+  `repository@sha256:<lowercase-digest>` probe image. The client clears its
+  environment and uses a private client root, so ambient contexts,
+  credentials, and remote daemon selection cannot enter the probe.
+- Runtime CLI and server metadata produce a content fingerprint and
+  rootless/nested evidence only. A fake healthy runtime and digest-pinned
+  image prove that declarations still yield zero capabilities until the
+  target-observed conformance protocol passes.
+- Missing or incomplete capability evidence reaches the shared runner as a
+  blocked zero-call receipt. Its external scratch lease is released and
+  verified, leaving the owner empty; reviewed authorization does not alter the
+  result.
+- Private file/directory handling now has one owner in
+  `src/execution/private_fs.rs`. The artifact store and dormant HTTP adapter
+  consume it, and the duplicate `src/http/private_fs.rs` is deleted ahead of
+  Phase 5 rather than retained as parallel safety code.
+- Forty focused execution tests and the zero-call planning/integration test
+  pass. Formatting and test-target compilation pass with external state. The
+  real OCI command path and live isolation conformance remain unverified and
+  therefore grant no capabilities on this host.
+- Bounded self-dogfood passes over 261 files, 2,581 scan symbols, and 3,058
+  lexicon symbols with zero gates and no duplicate scripts. Exact inspection
+  resolves the four new ownership boundaries into 120 nodes and 1,027 edges
+  with graph digest
+  `sha256:bdd8e457eea9b7ada38a7481ce679ef2286df140892df5796d3a58a0dcb1088e`;
+  omitted counts remain explicit. The execution paths have zero callable,
+  name-collision, or shape-alias candidates. Their 12 advisories are nine
+  conditional/async analysis boundaries and three conservative reachability
+  gaps; compiled production calls and focused tests corroborate the latter,
+  so none is deletion evidence.
 
 LOC: +1,200-1,900 / -50-150
 
@@ -916,6 +987,7 @@ first target call; plan-only behavior remains portable.
 
 ```text
 + src/execution/isolation.rs
++ src/execution/private_fs.rs
 + src/execution/sandbox/mod.rs
 + src/execution/sandbox/container.rs
 + tests/execution_isolation.rs
@@ -923,10 +995,19 @@ first target call; plan-only behavior remains portable.
 ~ Cargo.toml
 ~ Cargo.lock
 ~ src/execution/model.rs
+~ src/execution/artifact/store.rs
 ~ src/execution/runner.rs
 ~ src/config/execution.rs
 ~ src/environment.rs
 ~ src/external_tool.rs
+~ src/http/mod.rs
+~ src/http/schemathesis/report/evidence.rs
+~ src/http/schemathesis/request_adapter.rs
+~ src/http/transport_schema.rs
+~ tests/fuzz_plan.rs
+~ README.md
+~ proposals/codeatlas-fuzz-performance.md
+- src/http/private_fs.rs
 ~ package.json
 ```
 

@@ -496,8 +496,8 @@ detailed checklist.
 - [x] CodeAtlas HQA application-inventory renderer; deterministic external-v1
   projection complete with no HQA repository edits.
 - [~] Execution kernel: governance, immutable artifacts, and pre-call
-  budget/proxy Phases 1-3 are complete; verified isolation and HTTP migration
-  are next.
+  budget/proxy Phases 1-3 are complete; verified isolation Phase 4 is active,
+  with HTTP migration next.
 - [ ] Structured callable/effect evidence and lexicon v4.
 - [ ] Advisory semantic-role sibling evidence and CodeAtlas dogfood.
 - [ ] Callable code fuzzing and shared boundary corpus.
@@ -567,7 +567,7 @@ all repository checks and bounded CodeAtlas dogfood pass with zero gates.
 
 ## Program stage 4: Execution kernel and HTTP migration
 
-Status: [~] Accepted; execution Phases 1-3 complete, verified isolation next
+Status: [~] Accepted; execution Phases 1-3 complete, isolation Phase 4 active
 
 Projected LOC after measured Phase 3: +11,760-13,310 / -878-1,408
 

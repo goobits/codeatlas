@@ -1,13 +1,17 @@
 use super::artifact::ArtifactStore;
 use super::budget::{BudgetTermination, CallSnapshot};
+use super::isolation::{assess_isolation, create_isolation_scratch, IsolationAssessment};
 use super::lease::LeaseRegistry;
 use super::model::{
     ArtifactLink, AuthorizationMode, CallUsage, EvidenceDigests, ExecutionOutcome, ExecutionPlan,
-    ExecutionReceipt, ExecutionReceiptBody, RuntimeEvidence,
+    ExecutionReceipt, ExecutionReceiptBody,
 };
 use super::resource::ResourceSampler;
+use super::scheduler::ExecutionScheduler;
 use super::target::TargetDisposition;
+use crate::config::ExecutionIsolationConfig;
 use anyhow::Result;
+use std::path::Path;
 
 pub(crate) fn verify_current_evidence(
     plan: &ExecutionPlan,
@@ -36,8 +40,10 @@ pub(crate) fn verify_current_evidence(
     Ok(())
 }
 
-pub(crate) fn prepare_blocked_execution(
+pub(crate) fn prepare_isolation_checked_execution(
     store: &ArtifactStore,
+    workspace_root: &Path,
+    isolation_config: &ExecutionIsolationConfig,
     plan: &ExecutionPlan,
     authorization_mode: AuthorizationMode,
 ) -> Result<ExecutionReceipt> {
@@ -51,6 +57,27 @@ pub(crate) fn prepare_blocked_execution(
     }
     let sampler = ResourceSampler::new();
     let mut leases = LeaseRegistry::default();
+    let scratch = create_isolation_scratch(workspace_root, &mut leases)?;
+    let assessment = match ExecutionScheduler::from_plan(plan).and_then(|scheduler| {
+        scheduler.run(|context| async move {
+            assess_isolation(&context, isolation_config, plan, &scratch).await
+        })
+    }) {
+        Ok(assessment) => assessment,
+        Err(error) => IsolationAssessment::blocked(format!(
+            "Isolation capability probe failed before execution: {error}"
+        )),
+    };
+    let isolation_verified = assessment.is_verified(plan);
+    let mut reasons = assessment.reasons;
+    if isolation_verified {
+        reasons.push(
+            "Isolation is verified, but HTTP workload execution remains disconnected until Phase 5"
+                .to_string(),
+        );
+    }
+    reasons.sort();
+    reasons.dedup();
     let cleanup = leases.release_all();
     let outcome = finalize_outcome(ExecutionOutcome::Blocked, &cleanup, false, None);
     let receipt = ExecutionReceipt::new(ExecutionReceiptBody {
@@ -61,9 +88,9 @@ pub(crate) fn prepare_blocked_execution(
         plan_content_digest: plan.content_digest.clone(),
         authorization_mode,
         outcome,
-        reasons: vec!["required proxy and isolation enforcement are not yet available".to_string()],
+        reasons,
         calls: CallUsage::default(),
-        runtime: RuntimeEvidence::default(),
+        runtime: assessment.runtime,
         resources: sampler.sample_resources(),
         cleanup,
         result: None,

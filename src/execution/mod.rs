@@ -4,9 +4,11 @@ pub(crate) mod artifact;
     reason = "Phase 3 proves budget enforcement before Phase 4 isolation permits Phase 5 execution"
 )]
 mod budget;
+mod isolation;
 mod lease;
 mod model;
 mod policy;
+pub(crate) mod private_fs;
 #[allow(
     dead_code,
     reason = "Phase 3 proves proxy enforcement before Phase 4 isolation permits Phase 5 execution"
@@ -19,6 +21,7 @@ mod proxy;
 mod redaction;
 mod resource;
 mod runner;
+mod sandbox;
 #[allow(
     dead_code,
     reason = "Phase 3 proves bounded scheduling before Phase 4 isolation permits Phase 5 execution"
@@ -42,7 +45,7 @@ pub(crate) use policy::{
     ExecutionLimitOverrides,
 };
 pub(crate) use proxy::CALL_CATEGORY_HEADER;
-pub(crate) use runner::{prepare_blocked_execution, verify_current_evidence};
+pub(crate) use runner::{prepare_isolation_checked_execution, verify_current_evidence};
 pub(crate) use target::{
     classify_target, EffectCorroboration, TargetDecision, TargetDisposition,
     TargetEnvironmentClass, TargetEvidence,

@@ -125,7 +125,12 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
         serde_json::to_vec_pretty(&json!({
             "root": ".",
             "package_exports": false,
-            "execution": {"limits": {"max_calls": 10}},
+            "execution": {
+                "limits": {"max_calls": 10},
+                "isolation": {"container": {
+                    "executable": workspace.join("missing-container-runtime")
+                }}
+            },
             "fuzz": {"limits": {"max_cases": 10}},
             "http": {
                 "contracts": [{"id": "fixture", "openapi": "openapi.json"}],
@@ -334,6 +339,23 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
     assert_eq!(receipt["calls"]["consumed"], 0);
     assert_eq!(receipt["calls"]["by_category"], json!([]));
     assert_eq!(receipt["runtime"]["capabilities"], json!([]));
+    assert!(receipt["reasons"]
+        .as_array()
+        .expect("blocked reasons")
+        .iter()
+        .any(|reason| reason
+            .as_str()
+            .is_some_and(|reason| reason.contains("Container runtime"))));
+    assert_eq!(receipt["cleanup"].as_array().map(Vec::len), Some(1));
+    assert_eq!(receipt["cleanup"][0]["resource"], "isolation_scratch");
+    assert_eq!(receipt["cleanup"][0]["released"], true);
+    assert_eq!(receipt["cleanup"][0]["verified"], true);
+    let scratch_owner = state.join("codeatlas/execution/scratch/v1");
+    assert_eq!(
+        fs::read_dir(&scratch_owner).expect("scratch owner").count(),
+        0,
+        "blocked execution must leave no scratch lease residue"
+    );
 
     let mut changed_config: Value = serde_json::from_slice(
         &fs::read(&config_path).expect("read config before semantic change"),
