@@ -1,6 +1,6 @@
 # HQA application-inventory seeding
 
-Status: Accepted CodeAtlas-side interop child; implementation pending
+Status: Accepted CodeAtlas-side interop child; implementation complete
 
 Decision scope: One deterministic renderer from `codeatlas.http/v2` evidence to
 the published `agentspeak.hqa-application-inventory/v1` contract
@@ -92,7 +92,7 @@ second contract from changing or colliding with an existing route identity.
 | Endpoint or OpenAPI-only operation | `is_probe_only` | `true`; probe but do not treat as an explorable page |
 | Static path | `location_match` | Omit; HQA's exact default is correct |
 | Path containing `{...}` | Entry value + `location_match` | Use the static prefix before the first parameter (or `/`) and `prefix` |
-| `pathPattern` | Tag only | Preserve provenance; never assume its syntax is HQA's Rust regex dialect |
+| `pathPattern` | `tags[]` | Emit `codeatlas:path_pattern=<value>`; never assume its syntax is HQA's Rust regex dialect |
 | Detector | `tags[]` | `codeatlas:detector=<value>` for every contributing detector |
 | Confidence | `tags[]` | One `codeatlas:confidence=high|medium` tag for every distinct contributing confidence |
 | Source evidence | `tags[]` | `codeatlas:evidence=<repository-path>:<one-based-line>` |
@@ -190,29 +190,40 @@ profile, role model, or cross-repository package is added.
 
 ## Phase 1: CodeAtlas renderer and CLI
 
-Status: [ ] Not started
+Status: [x] Complete (2026-08-04)
 
-LOC: +220-350 / -0-20
+Implementation diff: +815 / -9 non-proposal lines
 
-Verify: Both real formats parse; the mapping gates above pass; JSON behavior is
-unchanged; HQA output is deterministic, externally schema-valid, and generated
-with zero calls and no source-adjacent state.
+Verify: Default and explicit CodeAtlas JSON are byte-identical; the deterministic
+seven-route golden covers both contracts and every accepted mapping class; the
+committed external HQA v1 schema at HQA `8ac0eb7` and digest
+`sha256:43ca6099a29dbb37ececd816c2e0f0852d4b6f3ed66e5db997ffb0d00fa806fc`
+accepts it. Full Rust tests and clippy pass, all 15 Node tests pass, and the
+architecture-spec and package checks pass. CodeAtlas dogfood scans 236 files
+and 2,294 symbols, reports 131 advisory findings with zero gates, adds no
+dynamic-boundary finding for this renderer, and projects its own HTTP evidence
+into three HQA routes with zero target calls or source-adjacent state.
 
 ```text
 + src/outputs/hqa_inventory.rs
++ tests/fixtures/http/hqa-inventory-input.json
 + tests/fixtures/http/hqa-inventory.generated.json
+~ src/cli/mod.rs
 ~ src/outputs/mod.rs
 ~ src/http/mod.rs
-~ src/http/model.rs
 ~ src/commands/http.rs
 ~ src/cli/scan.rs
 ~ tests/http_cli.rs
-~ tests/cli_contract.rs
 ~ README.md
 ~ proposals/codeatlas-hqa-seeding.md
 ```
 
-Total LOC: +220-350 / -0-20
+The accepted estimate undercounted the fail-closed boundary checks and the
+explicit input/golden corpus. The added surface remains one renderer, one CLI
+format selector, and focused tests; it adds no scanner, parser, client, runtime
+dependency, or external-repository edit.
+
+Total implementation LOC: +815 / -9
 
 ## External follow-up, not CodeAtlas scope
 

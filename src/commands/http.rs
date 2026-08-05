@@ -1,9 +1,9 @@
 use super::{exit_code, load_project, output};
-use crate::http;
 use crate::http::{
     FuzzRunOptions, HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpDiffReport,
     HttpInventoryReport, HTTP_BASELINE_API_VERSION,
 };
+use crate::{http, outputs};
 use anyhow::Result;
 use clap::ValueEnum;
 use std::path::{Path, PathBuf};
@@ -13,6 +13,15 @@ pub(crate) enum HttpFuzzProfile {
     Standard,
     Stateful,
     Thorough,
+}
+
+#[derive(Copy, Clone, Default, PartialEq, Eq, ValueEnum)]
+pub(crate) enum HttpInventoryFormat {
+    /// Stable CodeAtlas HTTP inventory JSON
+    #[default]
+    Json,
+    /// HQA application-inventory v1 JSON
+    HqaInventory,
 }
 
 impl HttpFuzzProfile {
@@ -40,10 +49,11 @@ impl HttpFuzzProfile {
 pub(crate) fn run_inventory(
     path: &Path,
     openapi: &[PathBuf],
+    format: HttpInventoryFormat,
     out: Option<&Path>,
     config_path: Option<&Path>,
 ) -> i32 {
-    exit_code(inventory(path, openapi, out, config_path))
+    exit_code(inventory(path, openapi, format, out, config_path))
 }
 
 pub(crate) fn run_baseline(
@@ -93,11 +103,16 @@ pub(crate) fn run_fuzz(options: &FuzzOptions<'_>) -> i32 {
 fn inventory(
     path: &Path,
     openapi: &[PathBuf],
+    format: HttpInventoryFormat,
     out: Option<&Path>,
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let report = build_inventory(path, openapi, config_path)?;
-    output::write_or_print(&report, out, "HTTP inventory")?;
+    let rendered = match format {
+        HttpInventoryFormat::Json => output::render_json(&report)?,
+        HttpInventoryFormat::HqaInventory => outputs::hqa_inventory::render(&report)?,
+    };
+    output::write_text_or_print(&rendered, out, "HTTP inventory")?;
     Ok(0)
 }
 

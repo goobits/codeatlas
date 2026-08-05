@@ -2,6 +2,7 @@ mod support;
 
 use self::support::TestDirectory;
 use serde_json::json;
+use std::collections::BTreeSet;
 use std::fs;
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -19,6 +20,71 @@ fn run_codeatlas(args: &[&str], action: &str) -> std::process::Output {
         String::from_utf8_lossy(&output.stderr)
     );
     output
+}
+
+#[test]
+fn hqa_inventory_is_explicit_and_default_http_json_is_unchanged() {
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("http");
+    let root = fixture.to_str().expect("fixture path should be UTF-8");
+    let default = run_codeatlas(&["--root", root, "scan", "http"], "default HTTP inventory");
+    let explicit = run_codeatlas(
+        &["--root", root, "scan", "http", "--format", "json"],
+        "explicit JSON HTTP inventory",
+    );
+    assert_eq!(default.stdout, explicit.stdout);
+    let codeatlas: serde_json::Value =
+        serde_json::from_slice(&default.stdout).expect("default HTTP inventory should be JSON");
+    assert_eq!(codeatlas["apiVersion"], "codeatlas.http/v2");
+
+    let directory = TestDirectory::create("codeatlas-hqa-inventory");
+    let output_path = directory.path().join("hqa-inventory.json");
+    run_codeatlas(
+        &[
+            "--root",
+            root,
+            "scan",
+            "http",
+            "--format",
+            "hqa-inventory",
+            "--out",
+            output_path.to_str().expect("output path should be UTF-8"),
+        ],
+        "HQA application inventory",
+    );
+    let inventory: serde_json::Value =
+        serde_json::from_slice(&fs::read(output_path).expect("HQA inventory should be written"))
+            .expect("HQA inventory should be JSON");
+    assert_eq!(
+        inventory["schema_version"],
+        "agentspeak.hqa-application-inventory/v1"
+    );
+    let routes = inventory["routes"]
+        .as_array()
+        .expect("HQA routes should be an array");
+    assert!(!routes.is_empty());
+    let route_ids = routes
+        .iter()
+        .map(|route| route["id"].as_str().expect("route ID"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(route_ids.len(), routes.len());
+    assert!(routes
+        .iter()
+        .any(|route| route["location_match"] == "prefix"));
+    for route in routes {
+        assert_eq!(route["entry"]["kind"], "url");
+        assert_ne!(route["location_match"], "regex");
+        for forbidden in [
+            "roles",
+            "readiness_targets",
+            "expected_transitions",
+            "excluded_reference_keys",
+        ] {
+            assert!(route.get(forbidden).is_none());
+        }
+    }
 }
 
 #[test]

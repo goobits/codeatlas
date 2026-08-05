@@ -14,13 +14,14 @@ mod transport_schema;
 use self::target::ResolvedHttpContract;
 use anyhow::Result;
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use model::{HttpContractInventory, HttpSourceOperationKind};
+use model::HttpContractInventory;
 use std::collections::BTreeSet;
 
 pub(crate) use conformance::check;
 pub(crate) use diff::compare;
 pub(crate) use model::{
-    HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpDiffReport, HttpInventoryReport,
+    HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpConfidence, HttpDiffReport,
+    HttpInventoryReport, HttpSourceCompleteness, HttpSourceOperationKind,
     HTTP_BASELINE_API_VERSION,
 };
 #[cfg(test)]

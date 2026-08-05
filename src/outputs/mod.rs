@@ -1,6 +1,7 @@
 pub(crate) mod audit;
 pub(crate) mod context_slice;
 pub(crate) mod dead_code;
+pub(crate) mod hqa_inventory;
 pub(crate) mod html;
 pub(crate) mod json;
 pub(crate) mod lexicon;

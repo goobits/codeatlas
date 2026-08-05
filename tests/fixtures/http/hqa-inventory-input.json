@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 2,
+  "apiVersion": "codeatlas.http/v2",
+  "toolVersion": "fixture",
+  "contracts": [
+    {
+      "id": "public",
+      "contractSource": "openapi.yaml",
+      "openapiVersion": "3.1.0",
+      "schemaMissing": false,
+      "operations": [
+        {
+          "key": "GET /teams/{id}",
+          "method": "GET",
+          "path": "/teams/{id}",
+          "responses": [
+            { "status": "200" }
+          ]
+        },
+        {
+          "key": "GET /ambiguous",
+          "method": "GET",
+          "path": "/ambiguous",
+          "responses": [
+            { "status": "200" },
+            { "status": "201" }
+          ]
+        },
+        {
+          "key": "GET /range",
+          "method": "GET",
+          "path": "/range",
+          "responses": [
+            { "status": "2XX" }
+          ]
+        },
+        {
+          "key": "GET /health",
+          "method": "GET",
+          "path": "/health",
+          "responses": [
+            { "status": "204" }
+          ]
+        }
+      ],
+      "source": {
+        "completeness": "partial",
+        "reason": "bounded fixture",
+        "operations": [
+          {
+            "key": "POST /source-only",
+            "method": "POST",
+            "path": "/source-only",
+            "kind": "endpoint",
+            "schemaMissing": true,
+            "detector": "express",
+            "confidence": "medium",
+            "evidence": {
+              "path": "src/source-only.ts",
+              "line": 30
+            }
+          },
+          {
+            "key": "GET /health",
+            "method": "GET",
+            "path": "/health",
+            "kind": "endpoint",
+            "schemaMissing": false,
+            "detector": "hono",
+            "confidence": "high",
+            "evidence": {
+              "path": "src/routes.ts",
+              "line": 10
+            }
+          },
+          {
+            "key": "PAGE /users/{id}",
+            "method": "PAGE",
+            "path": "/users/{id}",
+            "kind": "page",
+            "schemaMissing": false,
+            "pathPattern": "/[id]",
+            "detector": "sveltekit",
+            "confidence": "high",
+            "evidence": {
+              "path": "src/routes/[id]/+page.svelte",
+              "line": 1
+            }
+          },
+          {
+            "key": "GET /health",
+            "method": "GET",
+            "path": "/health",
+            "kind": "endpoint",
+            "schemaMissing": false,
+            "pathPattern": "/health",
+            "detector": "express",
+            "confidence": "medium",
+            "evidence": {
+              "path": "src/express.ts",
+              "line": 20
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "admin space/β",
+      "openapiVersion": "3.1.0",
+      "schemaMissing": false,
+      "operations": [
+        {
+          "key": "GET /health",
+          "method": "GET",
+          "path": "/health",
+          "responses": [
+            { "status": "200" }
+          ]
+        }
+      ],
+      "source": {
+        "completeness": "complete",
+        "reason": "configured complete",
+        "operations": []
+      }
+    }
+  ]
+}

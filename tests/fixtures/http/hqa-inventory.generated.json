@@ -1,0 +1,120 @@
+{
+  "schema_version": "agentspeak.hqa-application-inventory/v1",
+  "routes": [
+    {
+      "id": "codeatlas:http/admin%20space%2F%CE%B2/GET%20%2Fhealth",
+      "entry": {
+        "kind": "url",
+        "value": "/health"
+      },
+      "is_probe_only": true,
+      "tags": [
+        "codeatlas:contract=admin space/β",
+        "codeatlas:operation=GET /health",
+        "codeatlas:source_completeness=complete"
+      ],
+      "expectation": {
+        "status": 200
+      }
+    },
+    {
+      "id": "codeatlas:http/public/GET%20%2Fambiguous",
+      "entry": {
+        "kind": "url",
+        "value": "/ambiguous"
+      },
+      "is_probe_only": true,
+      "tags": [
+        "codeatlas:contract=public",
+        "codeatlas:operation=GET /ambiguous",
+        "codeatlas:source_completeness=partial"
+      ]
+    },
+    {
+      "id": "codeatlas:http/public/GET%20%2Fhealth",
+      "entry": {
+        "kind": "url",
+        "value": "/health"
+      },
+      "is_probe_only": true,
+      "tags": [
+        "codeatlas:confidence=high",
+        "codeatlas:confidence=medium",
+        "codeatlas:contract=public",
+        "codeatlas:detector=express",
+        "codeatlas:detector=hono",
+        "codeatlas:evidence=src/express.ts:20",
+        "codeatlas:evidence=src/routes.ts:10",
+        "codeatlas:operation=GET /health",
+        "codeatlas:path_pattern=/health",
+        "codeatlas:source_completeness=partial"
+      ],
+      "expectation": {
+        "status": 204
+      }
+    },
+    {
+      "id": "codeatlas:http/public/GET%20%2Frange",
+      "entry": {
+        "kind": "url",
+        "value": "/range"
+      },
+      "is_probe_only": true,
+      "tags": [
+        "codeatlas:contract=public",
+        "codeatlas:operation=GET /range",
+        "codeatlas:source_completeness=partial"
+      ]
+    },
+    {
+      "id": "codeatlas:http/public/GET%20%2Fteams%2F%7Bid%7D",
+      "entry": {
+        "kind": "url",
+        "value": "/teams/"
+      },
+      "location_match": "prefix",
+      "is_probe_only": true,
+      "tags": [
+        "codeatlas:contract=public",
+        "codeatlas:operation=GET /teams/{id}",
+        "codeatlas:source_completeness=partial"
+      ],
+      "expectation": {
+        "status": 200
+      }
+    },
+    {
+      "id": "codeatlas:http/public/PAGE%20%2Fusers%2F%7Bid%7D",
+      "entry": {
+        "kind": "url",
+        "value": "/users/"
+      },
+      "location_match": "prefix",
+      "tags": [
+        "codeatlas:confidence=high",
+        "codeatlas:contract=public",
+        "codeatlas:detector=sveltekit",
+        "codeatlas:evidence=src/routes/[id]/+page.svelte:1",
+        "codeatlas:operation=PAGE /users/{id}",
+        "codeatlas:path_pattern=/[id]",
+        "codeatlas:source_completeness=partial"
+      ]
+    },
+    {
+      "id": "codeatlas:http/public/POST%20%2Fsource-only",
+      "entry": {
+        "kind": "url",
+        "value": "/source-only"
+      },
+      "is_probe_only": true,
+      "tags": [
+        "codeatlas:confidence=medium",
+        "codeatlas:contract=public",
+        "codeatlas:detector=express",
+        "codeatlas:evidence=src/source-only.ts:30",
+        "codeatlas:operation=POST /source-only",
+        "codeatlas:source_completeness=partial"
+      ]
+    }
+  ]
+}

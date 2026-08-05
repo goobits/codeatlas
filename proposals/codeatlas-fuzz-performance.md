@@ -493,7 +493,8 @@ detailed checklist.
 - [x] Published CodeAtlas schemas and drift enforcement: 25 current roots,
   prospective artifact identity, and the CodeAtlas annotation namespace are
   complete.
-- [ ] CodeAtlas HQA application-inventory renderer; no HQA repository edits.
+- [x] CodeAtlas HQA application-inventory renderer; deterministic external-v1
+  projection complete with no HQA repository edits.
 - [~] Execution kernel: governance Phase 1 is complete; immutable plan/artifact
   Phase 2 is next, followed by sandbox and HTTP migration.
 - [ ] Structured callable/effect evidence and lexicon v4.
@@ -549,13 +550,15 @@ existing report bytes do not churn.
 
 ## Program stage 3: CodeAtlas HQA seeding
 
-Status: [ ] Accepted CodeAtlas-only integration
+Status: [x] Complete
 
-LOC: +220-350 / -0-20
+LOC: +815 / -9
 
 Verify: Source and OpenAPI routes render deterministically into the published
 HQA v1 inventory with unique IDs, honest completeness, conservative dynamic
-paths, no invented roles, and no HQA repository edit.
+paths, no invented roles, and no HQA repository edit. Default CodeAtlas JSON
+remains byte-identical; the golden validates against the exact external schema;
+all repository checks and bounded CodeAtlas dogfood pass with zero gates.
 
 ```text
 ~ proposals/codeatlas-hqa-seeding.md
@@ -679,7 +682,7 @@ sandbox, three execution domains, four language adapters, a typed database
 client, and a performance evidence product. Each child has a final hardening
 phase that removes replaced owners and refuses compatibility residue.
 
-Total authored LOC: +19,103-29,063 / -4,166-7,916
+Total authored LOC: +19,698-29,528 / -4,175-7,905
 
 Generated current-schema JSON: +7,706 LOC
 

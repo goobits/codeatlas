@@ -119,6 +119,7 @@ mod tests {
         for args in [
             vec!["codeatlas", "scan", "code"],
             vec!["codeatlas", "scan", "http", "--openapi", "openapi.json"],
+            vec!["codeatlas", "scan", "http", "--format", "hqa-inventory"],
             vec!["codeatlas", "scan", "postgres"],
             vec!["codeatlas", "scan", "tests"],
             vec![

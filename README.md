@@ -663,12 +663,20 @@ dispatch may declare a narrow literal route with
 
 ```bash
 codeatlas --root . scan http --out http-inventory.json
+codeatlas --root . scan http --format hqa-inventory --out hqa-routes.json
 codeatlas --root . check http
 codeatlas --root . baseline http --out http-baseline.json
 codeatlas --root . diff http --against http-baseline.json
 codeatlas --root . fuzz http --target public-local --seed 42
 codeatlas --root . fuzz http --target public-local --profile stateful
 ```
+
+The `hqa-inventory` format projects the same bounded source and OpenAPI union
+into HQA application-inventory v1. Endpoint and OpenAPI-only operations are
+probe-only; source pages remain explorable. Dynamic `{parameter}` paths use a
+navigable static prefix, while detector-specific path patterns survive only as
+provenance tags. Partial source completeness stays explicit, and CodeAtlas
+never invents HQA roles, readiness targets, or transitions.
 
 Without OpenAPI, `check http` preserves the source inventory and reports
 schema absence without pretending a schema exists. Source-transport fuzzing

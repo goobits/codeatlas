@@ -1,4 +1,5 @@
 use crate::commands;
+use crate::commands::http::HttpInventoryFormat;
 use crate::commands::testing::TestingFormat;
 use crate::commands::{OutputFormat, ScanScope};
 use clap::Subcommand;
@@ -28,7 +29,10 @@ pub(super) enum ScanSubject {
         /// OpenAPI file override; repeat once per configured contract
         #[arg(long)]
         openapi: Vec<PathBuf>,
-        /// Write the versioned JSON report instead of stdout
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = HttpInventoryFormat::Json)]
+        format: HttpInventoryFormat,
+        /// Write the selected inventory to a file instead of stdout
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
@@ -66,9 +70,11 @@ impl ScanSubject {
                 scope,
                 out,
             } => commands::run_scan(root, format, all, scope, out, config),
-            Self::Http { openapi, out } => {
-                commands::http::run_inventory(root, &openapi, out.as_deref(), config)
-            }
+            Self::Http {
+                openapi,
+                format,
+                out,
+            } => commands::http::run_inventory(root, &openapi, format, out.as_deref(), config),
             Self::Postgres { out } => {
                 commands::postgres::run_inventory(root, out.as_deref(), config)
             }
