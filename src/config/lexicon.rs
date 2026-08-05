@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use anyhow::{bail, Result};
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct LexiconConfig {
@@ -8,6 +10,24 @@ pub(crate) struct LexiconConfig {
     pub grammar: LexiconGrammarConfig,
     pub never_suggest: Vec<LexiconNeverSuggestConfig>,
     pub providers: Vec<LexiconProviderConfig>,
+    pub semantic_siblings: super::semantic_siblings::SemanticSiblingsConfig,
+}
+
+pub(crate) fn validate_lexicon_identifier(value: &str, label: &str) -> Result<()> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '_' | '-')
+        })
+    {
+        bail!(
+            "Lexicon {label} id {:?} must use lowercase ASCII letters, digits, '_' or '-'",
+            value
+        );
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

@@ -11,6 +11,7 @@ fn project_config(config: CodeAtlasConfig) -> ProjectConfig {
         config_path: None,
         config_evidence: json!({"kind": "test"}),
         validated_analysis_projects: None,
+        resolved_semantic_siblings: Vec::new(),
     }
 }
 

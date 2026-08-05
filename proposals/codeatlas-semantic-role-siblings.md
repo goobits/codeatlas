@@ -1,6 +1,6 @@
 # Semantic-role sibling evidence
 
-Status: Accepted advisory child; implementation pending
+Status: Accepted advisory child; Phase 1 complete, Phase 2 pending
 
 Decision scope: Deterministic evidence for conceptually duplicated
 implementations across explicitly configured sibling packages or modules
@@ -53,6 +53,7 @@ Only explicitly declared sets are analyzed:
       "comparison_sets": [
         {
           "id": "language_adapters",
+          "purpose": "compare language adapter responsibilities",
           "members": [
             { "id": "ecmascript", "paths": ["src/languages/ecmascript"] },
             { "id": "python", "paths": ["src/languages/python"] },
@@ -261,23 +262,42 @@ or gate.
 
 ## Phase 1: Config and evidence contract
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +250-400 / -20-50
+Measured LOC: +1,247 / -26 authored; +1,205 / -848 generated schema
 
 Verify: Strict comparison sets, path confinement, nomination/counterevidence
 enums, report ordering, bounds, and same-contract evidence exclusion pass.
 
 ```text
 + src/lexicon/semantic_siblings/model.rs
++ src/lexicon/semantic_siblings/mod.rs
 + src/config/semantic_siblings.rs
-+ tests/fixtures/semantic_siblings/
 ~ src/config/lexicon.rs
 ~ src/config/mod.rs
 ~ src/lexicon/mod.rs
 ~ src/lexicon/model.rs
+~ src/lexicon/analyze.rs
 ~ src/published_schemas.rs
+~ src/http/target/tests.rs
+~ tests/cli_contract.rs
+~ schemas/codeatlas-lexicon-*.schema.json
 ```
+
+Checkpoint evidence:
+
+- Three config tests prove canonical ordering, finite ceilings, strict nested
+  fields, overlap refusal, missing-path refusal, and target-observed symlink
+  confinement.
+- Three model tests prove shared-contract exclusion, the complete ordered
+  counterevidence checklist, deterministic report order, and exact nomination
+  accounting.
+- Lexicon v5 is the sole registered and checked-in schema. Warning-denying
+  Clippy, focused schema/CLI tests, and all seven static self-dogfood commands
+  pass from external build and artifact roots.
+- The Phase 1 report intentionally contains an empty sibling section. Phase 2
+  consumes the already resolved sets and populates the same v5 contract without
+  another schema transition.
 
 ## Phase 2: Tier 1 analyzer and renderers
 
@@ -286,14 +306,14 @@ Status: [ ] Not started
 LOC: +450-700 / -30-80
 
 Verify: Bounded nominations, discrete corroboration, mandatory counterevidence,
-all three dispositions, JSON/text output, lexicon schema transition, and
+all three dispositions, JSON/text output, lexicon v5 population, and
 non-gating CLI behavior pass the conformance fixtures.
 
 ```text
-+ src/lexicon/semantic_siblings/mod.rs
 + src/lexicon/semantic_siblings/nominate.rs
 + src/lexicon/semantic_siblings/evaluate.rs
 + src/lexicon/semantic_siblings/tests.rs
++ tests/fixtures/semantic_siblings/
 ~ src/lexicon/analyze.rs
 ~ src/outputs/lexicon.rs
 ~ src/commands/lexicon.rs

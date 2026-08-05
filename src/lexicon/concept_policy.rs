@@ -6,7 +6,7 @@
 use super::identifier_grammar::{compile_identifier_grammar, IdentifierGrammar};
 use super::model::{ConceptSuppressionKind, ConceptualAnalysisMode, LexiconSource};
 use super::provider::{canonicalize_term_pair, load_provider, normalize_term, ProviderRelation};
-use crate::config::{LexiconConfig, LexiconProviderTier};
+use crate::config::{validate_lexicon_identifier, LexiconConfig, LexiconProviderTier};
 use anyhow::{bail, Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -151,7 +151,7 @@ fn load_concepts(config: &LexiconConfig, policy: &mut LexiconPolicy) -> Result<(
     configured.sort_by(|left, right| left.id.cmp(&right.id));
     let mut concept_ids = BTreeSet::new();
     for concept in &configured {
-        validate_identifier(&concept.id, "concept")?;
+        validate_lexicon_identifier(&concept.id, "concept")?;
         if !concept_ids.insert(concept.id.clone()) {
             bail!("Duplicate lexicon concept id {:?}", concept.id);
         }
@@ -426,23 +426,6 @@ fn insert_suppression(
         bail!("{detail} lexicon suppression pair {:?}", pair);
     }
     suppressions.insert(pair, suppression);
-    Ok(())
-}
-
-fn validate_identifier(value: &str, label: &str) -> Result<()> {
-    if value.is_empty()
-        || value.len() > 128
-        || !value.chars().all(|character| {
-            character.is_ascii_lowercase()
-                || character.is_ascii_digit()
-                || matches!(character, '_' | '-')
-        })
-    {
-        bail!(
-            "Lexicon {label} id {:?} must use lowercase ASCII letters, digits, '_' or '-'",
-            value
-        );
-    }
     Ok(())
 }
 

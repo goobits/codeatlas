@@ -472,6 +472,26 @@
           "minimum": 0,
           "type": "integer"
         },
+        "semantic_sibling_comparison_sets": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "semantic_sibling_evaluations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "semantic_sibling_omitted_nominations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "semantic_sibling_review_candidates": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
         "shape_aliases": {
           "format": "uint",
           "minimum": 0,
@@ -502,7 +522,11 @@
         "callable_candidates",
         "repeated_terms",
         "concept_candidates",
-        "suppressed_concept_candidates"
+        "suppressed_concept_candidates",
+        "semantic_sibling_comparison_sets",
+        "semantic_sibling_evaluations",
+        "semantic_sibling_review_candidates",
+        "semantic_sibling_omitted_nominations"
       ],
       "type": "object"
     },
@@ -579,6 +603,335 @@
       "required": [
         "name",
         "shapes"
+      ],
+      "type": "object"
+    },
+    "SemanticSiblingAnalysis": {
+      "properties": {
+        "comparison_sets": {
+          "items": {
+            "$ref": "#/$defs/SemanticSiblingComparisonSetAnalysis"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "comparison_sets"
+      ],
+      "type": "object"
+    },
+    "SemanticSiblingComparisonSetAnalysis": {
+      "properties": {
+        "evaluations": {
+          "items": {
+            "$ref": "#/$defs/SemanticSiblingEvaluation"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "maximum_nominations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/$defs/SemanticSiblingMember"
+          },
+          "type": "array"
+        },
+        "nominations_considered": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "omissions": {
+          "items": {
+            "$ref": "#/$defs/SemanticSiblingOmission"
+          },
+          "type": "array"
+        },
+        "omitted_nominations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "purpose": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "members",
+        "maximum_nominations",
+        "nominations_considered",
+        "evaluations",
+        "omitted_nominations",
+        "omissions"
+      ],
+      "type": "object"
+    },
+    "SemanticSiblingCorroboration": {
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/SemanticSiblingEvidence"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/SemanticSiblingCorroborationKind"
+        }
+      },
+      "required": [
+        "kind",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "SemanticSiblingCorroborationKind": {
+      "enum": [
+        "implementation_role_match",
+        "effect_set_match",
+        "model_role_match",
+        "producer_position_match",
+        "consumer_position_match",
+        "dependency_role_match",
+        "lifecycle_role_match"
+      ],
+      "type": "string"
+    },
+    "SemanticSiblingCounterevidenceCheck": {
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/SemanticSiblingEvidence"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/SemanticSiblingCounterevidenceKind"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/SemanticSiblingCounterevidenceState"
+        }
+      },
+      "required": [
+        "kind",
+        "state",
+        "reason",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "SemanticSiblingCounterevidenceKind": {
+      "enum": [
+        "conflicting_or_unknown_effects",
+        "different_authority_or_security_boundaries",
+        "different_lifecycle_or_cleanup_ownership",
+        "incompatible_result_or_error_semantics",
+        "disjoint_producer_or_consumer_roles",
+        "different_externally_owned_protocol_obligations",
+        "distinct_configured_concepts",
+        "incomplete_graph_or_type_evidence"
+      ],
+      "type": "string"
+    },
+    "SemanticSiblingCounterevidenceState": {
+      "enum": [
+        "present",
+        "absent",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "SemanticSiblingDisposition": {
+      "enum": [
+        "review_candidate",
+        "separate_by_evidence",
+        "inconclusive"
+      ],
+      "type": "string"
+    },
+    "SemanticSiblingEvaluation": {
+      "properties": {
+        "corroboration_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "corroborations": {
+          "items": {
+            "$ref": "#/$defs/SemanticSiblingCorroboration"
+          },
+          "type": "array"
+        },
+        "counterevidence_checks": {
+          "items": {
+            "$ref": "#/$defs/SemanticSiblingCounterevidenceCheck"
+          },
+          "type": "array"
+        },
+        "disposition": {
+          "$ref": "#/$defs/SemanticSiblingDisposition"
+        },
+        "nomination": {
+          "$ref": "#/$defs/SemanticSiblingNomination"
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/SemanticSiblingTarget"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "targets",
+        "nomination",
+        "corroborations",
+        "counterevidence_checks",
+        "corroboration_count",
+        "disposition"
+      ],
+      "type": "object"
+    },
+    "SemanticSiblingEvidence": {
+      "properties": {
+        "fact": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/SemanticSiblingEvidenceOrigin"
+        },
+        "source": {
+          "$ref": "#/$defs/SemanticSiblingTarget"
+        }
+      },
+      "required": [
+        "origin",
+        "source",
+        "fact"
+      ],
+      "type": "object"
+    },
+    "SemanticSiblingEvidenceOrigin": {
+      "enum": [
+        "member_local",
+        "shared_contract"
+      ],
+      "type": "string"
+    },
+    "SemanticSiblingMember": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "paths"
+      ],
+      "type": "object"
+    },
+    "SemanticSiblingNomination": {
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/SemanticSiblingEvidence"
+          },
+          "type": "array"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/SemanticSiblingNominationKind"
+        }
+      },
+      "required": [
+        "kind",
+        "key",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "SemanticSiblingNominationKind": {
+      "enum": [
+        "same_declared_contract",
+        "canonical_action_object",
+        "named_model_role",
+        "configured_concept"
+      ],
+      "type": "string"
+    },
+    "SemanticSiblingOmission": {
+      "properties": {
+        "count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/SemanticSiblingOmissionKind"
+        },
+        "nomination": {
+          "$ref": "#/$defs/SemanticSiblingNominationKind"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "nomination",
+        "key",
+        "count",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "SemanticSiblingOmissionKind": {
+      "enum": [
+        "per_key_limit",
+        "comparison_set_limit"
+      ],
+      "type": "string"
+    },
+    "SemanticSiblingTarget": {
+      "properties": {
+        "file_path": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "member_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "member_id",
+        "file_path"
       ],
       "type": "object"
     },
@@ -783,7 +1136,7 @@
       "type": "string"
     }
   },
-  "$id": "codeatlas.lexicon/v4",
+  "$id": "codeatlas.lexicon/v5",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "callable_candidates": {
@@ -808,10 +1161,13 @@
       "type": "array"
     },
     "schema_version": {
-      "const": 4,
+      "const": 5,
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
+    },
+    "semantic_sibling_analysis": {
+      "$ref": "#/$defs/SemanticSiblingAnalysis"
     },
     "shape_aliases": {
       "items": {
@@ -841,6 +1197,7 @@
     "callable_candidates",
     "terms",
     "conceptual_analysis",
+    "semantic_sibling_analysis",
     "public_symbols"
   ],
   "title": "LexiconReport",

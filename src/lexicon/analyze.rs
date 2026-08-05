@@ -8,6 +8,7 @@ use super::symbols::{
     has_structural_detail, is_reportable_identifier_term, project_symbol, resolve_symbol_shape,
     sort_symbols, tokenize_identifier,
 };
+use super::SemanticSiblingAnalysis;
 use crate::domain::{ScanReport, Symbol, SymbolKind};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -46,6 +47,7 @@ pub(crate) fn analyze(scan: &ScanReport, policy: &LexiconPolicy) -> LexiconRepor
         })
         .collect::<Vec<_>>();
     let conceptual_analysis = analyze_concepts(&observations, policy);
+    let semantic_sibling_analysis = SemanticSiblingAnalysis::default();
     let mut public_symbols = symbols
         .iter()
         .filter(|view| !view.symbol.export_paths.is_empty())
@@ -66,12 +68,18 @@ pub(crate) fn analyze(scan: &ScanReport, policy: &LexiconPolicy) -> LexiconRepor
             repeated_terms: terms.len(),
             concept_candidates: conceptual_analysis.candidates.len(),
             suppressed_concept_candidates: conceptual_analysis.suppressed_candidates.len(),
+            semantic_sibling_comparison_sets: semantic_sibling_analysis.comparison_set_count(),
+            semantic_sibling_evaluations: semantic_sibling_analysis.evaluation_count(),
+            semantic_sibling_review_candidates: semantic_sibling_analysis.review_candidate_count(),
+            semantic_sibling_omitted_nominations: semantic_sibling_analysis
+                .omitted_nomination_count(),
         },
         name_collisions,
         shape_aliases,
         callable_candidates,
         terms,
         conceptual_analysis,
+        semantic_sibling_analysis,
         public_symbols,
     }
 }

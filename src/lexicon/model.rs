@@ -1,8 +1,9 @@
+use super::semantic_siblings::SemanticSiblingAnalysis;
 use crate::config::{LexiconProviderCoverage, LexiconProviderFormat, LexiconProviderTier};
 use crate::domain::{EvidenceClass, Language, Span, SymbolKind, Visibility};
 use serde::Serialize;
 
-pub(crate) const LEXICON_SCHEMA_VERSION: u32 = 4;
+pub(crate) const LEXICON_SCHEMA_VERSION: u32 = 5;
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct LexiconReport {
@@ -14,6 +15,7 @@ pub(crate) struct LexiconReport {
     pub callable_candidates: Vec<CallableCandidate>,
     pub terms: Vec<TermUsage>,
     pub conceptual_analysis: ConceptualAnalysis,
+    pub semantic_sibling_analysis: SemanticSiblingAnalysis,
     pub public_symbols: Vec<LexiconSymbol>,
 }
 
@@ -28,6 +30,10 @@ pub(crate) struct LexiconStats {
     pub repeated_terms: usize,
     pub concept_candidates: usize,
     pub suppressed_concept_candidates: usize,
+    pub semantic_sibling_comparison_sets: usize,
+    pub semantic_sibling_evaluations: usize,
+    pub semantic_sibling_review_candidates: usize,
+    pub semantic_sibling_omitted_nominations: usize,
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]

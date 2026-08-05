@@ -4,6 +4,7 @@ mod fuzz;
 mod http;
 mod lexicon;
 mod postgres;
+mod semantic_siblings;
 
 pub(crate) use analysis::{
     AnalysisContextConfig, AnalysisProjectConfig, ResolvedAnalysisProject, TestSubjectConfig,
@@ -20,14 +21,15 @@ pub(crate) use http::{
     HttpOpenApiProviderConfig, HttpOpenApiSourceConfig,
 };
 pub(crate) use lexicon::{
-    LexiconAbbreviationConfig, LexiconConfig, LexiconGrammarConfig, LexiconMorphologyConfig,
-    LexiconMorphologyRole, LexiconProviderConfig, LexiconProviderCoverage, LexiconProviderFormat,
-    LexiconProviderTier,
+    validate_lexicon_identifier, LexiconAbbreviationConfig, LexiconConfig, LexiconGrammarConfig,
+    LexiconMorphologyConfig, LexiconMorphologyRole, LexiconProviderConfig, LexiconProviderCoverage,
+    LexiconProviderFormat, LexiconProviderTier,
 };
 pub(crate) use postgres::{
     PostgresConfig, PostgresContractConfig, PostgresLintConfig, PostgresPsqlMetaCommandMode,
     PostgresSqlSourceConfig, PostgresTargetConfig, PostgresTransactionMode,
 };
+pub(crate) use semantic_siblings::ResolvedSemanticSiblingComparisonSet;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -120,6 +122,7 @@ pub(crate) struct ProjectConfig {
     pub config_path: Option<PathBuf>,
     pub(crate) config_evidence: serde_json::Value,
     pub(crate) validated_analysis_projects: Option<Vec<ResolvedAnalysisProject>>,
+    pub(crate) resolved_semantic_siblings: Vec<ResolvedSemanticSiblingComparisonSet>,
 }
 
 impl ProjectConfig {
@@ -185,7 +188,13 @@ impl ProjectConfig {
             config_path,
             config_evidence,
             validated_analysis_projects: None,
+            resolved_semantic_siblings: Vec::new(),
         };
+        project.resolved_semantic_siblings = project
+            .config
+            .lexicon
+            .semantic_siblings
+            .resolve(&project.root)?;
         if !project.config.projects.is_empty() {
             project.validated_analysis_projects = Some(project.analysis_projects()?);
         }
@@ -213,6 +222,16 @@ impl ProjectConfig {
     pub(crate) fn config_evidence(&self) -> &serde_json::Value {
         &self.config_evidence
     }
+
+    #[allow(
+        dead_code,
+        reason = "Phase 1 pins resolved comparison sets before the Phase 2 analyzer consumes them"
+    )]
+    pub(crate) fn semantic_sibling_comparison_sets(
+        &self,
+    ) -> &[ResolvedSemanticSiblingComparisonSet] {
+        &self.resolved_semantic_siblings
+    }
 }
 
 impl CodeAtlasConfig {
@@ -224,6 +243,7 @@ impl CodeAtlasConfig {
                 "fuzz.limits.case_timeout_ms may not exceed execution.limits.run_timeout_ms"
             );
         }
+        self.lexicon.semantic_siblings.validate_structure()?;
         Ok(())
     }
 }

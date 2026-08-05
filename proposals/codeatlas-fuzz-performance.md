@@ -497,7 +497,7 @@ grant a live OCI isolation capability, so execution remains plan-only here and
 Phase 9 retains the hard continuation gate. Work now follows the independent
 static lane through semantic siblings, the PostgreSQL query contract, and the
 repository-scope foundation. On implementation progress rather than
-proposal-design progress, the complete program is approximately 45 percent
+proposal-design progress, the complete program is approximately 47 percent
 done.
 
 ### Order and ownership rules
@@ -625,15 +625,17 @@ Phase 4. This phase remains incomplete until Phase 9's live proof passes.
 Active child: [`codeatlas-semantic-role-siblings.md`](codeatlas-semantic-role-siblings.md)
 Phase 1. This static phase depends on Phase 3, not on OCI isolation.
 
-- [ ] Add strict, path-confined, nonoverlapping comparison-set configuration
+Status: [x] Complete
+
+- [x] Add strict, path-confined, nonoverlapping comparison-set configuration
   with finite nomination ceilings and exact validation diagnostics.
-- [ ] Define nomination, corroboration, counterevidence, disposition, omission,
+- [x] Define nomination, corroboration, counterevidence, disposition, omission,
   and provenance models without a score, probability, or gate field.
-- [ ] Exclude a shared trait or interface contract from its own corroboration
+- [x] Exclude a shared trait or interface contract from its own corroboration
   evidence by construction.
-- [ ] Register the prospective lexicon report/schema transition and cover model
+- [x] Register the prospective lexicon report/schema transition and cover model
   ordering and bound behavior with the smallest fixture layer.
-- [ ] Run focused config/model/schema checks and commit the Phase 1 contract.
+- [x] Run focused config/model/schema checks and commit the Phase 1 contract.
 
 ### Phase 6: Implement and dogfood semantic-role siblings
 
@@ -1074,6 +1076,9 @@ Phases 1 through 3.
 - 2026-08-05: all locally verifiable OCI work passes focused/full checks and
   target-observed fake-runtime dogfood; the host remains plan-only and the
   live OCI test is retained as Phase 9's hard gate.
+- 2026-08-05: semantic-sibling Phase 1 passes strict config/model/schema/CLI
+  checks and static self-dogfood; lexicon v5 is the sole published schema and
+  shared-contract evidence cannot become corroboration.
 
 ## Existing-first check
 
@@ -1163,7 +1168,7 @@ is deleted; lexicon/cache/schema identities are exact.
 
 ## Program stage 6: Semantic-role siblings
 
-Status: [ ] Accepted advisory analysis; follows structured callable evidence
+Status: [~] Accepted advisory analysis; Phase 1 complete, analyzer next
 
 LOC: +850-1,350 / -100-250
 

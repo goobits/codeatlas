@@ -359,8 +359,8 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<ContextSliceReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.lexicon/v4",
-        "codeatlas-lexicon-v4.schema.json",
+        "codeatlas.lexicon/v5",
+        "codeatlas-lexicon-v5.schema.json",
         PayloadVersion::from_schema(LEXICON_SCHEMA_VERSION),
         "lexicon",
         generate_schema::<LexiconReport>,
