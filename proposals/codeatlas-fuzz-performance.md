@@ -491,6 +491,12 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
+Remaining-scope audit (2026-08-05): 104 open CodeAtlas implementation checks
+remain across Phases 9 through 21, including Phase 16A and the deferred Phase
+15 observation enrichment. Every incomplete child phase maps to exactly one
+checklist below. Child proposals retain contract rationale and acceptance
+criteria, but they do not own a second rolling task list.
+
 For restart context, read this introduction, the current verdict, the order
 rules, and only the first incomplete phase plus its active child. Completed
 foundations and the verification log are audit history and do not need to be
@@ -744,9 +750,10 @@ read-only and never edits their repository.
   digest-bound range semantics, and lowercase-alphanumeric annotation namespace
   through the external schema. Do not generate, vendor, or publish a CodeAtlas
   copy.
-- [ ] Keep the HQA application-inventory golden's neutral-schema migration
+- [x] Keep the HQA application-inventory golden's neutral-schema migration
   visibly blocked until that schema is actually published by the contract
-  owner; do not reconstruct it from HQA's implementation tree.
+  owner; do not reconstruct it from HQA's implementation tree. The eventual
+  migration is owned once in Phase 21.
 - [x] Record that future hints producers must validate the full embedded target
   and reject duplicate `(kind, key)` pairs before serialization. Free-form
   evidence never weakens the target block.
@@ -758,6 +765,11 @@ read-only and never edits their repository.
 
 Active child: execution kernel Phase 4. This task preempts Phases 5 through 8
 as soon as an eligible runner is available.
+
+Blocked input: a capable local OCI runner, local control socket, and
+digest-pinned probe image. The current host has no socket, zero effective
+capabilities, read-only cgroup v2, and denied user/mount namespace creation, so
+it remains plan-only.
 
 - [ ] Resolve an exact rootful, rootless, or nested OCI runner with a local
   socket, digest-pinned probe image, external writable state, and no need to
@@ -1012,6 +1024,10 @@ Its schemas remain externally owned. CodeAtlas may write its proposal before
 those gates close, but it does not implement or locally reconstruct an
 unpublished family contract.
 
+Blocked inputs for implementation: the live Phase 9 proof plus accepted
+external source-impact, graph-alignment, and hints schemas. Proposal work may
+start earlier, but it grants no runtime or schema authority.
+
 - [ ] Write and accept one CodeAtlas-only source-impact proposal with explicit
   LOC, language/framework capability, schema, safety, and continuation gates.
   Treat `agentspeak.graph-alignment/v1` as a separate external dependency, not
@@ -1073,6 +1089,9 @@ Phases 1 through 3.
 
 Active child: performance evidence Phase 4.
 
+Continuation gate: accepted Phase 17 measurements and one profiler backend
+that proves the full sandbox, bounded-capture, cleanup, and overhead contract.
+
 - [ ] Select one exact profiler backend only after Phase 17 records accepted
   base measurement evidence and the backend can satisfy the sandbox contract.
 - [ ] Pin tool discovery, fingerprint, target/environment support, bounded
@@ -1110,6 +1129,10 @@ Active child: performance evidence Phase 5.
 Active child: [`codeatlas-cost-guided-search.md`](codeatlas-cost-guided-search.md)
 Phases 1 through 3.
 
+Continuation gate: accepted performance observations plus at least one domain
+adapter that explicitly proves external metric feedback, threshold-preserving
+reduction, and replay.
+
 - [ ] Prove at least one accepted domain adapter has a typed
   `CostSearchCapability` for external metric feedback, threshold-preserving
   reduction, and replay. Do not infer it from ordinary fuzz support.
@@ -1134,6 +1157,10 @@ Phases 1 through 3.
   separately.
 
 ### Phase 21: Whole-program v1 consolidation and signoff
+
+External dependency for the first item: the neutral contract owner must
+publish the accepted application-inventory schema. CodeAtlas will consume it
+read-only and will not reconstruct or vendor it.
 
 - [ ] Replace the HQA sibling-checkout schema dependency with drift validation
   against the accepted neutral `agentspeak-contracts` application-inventory

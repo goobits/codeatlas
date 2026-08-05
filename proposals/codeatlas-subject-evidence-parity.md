@@ -523,10 +523,10 @@ generated state remains.
   ambiguity, direction, depth/node budgets, pagination reconstruction, stale
   cursor rejection, workspace ownership, deterministic bytes, and zero hidden
   provider/database calls.
-- [ ] Consume optional HTTP/PostgreSQL observations only through the kernel's
-  final typed artifact identities; reject wrong-kind and stale evidence. This
-  remains waiting rather than creating a path-only or provisional artifact
-  owner in this phase.
+Deferred observation enrichment is tracked only by Phase 15 of the canonical
+v1 completion tracker. It will consume optional HTTP/PostgreSQL observations
+only through final typed artifact identities and reject wrong-kind or stale
+evidence rather than creating a path-only or provisional artifact owner here.
 - [x] Run the focused and full required checks, exact code-inspection byte
   comparison, bounded self-dogfood, generated-state audit, checklist sync, and
   one scoped static Phase 4 commit.
