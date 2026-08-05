@@ -283,6 +283,8 @@ introduced to force the implementation back under that estimate.
 
 Completion evidence, 2026-08-04:
 
+- Phase 1 is committed as `c4af881` (`feat(code): add structured callable
+  evidence`).
 - The cross-language table proves callable shapes, receivers, overloads, exact
   block reasons, and all nine known direct effect kinds across Rust, Python,
   JavaScript, and TypeScript. Bounded propagation, cycles, exact unknown
@@ -355,7 +357,69 @@ Completion evidence, 2026-08-04:
 
 ## Phase 2: Consumer migration and lexicon v4
 
-Status: [ ] Not started
+Status: [x] Complete (2026-08-05)
+
+Execution checklist:
+
+- [x] Move lexicon callable shape and role evidence to `CallableContract`.
+- [x] Move public API witness parameter and constructibility evidence to the
+  same contract and existing symbol identity.
+- [x] Confirm scan and inspect expose the same serialized callable contract.
+- [x] Measure the exact lexicon JSON change and bump/publish v4 only when its
+  public bytes or meaning change.
+- [x] Delete the display-signature parser, imports, fallbacks, and stale
+  candidate spellings with no compatibility projection.
+- [x] Search for a second callable/type/effect owner, run focused and bounded
+  self-dogfood checks, synchronize trackers, and commit Phase 2 cleanly.
+
+Starting checkpoint, 2026-08-04:
+
+- Phase 1 is clean at `c4af881`; all generated state remains under
+  `/tmp/codeatlas-xdo-cache.hTn1Nk` and the execution state root is empty.
+- Stable Mill 0.8.18 advertises semantic deletion, but CodeAtlas is not a
+  registered Mill workspace and the required consumer migration is not an
+  advertised exact transformation. Registering the workspace would not remove
+  the manual semantic work, so this phase uses ordinary reviewed edits and
+  deletes the obsolete file only after every consumer has moved.
+
+Completion evidence, 2026-08-05:
+
+- Lexicon policy now keys exact and semantic-role candidates directly by a
+  focused `CallableShape` projection over `CallableContract`. The projection
+  alpha-normalizes only local bindings, keeps unknowns explicit, and treats an
+  implicit unit result as non-discriminating evidence. Repository search finds
+  no callable display-signature parser, fallback, retired candidate spelling,
+  or second callable/type/effect contract owner.
+- Public test witnesses reuse the exact source-graph node identity and embed
+  the same optional `CallableContract` used by scan and inspect. The fixture's
+  scan, inspect, and witness contracts compare equal; witness v2 contains four
+  known callables across five public symbols and is 5,765 bytes at
+  `sha256:311408c323a79967d1ec4422d8f1348f4b18b06c46846920dc1377ba1a8805e6`.
+- The public meaning and bytes changed, so lexicon v4 and testing-witness v2 are
+  registered and generated while their replaced schemas are deleted. The
+  v3-to-v4 self report changes from 489,897 to 499,160 bytes while preserving
+  42 useful candidates: 30 exact callable shapes and 12 shared callable role
+  shapes. Repeated v4 bytes are identical at
+  `sha256:5ca6bf817debe98951a96048514259d4db738cad673d3e89c98919a384cbfcdc`.
+  The typed relation is now canonically `shared_callable_role_shape`; the stale
+  `shared_callable_contract` spelling has no compatibility alias.
+- Exact scan and inspect projections for
+  `src/lexicon/callable_shape.rs#project_callable_shape_semantic_roles` agree at
+  `sha256:c1673452193965136ae44a7411550cc35d5fae5164dbe697c35364edc0537202`.
+  Focused callable-shape, lexicon, witness, schema-registry, CLI, spec, package,
+  formatting, and warnings-denied clippy checks pass. The broad suite passed
+  before the final vocabulary-only adjustment, whose full affected surface was
+  rechecked afterward.
+- Final self-dogfood covers 271 files and 2,712 scan symbols with zero gates;
+  lexicon analyzes 3,221 symbols and retains the 42-candidate bound. The
+  execution state root is empty, no target call occurred, and compiler, cache,
+  report, fixture, and package state remains outside the checkout under
+  `/tmp/codeatlas-xdo-cache.hTn1Nk`.
+
+Implementation diff: +911 / -300 authored product and canonical-documentation
+lines; +1,143 / -242 generated schema lines. The accepted estimate omitted
+the exhaustive semantic-type formatter and the witness's reuse of the complete
+shared contract; neither addition creates a second evidence schema or parser.
 
 LOC: +250-350 / -130-220
 

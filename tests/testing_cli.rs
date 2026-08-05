@@ -62,7 +62,7 @@ fn git(root: &Path, args: &[&str]) {
 }
 
 #[test]
-fn testing_commands_share_one_versioned_read_only_contract() {
+fn testing_commands_emit_versioned_read_only_evidence() {
     let fixture = fixture();
     let root = fixture.to_str().expect("fixture path should be UTF-8");
     let inventory = json(&run(&[
@@ -111,16 +111,49 @@ fn testing_commands_share_one_versioned_read_only_contract() {
         ]),
         1,
     );
+    assert_eq!(witnesses["schema_version"], 2);
     assert_eq!(witnesses["summary"]["public_symbols"], 5);
     assert_eq!(witnesses["summary"]["witnessed"], 2);
     assert_eq!(witnesses["summary"]["declared_only"], 1);
     assert_eq!(witnesses["summary"]["unwitnessed"], 1);
     assert_eq!(witnesses["summary"]["unknown"], 1);
-    assert!(witnesses["public_api"]
+    let create_brush = witnesses["public_api"]
         .as_array()
         .expect("public API witnesses")
         .iter()
-        .any(|witness| witness["symbol"] == "createBrush" && witness["status"] == "witnessed"));
+        .find(|witness| witness["symbol"] == "createBrush")
+        .expect("createBrush witness");
+    assert_eq!(create_brush["status"], "witnessed");
+    assert_eq!(
+        create_brush["callable"]["signatures"][0]["parameters"][0]["constructibility"],
+        "direct"
+    );
+
+    let scan = json(&run(&[
+        "--root", root, "scan", "code", "--scope", "source", "--all", "--format", "json",
+    ]));
+    let scan_create_brush = scan["symbols"]
+        .as_array()
+        .expect("scan symbols")
+        .iter()
+        .find(|symbol| symbol["name"] == "createBrush")
+        .expect("scan createBrush");
+    assert_eq!(scan_create_brush["callable"], create_brush["callable"]);
+
+    let inspect = json(&run(&[
+        "--root",
+        root,
+        "inspect",
+        "code",
+        "packages/brush/src/brush.ts#createBrush",
+    ]));
+    let inspect_create_brush = inspect["nodes"]
+        .as_object()
+        .expect("inspect nodes")
+        .values()
+        .find(|node| node["name"] == "createBrush")
+        .expect("inspect createBrush");
+    assert_eq!(inspect_create_brush["callable"], create_brush["callable"]);
 
     let gates = json_with_exit(
         &run(&[
@@ -141,7 +174,7 @@ fn testing_commands_share_one_versioned_read_only_contract() {
         .as_array()
         .expect("gate witnesses")
         .iter()
-        .all(|witness| witness["status"] == "unwitnessed"));
+        .all(|witness| { witness["status"] == "unwitnessed" && witness["callable"].is_object() }));
     assert_eq!(gates["detached_contexts"].as_array().map(Vec::len), Some(0));
 
     let witness_text = run(&["--root", root, "check", "tests", "--workspace"]);

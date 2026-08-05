@@ -1,6 +1,6 @@
 //! Exact structural evidence for identifier-grammar candidates.
 
-use super::callable_contract::normalize_callable_contract;
+use super::callable_shape::project_callable_shape_semantic_roles;
 use super::identifier_grammar::{
     GrammarConstruction, GrammarIdentity, GrammarNormalizationKind, ParsedIdentifierGrammar,
     GRAMMAR_SOURCE_ID, GRAMMAR_SOURCE_VERSION,
@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(super) struct GrammarObservation<'a> {
     pub(super) symbol: &'a Symbol,
     pub(super) parsed: ParsedIdentifierGrammar,
-    contract: Option<CorroboratingContract>,
+    shape: Option<CorroboratingShape>,
 }
 
 impl<'a> GrammarObservation<'a> {
@@ -27,42 +27,42 @@ impl<'a> GrammarObservation<'a> {
         Self {
             symbol,
             parsed,
-            contract: resolve_corroborating_contract(symbol),
+            shape: resolve_corroborating_shape(symbol),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) struct CorroboratingContract {
+pub(super) struct CorroboratingShape {
     language: String,
     symbol_kind: String,
-    evidence_kind: ContractEvidenceKind,
+    evidence_kind: ShapeEvidenceKind,
     shape: String,
     scope: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum ContractEvidenceKind {
-    CallableTyped,
-    CallableShape,
-    Structural,
+enum ShapeEvidenceKind {
+    TypedCallable,
+    UntypedCallable,
+    StructuralType,
 }
 
-pub(super) fn collect_shared_contracts(
+pub(super) fn collect_shared_shapes(
     action: &[GrammarObservation<'_>],
     alternate: &[GrammarObservation<'_>],
-) -> BTreeSet<CorroboratingContract> {
-    let action_contracts = action
+) -> BTreeSet<CorroboratingShape> {
+    let action_shapes = action
         .iter()
-        .filter_map(|observation| observation.contract.clone())
+        .filter_map(|observation| observation.shape.clone())
         .collect::<BTreeSet<_>>();
-    let alternate_contracts = alternate
+    let alternate_shapes = alternate
         .iter()
-        .filter_map(|observation| observation.contract.clone())
+        .filter_map(|observation| observation.shape.clone())
         .collect::<BTreeSet<_>>();
-    action_contracts
-        .intersection(&alternate_contracts)
-        .filter(|contract| has_cross_file_witness(action, alternate, contract))
+    action_shapes
+        .intersection(&alternate_shapes)
+        .filter(|shape| has_cross_file_witness(action, alternate, shape))
         .cloned()
         .collect()
 }
@@ -73,7 +73,7 @@ pub(super) fn collect_candidate_evidence(
     action: &[GrammarObservation<'_>],
     alternate_term: &str,
     alternate: &[GrammarObservation<'_>],
-    contracts: &BTreeSet<CorroboratingContract>,
+    shapes: &BTreeSet<CorroboratingShape>,
 ) -> Vec<ConceptEvidence> {
     let identity = identity.describe();
     let mut evidence = vec![
@@ -115,28 +115,28 @@ pub(super) fn collect_candidate_evidence(
             object: normalization.object.clone(),
         });
     }
-    for contract in contracts {
+    for shape in shapes {
         evidence.push(ConceptEvidence {
             source_id: "codeatlas.structural-analysis".to_string(),
-            source_version: "1".to_string(),
+            source_version: "2".to_string(),
             tier: ConceptEvidenceTier::Structural,
             relation: ConceptEvidenceRelation::CompatibleSymbolKind,
-            subject: contract.language.clone(),
-            object: contract.symbol_kind.clone(),
+            subject: shape.language.clone(),
+            object: shape.symbol_kind.clone(),
         });
         evidence.push(ConceptEvidence {
             source_id: "codeatlas.structural-analysis".to_string(),
-            source_version: "1".to_string(),
+            source_version: "2".to_string(),
             tier: ConceptEvidenceTier::Structural,
-            relation: match contract.evidence_kind {
-                ContractEvidenceKind::CallableTyped => {
-                    ConceptEvidenceRelation::SharedCallableContract
+            relation: match shape.evidence_kind {
+                ShapeEvidenceKind::TypedCallable => {
+                    ConceptEvidenceRelation::SharedCallableRoleShape
                 }
-                ContractEvidenceKind::CallableShape => ConceptEvidenceRelation::SharedCallableShape,
-                ContractEvidenceKind::Structural => ConceptEvidenceRelation::SharedStructuralShape,
+                ShapeEvidenceKind::UntypedCallable => ConceptEvidenceRelation::SharedCallableShape,
+                ShapeEvidenceKind::StructuralType => ConceptEvidenceRelation::SharedStructuralShape,
             },
-            subject: contract.shape.clone(),
-            object: contract.scope.clone(),
+            subject: shape.shape.clone(),
+            object: shape.scope.clone(),
         });
     }
     evidence.sort();
@@ -150,16 +150,16 @@ pub(super) fn collect_candidate_usages(
     action: &[GrammarObservation<'_>],
     alternate_term: &str,
     alternate: &[GrammarObservation<'_>],
-    contracts: &BTreeSet<CorroboratingContract>,
+    shapes: &BTreeSet<CorroboratingShape>,
 ) -> Vec<ConceptTermUsage> {
     let symbols = BTreeMap::from([
         (
             action_term.to_string(),
-            project_contract_symbols(action, contracts),
+            project_shape_symbols(action, shapes),
         ),
         (
             alternate_term.to_string(),
-            project_contract_symbols(alternate, contracts),
+            project_shape_symbols(alternate, shapes),
         ),
     ]);
     terms
@@ -180,7 +180,7 @@ pub(super) fn format_candidate_reason(
     construction: GrammarConstruction,
     action: &[GrammarObservation<'_>],
     alternate: &[GrammarObservation<'_>],
-    contracts: &BTreeSet<CorroboratingContract>,
+    shapes: &BTreeSet<CorroboratingShape>,
 ) -> String {
     let normalizations = action
         .iter()
@@ -195,15 +195,15 @@ pub(super) fn format_candidate_reason(
     } else {
         format!(" Normalization: {}.", normalizations.join(", "))
     };
-    let callable_typed = contracts
+    let callable_typed = shapes
         .iter()
-        .filter(|contract| contract.evidence_kind == ContractEvidenceKind::CallableTyped)
+        .filter(|shape| shape.evidence_kind == ShapeEvidenceKind::TypedCallable)
         .count();
-    let callable_shape = contracts
+    let callable_shape = shapes
         .iter()
-        .filter(|contract| contract.evidence_kind == ContractEvidenceKind::CallableShape)
+        .filter(|shape| shape.evidence_kind == ShapeEvidenceKind::UntypedCallable)
         .count();
-    let structural = contracts
+    let structural = shapes
         .len()
         .saturating_sub(callable_typed)
         .saturating_sub(callable_shape);
@@ -216,12 +216,12 @@ pub(super) fn format_candidate_reason(
 }
 
 pub(super) fn resolve_candidate_confidence(
-    contracts: &BTreeSet<CorroboratingContract>,
+    shapes: &BTreeSet<CorroboratingShape>,
 ) -> ConceptCandidateConfidence {
-    if contracts.iter().any(|contract| {
+    if shapes.iter().any(|shape| {
         matches!(
-            contract.evidence_kind,
-            ContractEvidenceKind::CallableTyped | ContractEvidenceKind::Structural
+            shape.evidence_kind,
+            ShapeEvidenceKind::TypedCallable | ShapeEvidenceKind::StructuralType
         )
     }) {
         ConceptCandidateConfidence::StrongAdvisory
@@ -238,19 +238,19 @@ pub(super) fn resolve_normalization_count(observations: &[GrammarObservation<'_>
         .unwrap_or(usize::MAX)
 }
 
-fn resolve_corroborating_contract(symbol: &Symbol) -> Option<CorroboratingContract> {
+fn resolve_corroborating_shape(symbol: &Symbol) -> Option<CorroboratingShape> {
     match symbol.kind {
         SymbolKind::Function => {
-            let contract = normalize_callable_contract(symbol)?;
-            Some(CorroboratingContract {
+            let shape = project_callable_shape_semantic_roles(symbol.callable.as_ref()?);
+            Some(CorroboratingShape {
                 language: format!("{:?}", symbol.language),
                 symbol_kind: format!("{:?}", symbol.kind),
-                evidence_kind: if contract.has_type_evidence {
-                    ContractEvidenceKind::CallableTyped
+                evidence_kind: if shape.has_type_evidence() {
+                    ShapeEvidenceKind::TypedCallable
                 } else {
-                    ContractEvidenceKind::CallableShape
+                    ShapeEvidenceKind::UntypedCallable
                 },
-                shape: contract.shape,
+                shape: shape.format_shape(),
                 scope: resolve_semantic_scope(&symbol.file_path)?,
             })
         }
@@ -262,10 +262,10 @@ fn resolve_corroborating_contract(symbol: &Symbol) -> Option<CorroboratingContra
         | SymbolKind::TypeAlias
             if has_structural_detail(symbol) =>
         {
-            Some(CorroboratingContract {
+            Some(CorroboratingShape {
                 language: format!("{:?}", symbol.language),
                 symbol_kind: format!("{:?}", symbol.kind),
-                evidence_kind: ContractEvidenceKind::Structural,
+                evidence_kind: ShapeEvidenceKind::StructuralType,
                 shape: resolve_symbol_shape(symbol),
                 scope: String::new(),
             })
@@ -277,28 +277,28 @@ fn resolve_corroborating_contract(symbol: &Symbol) -> Option<CorroboratingContra
 fn has_cross_file_witness(
     action: &[GrammarObservation<'_>],
     alternate: &[GrammarObservation<'_>],
-    contract: &CorroboratingContract,
+    shape: &CorroboratingShape,
 ) -> bool {
     action.iter().any(|left| {
-        left.contract.as_ref() == Some(contract)
+        left.shape.as_ref() == Some(shape)
             && alternate.iter().any(|right| {
-                right.contract.as_ref() == Some(contract)
+                right.shape.as_ref() == Some(shape)
                     && left.symbol.file_path != right.symbol.file_path
             })
     })
 }
 
-fn project_contract_symbols(
+fn project_shape_symbols(
     observations: &[GrammarObservation<'_>],
-    contracts: &BTreeSet<CorroboratingContract>,
+    shapes: &BTreeSet<CorroboratingShape>,
 ) -> Vec<LexiconSymbol> {
     let mut symbols = observations
         .iter()
         .filter(|observation| {
             observation
-                .contract
+                .shape
                 .as_ref()
-                .is_some_and(|contract| contracts.contains(contract))
+                .is_some_and(|shape| shapes.contains(shape))
         })
         .map(|observation| project_symbol(observation.symbol))
         .collect::<Vec<_>>();

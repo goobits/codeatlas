@@ -1,9 +1,12 @@
 use crate::domain::source_graph::{
     AnalysisCompleteness, FindingConfidence, NodeId, SourceSymbolKind,
 };
+use crate::domain::CallableContract;
 use serde::{Deserialize, Serialize};
 
-pub(crate) const TESTING_SCHEMA_VERSION: u32 = 1;
+pub(crate) const TESTING_INVENTORY_SCHEMA_VERSION: u32 = 1;
+pub(crate) const TESTING_IMPACT_SCHEMA_VERSION: u32 = 1;
+pub(crate) const TESTING_WITNESS_SCHEMA_VERSION: u32 = 2;
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct TestingInventoryReport {
@@ -16,7 +19,7 @@ pub(crate) struct TestingInventoryReport {
 impl TestingInventoryReport {
     pub(crate) fn new() -> Self {
         Self {
-            schema_version: TESTING_SCHEMA_VERSION,
+            schema_version: TESTING_INVENTORY_SCHEMA_VERSION,
             tool_version: env!("CARGO_PKG_VERSION").to_string(),
             projects: Vec::new(),
             duplicate_scripts: Vec::new(),
@@ -147,7 +150,7 @@ pub(crate) struct TestingImpactReport {
 impl TestingImpactReport {
     pub(crate) fn new() -> Self {
         Self {
-            schema_version: TESTING_SCHEMA_VERSION,
+            schema_version: TESTING_IMPACT_SCHEMA_VERSION,
             tool_version: env!("CARGO_PKG_VERSION").to_string(),
             selection_complete: true,
             changed: Vec::new(),
@@ -227,7 +230,7 @@ pub(crate) struct TestingWitnessReport {
 impl TestingWitnessReport {
     pub(crate) fn new() -> Self {
         Self {
-            schema_version: TESTING_SCHEMA_VERSION,
+            schema_version: TESTING_WITNESS_SCHEMA_VERSION,
             tool_version: env!("CARGO_PKG_VERSION").to_string(),
             summary: TestingWitnessSummary::default(),
             public_api: Vec::new(),
@@ -253,6 +256,8 @@ pub(crate) struct PublicApiTestWitness {
     pub path: String,
     pub symbol: String,
     pub symbol_kind: SourceSymbolKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub callable: Option<CallableContract>,
     pub confidence: FindingConfidence,
     pub status: TestWitnessStatus,
     pub observed: Vec<ObservedTestWitness>,

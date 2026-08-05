@@ -102,6 +102,7 @@ pub(crate) fn analyze(
             ),
             symbol: symbol.name.clone(),
             symbol_kind: symbol.symbol_kind,
+            callable: symbol.callable.clone(),
             confidence,
             status,
             observed,

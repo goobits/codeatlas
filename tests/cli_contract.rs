@@ -200,7 +200,7 @@ fn lexicon_reports_source_collisions_without_mislabeling_public_exposure() {
     let report: Value =
         serde_json::from_slice(&output.stdout).expect("lexicon report should be JSON");
 
-    assert_eq!(report["schema_version"], 3);
+    assert_eq!(report["schema_version"], 4);
     assert!(report["callable_candidates"].is_array());
     assert!(report["conceptual_analysis"].is_object());
     assert!(report.get("duplicate_families").is_none());
@@ -310,6 +310,12 @@ fn lexicon_identifier_grammar_has_rust_typescript_javascript_python_and_svelte_p
             .is_some_and(|evidence| evidence.iter().any(|item| {
                 item["relation"] == "canonical_grammar"
                     && item["source_id"] == "codeatlas.programming-grammar"
+            })));
+        assert!(candidate["evidence"]
+            .as_array()
+            .is_some_and(|evidence| evidence.iter().any(|item| {
+                item["source_id"] == "codeatlas.structural-analysis"
+                    && item["source_version"] == "2"
             })));
     }
 }

@@ -480,7 +480,7 @@ metric-feedback and threshold-preserving shrink capabilities.
 
 ## Canonical v1 completion tracker
 
-Tracker date: 2026-08-04
+Tracker date: 2026-08-05
 
 This is the one cross-program ordering and progress tracker. Child proposals
 remain the normative owners for behavior, acceptance evidence, and file
@@ -491,12 +491,12 @@ not create another program roadmap or copy these tasks into a scratch document.
 ### Current verdict
 
 The public grammar, schema registry, HQA renderer, immutable execution
-artifacts, and enforcing HTTP call budget are complete. Structured callable
-evidence is the active dirty slice. The current host cannot grant an OCI
-isolation capability, so live execution remains plan-only here, but that does
-not block the static evidence lane. On implementation progress rather than
-proposal-design progress, the complete program is approximately 30 percent
-done.
+artifacts, enforcing HTTP call budget, and structured callable contract,
+effects, lexicon, and witness migration are complete. Structured callable
+hardening is next. The current host cannot grant an OCI isolation capability,
+so live execution remains plan-only here, but that does not block the static
+evidence lane. On implementation progress rather than proposal-design
+progress, the complete program is approximately 35 percent done.
 
 ### Order and ownership rules
 
@@ -558,21 +558,21 @@ Phase 1.
 
 Active child: structured callable evidence Phase 2.
 
-- [ ] Move lexicon callable shape and role evidence to `CallableContract`.
-- [ ] Move public API witness parameter and constructibility evidence to the
+- [x] Move lexicon callable shape and role evidence to `CallableContract`.
+- [x] Move public API witness parameter and constructibility evidence to the
   same contract and existing symbol identity.
-- [ ] Confirm scan and inspect expose one shared serialized callable rather
+- [x] Confirm scan and inspect expose one shared serialized callable rather
   than a presentation-specific projection used as policy evidence.
-- [ ] Measure the lexicon JSON change. Bump to v4 only when bytes or meaning
+- [x] Measure the lexicon JSON change. Bump to v4 only when bytes or meaning
   actually change, then regenerate the exact schema and fixtures.
-- [ ] Delete `src/lexicon/callable_contract.rs` and every display-signature
+- [x] Delete `src/lexicon/callable_contract.rs` and every display-signature
   policy parser, import, fallback, stale cache identity, and compatibility
   projection.
-- [ ] Search the repository for a second callable/type/effect owner and rehome
+- [x] Search the repository for a second callable/type/effect owner and rehome
   any discovered logic before adding another consumer.
-- [ ] Run focused lexicon, witness, scan, inspect, schema, and CLI checks plus
+- [x] Run focused lexicon, witness, scan, inspect, schema, and CLI checks plus
   the bounded self-dogfood set.
-- [ ] Commit consumer migration and the retired heuristic as one clean Phase 2
+- [x] Commit consumer migration and the retired heuristic as one clean Phase 2
   checkpoint.
 
 ### Phase 3: Harden and dogfood structured callable evidence
@@ -988,6 +988,11 @@ Phases 1 through 3.
 
 ### Phase 21: Whole-program v1 consolidation and signoff
 
+- [ ] Replace the HQA sibling-checkout schema dependency with drift validation
+  against the accepted neutral `agentspeak-contracts` application-inventory
+  schema. Keep the CodeAtlas golden in this repository, vendor no external
+  schema, remove the HQA-tree coupling, and make no HQA or neutral-repository
+  edit from CodeAtlas.
 - [ ] Add the CodeAtlas half of the cross-tool resolution conformance gate:
   one checked-in repository fixture with an exact symbol, resolved consumer
   owners, and explicit unresolved counterexamples; generate its evidence from

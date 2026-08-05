@@ -31,7 +31,9 @@ use crate::postgres::{
     POSTGRES_SCHEMA_VERSION, POSTGRES_TEST_API_VERSION, POSTGRES_TEST_SCHEMA_VERSION,
 };
 use crate::testing::{
-    TestingImpactReport, TestingInventoryReport, TestingWitnessReport, TESTING_SCHEMA_VERSION,
+    TestingImpactReport, TestingInventoryReport, TestingWitnessReport,
+    TESTING_IMPACT_SCHEMA_VERSION, TESTING_INVENTORY_SCHEMA_VERSION,
+    TESTING_WITNESS_SCHEMA_VERSION,
 };
 use schemars::{JsonSchema, SchemaGenerator};
 use serde_json::Value;
@@ -357,8 +359,8 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<ContextSliceReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.lexicon/v3",
-        "codeatlas-lexicon-v3.schema.json",
+        "codeatlas.lexicon/v4",
+        "codeatlas-lexicon-v4.schema.json",
         PayloadVersion::from_schema(LEXICON_SCHEMA_VERSION),
         "lexicon",
         generate_schema::<LexiconReport>,
@@ -366,21 +368,21 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
     PublishedSchema::new(
         "codeatlas.testing-inventory/v1",
         "codeatlas-testing-inventory-v1.schema.json",
-        PayloadVersion::from_schema(TESTING_SCHEMA_VERSION),
+        PayloadVersion::from_schema(TESTING_INVENTORY_SCHEMA_VERSION),
         "testing",
         generate_schema::<TestingInventoryReport>,
     ),
     PublishedSchema::new(
         "codeatlas.testing-impact/v1",
         "codeatlas-testing-impact-v1.schema.json",
-        PayloadVersion::from_schema(TESTING_SCHEMA_VERSION),
+        PayloadVersion::from_schema(TESTING_IMPACT_SCHEMA_VERSION),
         "testing",
         generate_schema::<TestingImpactReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.testing-witness/v1",
-        "codeatlas-testing-witness-v1.schema.json",
-        PayloadVersion::from_schema(TESTING_SCHEMA_VERSION),
+        "codeatlas.testing-witness/v2",
+        "codeatlas-testing-witness-v2.schema.json",
+        PayloadVersion::from_schema(TESTING_WITNESS_SCHEMA_VERSION),
         "testing",
         generate_schema::<TestingWitnessReport>,
     ),

@@ -70,7 +70,7 @@ pub(crate) fn render_text(report: &LexiconReport) -> String {
             resolve_evidence_name(candidate.evidence_class),
             resolve_candidate_kind_name(candidate.kind),
             candidate.names.join(" / "),
-            candidate.contract_shape
+            candidate.callable_shape
         ));
         for symbol in &candidate.symbols {
             output.push_str(&format_symbol(symbol, "  "));
@@ -108,8 +108,8 @@ fn resolve_evidence_name(evidence: EvidenceClass) -> &'static str {
 
 fn resolve_candidate_kind_name(kind: CallableCandidateKind) -> &'static str {
     match kind {
-        CallableCandidateKind::ExactSignature => "exact signature",
-        CallableCandidateKind::SharedContractShape => "shared typed contract",
+        CallableCandidateKind::ExactCallableShape => "exact callable shape",
+        CallableCandidateKind::SharedCallableRoleShape => "shared callable role shape",
     }
 }
 
@@ -286,7 +286,7 @@ fn resolve_evidence_relation_label(relation: ConceptEvidenceRelation) -> &'stati
         ConceptEvidenceRelation::MorphologicalVariant => "morphological_variant",
         ConceptEvidenceRelation::AbbreviationExpansion => "abbreviation_expansion",
         ConceptEvidenceRelation::CompatibleSymbolKind => "compatible_symbol_kind",
-        ConceptEvidenceRelation::SharedCallableContract => "shared_callable_contract",
+        ConceptEvidenceRelation::SharedCallableRoleShape => "shared_callable_role_shape",
         ConceptEvidenceRelation::SharedCallableShape => "shared_callable_shape",
         ConceptEvidenceRelation::SharedStructuralShape => "shared_structural_shape",
         ConceptEvidenceRelation::PreferentialEquivalent => "preferential_equivalent",

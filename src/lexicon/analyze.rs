@@ -223,7 +223,11 @@ fn is_concept_kind(kind: SymbolKind) -> bool {
 #[cfg(test)]
 mod tests {
     use super::analyze;
-    use crate::domain::{Language, ScanReport, Symbol, SymbolKind, Visibility};
+    use crate::domain::{
+        CallableBody, CallableContract, CallableKind, CallableParameter, CallableSignature,
+        Constructibility, Language, ParameterRequirement, ParameterRole, ReceiverContract,
+        ScanReport, SemanticType, Symbol, SymbolKind, Visibility,
+    };
     use crate::lexicon::concept_policy::LexiconPolicy;
 
     fn symbol(
@@ -233,6 +237,30 @@ mod tests {
         signature: &str,
         children: Vec<Symbol>,
     ) -> Symbol {
+        let callable = (kind == SymbolKind::Function).then(|| {
+            CallableContract::new(
+                [CallableSignature {
+                    kind: CallableKind::Function,
+                    body: CallableBody::Present,
+                    is_async: false,
+                    receiver: ReceiverContract::none(),
+                    type_parameters: Vec::new(),
+                    parameters: vec![CallableParameter {
+                        position: 0,
+                        name: Some("value".to_string()),
+                        role: ParameterRole::Positional,
+                        requirement: ParameterRequirement::Required,
+                        semantic_type: SemanticType::Unknown {
+                            reason: crate::domain::TypeUnknownReason::Unresolved,
+                            display: Some("unknown".to_string()),
+                        },
+                        constructibility: Constructibility::Unknown,
+                    }],
+                    result: SemanticType::Boolean,
+                }],
+                [],
+            )
+        });
         Symbol {
             id: format!("ts:{file_path}:{kind:?}#{name}"),
             name: name.to_string(),
@@ -242,7 +270,7 @@ mod tests {
             file_path: file_path.to_string(),
             span: None,
             signature: signature.to_string(),
-            callable: None,
+            callable,
             docs: None,
             export_paths: Vec::new(),
             referenced: false,

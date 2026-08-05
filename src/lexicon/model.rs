@@ -2,7 +2,7 @@ use crate::config::{LexiconProviderCoverage, LexiconProviderFormat, LexiconProvi
 use crate::domain::{EvidenceClass, Language, Span, SymbolKind, Visibility};
 use serde::Serialize;
 
-pub(crate) const LEXICON_SCHEMA_VERSION: u32 = 3;
+pub(crate) const LEXICON_SCHEMA_VERSION: u32 = 4;
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct LexiconReport {
@@ -47,7 +47,7 @@ pub(crate) struct ShapeAlias {
 pub(crate) struct CallableCandidate {
     pub kind: CallableCandidateKind,
     pub evidence_class: EvidenceClass,
-    pub contract_shape: String,
+    pub callable_shape: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -59,8 +59,8 @@ pub(crate) struct CallableCandidate {
 #[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CallableCandidateKind {
-    ExactSignature,
-    SharedContractShape,
+    ExactCallableShape,
+    SharedCallableRoleShape,
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, PartialEq, Eq)]
@@ -221,7 +221,7 @@ pub(crate) enum ConceptEvidenceRelation {
     MorphologicalVariant,
     AbbreviationExpansion,
     CompatibleSymbolKind,
-    SharedCallableContract,
+    SharedCallableRoleShape,
     SharedCallableShape,
     SharedStructuralShape,
     PreferentialEquivalent,

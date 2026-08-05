@@ -1,5 +1,5 @@
 mod analyze;
-mod callable_contract;
+mod callable_shape;
 mod callables;
 mod candidate_policy;
 mod concept_policy;

@@ -10,7 +10,7 @@ use super::candidate_policy::{
 use super::concept_policy::{resolve_concept_ids_for_terms, LexiconPolicy};
 use super::concepts::ConceptObservation;
 use super::grammar_corroboration::{
-    collect_candidate_evidence, collect_candidate_usages, collect_shared_contracts,
+    collect_candidate_evidence, collect_candidate_usages, collect_shared_shapes,
     format_candidate_reason, resolve_candidate_confidence, resolve_normalization_count,
     GrammarObservation,
 };
@@ -76,15 +76,15 @@ pub(super) fn collect_grammar_candidates(
                 continue;
             };
             for (alternate_term, alternate_observations) in alternates {
-                let Some((action_term, action_observations, contracts)) = action_surfaces
+                let Some((action_term, action_observations, shapes)) = action_surfaces
                     .iter()
                     .find_map(|(action_term, action_observations)| {
-                        let contracts =
-                            collect_shared_contracts(action_observations, alternate_observations);
-                        (!contracts.is_empty()).then_some((
+                        let shapes =
+                            collect_shared_shapes(action_observations, alternate_observations);
+                        (!shapes.is_empty()).then_some((
                             (*action_term).clone(),
                             *action_observations,
-                            contracts,
+                            shapes,
                         ))
                     })
                 else {
@@ -106,7 +106,7 @@ pub(super) fn collect_grammar_candidates(
                     action_observations,
                     alternate_term,
                     alternate_observations,
-                    &contracts,
+                    &shapes,
                 );
                 let rule = ConceptCandidateRule::ProgrammingGrammarVariant;
                 if let Some(suppression) = find_candidate_suppression(&terms, &concept_ids, policy)
@@ -137,10 +137,10 @@ pub(super) fn collect_grammar_candidates(
                         construction,
                         action_observations,
                         alternate_observations,
-                        &contracts,
+                        &shapes,
                     ),
                     tier: ConceptCandidateTier::Grammar,
-                    confidence: resolve_candidate_confidence(&contracts),
+                    confidence: resolve_candidate_confidence(&shapes),
                     preferred_terms: Vec::new(),
                     evidence,
                     usages: collect_candidate_usages(
@@ -149,7 +149,7 @@ pub(super) fn collect_grammar_candidates(
                         action_observations,
                         alternate_term,
                         alternate_observations,
-                        &contracts,
+                        &shapes,
                     ),
                     suggested_suppression: Some(suggest_candidate_suppression(
                         &terms,
@@ -179,7 +179,11 @@ pub(super) fn collect_grammar_candidates(
 mod tests {
     use super::collect_grammar_candidates;
     use crate::config::LexiconConfig;
-    use crate::domain::{Language, Symbol, SymbolKind, Visibility};
+    use crate::domain::{
+        CallableBody, CallableContract, CallableKind, CallableParameter, CallableSignature,
+        Constructibility, Language, ParameterRequirement, ParameterRole, ReceiverContract,
+        SemanticType, Symbol, SymbolKind, Visibility,
+    };
     use crate::lexicon::concept_policy::{load_concept_policy, LexiconPolicy};
     use crate::lexicon::concepts::ConceptObservation;
     use crate::lexicon::model::ConceptEvidenceRelation;
@@ -187,6 +191,16 @@ mod tests {
     use std::path::Path;
 
     fn function(language: Language, file: &str, name: &str, signature: &str) -> Symbol {
+        function_with_parameters(language, file, name, signature, 1)
+    }
+
+    fn function_with_parameters(
+        language: Language,
+        file: &str,
+        name: &str,
+        signature: &str,
+        parameter_count: usize,
+    ) -> Symbol {
         Symbol {
             id: format!("{language:?}:{file}:Function#{name}"),
             name: name.to_string(),
@@ -196,7 +210,33 @@ mod tests {
             file_path: file.to_string(),
             span: None,
             signature: signature.to_string(),
-            callable: None,
+            callable: Some(CallableContract::new(
+                [CallableSignature {
+                    kind: CallableKind::Function,
+                    body: CallableBody::Present,
+                    is_async: false,
+                    receiver: ReceiverContract::none(),
+                    type_parameters: Vec::new(),
+                    parameters: (0..parameter_count)
+                        .map(|position| CallableParameter {
+                            position,
+                            name: Some(format!("value{position}")),
+                            role: ParameterRole::Positional,
+                            requirement: ParameterRequirement::Required,
+                            semantic_type: SemanticType::Named {
+                                identity: "Input".to_string(),
+                                arguments: Vec::new(),
+                            },
+                            constructibility: Constructibility::RequiresFactory,
+                        })
+                        .collect(),
+                    result: SemanticType::Named {
+                        identity: "Output".to_string(),
+                        arguments: Vec::new(),
+                    },
+                }],
+                [],
+            )),
             docs: None,
             export_paths: Vec::new(),
             referenced: false,
@@ -325,6 +365,11 @@ mod tests {
             .candidates
             .iter()
             .all(|candidate| candidate.reason.contains("callable")));
+        assert!(analysis.candidates.iter().all(|candidate| {
+            candidate.evidence.iter().any(|evidence| {
+                evidence.relation == ConceptEvidenceRelation::SharedCallableRoleShape
+            })
+        }));
     }
 
     #[test]
@@ -336,11 +381,12 @@ mod tests {
                 "load_config",
                 "def load_config(path)",
             ),
-            function(
+            function_with_parameters(
                 Language::Python,
                 "pkg/src/config/b.py",
                 "config_loader",
                 "def config_loader(path, options)",
+                2,
             ),
             function(
                 Language::Rust,

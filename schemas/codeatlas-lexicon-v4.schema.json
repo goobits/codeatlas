@@ -24,7 +24,7 @@
     },
     "CallableCandidate": {
       "properties": {
-        "contract_shape": {
+        "callable_shape": {
           "type": "string"
         },
         "evidence_class": {
@@ -61,7 +61,7 @@
       "required": [
         "kind",
         "evidence_class",
-        "contract_shape",
+        "callable_shape",
         "shared_terms",
         "names",
         "symbols"
@@ -70,8 +70,8 @@
     },
     "CallableCandidateKind": {
       "enum": [
-        "exact_signature",
-        "shared_contract_shape"
+        "exact_callable_shape",
+        "shared_callable_role_shape"
       ],
       "type": "string"
     },
@@ -215,7 +215,7 @@
         "morphological_variant",
         "abbreviation_expansion",
         "compatible_symbol_kind",
-        "shared_callable_contract",
+        "shared_callable_role_shape",
         "shared_callable_shape",
         "shared_structural_shape",
         "preferential_equivalent",
@@ -783,7 +783,7 @@
       "type": "string"
     }
   },
-  "$id": "codeatlas.lexicon/v3",
+  "$id": "codeatlas.lexicon/v4",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "callable_candidates": {
@@ -808,7 +808,7 @@
       "type": "array"
     },
     "schema_version": {
-      "const": 3,
+      "const": 4,
       "format": "uint32",
       "minimum": 0,
       "type": "integer"

@@ -261,28 +261,32 @@ Test analysis is read-only. It inventories and selects tests but never runs
 package scripts:
 
 ```bash
-codeatlas --root . tests inventory --workspace --format json
-codeatlas --root . tests impact --workspace \
+codeatlas --root . scan tests --workspace --format json
+codeatlas --root . usage tests --workspace \
   --changed packages/brush/src/model.ts \
   --changed packages/paint/src/canvas.ts
-codeatlas --root . tests impact --workspace
-codeatlas --root . tests witnesses --workspace --format json
+codeatlas --root . usage tests --workspace
+codeatlas --root . check tests --workspace --format json
 ```
 
-- `inventory` reports test contexts, roots, package scripts, recognized
+- `scan tests` reports test contexts, roots, package scripts, recognized
   runners, no-op or allows-empty scripts, and duplicate commands.
-- `impact` selects observed dependents and falls back conservatively for new,
+- `usage tests` selects observed dependents and falls back conservatively for new,
   deleted, manifest, or unsupported paths. `selection_complete` exposes whether
   fallback was needed. Without `--changed`, it reads Git's staged, unstaged,
   and untracked paths. Explicit repeatable `--changed` values replace that
   default. Workspace manifests, lockfiles, toolchain files, and language project
   configuration use the conservative workspace fallback.
-- `witnesses` distinguishes observed, declared-only, unwitnessed, unknown, and
+- `check tests` distinguishes observed, declared-only, unwitnessed, unknown, and
   detached evidence for public symbols. Text output omits already-witnessed
-  detail and bounds the remaining findings; JSON preserves the complete
-  evidence contract.
+  detail and bounds the remaining findings; JSON embeds the same
+  `CallableContract` model used by scan and inspection, including parameters,
+  receivers, constructibility, and the effects available in the analyzed
+  source-graph snapshot.
 
-All three use the separate `codeatlas.testing/v1` contract.
+The three reports have separate published contracts:
+`codeatlas.testing-inventory/v1`, `codeatlas.testing-impact/v1`, and
+`codeatlas.testing-witness/v2`.
 
 ### Lexicon review
 
@@ -332,12 +336,14 @@ rules without overriding built-ins:
 
 Candidate generation is linear: each observed actor/result surface is compared
 with one deterministic action-form anchor, never every spelling pair. Exact
-same-name signatures carry direct structural evidence. Separate non-grammar
-callable candidates require a typed contract shape, cohesive source scope, and
-meaningful object or qualifier terms after the leading intent word. Untyped
-name-only matches and unrelated type coincidences are omitted because they do
-not provide enough evidence. CodeAtlas does not compare implementation bodies
-or claim behavioral equivalence, so structural candidates remain advisory.
+same-name callable shapes carry direct structural evidence. Separate
+non-grammar callable candidates require a typed semantic-role shape, cohesive
+source scope, and meaningful object or qualifier terms after the leading
+intent word. Shapes are projected from structured callable contracts; display
+signatures are never reparsed as policy evidence. Untyped name-only matches and
+unrelated type coincidences are omitted because they do not provide enough
+evidence. CodeAtlas does not compare implementation bodies or claim behavioral
+equivalence, so structural candidates remain advisory.
 Results are read-only: they do not create gates, choose a refactor, authorize
 deletion, or update a source dataset.
 
