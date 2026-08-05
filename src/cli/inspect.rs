@@ -1,30 +1,67 @@
 use crate::commands;
 use crate::commands::architecture::providers::ArchitectureProviderApprovalScope;
-use clap::{Subcommand, ValueEnum};
+use clap::{Args, Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
+
+use super::scope::RepositoryScopeArgs;
+
+#[derive(Args)]
+pub(super) struct GraphInspectionArgs {
+    /// Exact subject target; repeat to inspect multiple roots
+    #[arg(required = true)]
+    target: Vec<String>,
+    /// Incoming and outgoing graph traversal depth
+    #[arg(long, default_value_t = 2)]
+    depth: usize,
+    /// Maximum nodes in the returned page
+    #[arg(long, default_value_t = 128)]
+    max_nodes: usize,
+    /// Traverse incoming edges, outgoing edges, or both
+    #[arg(long, value_enum, default_value_t = InspectDirection::Both)]
+    direction: InspectDirection,
+    /// Resume a prior page using its exact continuation cursor
+    #[arg(long)]
+    cursor: Option<String>,
+    /// Write the JSON report instead of stdout
+    #[arg(short, long)]
+    out: Option<PathBuf>,
+}
+
+impl GraphInspectionArgs {
+    fn into_request(self) -> (crate::inspection::InspectionRequest, Option<PathBuf>) {
+        (
+            crate::inspection::InspectionRequest {
+                targets: self.target,
+                depth: self.depth,
+                max_nodes: self.max_nodes,
+                direction: self.direction.into(),
+                continuation: self.cursor,
+            },
+            self.out,
+        )
+    }
+}
 
 #[derive(Subcommand)]
 pub(super) enum InspectSubject {
     /// Produce a bounded source context slice
     Code {
-        /// Exact node ID, source path, or path#symbol target
-        #[arg(required = true)]
-        target: Vec<String>,
-        /// Incoming and outgoing graph traversal depth
-        #[arg(long, default_value_t = 2)]
-        depth: usize,
-        /// Maximum source nodes in the returned slice
-        #[arg(long, default_value_t = 128)]
-        max_nodes: usize,
-        /// Traverse callers, callees, or both
-        #[arg(long, value_enum, default_value_t = InspectDirection::Both)]
-        direction: InspectDirection,
-        /// Resume a prior page using its exact continuation cursor
-        #[arg(long)]
-        cursor: Option<String>,
-        /// Write the JSON report instead of stdout
-        #[arg(short, long)]
-        out: Option<PathBuf>,
+        #[command(flatten)]
+        inspection: GraphInspectionArgs,
+    },
+    /// Produce a bounded HTTP contract and consumer graph
+    Http {
+        #[command(flatten)]
+        inspection: GraphInspectionArgs,
+        #[command(flatten)]
+        repository: RepositoryScopeArgs,
+    },
+    /// Produce a bounded PostgreSQL contract and query graph
+    Postgres {
+        #[command(flatten)]
+        inspection: GraphInspectionArgs,
+        #[command(flatten)]
+        repository: RepositoryScopeArgs,
     },
     /// Query approved providers for one architecture capability
     Architecture {
@@ -48,25 +85,36 @@ pub(super) enum InspectSubject {
 impl InspectSubject {
     pub(super) fn run(self, root: &Path, config: Option<&Path>) -> i32 {
         match self {
-            Self::Code {
-                target,
-                depth,
-                max_nodes,
-                direction,
-                cursor,
-                out,
-            } => commands::context_slice::run(
-                root,
-                crate::context_slice::ContextSliceRequest {
-                    targets: target,
-                    depth,
-                    max_nodes,
-                    direction: direction.into(),
-                    continuation: cursor,
-                },
-                out.as_deref(),
-                config,
-            ),
+            Self::Code { inspection } => {
+                let (request, out) = inspection.into_request();
+                commands::context_slice::run(root, request, out.as_deref(), config)
+            }
+            Self::Http {
+                inspection,
+                repository,
+            } => {
+                let (request, out) = inspection.into_request();
+                commands::http::run_inspect(
+                    root,
+                    repository.workspace,
+                    request,
+                    out.as_deref(),
+                    config,
+                )
+            }
+            Self::Postgres {
+                inspection,
+                repository,
+            } => {
+                let (request, out) = inspection.into_request();
+                commands::postgres::run_inspect(
+                    root,
+                    repository.workspace,
+                    request,
+                    out.as_deref(),
+                    config,
+                )
+            }
             Self::Architecture {
                 selector,
                 modules,
@@ -97,7 +145,7 @@ pub(super) enum InspectDirection {
     Both,
 }
 
-impl From<InspectDirection> for crate::context_slice::ContextDirection {
+impl From<InspectDirection> for crate::inspection::InspectionDirection {
     fn from(value: InspectDirection) -> Self {
         match value {
             InspectDirection::Incoming => Self::Incoming,

@@ -148,7 +148,7 @@ fn collect_modules(
                 }),
             )
             .map_err(anyhow::Error::from)?;
-        let info = match index.parse_file("rust-module-v3", &source_path, &project.root, |source| {
+        let info = match index.parse_file("rust-module-v4", &source_path, &project.root, |source| {
             parser::parse_module_info(&source_path, &project.root, source)
         }) {
             Ok(info) => info,

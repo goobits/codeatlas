@@ -61,7 +61,7 @@ enum Command {
         #[command(subcommand)]
         subject: usage::UsageSubject,
     },
-    /// Explain one exact code or architecture target
+    /// Explain one exact code, HTTP, PostgreSQL, or architecture target
     Inspect {
         #[command(subcommand)]
         subject: inspect::InspectSubject,
@@ -172,6 +172,15 @@ mod tests {
             vec!["codeatlas", "usage", "postgres", "--workspace"],
             vec!["codeatlas", "usage", "tests", "--changed", "src/lib.rs"],
             vec!["codeatlas", "inspect", "code", "src/lib.rs#run"],
+            vec!["codeatlas", "inspect", "http", "GET /health", "--workspace"],
+            vec![
+                "codeatlas",
+                "inspect",
+                "postgres",
+                "table:public.users",
+                "--direction",
+                "incoming",
+            ],
             vec!["codeatlas", "lexicon", "code"],
             vec!["codeatlas", "docs", "code"],
             vec!["codeatlas", "docs", "http", "--workspace"],
@@ -254,6 +263,24 @@ mod tests {
             "local",
             "--replay",
             "reproducer.json"
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "inspect",
+            "http",
+            "GET /health",
+            "--observation",
+            "observation.json",
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "codeatlas",
+            "inspect",
+            "postgres",
+            "users",
+            "--observation",
+            "observation.json",
         ])
         .is_err());
     }

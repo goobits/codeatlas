@@ -2,6 +2,8 @@ mod conformance;
 mod diff;
 mod docs;
 mod environment;
+mod graph;
+mod inspect;
 #[allow(
     dead_code,
     reason = "Phase 2 disconnects direct HTTP execution; Phase 5 migrates its report model into the kernel"
@@ -44,6 +46,9 @@ use std::path::PathBuf;
 pub(crate) use conformance::check;
 pub(crate) use diff::compare;
 pub(crate) use docs::build as documentation;
+#[cfg(test)]
+pub(crate) use graph::{HttpInspectionReport, HTTP_INSPECTION_SCHEMA_VERSION};
+pub(crate) use inspect::create as inspect;
 pub(crate) use model::{
     HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpConfidence, HttpDiffReport,
     HttpFuzzWorkload, HttpInventoryReport, HttpSourceCompleteness, HttpSourceOperationKind,

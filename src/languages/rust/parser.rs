@@ -631,10 +631,15 @@ fn collect_uses(
     match tree {
         syn::UseTree::Name(name) => {
             let name = name.ident.to_string();
+            let alias = if name == "self" {
+                prefix.last().cloned().unwrap_or_else(|| name.clone())
+            } else {
+                name.clone()
+            };
             uses.push(UseExport {
                 module_path: prefix,
-                name: name.clone(),
-                alias: name,
+                name,
+                alias,
                 is_glob: false,
                 visibility: visibility.clone(),
             });

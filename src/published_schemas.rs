@@ -21,17 +21,18 @@ use crate::fuzz::{
 };
 use crate::http::{
     HttpBaselineReport, HttpCheckReport, HttpDiffReport, HttpFuzzReport, HttpFuzzWorkload,
-    HttpInventoryReport, HttpUsageReport, HTTP_API_VERSION, HTTP_BASELINE_API_VERSION,
-    HTTP_BASELINE_SCHEMA_VERSION, HTTP_FUZZ_API_VERSION, HTTP_FUZZ_SCHEMA_VERSION,
-    HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION, HTTP_SCHEMA_VERSION, HTTP_USAGE_SCHEMA_VERSION,
+    HttpInspectionReport, HttpInventoryReport, HttpUsageReport, HTTP_API_VERSION,
+    HTTP_BASELINE_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION, HTTP_FUZZ_API_VERSION,
+    HTTP_FUZZ_SCHEMA_VERSION, HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION, HTTP_INSPECTION_SCHEMA_VERSION,
+    HTTP_SCHEMA_VERSION, HTTP_USAGE_SCHEMA_VERSION,
 };
 use crate::lexicon::{LexiconReport, LEXICON_SCHEMA_VERSION};
 use crate::postgres::{
-    PostgresBaselineReport, PostgresCheckReport, PostgresDiffReport, PostgresInventoryReport,
-    PostgresTestReport, PostgresUsageReport, POSTGRES_API_VERSION, POSTGRES_BASELINE_API_VERSION,
-    POSTGRES_BASELINE_SCHEMA_VERSION, POSTGRES_DIFF_API_VERSION, POSTGRES_DIFF_SCHEMA_VERSION,
-    POSTGRES_SCHEMA_VERSION, POSTGRES_TEST_API_VERSION, POSTGRES_TEST_SCHEMA_VERSION,
-    POSTGRES_USAGE_SCHEMA_VERSION,
+    PostgresBaselineReport, PostgresCheckReport, PostgresDiffReport, PostgresInspectionReport,
+    PostgresInventoryReport, PostgresTestReport, PostgresUsageReport, POSTGRES_API_VERSION,
+    POSTGRES_BASELINE_API_VERSION, POSTGRES_BASELINE_SCHEMA_VERSION, POSTGRES_DIFF_API_VERSION,
+    POSTGRES_DIFF_SCHEMA_VERSION, POSTGRES_INSPECTION_SCHEMA_VERSION, POSTGRES_SCHEMA_VERSION,
+    POSTGRES_TEST_API_VERSION, POSTGRES_TEST_SCHEMA_VERSION, POSTGRES_USAGE_SCHEMA_VERSION,
 };
 use crate::testing::{
     TestingImpactReport, TestingInventoryReport, TestingWitnessReport,
@@ -350,10 +351,22 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<HttpUsageReport>,
     ),
     PublishedSchema::new_artifact(
+        HTTP_INSPECTION_SCHEMA_VERSION,
+        "codeatlas-http-inspection-v1.schema.json",
+        "http::graph",
+        generate_schema::<HttpInspectionReport>,
+    ),
+    PublishedSchema::new_artifact(
         POSTGRES_USAGE_SCHEMA_VERSION,
         "codeatlas-postgres-usage-v1.schema.json",
         "postgres::usage",
         generate_schema::<PostgresUsageReport>,
+    ),
+    PublishedSchema::new_artifact(
+        POSTGRES_INSPECTION_SCHEMA_VERSION,
+        "codeatlas-postgres-inspection-v1.schema.json",
+        "postgres::graph",
+        generate_schema::<PostgresInspectionReport>,
     ),
     PublishedSchema::new(
         "codeatlas.scan/v4",

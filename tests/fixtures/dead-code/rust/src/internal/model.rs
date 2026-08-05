@@ -1,5 +1,7 @@
 pub(crate) struct GlobVisible;
 
+pub(crate) fn module_marker() {}
+
 impl GlobVisible {
     pub(crate) fn construct() -> Self {
         constructor_marker();

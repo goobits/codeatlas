@@ -16,6 +16,7 @@ pub fn direct_path() -> &'static str {
     let _ = helper_crate::helper();
     let _ = crate::internal::GlobVisible;
     let _ = crate::internal::ParentVisible;
+    let _ = crate::internal::collision();
     let _ = crate::internal::exercise();
     crate::special::renamed()
 }

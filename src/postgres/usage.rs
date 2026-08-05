@@ -1,8 +1,7 @@
 use super::model::{
-    PostgresEvidence, PostgresObjectKind, PostgresObjectReference, PostgresQueryContract,
-    PostgresStatementClass,
+    PostgresEvidence, PostgresObjectKind, PostgresObjectReference, PostgresStatementClass,
 };
-use crate::config::{RepositoryMember, RepositoryScope, RepositoryScopeEvidence};
+use crate::config::{RepositoryScope, RepositoryScopeEvidence};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -146,12 +145,16 @@ struct ObjectKey {
 }
 
 pub(crate) fn analyze(scope: &RepositoryScope) -> Result<PostgresUsageReport> {
+    let evidence = super::repository::collect(scope)?;
+    analyze_collected(scope, &evidence)
+}
+
+pub(super) fn analyze_collected(
+    scope: &RepositoryScope,
+    evidence: &[super::repository::RepositoryPostgresMember<'_>],
+) -> Result<PostgresUsageReport> {
     let mut members = Vec::new();
-    for member in scope
-        .members()
-        .iter()
-        .filter(|member| !member.postgres_contracts.is_empty())
-    {
+    for member in evidence {
         members.push(analyze_member(member)?);
     }
     members.sort_by(|left, right| {
@@ -167,19 +170,22 @@ pub(crate) fn analyze(scope: &RepositoryScope) -> Result<PostgresUsageReport> {
     })
 }
 
-fn analyze_member(member: &RepositoryMember) -> Result<PostgresUsageMember> {
-    let collected = super::source::collect(member.project())?;
+fn analyze_member(
+    evidence: &super::repository::RepositoryPostgresMember<'_>,
+) -> Result<PostgresUsageMember> {
+    let member = evidence.member;
+    let collected = &evidence.collected;
+    let discovery = &evidence.schema;
     let inventory_digest =
         crate::execution::artifact::digest_value(INVENTORY_DIGEST_DOMAIN, &collected.report)?;
-    let discovery = super::static_schema::discover(member, &collected);
     let mut definitions = BTreeMap::<ObjectKey, BTreeSet<PostgresObjectDefinition>>::new();
-    for discovered in discovery.objects {
+    for discovered in &discovery.objects {
         let Some(object) = usage_identity(&discovered.identity) else {
             continue;
         };
         definitions
             .entry(ObjectKey {
-                contract: discovered.contract,
+                contract: discovered.contract.clone(),
                 object,
             })
             .or_default()
@@ -192,8 +198,8 @@ fn analyze_member(member: &RepositoryMember) -> Result<PostgresUsageMember> {
                         PostgresSchemaSourceKind::Migration
                     }
                 },
-                source_name: discovered.definition.source_name,
-                evidence: discovered.definition.evidence,
+                source_name: discovered.definition.source_name.clone(),
+                evidence: discovered.definition.evidence.clone(),
             });
     }
 
@@ -205,7 +211,7 @@ fn analyze_member(member: &RepositoryMember) -> Result<PostgresUsageMember> {
         let accessible = super::source::dependency_order(&collected.report, &query.contract_id)?
             .into_iter()
             .collect::<BTreeSet<_>>();
-        let evidence = query_evidence(member, &query.contract);
+        let evidence = super::repository::query_evidence(member, &query.contract);
         for reference in &query.contract.referenced_objects {
             let identity = reference_identity(reference);
             let candidates = definitions
@@ -268,7 +274,7 @@ fn analyze_member(member: &RepositoryMember) -> Result<PostgresUsageMember> {
                 id: query.id.clone(),
                 statement_class: query.statement_class,
                 dynamic: query.dynamic,
-                evidence: query_evidence(member, query),
+                evidence: super::repository::query_evidence(member, query),
             })
             .collect::<Vec<_>>();
         queries.sort_by(|left, right| left.id.cmp(&right.id));
@@ -385,12 +391,4 @@ fn reference_matches(
             .relation
             .as_ref()
             .is_none_or(|relation| object.relation.as_ref() == Some(relation))
-}
-
-fn query_evidence(member: &RepositoryMember, query: &PostgresQueryContract) -> PostgresEvidence {
-    PostgresEvidence {
-        path: crate::paths::repository_path(&member.report_root, &query.path),
-        line: query.line,
-        column: Some(query.column),
-    }
 }

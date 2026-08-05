@@ -1,20 +1,18 @@
 use super::model::{
     ContextSliceOmitted, ContextSliceReport, ContextSliceRequest, CONTEXT_SLICE_SCHEMA_VERSION,
 };
-use super::pagination::create_page;
 use super::targets::resolve_target;
 use crate::domain::source_graph::{EdgeTarget, SourceGraph};
+use crate::inspection::projection::{self, ProjectionPage, ProjectionRequest};
 use anyhow::Result;
 use std::collections::BTreeSet;
-
-const MAX_DEPTH: usize = 16;
-const MAX_NODES: usize = 4_096;
 
 pub(crate) fn create(
     graph: &SourceGraph,
     request: &ContextSliceRequest,
 ) -> Result<ContextSliceReport> {
-    validate_request(request)?;
+    let projection_request = ProjectionRequest::from_request(request, "context", "source graph");
+    projection::validate_request(&projection_request)?;
     graph
         .validate()
         .map_err(|diagnostics| {
@@ -35,7 +33,16 @@ pub(crate) fn create(
         .iter()
         .flat_map(|target| target.nodes.iter().cloned())
         .collect::<BTreeSet<_>>();
-    let page = create_page(graph, request, &roots)?;
+    let graph_digest = projection::digest_legacy_graph(graph, "source graph for context digest")?;
+    let page = projection::create_page(
+        graph_digest,
+        &projection_request,
+        &roots,
+        graph.edges.iter().filter_map(|edge| match &edge.to {
+            EdgeTarget::Node(target) => Some((edge.from.clone(), target.clone())),
+            _ => None,
+        }),
+    )?;
     let all_projects = graph
         .projects
         .values()
@@ -55,7 +62,7 @@ pub(crate) fn create(
         .collect::<BTreeSet<_>>();
     let projects = all_projects
         .iter()
-        .filter(|project| page.owns_project(graph, &project.id))
+        .filter(|project| owns_project(&page, graph, &project.id))
         .cloned()
         .collect::<Vec<_>>();
     let nodes = page
@@ -126,7 +133,7 @@ pub(crate) fn create(
         .iter()
         .filter(|boundary| {
             boundary.node.as_ref().map_or_else(
-                || page.owns_project(graph, &boundary.project),
+                || owns_project(&page, graph, &boundary.project),
                 |node| page.owns_node(node),
             )
         })
@@ -160,24 +167,20 @@ pub(crate) fn create(
     })
 }
 
-fn validate_request(request: &ContextSliceRequest) -> Result<()> {
-    if request.targets.is_empty() {
-        anyhow::bail!("at least one context target is required");
-    }
-    if request
-        .targets
+fn owns_project(
+    page: &ProjectionPage<crate::domain::source_graph::NodeId>,
+    graph: &SourceGraph,
+    project: &crate::domain::source_graph::ProjectId,
+) -> bool {
+    page.ordered_nodes
         .iter()
-        .any(|target| target.trim().is_empty())
-    {
-        anyhow::bail!("context targets cannot be empty");
-    }
-    if request.depth > MAX_DEPTH {
-        anyhow::bail!("context depth cannot exceed {MAX_DEPTH}");
-    }
-    if request.max_nodes == 0 || request.max_nodes > MAX_NODES {
-        anyhow::bail!("max-nodes must be between 1 and {MAX_NODES}");
-    }
-    Ok(())
+        .find(|node| {
+            graph
+                .nodes
+                .get(*node)
+                .is_some_and(|source| source.project() == project)
+        })
+        .is_some_and(|node| page.owns_node(node))
 }
 
 #[cfg(test)]

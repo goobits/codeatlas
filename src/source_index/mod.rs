@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 const SOURCE_INDEX_FORMAT_VERSION: u32 = 1;
-pub(crate) const SOURCE_INDEX_ALGORITHM_VERSION: u32 = 8;
+pub(crate) const SOURCE_INDEX_ALGORITHM_VERSION: u32 = 9;
 
 pub(crate) struct SourceIndex {
     root: Option<PathBuf>,

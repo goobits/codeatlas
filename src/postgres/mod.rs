@@ -1,7 +1,10 @@
 mod diff;
 mod docs;
+mod graph;
+mod inspect;
 mod lint;
 mod model;
+mod repository;
 mod source;
 mod static_schema;
 mod target;
@@ -13,6 +16,9 @@ use std::path::Path;
 
 pub(crate) use diff::compare;
 pub(crate) use docs::build as documentation;
+#[cfg(test)]
+pub(crate) use graph::{PostgresInspectionReport, POSTGRES_INSPECTION_SCHEMA_VERSION};
+pub(crate) use inspect::create as inspect;
 pub(crate) use model::PostgresObjectKind;
 pub(crate) use model::{
     PostgresBaselineReport, POSTGRES_BASELINE_API_VERSION, POSTGRES_BASELINE_SCHEMA_VERSION,

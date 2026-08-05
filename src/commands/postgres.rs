@@ -47,6 +47,16 @@ pub(crate) fn run_usage(
     exit_code(usage(path, workspace, format, out, config_path))
 }
 
+pub(crate) fn run_inspect(
+    path: &Path,
+    workspace: bool,
+    request: crate::inspection::InspectionRequest,
+    out: Option<&Path>,
+    config_path: Option<&Path>,
+) -> i32 {
+    exit_code(inspect(path, workspace, request, out, config_path))
+}
+
 fn inventory(path: &Path, out: Option<&Path>, config_path: Option<&Path>) -> Result<i32> {
     let project = load_project(path, config_path)?;
     let report = postgres::inventory(&project)?;
@@ -69,6 +79,21 @@ fn usage(
         UsageFormat::Json => output::render_json(&report)?,
     };
     output::write_text_or_print(&rendered, out, "PostgreSQL usage report")?;
+    Ok(0)
+}
+
+fn inspect(
+    path: &Path,
+    workspace: bool,
+    request: crate::inspection::InspectionRequest,
+    out: Option<&Path>,
+    config_path: Option<&Path>,
+) -> Result<i32> {
+    let project = load_project(path, config_path)?;
+    let scope = crate::config::RepositoryScope::resolve(&project, workspace)?;
+    let report = postgres::inspect(&scope, &request)?;
+    let rendered = output::render_json(&report)?;
+    output::write_text_or_print(&rendered, out, "PostgreSQL inspection report")?;
     Ok(0)
 }
 

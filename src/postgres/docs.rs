@@ -15,15 +15,14 @@ use serde::Serialize;
 
 pub(crate) fn build(scope: &RepositoryScope) -> Result<EvidenceDocument> {
     let mut groups = Vec::new();
-    for member in scope
-        .members()
-        .iter()
-        .filter(|member| !member.postgres_contracts.is_empty())
-    {
-        let collected = super::source::collect(member.project())?;
-        let schema = super::static_schema::discover(member, &collected);
-        for contract in &collected.report.contracts {
-            groups.push(contract_group(member, contract, &collected, &schema));
+    for evidence in super::repository::collect(scope)? {
+        for contract in &evidence.collected.report.contracts {
+            groups.push(contract_group(
+                evidence.member,
+                contract,
+                &evidence.collected,
+                &evidence.schema,
+            ));
         }
     }
     groups.sort_by(|left, right| left.name.cmp(&right.name));

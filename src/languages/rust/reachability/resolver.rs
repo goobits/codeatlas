@@ -296,18 +296,18 @@ impl RustResolver {
     ) -> Option<ResolvedRustPath> {
         let local = path.first()?;
         module.info.uses.iter().find_map(|import| {
-            let mut expanded = import.module_path.clone();
             if import.is_glob {
-                expanded.extend_from_slice(path);
-            } else {
-                if &import.alias != local {
-                    return None;
-                }
-                if import.name != "self" {
-                    expanded.push(import.name.clone());
-                }
-                expanded.extend_from_slice(&path[1..]);
+                let imported_module = self.resolve_use_module(module, &import.module_path)?;
+                return self.resolve_from_module(module, &imported_module, path);
             }
+            if &import.alias != local {
+                return None;
+            }
+            let mut expanded = import.module_path.clone();
+            if import.name != "self" {
+                expanded.push(import.name.clone());
+            }
+            expanded.extend_from_slice(&path[1..]);
             self.resolve_symbol_path(module, &expanded)
         })
     }
@@ -339,7 +339,8 @@ impl RustResolver {
             }
         }
         for (target, segments) in self.target_and_segment_options(module, path) {
-            let resolved = (0..=segments.len()).rev().find_map(|split| {
+            let mut exact_module = None;
+            for split in (0..=segments.len()).rev() {
                 let module_segments = &segments[..split];
                 let raw = module_segments
                     .iter()
@@ -351,23 +352,33 @@ impl RustResolver {
                 } else {
                     self.resolve_file_candidates(&raw)
                 };
-                key.map(|key| (key, split))
-            });
-            let Some((key, split)) = resolved else {
-                continue;
-            };
-            let Some(symbol) = segments.get(split) else {
+                let Some(key) = key else {
+                    continue;
+                };
+                let Some(symbol) = segments.get(split) else {
+                    exact_module = Some(key);
+                    continue;
+                };
+                if let Some(export) = self.exports.get(&(key.clone(), symbol.clone())) {
+                    if self.export_is_visible(module, &key, export) {
+                        let remaining = &segments[split + 1..];
+                        if export.resolved.symbols.is_empty() && !remaining.is_empty() {
+                            if let Some(resolved) =
+                                self.resolve_from_module(module, &export.resolved.module, remaining)
+                            {
+                                return Some(resolved);
+                            }
+                            continue;
+                        }
+                        return Some(self.with_associated(export.resolved.clone(), remaining));
+                    }
+                }
+            }
+            if let Some(module) = exact_module {
                 return Some(ResolvedRustPath {
-                    module: key,
+                    module,
                     symbols: BTreeSet::new(),
                 });
-            };
-            if let Some(export) = self.exports.get(&(key.clone(), symbol.clone())) {
-                if self.export_is_visible(module, &key, export) {
-                    return Some(
-                        self.with_associated(export.resolved.clone(), &segments[split + 1..]),
-                    );
-                }
             }
         }
         None

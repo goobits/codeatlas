@@ -122,6 +122,13 @@ struct OperationTarget {
 
 pub(crate) fn analyze(scope: &RepositoryScope) -> Result<HttpUsageReport> {
     let member_inventories = super::repository::collect(scope)?;
+    analyze_collected(scope, &member_inventories)
+}
+
+pub(super) fn analyze_collected(
+    scope: &RepositoryScope,
+    member_inventories: &[super::repository::RepositoryHttpMember<'_>],
+) -> Result<HttpUsageReport> {
     let projects = scope.analysis_projects();
     let (graph, graph_digest, graph_diagnostics) =
         match crate::languages::reachability::build_source_graph(projects) {
@@ -142,7 +149,7 @@ pub(crate) fn analyze(scope: &RepositoryScope) -> Result<HttpUsageReport> {
         .map_err(crate::analysis::reachability::render_diagnostics)?;
 
     let mut merged_by_target = BTreeMap::new();
-    for member in &member_inventories {
+    for member in member_inventories {
         for contract in &member.inventory.contracts {
             for operation in super::repository::merge_operations(contract) {
                 let target = OperationTarget {
@@ -154,7 +161,7 @@ pub(crate) fn analyze(scope: &RepositoryScope) -> Result<HttpUsageReport> {
             }
         }
     }
-    validate_external_operations(&member_inventories)?;
+    validate_external_operations(member_inventories)?;
 
     let mut consumers = BTreeMap::<OperationTarget, BTreeSet<HttpUsageEvidence>>::new();
     let mut skipped_literal_sources = BTreeMap::<ProjectId, usize>::new();

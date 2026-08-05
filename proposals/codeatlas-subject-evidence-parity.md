@@ -465,15 +465,71 @@ No schema drift or generated checkout state remained.
 
 ## Phase 4: Shared bounded projection and domain inspection graphs
 
-Status: [ ] Not started
+Status: [x] Static track complete; optional observation enrichment remains a
+separately visible wait for accepted HTTP/PostgreSQL observation identities
 
-LOC: +900-1,400 / -220-400
+LOC: +2,753 / -368 product and tests, plus 1,973 generated schema lines
 
 Verify: Code context output remains exact after projection extraction; HTTP and
 PostgreSQL exact targets return stable bounded graphs; depth/node limits,
 ambiguous targets, cursors, digest invalidation, workspace ownership, and
 optional wrong-kind/stale observations are covered; inspection makes zero
 target calls.
+
+Execution checkpoint (2026-08-05): the clean committed CodeAtlas workspace was
+re-indexed by installed stable Mill 0.8.18, which advertised file moves. The
+zero-write preview for moving `src/context_slice/pagination.rs` to the shared
+inspection owner returned `target_not_supported` with no plan or source edit.
+This exact transformation is therefore proceeding as ordinary reviewed
+CodeAtlas edits; no TypeMill repository change is in scope.
+
+Completion checkpoint (2026-08-05): code, HTTP, and PostgreSQL inspection now
+share one bounded projection owner while retaining separate graph semantics.
+The pre-extraction and post-extraction code-inspection fixtures are
+byte-identical at
+`be3f6dcdd070a354560832333148c57b5f2992393947762191ec1a8b5bc7f6c2`.
+HTTP and PostgreSQL inspection resolve exact targets, reject sorted ambiguity,
+page deterministically, invalidate stale cursors, retain member inventory and
+source-graph digests, and make zero provider or database calls. Their two
+namespaced schemas are registered and drift-tested.
+
+Self-dogfood exposed two generic Rust resolution defects rather than inspection
+defects: a same-named module could hide a callable re-export, and
+`use path::{self, ...}` recorded the wrong local module alias. The shared Rust
+resolver and fixture now cover both, glob imports no longer capture unrelated
+absolute paths, the source-index algorithm is v9, and Rust module facts are v4
+so warm caches cannot retain the old parse. Dedicated cold and warm checks are
+byte-identical at
+`28ee96c351e05bfba6245fc17aae3be91aee2a2701ce3fea66a00a191e7d1185`;
+findings fell from 418 to 334 with zero gates and zero findings in the new
+inspection paths. The full `pnpm check` passed 412 Rust unit tests with three
+intentional ignores, every non-live integration suite, schema/spec drift,
+warning-denying Clippy, self-audit, and package assembly. No checkout-local
+generated state remains.
+
+- [x] Extract one shared direction, limit validation, deterministic traversal,
+  graph/request digest, cursor, and page-ownership primitive. Preserve the
+  context-slice v5 schema and the exact pre-extraction fixture bytes.
+- [x] Reuse one collected HTTP inventory plus one usage analysis to build
+  contract, operation, schema, handler, caller, and test nodes with typed
+  edges; resolve only exact operation keys or exact node IDs.
+- [x] Consolidate collected PostgreSQL source and static-schema evidence behind
+  one repository owner shared by usage, docs, and inspection, then build
+  contract, source, query, parameter, object, constraint/index, and callsite
+  nodes with typed edges.
+- [x] Add one flattened inspect target/projection argument owner and zero-call
+  `inspect http|postgres` orchestration with deterministic JSON output.
+- [x] Publish the two namespaced report schemas and prove exact targets,
+  ambiguity, direction, depth/node budgets, pagination reconstruction, stale
+  cursor rejection, workspace ownership, deterministic bytes, and zero hidden
+  provider/database calls.
+- [ ] Consume optional HTTP/PostgreSQL observations only through the kernel's
+  final typed artifact identities; reject wrong-kind and stale evidence. This
+  remains waiting rather than creating a path-only or provisional artifact
+  owner in this phase.
+- [x] Run the focused and full required checks, exact code-inspection byte
+  comparison, bounded self-dogfood, generated-state audit, checklist sync, and
+  one scoped static Phase 4 commit.
 
 ```text
 + src/inspection/mod.rs
@@ -482,18 +538,38 @@ target calls.
 + src/http/graph.rs
 + src/http/inspect.rs
 + src/postgres/graph.rs
++ src/postgres/graph/identity.rs
++ src/postgres/graph/model.rs
 + src/postgres/inspect.rs
++ src/postgres/repository.rs
 + tests/inspect_http_postgres.rs
++ tests/fixtures/dead-code/rust/src/internal/collision.rs
++ schemas/codeatlas-http-inspection-v1.schema.json
++ schemas/codeatlas-postgres-inspection-v1.schema.json
 ~ src/main.rs
 ~ src/context_slice/mod.rs
 ~ src/context_slice/model.rs
-~ src/context_slice/pagination.rs
+- src/context_slice/pagination.rs
 ~ src/context_slice/slice.rs
 ~ src/cli/inspect.rs
-~ src/commands/context_slice.rs
+~ src/cli/mod.rs
 ~ src/commands/http.rs
 ~ src/commands/postgres.rs
-~ tests/cli_contract.rs
+~ src/http/mod.rs
+~ src/http/usage.rs
+~ src/languages/rust/parser.rs
+~ src/languages/rust/reachability.rs
+~ src/languages/rust/reachability/resolver.rs
+~ src/source_index/mod.rs
+~ src/postgres/docs.rs
+~ src/postgres/mod.rs
+~ src/postgres/usage.rs
+~ src/published_schemas.rs
+~ src/tests/dead_code/rust.rs
+~ tests/fixtures/dead-code/rust/src/internal/consumer.rs
+~ tests/fixtures/dead-code/rust/src/internal/model.rs
+~ tests/fixtures/dead-code/rust/src/internal/mod.rs
+~ tests/fixtures/dead-code/rust/src/lib.rs
 ```
 
 ## Phase 5: Cross-subject repository lexicon
@@ -554,10 +630,10 @@ and reference documentation are new product evidence. It must not be higher
 because code, HTTP, and PostgreSQL retain separate workspace discovery, config
 editing, pagination, or term-normalization mechanics.
 
-Measured through Phase 3: +7,138 / -1,076 product and test lines, plus 786
-generated schema lines. Remaining forecast: +1,600-2,550 / -480-910.
-Projected total: +8,738-9,688 / -1,556-1,986 product and test lines, plus
-generated schemas required by final public report shapes.
+Measured through Phase 4: +9,891 / -1,444 product and test lines, plus 2,759
+generated schema lines. Remaining forecast: +700-1,150 / -260-510.
+Projected total: +10,591-11,041 / -1,704-1,954 product and test lines, plus the
+generated schema required by the final repository-lexicon report shape.
 
 ## Layman's wins
 

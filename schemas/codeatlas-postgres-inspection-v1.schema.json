@@ -1,0 +1,1348 @@
+{
+  "$defs": {
+    "ExecutionEffect": {
+      "enum": [
+        "filesystem_scratch",
+        "managed_process",
+        "network_target_call",
+        "target_mutation",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "FuzzDenial": {
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "FuzzDirectiveIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/FuzzDirectiveIssueKind"
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "kind",
+        "message"
+      ],
+      "type": "object"
+    },
+    "FuzzDirectiveIssueKind": {
+      "enum": [
+        "malformed",
+        "unsupported_action",
+        "empty_reason",
+        "reason_too_long",
+        "duplicate",
+        "conflicting"
+      ],
+      "type": "string"
+    },
+    "FuzzPolicyEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "denial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FuzzDenial"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/FuzzDirectiveIssue"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "InspectionDirection": {
+      "enum": [
+        "incoming",
+        "outgoing",
+        "both"
+      ],
+      "type": "string"
+    },
+    "InspectionOmitted": {
+      "additionalProperties": false,
+      "properties": {
+        "edges": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nodes": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "type": "object"
+    },
+    "InspectionTargetResolution": {
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query",
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "PostgresColumnBinding": {
+      "properties": {
+        "column": {
+          "$ref": "#/$defs/PostgresObjectReference"
+        },
+        "columnNullable": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "constraints": {
+          "items": {
+            "$ref": "#/$defs/PostgresConstraintEvidence"
+          },
+          "type": "array"
+        },
+        "dataType": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PostgresTypeShape"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "$ref": "#/$defs/PostgresParameterRole"
+        }
+      },
+      "required": [
+        "role",
+        "column"
+      ],
+      "type": "object"
+    },
+    "PostgresConstraintEvidence": {
+      "properties": {
+        "definitionDigest": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "definitionDigest"
+      ],
+      "type": "object"
+    },
+    "PostgresEvidence": {
+      "properties": {
+        "column": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line"
+      ],
+      "type": "object"
+    },
+    "PostgresFunctionClass": {
+      "enum": [
+        "builtin_read_only",
+        "filesystem",
+        "external_link",
+        "privileged",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "PostgresFunctionEvidence": {
+      "properties": {
+        "class": {
+          "$ref": "#/$defs/PostgresFunctionClass"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "class"
+      ],
+      "type": "object"
+    },
+    "PostgresInspectionEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/PostgresInspectionEdgeKind"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "PostgresInspectionEdgeKind": {
+      "enum": [
+        "contains",
+        "depends_on",
+        "defines",
+        "executes",
+        "accepts",
+        "binds",
+        "touches",
+        "constrains",
+        "indexes"
+      ],
+      "type": "string"
+    },
+    "PostgresInspectionNode": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "completeness": {
+              "$ref": "#/$defs/PostgresUsageCompleteness"
+            },
+            "contract": {
+              "type": "string"
+            },
+            "dependsOn": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "contract",
+              "type": "string"
+            },
+            "project": {
+              "type": "string"
+            },
+            "sourceComplete": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "contract",
+            "dependsOn",
+            "sourceComplete",
+            "completeness"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "contract": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "project": {
+              "type": "string"
+            },
+            "role": {
+              "$ref": "#/$defs/PostgresInspectionSourceRole"
+            },
+            "source": {
+              "$ref": "#/$defs/PostgresSqlSourceInventory"
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "contract",
+            "role",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "contract": {
+              "type": "string"
+            },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "query",
+              "type": "string"
+            },
+            "missingDescription": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "project": {
+              "type": "string"
+            },
+            "query": {
+              "$ref": "#/$defs/PostgresQueryContract"
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "contract",
+            "query"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "contract": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "parameter",
+              "type": "string"
+            },
+            "parameter": {
+              "$ref": "#/$defs/PostgresQueryParameter"
+            },
+            "project": {
+              "type": "string"
+            },
+            "queryId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "contract",
+            "queryId",
+            "parameter"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "contract": {
+              "type": "string"
+            },
+            "evidence": {
+              "$ref": "#/$defs/PostgresUsageObject"
+            },
+            "kind": {
+              "const": "object",
+              "type": "string"
+            },
+            "project": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "contract",
+            "evidence"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "contract": {
+              "type": "string"
+            },
+            "definitions": {
+              "items": {
+                "$ref": "#/$defs/PostgresObjectDefinition"
+              },
+              "type": "array"
+            },
+            "descriptions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "detail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "static_object",
+              "type": "string"
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "objectKind": {
+              "$ref": "#/$defs/PostgresInspectionStaticObjectKind"
+            },
+            "project": {
+              "type": "string"
+            },
+            "relation": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "subject": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "contract",
+            "objectKind",
+            "descriptions",
+            "definitions"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "contract": {
+              "type": "string"
+            },
+            "evidence": {
+              "$ref": "#/$defs/PostgresEvidence"
+            },
+            "kind": {
+              "const": "callsite",
+              "type": "string"
+            },
+            "project": {
+              "type": "string"
+            },
+            "queryId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "contract",
+            "queryId",
+            "evidence"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PostgresInspectionSourceRole": {
+      "enum": [
+        "bootstrap",
+        "migration"
+      ],
+      "type": "string"
+    },
+    "PostgresInspectionStaticObjectKind": {
+      "enum": [
+        "constraint",
+        "index"
+      ],
+      "type": "string"
+    },
+    "PostgresObjectDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/PostgresEvidence"
+        },
+        "sourceKind": {
+          "$ref": "#/$defs/PostgresSchemaSourceKind"
+        },
+        "sourceName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceKind",
+        "sourceName",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "PostgresObjectKind": {
+      "enum": [
+        "table",
+        "column"
+      ],
+      "type": "string"
+    },
+    "PostgresObjectReference": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/PostgresObjectKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "relation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolved": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "resolved"
+      ],
+      "type": "object"
+    },
+    "PostgresParameterRole": {
+      "enum": [
+        "predicate",
+        "insert_value",
+        "update_value",
+        "expression"
+      ],
+      "type": "string"
+    },
+    "PostgresPsqlDirective": {
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "command",
+        "line"
+      ],
+      "type": "object"
+    },
+    "PostgresPsqlMetaCommandMode": {
+      "enum": [
+        "reject",
+        "strip",
+        "psql"
+      ],
+      "type": "string"
+    },
+    "PostgresQueryContract": {
+      "properties": {
+        "catalogDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "column": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dynamic": {
+          "type": "boolean"
+        },
+        "effects": {
+          "items": {
+            "$ref": "#/$defs/ExecutionEffect"
+          },
+          "type": "array"
+        },
+        "eligibility": {
+          "$ref": "#/$defs/PostgresQueryEligibility"
+        },
+        "eligibilityReasons": {
+          "items": {
+            "$ref": "#/$defs/PostgresQueryEligibilityReason"
+          },
+          "type": "array"
+        },
+        "functions": {
+          "items": {
+            "$ref": "#/$defs/PostgresFunctionEvidence"
+          },
+          "type": "array"
+        },
+        "fuzzPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FuzzPolicyEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/PostgresQueryParameter"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "placeholderOrder": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "referencedObjects": {
+          "items": {
+            "$ref": "#/$defs/PostgresObjectReference"
+          },
+          "type": "array"
+        },
+        "result": {
+          "$ref": "#/$defs/PostgresQueryResultShape"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "statementClass": {
+          "$ref": "#/$defs/PostgresStatementClass"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "line",
+        "column",
+        "sha256",
+        "dynamic",
+        "statementClass",
+        "result",
+        "effects",
+        "eligibility"
+      ],
+      "type": "object"
+    },
+    "PostgresQueryEligibility": {
+      "enum": [
+        "eligible",
+        "requires_evidence",
+        "requires_policy",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "PostgresQueryEligibilityReason": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/PostgresQueryEligibilityReasonCode"
+        },
+        "parameterPosition": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "subject": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "type": "object"
+    },
+    "PostgresQueryEligibilityReasonCode": {
+      "enum": [
+        "blocked_by_policy",
+        "malformed_fuzz_directive",
+        "dynamic_sql",
+        "unbalanced_syntax",
+        "multiple_statements",
+        "unsupported_statement",
+        "data_definition",
+        "transaction_control",
+        "privileged_operation",
+        "administrative_operation",
+        "filesystem_access",
+        "program_execution",
+        "external_link",
+        "unknown_function",
+        "dml_policy_required",
+        "parameter_position_invalid",
+        "parameter_limit_exceeded",
+        "parameter_position_gap",
+        "parameter_type_unresolved",
+        "referenced_object_unresolved",
+        "result_type_unresolved"
+      ],
+      "type": "string"
+    },
+    "PostgresQueryParameter": {
+      "properties": {
+        "bindings": {
+          "items": {
+            "$ref": "#/$defs/PostgresColumnBinding"
+          },
+          "type": "array"
+        },
+        "dataType": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PostgresTypeShape"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "occurrenceCount": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "position": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "roles": {
+          "items": {
+            "$ref": "#/$defs/PostgresParameterRole"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "position",
+        "occurrenceCount",
+        "roles"
+      ],
+      "type": "object"
+    },
+    "PostgresQueryResultColumn": {
+      "properties": {
+        "dataType": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PostgresTypeShape"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nullable": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "position": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PostgresObjectReference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "position"
+      ],
+      "type": "object"
+    },
+    "PostgresQueryResultShape": {
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/PostgresQueryResultColumn"
+          },
+          "type": "array"
+        },
+        "complete": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "complete"
+      ],
+      "type": "object"
+    },
+    "PostgresSchemaSourceKind": {
+      "enum": [
+        "bootstrap",
+        "migration"
+      ],
+      "type": "string"
+    },
+    "PostgresSqlSourceInventory": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "directives": {
+          "items": {
+            "$ref": "#/$defs/PostgresPsqlDirective"
+          },
+          "type": "array"
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "lintSha256": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "psqlMetaCommands": {
+          "$ref": "#/$defs/PostgresPsqlMetaCommandMode"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "transaction": {
+          "$ref": "#/$defs/PostgresTransactionMode"
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "sha256",
+        "lintSha256",
+        "bytes",
+        "transaction",
+        "psqlMetaCommands"
+      ],
+      "type": "object"
+    },
+    "PostgresStatementClass": {
+      "enum": [
+        "select",
+        "insert",
+        "update",
+        "delete",
+        "data_definition",
+        "transaction_control",
+        "privilege",
+        "administrative",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "PostgresTransactionMode": {
+      "enum": [
+        "unknown",
+        "always",
+        "never"
+      ],
+      "type": "string"
+    },
+    "PostgresTypeName": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "name"
+      ],
+      "type": "object"
+    },
+    "PostgresTypeShape": {
+      "properties": {
+        "baseType": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PostgresTypeName"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enumValues": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "formatted": {
+          "type": "string"
+        },
+        "maxLength": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "numericPrecision": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "numericScale": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "oid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "formatted"
+      ],
+      "type": "object"
+    },
+    "PostgresUsageClassification": {
+      "enum": [
+        "known_static_query_touch",
+        "no_known_static_query_touch"
+      ],
+      "type": "string"
+    },
+    "PostgresUsageCompleteness": {
+      "additionalProperties": false,
+      "properties": {
+        "dynamicQueries": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "liveCatalogObservable": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sourceQueriesComplete": {
+          "type": "boolean"
+        },
+        "staticSchemaComplete": {
+          "type": "boolean"
+        },
+        "staticTouchesComplete": {
+          "type": "boolean"
+        },
+        "unresolvedReferences": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sourceQueriesComplete",
+        "staticSchemaComplete",
+        "staticTouchesComplete",
+        "liveCatalogObservable",
+        "dynamicQueries",
+        "unresolvedReferences",
+        "reasons"
+      ],
+      "type": "object"
+    },
+    "PostgresUsageObject": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/PostgresUsageClassification"
+        },
+        "definitions": {
+          "items": {
+            "$ref": "#/$defs/PostgresObjectDefinition"
+          },
+          "type": "array"
+        },
+        "object": {
+          "$ref": "#/$defs/PostgresUsageObjectIdentity"
+        }
+      },
+      "required": [
+        "object",
+        "classification",
+        "definitions"
+      ],
+      "type": "object"
+    },
+    "PostgresUsageObjectIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/PostgresObjectKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "relation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "type": "object"
+    },
+    "RepositoryDiscoveryKind": {
+      "enum": [
+        "project",
+        "pnpm_workspace"
+      ],
+      "type": "string"
+    },
+    "RepositoryMemberEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "configDigest": {
+          "type": "string"
+        },
+        "configPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "httpContracts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "postgresContracts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "root",
+        "configDigest",
+        "httpContracts",
+        "postgresContracts"
+      ],
+      "type": "object"
+    },
+    "RepositoryScopeEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "diagnostics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "discovery": {
+          "$ref": "#/$defs/RepositoryDiscoveryKind"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/$defs/RepositoryMemberEvidence"
+          },
+          "type": "array"
+        },
+        "selectedRoot": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selectedRoot",
+        "discovery",
+        "complete",
+        "diagnostics",
+        "members"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.postgres-inspection/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "continuation": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "depth": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "direction": {
+      "$ref": "#/$defs/InspectionDirection"
+    },
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/PostgresInspectionEdge"
+      },
+      "type": "array"
+    },
+    "graphDigest": {
+      "type": "string"
+    },
+    "inventoryDigests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "maxNodes": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "nodes": {
+      "additionalProperties": {
+        "$ref": "#/$defs/PostgresInspectionNode"
+      },
+      "type": "object"
+    },
+    "omitted": {
+      "$ref": "#/$defs/InspectionOmitted"
+    },
+    "pageOffset": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "remainingNodes": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "repository": {
+      "$ref": "#/$defs/RepositoryScopeEvidence"
+    },
+    "schemaVersion": {
+      "const": "codeatlas.postgres-inspection/v1",
+      "type": "string"
+    },
+    "targets": {
+      "items": {
+        "$ref": "#/$defs/InspectionTargetResolution"
+      },
+      "type": "array"
+    },
+    "toolVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "toolVersion",
+    "repository",
+    "inventoryDigests",
+    "depth",
+    "maxNodes",
+    "direction",
+    "graphDigest",
+    "pageOffset",
+    "remainingNodes",
+    "omitted",
+    "targets",
+    "nodes",
+    "edges"
+  ],
+  "title": "PostgresInspectionReport",
+  "type": "object"
+}

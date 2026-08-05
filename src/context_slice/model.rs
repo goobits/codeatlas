@@ -1,25 +1,27 @@
 use crate::domain::source_graph::{
     AnalysisBoundary, NodeId, SourceContext, SourceEdge, SourceNode, SourceProject,
 };
+use crate::inspection::{InspectionDirection, InspectionRequest};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub(crate) const CONTEXT_SLICE_SCHEMA_VERSION: u32 = 5;
 
-#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum ContextDirection {
-    Incoming,
-    Outgoing,
-    Both,
-}
+pub(crate) type ContextSliceRequest = InspectionRequest;
 
-pub(crate) struct ContextSliceRequest {
-    pub targets: Vec<String>,
-    pub depth: usize,
-    pub max_nodes: usize,
-    pub direction: ContextDirection,
-    pub continuation: Option<String>,
+#[derive(schemars::JsonSchema)]
+#[schemars(rename = "ContextDirection")]
+#[allow(
+    dead_code,
+    reason = "schema-only compatibility model for context-slice v5"
+)]
+enum ContextDirectionSchema {
+    #[schemars(rename = "incoming")]
+    Incoming,
+    #[schemars(rename = "outgoing")]
+    Outgoing,
+    #[schemars(rename = "both")]
+    Both,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -34,7 +36,8 @@ pub(crate) struct ContextSliceReport {
     pub tool_version: String,
     pub depth: usize,
     pub max_nodes: usize,
-    pub direction: ContextDirection,
+    #[schemars(with = "ContextDirectionSchema")]
+    pub direction: InspectionDirection,
     pub graph_digest: String,
     pub page_offset: usize,
     pub remaining_nodes: usize,

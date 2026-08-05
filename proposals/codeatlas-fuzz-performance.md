@@ -493,13 +493,14 @@ not create another program roadmap or copy these tasks into a scratch document.
 The public grammar, schema registry, HQA renderer, immutable execution
 artifacts, enforcing HTTP call budget, complete structured callable evidence,
 semantic-sibling analysis and self-dogfood, and locally verifiable OCI
-implementation are done. The repository-scope/config-edit foundation is also
-complete, with one immutable project/pnpm snapshot shared by code, tests,
-lexicon, HTTP, and PostgreSQL ownership. The current host cannot grant a live
-OCI isolation capability, so execution remains plan-only here and Phase 9
-retains the hard continuation gate. On implementation progress rather than
-proposal-design progress, the complete program is approximately 56 percent
-done.
+implementation are done. Repository scope, config editing, HTTP/PostgreSQL
+usage and docs, truthful code/HTTP initialization, and the static HTTP and
+PostgreSQL inspection graphs are also complete. One bounded projection owner
+now serves code, HTTP, and PostgreSQL without merging their graph semantics.
+The current host cannot grant a live OCI isolation capability, so execution
+remains plan-only here and Phase 9 retains the hard continuation gate. On
+implementation progress rather than proposal-design progress, the complete
+program is approximately 61 percent done.
 
 ### Order and ownership rules
 
@@ -915,20 +916,22 @@ Active child: subject evidence parity Phases 2 through 4.
   explicit init writes only one selected strict configuration file.
 - [ ] Enrich PostgreSQL usage/docs only from an explicitly supplied exact
   observation reference, with no hidden target or database execution.
-- [ ] Extract one generic bounded graph projection owner from code context
+- [x] Extract one generic bounded graph projection owner from code context
   slicing without merging code, HTTP, and PostgreSQL graph semantics.
-- [ ] Keep existing code inspection bytes and cursor behavior exact after the
+- [x] Keep existing code inspection bytes and cursor behavior exact after the
   shared projection extraction.
-- [ ] Build HTTP contract, operation, schema, handler, caller, test, and
-  optional fuzz-evidence graph nodes and typed edges.
-- [ ] Build PostgreSQL contract, migration, query, parameter, table, column,
-  constraint, callsite, and optional observation graph nodes and typed edges.
-- [ ] Implement exact `inspect http` and `inspect postgres` target resolution,
-  stable ambiguity errors, depth/node limits, digested cursors, and wrong-kind
-  observation rejection.
-- [ ] Prove inspection, usage, and docs remain bounded, deterministic,
+- [x] Build static HTTP contract, operation, schema, handler, caller, and test
+  graph nodes and typed edges. Optional fuzz evidence waits for its accepted
+  artifact identity.
+- [x] Build static PostgreSQL contract, source, query, parameter, table,
+  column, constraint/index, and callsite graph nodes and typed edges. Optional
+  observation evidence waits for its accepted artifact identity.
+- [x] Implement exact `inspect http` and `inspect postgres` target resolution,
+  stable ambiguity errors, depth/node limits, and digested cursors. Wrong-kind
+  observation rejection remains with the observation task above.
+- [x] Prove inspection, usage, and docs remain bounded, deterministic,
   workspace-aware, and zero-call across cold and warm snapshots.
-- [ ] Publish each final report shape once, run focused parity dogfood, and
+- [x] Publish each static report shape, run focused parity dogfood, and
   commit subject-parity Phases 2, 3, and 4 separately.
 
 ### Phase 16: Add the repository lexicon and harden subject parity
@@ -1153,6 +1156,14 @@ Phases 1 through 3.
   contracts and zero gates. A single warm engineering probe measured
   `usage code` at 1.197 seconds and `check code` at 1.226 seconds with RSS
   unavailable; it is recorded as phase evidence, not a performance claim.
+- 2026-08-05: subject-parity Phases 2 through static Phase 4 pass deterministic
+  HTTP/PostgreSQL usage, docs, init, and bounded inspection acceptance. Shared
+  projection extraction preserves the exact code-inspection checkpoint bytes.
+  Dogfood corrected Rust module/callable collisions, grouped `self` imports,
+  glob resolution, and both graph and parser-fact cache identities; cold and
+  warm checks are byte-identical with 334 advisories, zero gates, and no
+  findings in the new inspection paths. Optional observation enrichment remains
+  explicitly gated on the accepted artifact identities.
 
 ## Existing-first check
 

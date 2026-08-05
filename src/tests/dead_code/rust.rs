@@ -5,6 +5,26 @@ fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
     let graph = source_graph_fixture("rust");
     let report = dead_code::analyze(&graph).expect("dead-code report");
 
+    let direct_path = graph
+        .nodes
+        .iter()
+        .find_map(|(id, node)| {
+            matches!(node, SourceNode::Symbol(symbol) if symbol.name == "direct_path").then_some(id)
+        })
+        .expect("direct_path symbol");
+    let collision_dispatch = graph
+        .nodes
+        .iter()
+        .find_map(|(id, node)| {
+            matches!(node, SourceNode::Symbol(symbol) if symbol.name == "dispatch").then_some(id)
+        })
+        .expect("collision dispatch symbol");
+    assert!(graph.edges.iter().any(|edge| {
+        edge.from == *direct_path
+            && edge.to == EdgeTarget::Node(collision_dispatch.clone())
+            && edge.kind == SourceEdgeKind::LexicalReference
+    }));
+
     let integration = graph
         .contexts
         .values()
@@ -50,6 +70,8 @@ fn rust_reachability_uses_cargo_targets_modules_features_and_context_roles() {
                 "GlobVisible"
                     | "construct"
                     | "constructor_marker"
+                    | "dispatch"
+                    | "module_marker"
                     | "ParentVisible"
                     | "ScopedVisible"
                     | "uses_scoped"

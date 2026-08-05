@@ -1,0 +1,625 @@
+{
+  "$defs": {
+    "AnalysisCompleteness": {
+      "enum": [
+        "complete",
+        "partial",
+        "unsupported"
+      ],
+      "type": "string"
+    },
+    "FindingConfidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "type": "string"
+    },
+    "HttpInspectionEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/HttpInspectionEdgeKind"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "HttpInspectionEdgeKind": {
+      "enum": [
+        "contains",
+        "uses_schema",
+        "binds",
+        "calls",
+        "witnesses"
+      ],
+      "type": "string"
+    },
+    "HttpInspectionNode": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "completeness": {
+              "$ref": "#/$defs/HttpUsageCompleteness"
+            },
+            "contract": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "contract",
+              "type": "string"
+            },
+            "project": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "contract",
+            "completeness"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "contract": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "operation",
+              "type": "string"
+            },
+            "operation": {
+              "$ref": "#/$defs/HttpOperation"
+            },
+            "project": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "contract",
+            "operation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "digest": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "schema",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "digest"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/HttpUsageEvidence"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "project": {
+              "type": "string"
+            },
+            "role": {
+              "$ref": "#/$defs/HttpInspectionSourceRole"
+            }
+          },
+          "required": [
+            "kind",
+            "project",
+            "role",
+            "evidence"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "HttpInspectionSourceRole": {
+      "enum": [
+        "handler",
+        "caller",
+        "test"
+      ],
+      "type": "string"
+    },
+    "HttpMediaType": {
+      "properties": {
+        "mediaType": {
+          "type": "string"
+        },
+        "schemaDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "mediaType"
+      ],
+      "type": "object"
+    },
+    "HttpOperation": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/HttpParameter"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "requestBody": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HttpRequestBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "responses": {
+          "items": {
+            "$ref": "#/$defs/HttpResponse"
+          },
+          "type": "array"
+        },
+        "security": {
+          "items": {
+            "$ref": "#/$defs/HttpSecurityRequirement"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "method",
+        "path",
+        "responses"
+      ],
+      "type": "object"
+    },
+    "HttpParameter": {
+      "properties": {
+        "location": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "schemaDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "location",
+        "required"
+      ],
+      "type": "object"
+    },
+    "HttpRequestBody": {
+      "properties": {
+        "content": {
+          "items": {
+            "$ref": "#/$defs/HttpMediaType"
+          },
+          "type": "array"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "required",
+        "content"
+      ],
+      "type": "object"
+    },
+    "HttpResponse": {
+      "properties": {
+        "content": {
+          "items": {
+            "$ref": "#/$defs/HttpMediaType"
+          },
+          "type": "array"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "HttpSecurityRequirement": {
+      "properties": {
+        "schemes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemes"
+      ],
+      "type": "object"
+    },
+    "HttpSourceCompleteness": {
+      "enum": [
+        "partial",
+        "complete"
+      ],
+      "type": "string"
+    },
+    "HttpUsageCompleteness": {
+      "additionalProperties": false,
+      "properties": {
+        "externalConsumersObservable": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "repositoryConsumers": {
+          "$ref": "#/$defs/AnalysisCompleteness"
+        },
+        "sourceGraph": {
+          "$ref": "#/$defs/AnalysisCompleteness"
+        },
+        "sourceRoutes": {
+          "$ref": "#/$defs/HttpSourceCompleteness"
+        }
+      },
+      "required": [
+        "sourceRoutes",
+        "sourceGraph",
+        "repositoryConsumers",
+        "externalConsumersObservable",
+        "reasons"
+      ],
+      "type": "object"
+    },
+    "HttpUsageEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/FindingConfidence"
+        },
+        "kind": {
+          "$ref": "#/$defs/HttpUsageEvidenceKind"
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "confidence",
+        "path",
+        "line"
+      ],
+      "type": "object"
+    },
+    "HttpUsageEvidenceKind": {
+      "enum": [
+        "handler_declaration",
+        "handler_reference",
+        "operation_key",
+        "operation_id",
+        "route_string",
+        "test_handler_reference",
+        "test_operation_key",
+        "test_operation_id",
+        "test_route_string"
+      ],
+      "type": "string"
+    },
+    "InspectionDirection": {
+      "enum": [
+        "incoming",
+        "outgoing",
+        "both"
+      ],
+      "type": "string"
+    },
+    "InspectionOmitted": {
+      "additionalProperties": false,
+      "properties": {
+        "edges": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nodes": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "type": "object"
+    },
+    "InspectionTargetResolution": {
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query",
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "RepositoryDiscoveryKind": {
+      "enum": [
+        "project",
+        "pnpm_workspace"
+      ],
+      "type": "string"
+    },
+    "RepositoryMemberEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "configDigest": {
+          "type": "string"
+        },
+        "configPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "httpContracts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "postgresContracts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "root",
+        "configDigest",
+        "httpContracts",
+        "postgresContracts"
+      ],
+      "type": "object"
+    },
+    "RepositoryScopeEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "diagnostics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "discovery": {
+          "$ref": "#/$defs/RepositoryDiscoveryKind"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/$defs/RepositoryMemberEvidence"
+          },
+          "type": "array"
+        },
+        "selectedRoot": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selectedRoot",
+        "discovery",
+        "complete",
+        "diagnostics",
+        "members"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.http-inspection/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "continuation": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "depth": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "direction": {
+      "$ref": "#/$defs/InspectionDirection"
+    },
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/HttpInspectionEdge"
+      },
+      "type": "array"
+    },
+    "graphDigest": {
+      "type": "string"
+    },
+    "inventoryDigests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "maxNodes": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "nodes": {
+      "additionalProperties": {
+        "$ref": "#/$defs/HttpInspectionNode"
+      },
+      "type": "object"
+    },
+    "omitted": {
+      "$ref": "#/$defs/InspectionOmitted"
+    },
+    "pageOffset": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "remainingNodes": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "repository": {
+      "$ref": "#/$defs/RepositoryScopeEvidence"
+    },
+    "schemaVersion": {
+      "const": "codeatlas.http-inspection/v1",
+      "type": "string"
+    },
+    "sourceGraphDiagnostics": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "sourceGraphDigest": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "targets": {
+      "items": {
+        "$ref": "#/$defs/InspectionTargetResolution"
+      },
+      "type": "array"
+    },
+    "toolVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "toolVersion",
+    "repository",
+    "sourceGraphDiagnostics",
+    "inventoryDigests",
+    "depth",
+    "maxNodes",
+    "direction",
+    "graphDigest",
+    "pageOffset",
+    "remainingNodes",
+    "omitted",
+    "targets",
+    "nodes",
+    "edges"
+  ],
+  "title": "HttpInspectionReport",
+  "type": "object"
+}
