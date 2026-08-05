@@ -21,16 +21,17 @@ use crate::fuzz::{
 };
 use crate::http::{
     HttpBaselineReport, HttpCheckReport, HttpDiffReport, HttpFuzzReport, HttpFuzzWorkload,
-    HttpInventoryReport, HTTP_API_VERSION, HTTP_BASELINE_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION,
-    HTTP_FUZZ_API_VERSION, HTTP_FUZZ_SCHEMA_VERSION, HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION,
-    HTTP_SCHEMA_VERSION,
+    HttpInventoryReport, HttpUsageReport, HTTP_API_VERSION, HTTP_BASELINE_API_VERSION,
+    HTTP_BASELINE_SCHEMA_VERSION, HTTP_FUZZ_API_VERSION, HTTP_FUZZ_SCHEMA_VERSION,
+    HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION, HTTP_SCHEMA_VERSION, HTTP_USAGE_SCHEMA_VERSION,
 };
 use crate::lexicon::{LexiconReport, LEXICON_SCHEMA_VERSION};
 use crate::postgres::{
     PostgresBaselineReport, PostgresCheckReport, PostgresDiffReport, PostgresInventoryReport,
-    PostgresTestReport, POSTGRES_API_VERSION, POSTGRES_BASELINE_API_VERSION,
+    PostgresTestReport, PostgresUsageReport, POSTGRES_API_VERSION, POSTGRES_BASELINE_API_VERSION,
     POSTGRES_BASELINE_SCHEMA_VERSION, POSTGRES_DIFF_API_VERSION, POSTGRES_DIFF_SCHEMA_VERSION,
     POSTGRES_SCHEMA_VERSION, POSTGRES_TEST_API_VERSION, POSTGRES_TEST_SCHEMA_VERSION,
+    POSTGRES_USAGE_SCHEMA_VERSION,
 };
 use crate::testing::{
     TestingImpactReport, TestingInventoryReport, TestingWitnessReport,
@@ -341,6 +342,18 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         "codeatlas-http-fuzz-workload-v2.schema.json",
         "http",
         generate_schema::<HttpFuzzWorkload>,
+    ),
+    PublishedSchema::new_artifact(
+        HTTP_USAGE_SCHEMA_VERSION,
+        "codeatlas-http-usage-v1.schema.json",
+        "http::usage",
+        generate_schema::<HttpUsageReport>,
+    ),
+    PublishedSchema::new_artifact(
+        POSTGRES_USAGE_SCHEMA_VERSION,
+        "codeatlas-postgres-usage-v1.schema.json",
+        "postgres::usage",
+        generate_schema::<PostgresUsageReport>,
     ),
     PublishedSchema::new(
         "codeatlas.scan/v4",

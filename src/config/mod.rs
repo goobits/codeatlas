@@ -33,7 +33,7 @@ pub(crate) use postgres::{
     PostgresQueryPolicyConfig, PostgresSqlSourceConfig, PostgresTargetConfig,
     PostgresTransactionMode,
 };
-pub(crate) use repository::RepositoryScope;
+pub(crate) use repository::{RepositoryMember, RepositoryScope, RepositoryScopeEvidence};
 pub(crate) use semantic_siblings::{
     ResolvedSemanticSiblingComparisonSet, ResolvedSemanticSiblingPath, SemanticSiblingPathKind,
 };

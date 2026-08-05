@@ -324,14 +324,37 @@ change in `tasks/check-self.js`.
 
 ## Phase 2: HTTP and PostgreSQL usage evidence
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +650-950 / -80-160
+LOC: +2,231 / -49 product and tests, plus 786 generated schema lines
 
 Verify: Known route callers/tests and known query object touches resolve to
 exact source evidence; external HTTP and dynamic SQL incompleteness remain
 visible; no report uses `unused` without complete evidence; no target or live
 database call occurs; repeated output is byte-identical.
+
+Completion checkpoint (2026-08-05): `usage http` and `usage postgres` now
+consume one resolved `RepositoryScope` and emit the registered
+`codeatlas.http-usage/v1` and `codeatlas.postgres-usage/v1` artifacts. HTTP
+loads only local OpenAPI files, never invokes command/URL/target providers,
+joins semantic handler references with contextual static route literals, and
+retains unmatched external declarations when an incomplete inventory cannot
+validate them. Self-dogfood caught and removed a false-positive path where the
+root route matched every unrelated `"/"` literal. PostgreSQL reuses the one SQL
+lexer, extracts only statically supported schema definitions, keeps DDL from
+counting as usage, and never resolves a configured live target.
+
+The acceptance fixture proves byte-identical repeat runs, exact caller/test and
+query-touch evidence, provider and database zero-call behavior, visible
+dynamic/catalog/external incompleteness, no false `unused_*` vocabulary, and
+strict rejection of unknown external operations only when the local inventory
+is complete. The published-schema updater changed exactly the two new schema
+files. Full `pnpm check` passed 403 Rust unit tests, 37 Rust integration tests,
+15 Node tests, architecture-spec drift, formatting, warning-denying all-target
+Clippy, the standard self-audit, and package assembly. Final HTTP self-dogfood
+reported three discovered operations with byte-identical repeated output; the
+PostgreSQL self-report truthfully contained no members because this repository
+declares no PostgreSQL contract.
 
 ```text
 + src/http/usage.rs
@@ -465,7 +488,10 @@ and reference documentation are new product evidence. It must not be higher
 because code, HTTP, and PostgreSQL retain separate workspace discovery, config
 editing, pagination, or term-normalization mechanics.
 
-Total LOC: +3,400-5,250 / -840-1,590
+Measured through Phase 2: +3,535 / -577 product and test lines, plus 786
+generated schema lines. Remaining forecast: +2,300-3,600 / -580-1,130.
+Projected total: +5,835-7,135 / -1,157-1,707 product and test lines, plus
+generated schemas required by final public report shapes.
 
 ## Layman's wins
 

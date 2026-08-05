@@ -1,7 +1,6 @@
 use super::{
-    compile_subject, configured_subjects, display_node, repository_path, DeclaredTestWitness,
-    DetachedTestContext, ObservedTestWitness, PublicApiTestWitness, TestWitnessStatus,
-    TestingWitnessReport,
+    compile_subject, configured_subjects, display_node, DeclaredTestWitness, DetachedTestContext,
+    ObservedTestWitness, PublicApiTestWitness, TestWitnessStatus, TestingWitnessReport,
 };
 use crate::analysis::reachability::{render_diagnostics, symbol_confidence, Reachability};
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
@@ -93,7 +92,7 @@ pub(crate) fn analyze(
         report.public_api.push(PublicApiTestWitness {
             node_id: node_id.clone(),
             project: symbol.project.0.clone(),
-            path: repository_path(
+            path: crate::paths::repository_path(
                 graph
                     .projects
                     .get(&symbol.project)

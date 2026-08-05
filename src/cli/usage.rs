@@ -1,6 +1,7 @@
 use crate::commands;
 use crate::commands::dead_code::DeadCodeFormat;
 use crate::commands::testing::TestingFormat;
+use crate::commands::UsageFormat;
 use clap::{Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
 
@@ -36,6 +37,28 @@ pub(super) enum UsageSubject {
         /// Render only findings eligible for the code check
         #[arg(long)]
         gates_only: bool,
+    },
+    /// Report known repository consumers of HTTP operations
+    Http {
+        #[command(flatten)]
+        repository: RepositoryScopeArgs,
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = UsageFormat::Text)]
+        format: UsageFormat,
+        /// Write the advisory report to a file instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
+    /// Report known static query touches of PostgreSQL objects
+    Postgres {
+        #[command(flatten)]
+        repository: RepositoryScopeArgs,
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = UsageFormat::Text)]
+        format: UsageFormat,
+        /// Write the advisory report to a file instead of stdout
+        #[arg(short, long)]
+        out: Option<PathBuf>,
     },
     /// Select tests affected by repository-relative changed paths
     Tests {
@@ -99,6 +122,28 @@ impl UsageSubject {
             } => commands::testing::run_impact(
                 root,
                 &changed,
+                repository.workspace,
+                format,
+                out.as_deref(),
+                config,
+            ),
+            Self::Http {
+                repository,
+                format,
+                out,
+            } => commands::http::run_usage(
+                root,
+                repository.workspace,
+                format,
+                out.as_deref(),
+                config,
+            ),
+            Self::Postgres {
+                repository,
+                format,
+                out,
+            } => commands::postgres::run_usage(
+                root,
                 repository.workspace,
                 format,
                 out.as_deref(),

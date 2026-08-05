@@ -4,13 +4,37 @@ use super::analysis::{
 };
 use super::ProjectConfig;
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum RepositoryDiscoveryKind {
     Project,
     PnpmWorkspace,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RepositoryScopeEvidence {
+    pub selected_root: String,
+    pub discovery: RepositoryDiscoveryKind,
+    pub complete: bool,
+    pub diagnostics: Vec<String>,
+    pub members: Vec<RepositoryMemberEvidence>,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RepositoryMemberEvidence {
+    pub id: String,
+    pub root: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_path: Option<String>,
+    pub config_digest: String,
+    pub http_contracts: Vec<String>,
+    pub postgres_contracts: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -303,6 +327,34 @@ impl RepositoryScope {
             project.require_complete = false;
         }
         projects
+    }
+
+    pub(crate) fn evidence(&self) -> RepositoryScopeEvidence {
+        let selected_root = crate::paths::normalize_relative_path(&self.root, &self.workspace_root);
+        RepositoryScopeEvidence {
+            selected_root: if selected_root.is_empty() {
+                ".".to_string()
+            } else {
+                selected_root
+            },
+            discovery: self.discovery_kind,
+            complete: self.discovery_complete,
+            diagnostics: self.diagnostics.clone(),
+            members: self
+                .members
+                .iter()
+                .map(|member| RepositoryMemberEvidence {
+                    id: member.id.0.clone(),
+                    root: member.report_root.clone(),
+                    config_path: member.config_path.as_ref().map(|path| {
+                        crate::paths::normalize_relative_path(path, &self.workspace_root)
+                    }),
+                    config_digest: member.config_digest.clone(),
+                    http_contracts: member.http_contracts.clone(),
+                    postgres_contracts: member.postgres_contracts.clone(),
+                })
+                .collect(),
+        }
     }
 }
 

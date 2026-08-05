@@ -1,8 +1,8 @@
 use super::inventory::scripts_for_project;
 use super::{
-    compile_subject, configured_subjects, display_node, repository_path, ChangedPathImpact,
-    ChangedPathResolution, ImpactedTestContext, ImpactedTestProject, TestImpactEvidence,
-    TestImpactEvidenceKind, TestingImpactReport,
+    compile_subject, configured_subjects, display_node, ChangedPathImpact, ChangedPathResolution,
+    ImpactedTestContext, ImpactedTestProject, TestImpactEvidence, TestImpactEvidenceKind,
+    TestingImpactReport,
 };
 use crate::analysis::reachability::{project_confidence, render_diagnostics, Reachability};
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
@@ -330,10 +330,9 @@ fn resolve_files(graph: &SourceGraph, path: &str) -> BTreeSet<NodeId> {
         .iter()
         .filter_map(|(id, node)| match node {
             SourceNode::File(file)
-                if graph
-                    .projects
-                    .get(&file.project)
-                    .is_some_and(|project| repository_path(&project.root, &file.path) == path) =>
+                if graph.projects.get(&file.project).is_some_and(|project| {
+                    crate::paths::repository_path(&project.root, &file.path) == path
+                }) =>
             {
                 Some(id.clone())
             }

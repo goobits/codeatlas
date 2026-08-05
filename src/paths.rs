@@ -48,6 +48,17 @@ pub(crate) fn normalize_path(path: &Path) -> String {
     parts.join("/")
 }
 
+pub(crate) fn repository_path(project_root: &str, file_path: &str) -> String {
+    let root = project_root.trim_matches('/');
+    if root.is_empty() || root == "." {
+        file_path.to_string()
+    } else if file_path.is_empty() {
+        root.to_string()
+    } else {
+        format!("{root}/{file_path}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,5 +89,15 @@ mod tests {
         let root = Path::new("/root");
         let path = Path::new("/root/src/runtime/../addMedia/file.ts");
         assert_eq!(normalize_relative_path(path, root), "src/addMedia/file.ts");
+    }
+
+    #[test]
+    fn repository_path_has_one_owner_for_root_and_member_evidence() {
+        assert_eq!(repository_path(".", "src/lib.rs"), "src/lib.rs");
+        assert_eq!(
+            repository_path("packages/api", "src/lib.rs"),
+            "packages/api/src/lib.rs"
+        );
+        assert_eq!(repository_path("packages/api", ""), "packages/api");
     }
 }

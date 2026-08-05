@@ -75,7 +75,7 @@ fn resolve_files(
                     if project.is_none_or(|project| &file.project == project)
                         && if repository_relative {
                             graph.projects.get(&file.project).is_some_and(|project| {
-                                repository_path(&project.root, &file.path) == path
+                                crate::paths::repository_path(&project.root, &file.path) == path
                             })
                         } else {
                             file.path == path
@@ -110,13 +110,4 @@ fn resolve_files(
         );
     }
     Ok(project_matches)
-}
-
-fn repository_path(project_root: &str, file_path: &str) -> String {
-    let root = project_root.trim_matches('/');
-    if root.is_empty() || root == "." {
-        file_path.to_string()
-    } else {
-        format!("{root}/{file_path}")
-    }
 }

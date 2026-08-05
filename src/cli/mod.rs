@@ -168,6 +168,8 @@ mod tests {
                 "2026-08-04T00:00:00Z",
             ],
             vec!["codeatlas", "usage", "code"],
+            vec!["codeatlas", "usage", "http", "--format", "json"],
+            vec!["codeatlas", "usage", "postgres", "--workspace"],
             vec!["codeatlas", "usage", "tests", "--changed", "src/lib.rs"],
             vec!["codeatlas", "inspect", "code", "src/lib.rs#run"],
             vec!["codeatlas", "lexicon", "code"],

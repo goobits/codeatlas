@@ -1,5 +1,5 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum Token {
+pub(in crate::postgres) enum Token {
     Identifier(String),
     Parameter(u32),
     Literal,
@@ -7,12 +7,12 @@ pub(super) enum Token {
     Operator(String),
 }
 
-pub(super) struct LexedSql {
-    pub(super) tokens: Vec<Token>,
-    pub(super) complete: bool,
+pub(in crate::postgres) struct LexedSql {
+    pub(in crate::postgres) tokens: Vec<Token>,
+    pub(in crate::postgres) complete: bool,
 }
 
-pub(super) fn lex_sql(sql: &str) -> LexedSql {
+pub(in crate::postgres) fn lex_sql(sql: &str) -> LexedSql {
     let bytes = sql.as_bytes();
     let mut tokens = Vec::new();
     let mut index = 0;
@@ -198,7 +198,10 @@ pub(super) fn trim_statement(tokens: &mut Vec<Token>) -> bool {
     tokens.iter().any(|token| token == &Token::Symbol(';'))
 }
 
-pub(super) fn qualified_identifier(tokens: &[Token], start: usize) -> Option<(Vec<String>, usize)> {
+pub(in crate::postgres) fn qualified_identifier(
+    tokens: &[Token],
+    start: usize,
+) -> Option<(Vec<String>, usize)> {
     let mut parts = vec![identifier(tokens.get(start))?.to_string()];
     let mut index = start + 1;
     while tokens.get(index) == Some(&Token::Symbol('.')) {
@@ -220,7 +223,7 @@ pub(super) fn qualified_identifier_backwards(tokens: &[Token], end: usize) -> Op
     Some(parts)
 }
 
-pub(super) fn identifier(token: Option<&Token>) -> Option<&str> {
+pub(in crate::postgres) fn identifier(token: Option<&Token>) -> Option<&str> {
     match token? {
         Token::Identifier(identifier) => Some(identifier),
         _ => None,
@@ -260,7 +263,7 @@ pub(super) fn has_word(tokens: &[Token], expected: &str) -> bool {
         .any(|token| identifier(Some(token)) == Some(expected))
 }
 
-pub(super) fn parenthesized_segments(
+pub(in crate::postgres) fn parenthesized_segments(
     tokens: &[Token],
     open: usize,
 ) -> Option<(Vec<Vec<Token>>, usize)> {

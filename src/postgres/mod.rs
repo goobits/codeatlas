@@ -3,12 +3,14 @@ mod lint;
 mod model;
 mod source;
 mod target;
+mod usage;
 
 use crate::config::ProjectConfig;
 use anyhow::Result;
 use std::path::Path;
 
 pub(crate) use diff::compare;
+pub(crate) use model::PostgresObjectKind;
 pub(crate) use model::{
     PostgresBaselineReport, POSTGRES_BASELINE_API_VERSION, POSTGRES_BASELINE_SCHEMA_VERSION,
 };
@@ -18,6 +20,11 @@ pub(crate) use model::{
     PostgresDiffReport, POSTGRES_API_VERSION, POSTGRES_DIFF_API_VERSION,
     POSTGRES_DIFF_SCHEMA_VERSION, POSTGRES_SCHEMA_VERSION, POSTGRES_TEST_API_VERSION,
     POSTGRES_TEST_SCHEMA_VERSION,
+};
+#[cfg(test)]
+pub(crate) use usage::POSTGRES_USAGE_SCHEMA_VERSION;
+pub(crate) use usage::{
+    analyze as usage, PostgresUsageClassification, PostgresUsageObjectIdentity, PostgresUsageReport,
 };
 
 pub(crate) fn proposed_config(project: &ProjectConfig) -> Result<crate::config::PostgresConfig> {

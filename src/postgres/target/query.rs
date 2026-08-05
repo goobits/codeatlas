@@ -1,5 +1,5 @@
 mod classification;
-mod lexer;
+pub(in crate::postgres) mod lexer;
 mod shape;
 
 use self::classification::{

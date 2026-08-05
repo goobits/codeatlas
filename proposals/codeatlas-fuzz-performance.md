@@ -903,9 +903,9 @@ Active child: subject evidence parity Phases 2 through 4.
 
 - [ ] Implement truthful `init code` and `init http` proposals without URLs,
   secrets, execution targets, completeness claims, or effect policy.
-- [ ] Implement `usage http` as known repository consumer evidence with
+- [x] Implement `usage http` as known repository consumer evidence with
   visible external/dynamic incompleteness and no `unused_route` claim.
-- [ ] Implement `usage postgres` as known static query touches with visible
+- [x] Implement `usage postgres` as known static query touches with visible
   dynamic/catalog incompleteness and no `unused_table` or `unused_column`
   claim.
 - [ ] Render deterministic sourced HTTP and PostgreSQL Markdown/HTML docs,
@@ -1288,10 +1288,12 @@ baseline/diff pass.
 
 ## Program stage 9: HTTP and PostgreSQL evidence parity
 
-Status: [ ] Accepted; repository-scope Phase 1 is ready, later reports wait for
-callable, PostgreSQL, and observation identities
+Status: [~] Accepted; repository-scope Phase 1, static callable/query
+identities, and HTTP/PostgreSQL usage evidence are complete; truthful docs and
+generalized initialization are next while observation-backed enrichment
+remains deferred
 
-LOC: +3,400-5,250 / -840-1,590
+LOC: +5,835-7,135 / -1,157-1,707 product and tests, plus generated schemas
 
 Verify: One repository scope feeds code/HTTP/PostgreSQL; route and database
 usage claims expose completeness; docs contain only sourced facts; exact

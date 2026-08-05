@@ -14,6 +14,7 @@ pub(crate) struct HttpConfig {
 pub(crate) struct HttpContractConfig {
     pub id: String,
     pub openapi: Option<HttpOpenApiSourceConfig>,
+    pub external_operations: Vec<String>,
     pub source_roots: Vec<PathBuf>,
     pub source_complete: bool,
     pub source_include_paths: Vec<String>,

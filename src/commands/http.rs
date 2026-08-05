@@ -1,4 +1,4 @@
-use super::{exit_code, load_project, output};
+use super::{exit_code, load_project, output, UsageFormat};
 use crate::http::{
     HttpBaselineReport, HttpChangeKind, HttpCheckReport, HttpDiffReport, HttpInventoryReport,
     HTTP_BASELINE_API_VERSION,
@@ -56,6 +56,16 @@ pub(crate) fn run_diff(
     exit_code(diff(baseline, path, openapi, out, config_path))
 }
 
+pub(crate) fn run_usage(
+    path: &Path,
+    workspace: bool,
+    format: UsageFormat,
+    out: Option<&Path>,
+    config_path: Option<&Path>,
+) -> i32 {
+    exit_code(usage(path, workspace, format, out, config_path))
+}
+
 fn inventory(
     path: &Path,
     openapi: &[PathBuf],
@@ -69,6 +79,24 @@ fn inventory(
         HttpInventoryFormat::HqaInventory => outputs::hqa_inventory::render(&report)?,
     };
     output::write_text_or_print(&rendered, out, "HTTP inventory")?;
+    Ok(0)
+}
+
+fn usage(
+    path: &Path,
+    workspace: bool,
+    format: UsageFormat,
+    out: Option<&Path>,
+    config_path: Option<&Path>,
+) -> Result<i32> {
+    let project = load_project(path, config_path)?;
+    let scope = crate::config::RepositoryScope::resolve(&project, workspace)?;
+    let report = http::usage(&scope)?;
+    let rendered = match format {
+        UsageFormat::Text => outputs::usage::render_http(&report),
+        UsageFormat::Json => output::render_json(&report)?,
+    };
+    output::write_text_or_print(&rendered, out, "HTTP usage report")?;
     Ok(0)
 }
 

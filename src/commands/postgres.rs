@@ -1,4 +1,4 @@
-use super::{exit_code, load_project, output};
+use super::{exit_code, load_project, output, UsageFormat};
 use crate::config::{ConfigEdit, ConfigSubject};
 use crate::postgres;
 use anyhow::Result;
@@ -42,10 +42,38 @@ pub(crate) fn run_diff(baseline: &Path, options: &PostgresLiveOptions<'_>) -> i3
     exit_code(diff(baseline, options))
 }
 
+pub(crate) fn run_usage(
+    path: &Path,
+    workspace: bool,
+    format: UsageFormat,
+    out: Option<&Path>,
+    config_path: Option<&Path>,
+) -> i32 {
+    exit_code(usage(path, workspace, format, out, config_path))
+}
+
 fn inventory(path: &Path, out: Option<&Path>, config_path: Option<&Path>) -> Result<i32> {
     let project = load_project(path, config_path)?;
     let report = postgres::inventory(&project)?;
     output::write_or_print(&report, out, "PostgreSQL inventory")?;
+    Ok(0)
+}
+
+fn usage(
+    path: &Path,
+    workspace: bool,
+    format: UsageFormat,
+    out: Option<&Path>,
+    config_path: Option<&Path>,
+) -> Result<i32> {
+    let project = load_project(path, config_path)?;
+    let scope = crate::config::RepositoryScope::resolve(&project, workspace)?;
+    let report = postgres::usage(&scope)?;
+    let rendered = match format {
+        UsageFormat::Text => crate::outputs::usage::render_postgres(&report),
+        UsageFormat::Json => output::render_json(&report)?,
+    };
+    output::write_text_or_print(&rendered, out, "PostgreSQL usage report")?;
     Ok(0)
 }
 

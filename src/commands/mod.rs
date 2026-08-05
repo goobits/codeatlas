@@ -36,6 +36,15 @@ pub(crate) enum ScanScope {
     Source,
 }
 
+#[derive(Copy, Clone, Default, PartialEq, Eq, ValueEnum)]
+pub(crate) enum UsageFormat {
+    /// Human-readable advisory summary
+    #[default]
+    Text,
+    /// Stable schema-versioned JSON
+    Json,
+}
+
 pub(crate) fn run_scan(
     path: &Path,
     format: OutputFormat,

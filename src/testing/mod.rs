@@ -40,7 +40,7 @@ fn compile_subject(pattern: &str, owner: &str) -> Result<GlobMatcher> {
 
 fn display_node(graph: &SourceGraph, node: &NodeId) -> String {
     match graph.nodes.get(node) {
-        Some(SourceNode::File(file)) => repository_path(
+        Some(SourceNode::File(file)) => crate::paths::repository_path(
             graph
                 .projects
                 .get(&file.project)
@@ -52,7 +52,7 @@ fn display_node(graph: &SourceGraph, node: &NodeId) -> String {
                 .nodes
                 .get(&symbol.file)
                 .and_then(|node| match node {
-                    SourceNode::File(file) => Some(repository_path(
+                    SourceNode::File(file) => Some(crate::paths::repository_path(
                         graph
                             .projects
                             .get(&file.project)
@@ -65,14 +65,5 @@ fn display_node(graph: &SourceGraph, node: &NodeId) -> String {
             format!("{path}#{}", symbol.name)
         }
         None => node.0.clone(),
-    }
-}
-
-fn repository_path(project_root: &str, file_path: &str) -> String {
-    let root = project_root.trim_matches('/');
-    if root.is_empty() || root == "." {
-        file_path.to_string()
-    } else {
-        format!("{root}/{file_path}")
     }
 }

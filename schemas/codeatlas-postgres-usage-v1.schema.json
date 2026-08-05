@@ -1,0 +1,442 @@
+{
+  "$defs": {
+    "PostgresContractUsage": {
+      "additionalProperties": false,
+      "properties": {
+        "completeness": {
+          "$ref": "#/$defs/PostgresUsageCompleteness"
+        },
+        "id": {
+          "type": "string"
+        },
+        "objects": {
+          "items": {
+            "$ref": "#/$defs/PostgresUsageObject"
+          },
+          "type": "array"
+        },
+        "queries": {
+          "items": {
+            "$ref": "#/$defs/PostgresUsageQuery"
+          },
+          "type": "array"
+        },
+        "touches": {
+          "items": {
+            "$ref": "#/$defs/PostgresQueryTouch"
+          },
+          "type": "array"
+        },
+        "unresolvedReferences": {
+          "items": {
+            "$ref": "#/$defs/PostgresUnresolvedReference"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "completeness",
+        "objects",
+        "queries",
+        "touches",
+        "unresolvedReferences"
+      ],
+      "type": "object"
+    },
+    "PostgresEvidence": {
+      "properties": {
+        "column": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line"
+      ],
+      "type": "object"
+    },
+    "PostgresObjectDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/PostgresEvidence"
+        },
+        "sourceKind": {
+          "$ref": "#/$defs/PostgresSchemaSourceKind"
+        },
+        "sourceName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceKind",
+        "sourceName",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "PostgresObjectKind": {
+      "enum": [
+        "table",
+        "column"
+      ],
+      "type": "string"
+    },
+    "PostgresQueryTouch": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/PostgresEvidence"
+        },
+        "object": {
+          "$ref": "#/$defs/PostgresUsageObjectIdentity"
+        },
+        "objectContract": {
+          "type": "string"
+        },
+        "queryId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "queryId",
+        "objectContract",
+        "object",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "PostgresReferenceResolution": {
+      "enum": [
+        "ambiguous_static_definition",
+        "no_static_definition"
+      ],
+      "type": "string"
+    },
+    "PostgresSchemaSourceKind": {
+      "enum": [
+        "bootstrap",
+        "migration"
+      ],
+      "type": "string"
+    },
+    "PostgresStatementClass": {
+      "enum": [
+        "select",
+        "insert",
+        "update",
+        "delete",
+        "data_definition",
+        "transaction_control",
+        "privilege",
+        "administrative",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "PostgresUnresolvedReference": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/PostgresEvidence"
+        },
+        "queryId": {
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/PostgresReferenceResolution"
+        },
+        "reference": {
+          "$ref": "#/$defs/PostgresUsageObjectIdentity"
+        }
+      },
+      "required": [
+        "queryId",
+        "reference",
+        "reason",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "PostgresUsageClassification": {
+      "enum": [
+        "known_static_query_touch",
+        "no_known_static_query_touch"
+      ],
+      "type": "string"
+    },
+    "PostgresUsageCompleteness": {
+      "additionalProperties": false,
+      "properties": {
+        "dynamicQueries": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "liveCatalogObservable": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sourceQueriesComplete": {
+          "type": "boolean"
+        },
+        "staticSchemaComplete": {
+          "type": "boolean"
+        },
+        "staticTouchesComplete": {
+          "type": "boolean"
+        },
+        "unresolvedReferences": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sourceQueriesComplete",
+        "staticSchemaComplete",
+        "staticTouchesComplete",
+        "liveCatalogObservable",
+        "dynamicQueries",
+        "unresolvedReferences",
+        "reasons"
+      ],
+      "type": "object"
+    },
+    "PostgresUsageMember": {
+      "additionalProperties": false,
+      "properties": {
+        "configDigest": {
+          "type": "string"
+        },
+        "contracts": {
+          "items": {
+            "$ref": "#/$defs/PostgresContractUsage"
+          },
+          "type": "array"
+        },
+        "inventoryDigest": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "project",
+        "root",
+        "configDigest",
+        "inventoryDigest",
+        "contracts"
+      ],
+      "type": "object"
+    },
+    "PostgresUsageObject": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/PostgresUsageClassification"
+        },
+        "definitions": {
+          "items": {
+            "$ref": "#/$defs/PostgresObjectDefinition"
+          },
+          "type": "array"
+        },
+        "object": {
+          "$ref": "#/$defs/PostgresUsageObjectIdentity"
+        }
+      },
+      "required": [
+        "object",
+        "classification",
+        "definitions"
+      ],
+      "type": "object"
+    },
+    "PostgresUsageObjectIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/PostgresObjectKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "relation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "type": "object"
+    },
+    "PostgresUsageQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "dynamic": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "$ref": "#/$defs/PostgresEvidence"
+        },
+        "id": {
+          "type": "string"
+        },
+        "statementClass": {
+          "$ref": "#/$defs/PostgresStatementClass"
+        }
+      },
+      "required": [
+        "id",
+        "statementClass",
+        "dynamic",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "RepositoryDiscoveryKind": {
+      "enum": [
+        "project",
+        "pnpm_workspace"
+      ],
+      "type": "string"
+    },
+    "RepositoryMemberEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "configDigest": {
+          "type": "string"
+        },
+        "configPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "httpContracts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "postgresContracts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "root",
+        "configDigest",
+        "httpContracts",
+        "postgresContracts"
+      ],
+      "type": "object"
+    },
+    "RepositoryScopeEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "diagnostics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "discovery": {
+          "$ref": "#/$defs/RepositoryDiscoveryKind"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/$defs/RepositoryMemberEvidence"
+          },
+          "type": "array"
+        },
+        "selectedRoot": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selectedRoot",
+        "discovery",
+        "complete",
+        "diagnostics",
+        "members"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "codeatlas.postgres-usage/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "members": {
+      "items": {
+        "$ref": "#/$defs/PostgresUsageMember"
+      },
+      "type": "array"
+    },
+    "repository": {
+      "$ref": "#/$defs/RepositoryScopeEvidence"
+    },
+    "schemaVersion": {
+      "const": "codeatlas.postgres-usage/v1",
+      "type": "string"
+    },
+    "toolVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "toolVersion",
+    "repository",
+    "members"
+  ],
+  "title": "PostgresUsageReport",
+  "type": "object"
+}

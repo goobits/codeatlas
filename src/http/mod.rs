@@ -30,6 +30,7 @@ mod target;
     reason = "Phase 2 disconnects direct HTTP execution; Phase 5 reconnects source-transport execution"
 )]
 mod transport_schema;
+mod usage;
 
 use self::target::ResolvedHttpContract;
 use anyhow::Result;
@@ -54,14 +55,38 @@ pub(crate) use schemathesis::{fingerprint_engine, Contract as FuzzContract};
 pub(crate) use target::{
     ResolvedHttpFuzzOperationSelection, ResolvedHttpFuzzTarget, ResolvedHttpOpenApiSource,
 };
+#[cfg(test)]
+pub(crate) use usage::HTTP_USAGE_SCHEMA_VERSION;
+pub(crate) use usage::{analyze as usage, HttpUsageClassification, HttpUsageReport};
+
+#[derive(Clone, Copy)]
+enum InventoryProviderAccess {
+    Configured,
+    LocalFilesOnly,
+}
 
 pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInventoryReport> {
+    inventory_with_provider_access(contracts, InventoryProviderAccess::Configured)
+}
+
+fn inventory_local_files(contracts: &[ResolvedHttpContract]) -> Result<HttpInventoryReport> {
+    inventory_with_provider_access(contracts, InventoryProviderAccess::LocalFilesOnly)
+}
+
+fn inventory_with_provider_access(
+    contracts: &[ResolvedHttpContract],
+    access: InventoryProviderAccess,
+) -> Result<HttpInventoryReport> {
     let mut inventories = Vec::with_capacity(contracts.len());
     for contract in contracts {
         let openapi = contract
             .openapi
             .as_ref()
             .zip(contract.openapi_display.as_deref())
+            .filter(|(source, _)| {
+                matches!(access, InventoryProviderAccess::Configured)
+                    || matches!(source, ResolvedHttpOpenApiSource::File(_))
+            })
             .map(|(source, display)| provider::load(source, display))
             .transpose()?;
         let mut source = source::inventory(
