@@ -16,7 +16,11 @@ const inspectedCallable = {
 	effectSource:
 		'symbol/file~1default~1src~01filesystem.rs/rs:src~1filesystem.rs:fn#replace_file'
 }
-const semanticSiblingSetIds = ['http_source_detectors', 'language_adapters']
+const semanticSiblingSetIds = [
+	'http_source_detectors',
+	'language_adapters',
+	'repository_term_adapters'
+]
 const semanticSiblingCounterevidenceKinds = [
 	'conflicting_or_unknown_effects',
 	'different_authority_or_security_boundaries',
@@ -103,6 +107,25 @@ const summarize = (id, report) => {
 		}
 		case 'lexicon-code':
 			return report.stats ?? {}
+		case 'lexicon-repository':
+			return {
+				terms: report.terms?.length ?? 0,
+				relationships: report.relationships?.length ?? 0,
+				subjects: Object.fromEntries(
+					(report.subjects ?? []).map((subject) => [
+						subject.subject,
+						{
+							evidence: subject.evidenceCount ?? 0,
+							complete: subject.completeness?.complete ?? false
+						}
+					])
+				),
+				omittedRelationshipEvidence:
+					report.relationships?.reduce(
+						(total, relationship) => total + (relationship.omittedEvidence ?? 0),
+						0
+					) ?? 0
+			}
 		case 'tests-inventory':
 			return {
 				projects: report.projects?.length ?? 0,
@@ -208,6 +231,33 @@ const validateSemanticSiblings = (report) => {
 	return [...new Set(failures)]
 }
 
+const validateRepositoryLexicon = (report) => {
+	const failures = []
+	const subjects = (report.subjects ?? []).map((subject) => subject.subject)
+	if (JSON.stringify(subjects) !== JSON.stringify(['code', 'http', 'postgres'])) {
+		failures.push(`resolved unexpected repository lexicon subjects ${JSON.stringify(subjects)}`)
+	}
+	for (const relationship of report.relationships ?? []) {
+		const retained = relationship.evidence?.length ?? 0
+		if (relationship.claim !== 'related_evidence') {
+			failures.push(`relationship ${relationship.id ?? '<missing>'} asserted ${relationship.claim}`)
+		}
+		if (retained > 128) {
+			failures.push(`relationship ${relationship.id ?? '<missing>'} exceeded its evidence bound`)
+		}
+		if (relationship.evidenceCount !== retained + (relationship.omittedEvidence ?? 0)) {
+			failures.push(
+				`relationship ${relationship.id ?? '<missing>'} retained/omitted counts disagree`
+			)
+		}
+	}
+	const serialized = JSON.stringify(report)
+	if (serialized.includes('semanticEquivalence') || serialized.includes('semantic_equivalence')) {
+		failures.push('repository relationships exposed forbidden semantic-equivalence state')
+	}
+	return failures
+}
+
 const writePrivate = (destination, content) => {
 	fs.writeFileSync(destination, content, { mode: 0o600 })
 	fs.chmodSync(destination, 0o600)
@@ -273,6 +323,12 @@ try {
 			args: ['lexicon', 'code', '--format', 'json'],
 			validate: validateSemanticSiblings
 		},
+		{
+			id: 'lexicon-repository',
+			args: ['lexicon', 'repository', '--format', 'json'],
+			schemaVersion: 'codeatlas.repository-lexicon/v1',
+			validate: validateRepositoryLexicon
+		},
 		{ id: 'tests-inventory', args: ['scan', 'tests', '--format', 'json'] },
 		{
 			id: 'tests-witnesses',
@@ -299,7 +355,12 @@ try {
 			failures.push(`${descriptor.id} did not emit valid JSON: ${error.message}`)
 			continue
 		}
-		if (!Number.isInteger(report.schema_version)) {
+		const schemaVersion = descriptor.schemaVersion ? report.schemaVersion : report.schema_version
+		if (descriptor.schemaVersion) {
+			if (report.schemaVersion !== descriptor.schemaVersion) {
+				failures.push(`${descriptor.id} omitted schema ${descriptor.schemaVersion}`)
+			}
+		} else if (!Number.isInteger(report.schema_version)) {
 			failures.push(`${descriptor.id} omitted an integer schema_version`)
 		}
 		for (const failure of descriptor.validate?.(report) ?? []) {
@@ -318,7 +379,7 @@ try {
 			exitCode: result.status ?? 1,
 			reportBytes: stdoutBytes,
 			diagnosticBytes: stderrBytes,
-			schemaVersion: report.schema_version,
+			schemaVersion,
 			summary
 		})
 		console.log(`${descriptor.id}: ${JSON.stringify(summary)}`)

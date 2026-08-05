@@ -315,7 +315,11 @@ mod tests {
                 .iter()
                 .map(|set| set.id.as_str())
                 .collect::<Vec<_>>(),
-            ["http_source_detectors", "language_adapters"]
+            [
+                "http_source_detectors",
+                "language_adapters",
+                "repository_term_adapters",
+            ]
         );
     }
 

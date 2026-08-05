@@ -1,8 +1,7 @@
 # HTTP and PostgreSQL evidence parity
 
-Status: Accepted follow-on; static Phases 1-5 are complete. Phase 6 release
-hardening is next; optional observation enrichment still waits for stable
-runtime artifact identities.
+Status: Accepted follow-on; static Phases 1-6 are complete. Optional
+observation enrichment still waits for stable runtime artifact identities.
 
 Decision scope: Repository scope, HTTP/PostgreSQL usage and inspection,
 HTTP/PostgreSQL docs, truthful code/HTTP initialization, and cross-subject
@@ -634,9 +633,10 @@ and no checkout-local Cargo or Node state remained.
 
 ## Phase 6: Consolidation, docs, and release hardening
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +200-350 / -180-350
+LOC: +112 / -9 product configuration, tests, self-audit, and canonical public
+documentation (measured)
 
 Verify: Full required checks and dogfood pass; repository search finds no
 subject-private workspace parser, duplicate config insertion, parallel graph
@@ -644,19 +644,44 @@ paginator, hidden live docs/usage/inspect call, `unused_route`,
 `unused_table`, invented description, stale command matrix, compatibility
 alias, or generated checkout residue.
 
+Completion checkpoint (2026-08-05): repository searches and ownership review
+found one `RepositoryScope` owner, one strict config editor, one bounded graph
+projection/cursor owner, and one term-normalization owner. The static HTTP,
+PostgreSQL, inspection, documentation, usage, and lexicon paths contain no
+process, network, target, or database executor. Product output contains no
+false `unused_route`, `unused_table`, or `unused_column` label, no retired
+top-level command form, and no compatibility alias. Because the earlier phases
+had already consolidated the real mechanics, this phase did not manufacture
+deletions or a replacement abstraction merely to meet its forecast.
+
+The repository self-config now asks semantic-role-sibling analysis to compare
+the three repository-term adapters. It evaluated 50 nominations with the full
+counterevidence checklist, retained no review candidate, and reported six
+bounded omissions; the apparent HTTP/PostgreSQL member-term overlap remains
+properly divided between thin adapters and the existing shared term core. The
+expanded self-audit also validates the repository lexicon's exact subject set,
+namespaced schema, evidence bound, retained/omitted arithmetic, and
+evidence-only relationship claim.
+
+The final self-audit scanned 314 files, 3,273 symbols, and 2,786 callables;
+reported 338 advisory code findings with zero gates; analyzed three semantic
+sibling sets with 362 evaluations and zero review candidates; and emitted
+15,954 repository terms with one bounded cross-subject relationship. Focused
+fixture dogfood exercised seven HTTP operations and 21 PostgreSQL objects from
+13 queries, projected 10/55 HTTP/PostgreSQL nodes, rendered both references,
+and passed exact `--check`. The full `pnpm check` surface passed 415 Rust unit
+tests with two intentional ignores, every non-live integration suite, 15 Node
+tests, schema/spec drift, formatting, warning-denying all-target Clippy,
+self-audit, and package assembly. The public matrix matches executable help,
+and no checkout-local Cargo, Node, or temporary state remains.
+
 ```text
 ~ README.md
-~ AGENTS.md
-~ docs/concepts/lexicon.md
+~ codeatlas.json
+~ src/config/mod.rs
 ~ proposals/codeatlas-fuzz-performance.md
 ~ proposals/codeatlas-subject-evidence-parity.md
 ~ tasks/check-self.js
-~ tests/cli_contract.rs
-~ tests/repository_scope.rs
-~ tests/usage_http_postgres.rs
-~ tests/docs_http_postgres.rs
-~ tests/inspect_http_postgres.rs
-~ tests/lexicon_repository.rs
 ```
 
 The result is intentionally net higher because HTTP/PostgreSQL consumer graphs
@@ -664,10 +689,8 @@ and reference documentation are new product evidence. It must not be higher
 because code, HTTP, and PostgreSQL retain separate workspace discovery, config
 editing, pagination, or term-normalization mechanics.
 
-Measured through Phase 5: +12,043 / -1,459 product, test, and canonical-doc
-lines, plus 3,214 generated schema lines. Remaining Phase 6 forecast:
-+200-350 / -180-350. Projected total: +12,243-12,393 / -1,639-1,809 plus the
-generated schemas already required by the accepted report shapes.
+Measured through Phase 6: +12,155 / -1,468 product, test, configuration, and
+canonical-doc lines, plus 3,214 generated schema lines.
 
 ## Layman's wins
 

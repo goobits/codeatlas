@@ -494,10 +494,10 @@ not create another program roadmap or copy these tasks into a scratch document.
 For restart context, read this introduction, the current verdict, the order
 rules, and only the first incomplete phase plus its active child. Completed
 foundations and the verification log are audit history and do not need to be
-reloaded unless a claim is under review. The immediate plan-only-host queue is
-Phase 8A, then Phase 16. A newly available OCI capability preempts that static
-queue at Phase 9; after Phase 9, continue numerically through the execution
-track, Phase 16A, performance, cost search, and final signoff.
+reloaded unless a claim is under review. The immediate plan-only-host queue
+through Phase 16 is complete. Phase 9 is now the next continuation gate; after
+it passes, continue numerically through the execution track, Phase 16A,
+performance, cost search, and final signoff.
 
 ### Current verdict
 
@@ -510,11 +510,13 @@ PostgreSQL inspection graphs are also complete. One bounded projection owner
 now serves code, HTTP, and PostgreSQL without merging their graph semantics.
 The repository lexicon now relates bounded code, HTTP, and PostgreSQL naming
 evidence through the canonical concept policy without claiming semantic
-equivalence.
+equivalence. Subject-parity release hardening is complete: the public matrix,
+self-audit, domain fixture dogfood, one-owner consolidation searches, and
+generated-state audit all pass.
 The current host cannot grant a live OCI isolation capability, so execution
 remains plan-only here and Phase 9 retains the hard continuation gate. On
 implementation progress rather than proposal-design progress, the complete
-program is approximately 63 percent done. That estimate is weighted by the
+program is approximately 64 percent done. That estimate is weighted by the
 accepted implementation phases, not by raw checkbox count. One hundred percent
 means every remaining tracker item is either verified and checked here or
 removed through an accepted scope change; a child status line alone is not
@@ -996,11 +998,11 @@ Active child: subject evidence parity Phases 5 and 6.
   explicit policy or corroboration before semantic-equivalence claims.
 - [x] Publish the report/schema transition and preserve focused `lexicon code`
   behavior.
-- [ ] Search for subject-private workspace discovery, config insertion,
+- [x] Search for subject-private workspace discovery, config insertion,
   paginator, term normalization, hidden live calls, false unused labels,
   invented descriptions, and compatibility commands, then consolidate each
   real duplicate through its canonical owner.
-- [ ] Run full checks and code/HTTP/PostgreSQL dogfood, update the public matrix
+- [x] Run full checks and code/HTTP/PostgreSQL dogfood, update the public matrix
   and lexicon, audit external state, and commit Phases 5 and 6 separately.
 
 ### Phase 16A: Add the gated source-impact projection for HQA

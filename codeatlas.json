@@ -32,6 +32,16 @@
             { "id": "typescript", "paths": ["src/languages/typescript"] }
           ],
           "maximum_nominations": 200
+        },
+        {
+          "id": "repository_term_adapters",
+          "purpose": "compare subject term extraction without duplicating the shared lexicon engine",
+          "members": [
+            { "id": "code", "paths": ["src/lexicon/code_terms.rs"] },
+            { "id": "http", "paths": ["src/http/terms.rs"] },
+            { "id": "postgres", "paths": ["src/postgres/terms.rs"] }
+          ],
+          "maximum_nominations": 120
         }
       ]
     }

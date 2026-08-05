@@ -53,13 +53,13 @@ present.
 | `check code\|http\|postgres\|architecture\|tests` | Apply static rules and contract checks |
 | `baseline code\|http\|postgres\|architecture` | Save reviewed comparison evidence |
 | `diff code\|http\|postgres\|architecture` | Compare evidence with a baseline |
-| `usage code\|tests` | Classify consumers or select affected tests |
-| `inspect code\|architecture` | Explain an exact target and its bounded neighborhood |
-| `lexicon code` | Report deterministic naming, structural, and declared conceptual overlap |
-| `docs code` | Generate or check public API documentation |
+| `usage code\|http\|postgres\|tests` | Classify known consumers or select affected tests |
+| `inspect code\|http\|postgres\|architecture` | Explain an exact target and its bounded neighborhood |
+| `lexicon code\|repository` | Report deterministic naming and conceptual evidence |
+| `docs code\|http\|postgres` | Generate or check sourced reference documentation |
 | `fuzz http` | Persist or execute a bounded HTTP fuzz plan |
 | `test postgres` | Replay migrations and prepare queries in a disposable database |
-| `init postgres` | Discover and optionally write PostgreSQL configuration |
+| `init code\|http\|postgres` | Discover and optionally write conservative subject configuration |
 
 Run `codeatlas <command> <subject> --help` for the complete option set.
 
@@ -86,6 +86,7 @@ the shared isolation gate and subject adapters pass.
 default:
 
 ```bash
+codeatlas --root packages/example init code
 codeatlas --root packages/example scan code
 codeatlas --root packages/example scan code --format json
 ```
@@ -555,6 +556,26 @@ suppressions, and the exact config key for permanently dismissing an advisory
 candidate. Text output shows the same review surface in compact form; JSON is
 the complete contract.
 
+For naming evidence that crosses subject boundaries, use the separate
+repository report:
+
+```bash
+codeatlas --root . lexicon repository
+codeatlas --root . lexicon repository \
+  --subjects code,http,postgres \
+  --format json \
+  --out repository-lexicon.json
+```
+
+`lexicon repository` collects each selected subject once and emits
+`codeatlas.repository-lexicon/v1`. Every term retains its subject, owner, exact
+target, source spelling, confidence, and completeness. Exact normalized terms,
+declared concepts, and unsuppressed pinned domain relations may produce a
+`related_evidence` relationship; none proves semantic equivalence. Relationship
+targets and total output are bounded, and retained versus omitted evidence is
+reported explicitly. Missing HTTP or PostgreSQL inventory remains visible
+instead of silently becoming an empty, complete subject.
+
 ### Public API baselines
 
 ```bash
@@ -735,9 +756,13 @@ dispatch may declare a narrow literal route with
 `@codeatlas-http GET /items/{id}` when static recovery is impossible.
 
 ```bash
+codeatlas --root . init http
 codeatlas --root . scan http --out http-inventory.json
 codeatlas --root . scan http --format hqa-inventory --out hqa-routes.json
 codeatlas --root . check http
+codeatlas --root . usage http --format json --out http-usage.json
+codeatlas --root . inspect http "GET /health" --out http-inspection.json
+codeatlas --root . docs http --format markdown --out http-reference.md
 codeatlas --root . baseline http --out http-baseline.json
 codeatlas --root . diff http --against http-baseline.json
 codeatlas --root . fuzz http --target public-local --seed 42
@@ -878,6 +903,9 @@ never make mutating work eligible for single-shot execution.
 codeatlas --root . init postgres
 codeatlas --root . scan postgres --out postgres-inventory.json
 codeatlas --root . check postgres --out postgres-check.json
+codeatlas --root . usage postgres --format json --out postgres-usage.json
+codeatlas --root . inspect postgres table:public.users --out postgres-inspection.json
+codeatlas --root . docs postgres --format markdown --out postgres-reference.md
 
 export ACCOUNTS_CODEATLAS_POSTGRES_URL='postgresql://postgres:password@127.0.0.1:5432/postgres'
 codeatlas --root . test postgres --target accounts-local --out postgres-test.json
