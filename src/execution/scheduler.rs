@@ -1,4 +1,5 @@
 use super::budget::CallBudget;
+use super::cancellation::{register_cancellation, CancellationRegistration};
 use super::model::{ExecutionLimits, ExecutionPlan};
 use anyhow::{Context, Result};
 use std::future::Future;
@@ -38,19 +39,24 @@ impl ExecutionContext {
 pub(crate) struct ExecutionScheduler {
     runtime: Runtime,
     context: ExecutionContext,
+    _cancellation: Option<CancellationRegistration>,
 }
 
 impl ExecutionScheduler {
     pub(crate) fn from_plan(plan: &ExecutionPlan) -> Result<Self> {
-        Self::build(&plan.body.limits, CallBudget::from_plan(plan)?)
+        Self::build(&plan.body.limits, CallBudget::from_plan(plan)?, true)
     }
 
     #[cfg(test)]
     pub(crate) fn new(limits: &ExecutionLimits, cleanup_calls: u64) -> Result<Self> {
-        Self::build(limits, CallBudget::for_tests(limits, cleanup_calls)?)
+        Self::build(limits, CallBudget::for_tests(limits, cleanup_calls)?, false)
     }
 
-    fn build(limits: &ExecutionLimits, budget: Arc<CallBudget>) -> Result<Self> {
+    fn build(
+        limits: &ExecutionLimits,
+        budget: Arc<CallBudget>,
+        register_interrupt: bool,
+    ) -> Result<Self> {
         let host_parallelism = std::thread::available_parallelism()
             .map(|value| value.get())
             .unwrap_or(1);
@@ -66,12 +72,16 @@ impl ExecutionScheduler {
             .enable_time()
             .build()
             .context("Could not create the bounded execution scheduler")?;
+        let cancellation = register_interrupt
+            .then(|| register_cancellation(&budget))
+            .transpose()?;
         Ok(Self {
             runtime,
             context: ExecutionContext {
                 budget,
                 blocking: Arc::new(Semaphore::new(blocking_limit)),
             },
+            _cancellation: cancellation,
         })
     }
 

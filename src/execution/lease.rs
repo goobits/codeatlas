@@ -11,10 +11,6 @@ pub(crate) struct ExecutionLease {
 }
 
 impl ExecutionLease {
-    #[allow(
-        dead_code,
-        reason = "Phase 2 proves lease semantics before Phase 3 and Phase 4 acquire runtime resources"
-    )]
     pub(crate) fn new(
         owner: impl Into<String>,
         resource: impl Into<String>,
@@ -34,20 +30,7 @@ impl ExecutionLease {
                 .and_then(|result| result)
         });
         match result {
-            Some(Ok(verified)) => CleanupEvidence {
-                owner: self.owner,
-                resource: self.resource,
-                released: true,
-                verified,
-                message: (!verified).then(|| "cleanup verification failed".to_string()),
-            },
-            Some(Err(error)) => CleanupEvidence {
-                owner: self.owner,
-                resource: self.resource,
-                released: false,
-                verified: false,
-                message: Some(error.to_string()),
-            },
+            Some(result) => self.complete(result),
             None => CleanupEvidence {
                 owner: self.owner,
                 resource: self.resource,
@@ -57,28 +40,62 @@ impl ExecutionLease {
             },
         }
     }
+
+    fn complete(self, result: Result<bool>) -> CleanupEvidence {
+        match result {
+            Ok(verified) => CleanupEvidence {
+                owner: self.owner,
+                resource: self.resource,
+                released: true,
+                verified,
+                message: (!verified).then(|| "cleanup verification failed".to_string()),
+            },
+            Err(error) => CleanupEvidence {
+                owner: self.owner,
+                resource: self.resource,
+                released: false,
+                verified: false,
+                message: Some(error.to_string()),
+            },
+        }
+    }
 }
 
 #[derive(Default)]
 pub(crate) struct LeaseRegistry {
     leases: Vec<ExecutionLease>,
+    completed: Vec<CleanupEvidence>,
 }
 
 impl LeaseRegistry {
-    #[allow(
-        dead_code,
-        reason = "Phase 2 proves lease semantics before Phase 3 and Phase 4 acquire runtime resources"
-    )]
     pub(crate) fn register_lease(&mut self, lease: ExecutionLease) {
         self.leases.push(lease);
     }
 
+    pub(crate) fn complete_latest_verified(&mut self) -> Result<CleanupEvidence> {
+        let lease = self
+            .leases
+            .pop()
+            .ok_or_else(|| anyhow::anyhow!("No execution lease is available to complete"))?;
+        let evidence = lease.complete(Ok(true));
+        self.completed.push(evidence.clone());
+        Ok(evidence)
+    }
+
+    pub(crate) fn release_latest(&mut self) -> Result<CleanupEvidence> {
+        let lease = self
+            .leases
+            .pop()
+            .ok_or_else(|| anyhow::anyhow!("No execution lease is available to release"))?;
+        let evidence = lease.release();
+        self.completed.push(evidence.clone());
+        Ok(evidence)
+    }
+
     pub(crate) fn release_all(&mut self) -> Vec<CleanupEvidence> {
-        self.leases
-            .drain(..)
-            .rev()
-            .map(ExecutionLease::release)
-            .collect()
+        self.completed
+            .extend(self.leases.drain(..).rev().map(ExecutionLease::release));
+        std::mem::take(&mut self.completed)
     }
 }
 
@@ -116,5 +133,25 @@ mod tests {
         assert_eq!(evidence.len(), 3);
         assert!(!evidence[1].released);
         assert!(evidence[2].verified);
+    }
+
+    #[test]
+    fn externally_completed_latest_lease_is_not_cleaned_twice() {
+        let cleanup_ran = Arc::new(Mutex::new(false));
+        let observed = Arc::clone(&cleanup_ran);
+        let mut leases = LeaseRegistry::default();
+        leases.register_lease(ExecutionLease::new("fixture", "container", move || {
+            *observed.lock().expect("cleanup observer") = true;
+            Ok(true)
+        }));
+
+        let completed = leases
+            .complete_latest_verified()
+            .expect("complete latest lease");
+        assert!(completed.released);
+        assert!(completed.verified);
+        let evidence = leases.release_all();
+        assert_eq!(evidence, [completed]);
+        assert!(!*cleanup_ran.lock().expect("cleanup observer"));
     }
 }

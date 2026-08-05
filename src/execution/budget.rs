@@ -7,7 +7,7 @@ use thiserror::Error;
 use tokio::sync::{watch, OwnedSemaphorePermit, Semaphore};
 use tokio::time::Instant;
 
-const CLEANUP_TIME_FRACTION: u64 = 5;
+pub(crate) const CLEANUP_RESERVE_FRACTION: u64 = 5;
 const MAX_CLEANUP_TIME_MS: u64 = 10_000;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -120,7 +120,7 @@ impl CallBudget {
         let started = Instant::now();
         let run_duration = Duration::from_millis(limits.run_timeout_ms);
         let cleanup_time_ms =
-            (limits.run_timeout_ms / CLEANUP_TIME_FRACTION).clamp(1, MAX_CLEANUP_TIME_MS);
+            (limits.run_timeout_ms / CLEANUP_RESERVE_FRACTION).clamp(1, MAX_CLEANUP_TIME_MS);
         let cleanup_duration = Duration::from_millis(cleanup_time_ms);
         let normal_duration = run_duration
             .checked_sub(cleanup_duration)
@@ -196,6 +196,15 @@ impl CallBudget {
             return;
         }
         let _ = cancelled.changed().await;
+    }
+
+    pub(crate) fn normal_time_remaining(&self) -> Duration {
+        self.normal_deadline
+            .saturating_duration_since(Instant::now())
+    }
+
+    pub(crate) fn run_time_remaining(&self) -> Duration {
+        self.run_deadline.saturating_duration_since(Instant::now())
     }
 
     pub(crate) async fn reserve_call(

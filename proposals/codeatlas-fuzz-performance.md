@@ -491,13 +491,14 @@ not create another program roadmap or copy these tasks into a scratch document.
 ### Current verdict
 
 The public grammar, schema registry, HQA renderer, immutable execution
-artifacts, enforcing HTTP call budget, and the complete structured callable
-evidence child are done. The locally verifiable OCI implementation is next on
-the execution critical path. The current host cannot grant a live OCI isolation
-capability, so execution remains plan-only here, but deterministic fake-runtime
-and command-construction work can proceed. On implementation progress rather
-than proposal-design progress, the complete program is approximately 38
-percent done.
+artifacts, enforcing HTTP call budget, complete structured callable evidence,
+and locally verifiable OCI implementation are done. The current host cannot
+grant a live OCI isolation capability, so execution remains plan-only here and
+Phase 9 retains the hard continuation gate. Work now follows the independent
+static lane through semantic siblings, the PostgreSQL query contract, and the
+repository-scope foundation. On implementation progress rather than
+proposal-design progress, the complete program is approximately 45 percent
+done.
 
 ### Order and ownership rules
 
@@ -598,25 +599,25 @@ Active child: structured callable evidence Phase 3.
 Active child: [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md)
 Phase 4. This phase remains incomplete until Phase 9's live proof passes.
 
-- [ ] Implement one OCI sandbox command owner with exact runtime fingerprint,
+- [x] Implement one OCI sandbox command owner with exact runtime fingerprint,
   digest-pinned image, cleared client environment, and no ambient context or
   credential lookup.
-- [ ] Enforce a read-only checkout and runtime, one external writable scratch
+- [x] Enforce a read-only checkout and runtime, one external writable scratch
   root, path confinement, and symlink/traversal rejection in the planned mount
   set.
-- [ ] Enforce default-denied environment, process, and network policy with
+- [x] Enforce default-denied environment, process, and network policy with
   exact planned exceptions and no child-visible runtime control socket.
-- [ ] Bound captured output, elapsed time, CPU, RSS, processes, descriptors,
+- [x] Bound captured output, elapsed time, CPU, RSS, processes, descriptors,
   result bytes, cancellation, and reserved cleanup through the shared runner.
-- [ ] Connect sandbox capability evidence, resource samples, cleanup leases,
+- [x] Connect sandbox capability evidence, resource samples, cleanup leases,
   and non-passing partial outcomes to the canonical receipt.
-- [ ] Build target-observed conformance fixtures for every advertised
+- [x] Build target-observed conformance fixtures for every advertised
   capability without granting a capability from declarations or fake runtime
   health alone.
-- [ ] Prove command construction, fail-closed selection, zero-call blocking,
+- [x] Prove command construction, fail-closed selection, zero-call blocking,
   lease release, and receipt evidence with deterministic fake-runtime tests on
   this plan-only host.
-- [ ] Record the still-unproved live matrix explicitly and commit a scoped
+- [x] Record the still-unproved live matrix explicitly and commit a scoped
   implementation checkpoint only when all locally runnable checks pass.
 
 ### Phase 5: Add semantic-sibling configuration and evidence contracts
@@ -1055,8 +1056,12 @@ Phases 1 through 3.
 - [x] Proved fail-closed capability selection and plan-only receipts on the
   current host without granting an unverified sandbox capability.
 - [x] Mapped callable owners, pinned the language-neutral model, and emitted
-  initial Rust, Python, JavaScript, and TypeScript contracts with conformance
-  coverage.
+  complete Rust, Python, JavaScript, and TypeScript contracts with propagated
+  effect evidence and conformance coverage; every consumer now uses that model
+  and the retired display-signature heuristic is deleted.
+- [x] Implemented the complete local OCI command/runtime/conformance boundary,
+  shared cancellation, resource evidence, and fallback cleanup path. The
+  capable-host live proof remains the explicit Phase 9 gate.
 
 ### Verification log
 
@@ -1064,8 +1069,11 @@ Phases 1 through 3.
   completed and committed with external generated state.
 - 2026-08-04: execution Phases 1 through 3 completed; fail-closed Phase 4
   checkpoint committed through `c4fac1b`.
-- 2026-08-04: structured-callable conformance currently passes three focused
-  four-language cases; effect propagation and final Phase 1 verification remain.
+- 2026-08-05: structured-callable Phases 1 through 3 completed through
+  `cf97b73`; consumers migrated and the replaced lexicon heuristic was deleted.
+- 2026-08-05: all locally verifiable OCI work passes focused/full checks and
+  target-observed fake-runtime dogfood; the host remains plan-only and the
+  live OCI test is retained as Phase 9's hard gate.
 
 ## Existing-first check
 
@@ -1127,7 +1135,7 @@ all repository checks and bounded CodeAtlas dogfood pass with zero gates.
 
 ## Program stage 4: Execution kernel and HTTP migration
 
-Status: [~] Accepted; execution Phases 1-3 complete, isolation Phase 4 active
+Status: [~] Accepted; execution Phases 1-3 and local Phase 4 complete, live isolation waits at Phase 9
 
 Projected LOC after measured Phase 3: +11,760-13,310 / -878-1,408
 
@@ -1141,7 +1149,7 @@ receipts, cleanup, reviewed execution, and eligible one-shot execution pass.
 
 ## Program stage 5: Structured callable evidence
 
-Status: [~] Accepted; Phase 1 active independently of the sandbox track
+Status: [x] Complete
 
 LOC: +900-1,300 / -200-350
 

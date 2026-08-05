@@ -58,11 +58,26 @@ pub(crate) fn prepare_isolation_checked_execution(
     let sampler = ResourceSampler::new();
     let mut leases = LeaseRegistry::default();
     let scratch = create_isolation_scratch(workspace_root, &mut leases)?;
-    let assessment = match ExecutionScheduler::from_plan(plan).and_then(|scheduler| {
-        scheduler.run(|context| async move {
-            assess_isolation(&context, isolation_config, plan, &scratch).await
-        })
-    }) {
+    let (assessment_result, call_snapshot) = match ExecutionScheduler::from_plan(plan) {
+        Ok(scheduler) => {
+            let leases = &mut leases;
+            let scratch = &scratch;
+            let result = scheduler.run(|context| async move {
+                assess_isolation(
+                    &context,
+                    isolation_config,
+                    plan,
+                    workspace_root,
+                    scratch,
+                    leases,
+                )
+                .await
+            });
+            (result, Some(scheduler.context().budget().snapshot()))
+        }
+        Err(error) => (Err(error), None),
+    };
+    let assessment = match assessment_result {
         Ok(assessment) => assessment,
         Err(error) => IsolationAssessment::blocked(format!(
             "Isolation capability probe failed before execution: {error}"
@@ -79,7 +94,20 @@ pub(crate) fn prepare_isolation_checked_execution(
     reasons.sort();
     reasons.dedup();
     let cleanup = leases.release_all();
-    let outcome = finalize_outcome(ExecutionOutcome::Blocked, &cleanup, false, None);
+    let budget_termination = call_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.termination);
+    let requested_outcome = if budget_termination == Some(BudgetTermination::Cancelled) {
+        ExecutionOutcome::Cancelled
+    } else {
+        ExecutionOutcome::Blocked
+    };
+    let outcome = finalize_outcome(requested_outcome, &cleanup, false, budget_termination);
+    let mut calls = CallUsage::default();
+    let mut resources = sampler.sample_resources(assessment.resources);
+    if let Some(snapshot) = &call_snapshot {
+        apply_call_snapshot(&mut calls, &mut resources, snapshot);
+    }
     let receipt = ExecutionReceipt::new(ExecutionReceiptBody {
         subject: plan.body.subject,
         operation: plan.body.operation.clone(),
@@ -89,9 +117,9 @@ pub(crate) fn prepare_isolation_checked_execution(
         authorization_mode,
         outcome,
         reasons,
-        calls: CallUsage::default(),
+        calls,
         runtime: assessment.runtime,
-        resources: sampler.sample_resources(),
+        resources,
         cleanup,
         result: None,
         links: vec![ArtifactLink {
@@ -127,10 +155,6 @@ fn finalize_outcome(
     requested
 }
 
-#[allow(
-    dead_code,
-    reason = "Phase 3 pins receipt mapping before Phase 4 isolation permits Phase 5 execution"
-)]
 fn apply_call_snapshot(
     calls: &mut super::model::CallUsage,
     resources: &mut super::model::ResourceEvidence,

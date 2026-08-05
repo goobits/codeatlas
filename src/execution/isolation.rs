@@ -1,5 +1,5 @@
 use super::lease::{ExecutionLease, LeaseRegistry};
-use super::model::{ExecutionPlan, RuntimeEvidence};
+use super::model::{ExecutionPlan, ResourceEvidence, RuntimeEvidence};
 use super::private_fs::{
     create_private_directory, prepare_private_disjoint_directory, remove_private_directory,
 };
@@ -15,6 +15,7 @@ static SCRATCH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct IsolationAssessment {
     pub runtime: RuntimeEvidence,
+    pub resources: ResourceEvidence,
     pub reasons: Vec<String>,
 }
 
@@ -36,6 +37,7 @@ impl IsolationAssessment {
     pub(crate) fn blocked(reason: impl Into<String>) -> Self {
         Self {
             runtime: RuntimeEvidence::default(),
+            resources: ResourceEvidence::default(),
             reasons: vec![reason.into()],
         }
     }
@@ -70,7 +72,9 @@ pub(crate) async fn assess_isolation(
     context: &ExecutionContext,
     config: &ExecutionIsolationConfig,
     plan: &ExecutionPlan,
+    workspace_root: &Path,
     scratch_root: &Path,
+    leases: &mut LeaseRegistry,
 ) -> Result<IsolationAssessment> {
     if plan.body.isolation.filesystem != "scratch_only"
         || !matches!(plan.body.isolation.network.as_str(), "deny" | "proxy_only")
@@ -85,10 +89,24 @@ pub(crate) async fn assess_isolation(
     }
     let probe = match config.backend {
         ExecutionIsolationBackend::Auto | ExecutionIsolationBackend::Container => {
-            probe_container_runtime(context, &config.container, scratch_root).await?
+            probe_container_runtime(
+                context,
+                &config.container,
+                plan,
+                workspace_root,
+                scratch_root,
+                leases,
+            )
+            .await?
         }
     };
     let mut reasons = probe.reasons;
+    if plan.body.isolation.network == "proxy_only" {
+        reasons.push(
+            "The OCI conformance probe proves deny-only networking; proxy-only routing remains disconnected until Phase 5"
+                .to_string(),
+        );
+    }
     let proven = probe.capabilities.iter().copied().collect::<BTreeSet<_>>();
     let missing = plan
         .body
@@ -108,11 +126,12 @@ pub(crate) async fn assess_isolation(
     Ok(IsolationAssessment {
         runtime: RuntimeEvidence {
             backend: probe.runtime,
-            environment_digest: None,
+            environment_digest: probe.environment_digest,
             capabilities: probe.capabilities,
             rootless: probe.rootless,
             nested: Some(probe.nested),
         },
+        resources: probe.resources,
         reasons,
     })
 }
@@ -121,13 +140,14 @@ pub(crate) async fn assess_isolation(
 mod tests {
     use super::IsolationAssessment;
     use crate::execution::artifact::sample_plan;
-    use crate::execution::model::{ExecutionCapability, RuntimeEvidence};
+    use crate::execution::model::{ExecutionCapability, ResourceEvidence, RuntimeEvidence};
 
     #[test]
     fn declarations_never_satisfy_required_capabilities() {
         let plan = sample_plan();
         let assessment = IsolationAssessment {
             runtime: RuntimeEvidence::default(),
+            resources: ResourceEvidence::default(),
             reasons: Vec::new(),
         };
         assert!(!assessment.is_verified(&plan));

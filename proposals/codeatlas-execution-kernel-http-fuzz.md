@@ -909,7 +909,7 @@ exhaustion is `partial`.
 
 ## Phase 4: Verified isolation backend and capability matrix
 
-Status: [~] In progress
+Status: [~] Local implementation verified; waiting for the Phase 9 live OCI proof
 
 Execution checklist:
 
@@ -918,15 +918,15 @@ Execution checklist:
   changing host state.
 - [x] Pin one capability model and fail-closed backend-selection contract;
   absent or incomplete enforcement must block before the first target call.
-- [ ] Implement the OCI sandbox owner with read-only checkout/runtime mounts,
+- [x] Implement the OCI sandbox owner with read-only checkout/runtime mounts,
   one external writable scratch root, exact environment/process/network
   policy, bounded captured output, and no child-visible control socket.
-- [ ] Add target-observed conformance fixtures for mount and symlink escape,
+- [x] Add target-observed conformance fixtures for mount and symlink escape,
   network, process, environment, CPU, RSS, PID, descriptor, output,
   interruption, cleanup, rootless, and nested-runtime behavior.
-- [ ] Connect capability evidence, resource sampling, leases, and receipts at
+- [x] Connect capability evidence, resource sampling, leases, and receipts at
   the shared runner boundary without enabling HTTP execution before Phase 5.
-- [ ] Pass focused and full checks, dogfood, generated-state audit, and a clean
+- [x] Pass focused and full checks, dogfood, generated-state audit, and a clean
   phase commit; record unsupported hosts as plan-only rather than weakening
   the backend contract.
 
@@ -977,7 +977,65 @@ Verified partial checkpoint, 2026-08-04 (fail-closed capability selection):
   gaps; compiled production calls and focused tests corroborate the latter,
   so none is deletion evidence.
 
-LOC: +1,200-1,900 / -50-150
+Locally verified implementation checkpoint, 2026-08-05:
+
+- `src/execution/sandbox/container` now separates immutable launch-command,
+  runtime-client, and conformance owners. The client clears its environment,
+  uses an exact canonical executable and local Unix socket, refuses pulls,
+  verifies the configured repository digest, and never exposes the runtime
+  socket or client configuration to the child.
+- Container construction and daemon inspection agree on a read-only root and
+  checkout, one external writable scratch hierarchy, an isolated `/tmp`, no
+  network, private PID/IPC namespaces, no added capabilities, no-new-privileges,
+  the built-in seccomp policy, exact environment/command identity, and finite
+  memory, CPU-time, process, descriptor, output, and elapsed ceilings.
+- A strict nonce-bound conformance report maps each observed mount, traversal,
+  symlink, network, process, ambient-environment, socket, resource, rootless,
+  and nested-runtime result to one discrete capability. Unknown fields,
+  changed limits, stale nonces, excess usage, altered daemon controls, and any
+  failed observation withhold capability evidence rather than lowering the
+  requirement.
+- The bounded command primitive now combines stdout/stderr under one ceiling,
+  responds to the shared cancellation ledger, kills and reaps on timeout,
+  output exhaustion, or interruption, and records output consumption. SIGINT
+  produces a cancelled non-passing receipt before the lease-owned cleanup
+  path runs.
+- A container lease is registered before creation. Successful asynchronous
+  removal is recorded once; failed or unverifiable primary removal retains the
+  lease and runs its bounded fallback. The regression fixture fails the first
+  removal deliberately and proves the fallback removes the target before the
+  scratch lease releases.
+- The deterministic fake-runtime boundary passes four integration cases plus
+  one explicit live-backend ignore. Forty-four focused execution tests,
+  warning-denying Clippy, and the full repository check pass. The full check
+  covers 15 Node tests, 370 passing Rust unit tests with two intentional
+  ignores, all non-live integrations, architecture/schema drift, formatting,
+  self-audit, and package assembly.
+- Refreshed self-dogfood covers 275 files, 2,778 scan symbols, 3,302 lexicon
+  symbols, eight test contexts, three scripts, and zero gates or duplicate
+  scripts. The execution findings are conservative async/conditional
+  boundaries, test-only symbols, and known reachability gaps; the new owner
+  has no name collision, shape alias, or callable-duplication candidate.
+- Exact inspection resolves the conformance evaluator, cleanup fallback, and
+  cancellation registry into a bounded 120-node/1,006-edge slice with graph
+  digest
+  `sha256:6f00734c8fc337ef06dee0850173e5c809fec1cef523f92db67eeccbe403d7d8`;
+  1,464 nodes, 9,054 edges, five contexts, and 11 boundaries remain explicitly
+  omitted by the requested cap.
+- The current host still has no usable local OCI socket or effective namespace
+  authority. The live test remains ignored with an exact operator-input
+  contract and grants no capability here. Phase 9 must run that same path
+  against a digest-pinned probe image on a capable rootful, rootless, or nested
+  runtime before Phase 5 execution is enabled.
+
+This local implementation slice is +2,503 / -127 source and test lines before
+this checkpoint text. Together with the earlier fail-closed Phase 4 slice, the
+measured Phase 4 implementation is +3,678 / -298; the extra surface is the
+strict daemon/target conformance and failure-path suite, not a second executor.
+
+Original estimate: +1,200-1,900 / -50-150. The measured difference is
+explained above and is accepted only for the conformance and failure-path
+evidence required by this hard gate.
 
 Verify: The backend conformance suite proves mount, scratch, symlink, network,
 process, environment, CPU, RSS, PID, descriptor, output, interruption, and

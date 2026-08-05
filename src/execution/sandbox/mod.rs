@@ -1,5 +1,6 @@
 pub(crate) mod container;
 
+use super::budget::CallBudget;
 use anyhow::{Context, Result};
 use std::process::{ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,14 +13,34 @@ use tokio::sync::watch;
 pub(crate) struct BoundedCommandOutput {
     pub status: ExitStatus,
     pub stdout: Vec<u8>,
+    pub output_bytes: u64,
     pub timed_out: bool,
     pub output_exhausted: bool,
+    pub cancelled: bool,
 }
 
 pub(crate) async fn run_bounded_command(
     command: &mut Command,
     timeout: Duration,
     max_output_bytes: u64,
+) -> Result<BoundedCommandOutput> {
+    run_bounded_command_inner(command, timeout, max_output_bytes, None).await
+}
+
+pub(crate) async fn run_bounded_command_cancellable(
+    command: &mut Command,
+    timeout: Duration,
+    max_output_bytes: u64,
+    budget: &CallBudget,
+) -> Result<BoundedCommandOutput> {
+    run_bounded_command_inner(command, timeout, max_output_bytes, Some(budget)).await
+}
+
+async fn run_bounded_command_inner(
+    command: &mut Command,
+    timeout: Duration,
+    max_output_bytes: u64,
+    budget: Option<&CallBudget>,
 ) -> Result<BoundedCommandOutput> {
     if timeout.is_zero() || max_output_bytes == 0 {
         anyhow::bail!("Bounded command needs positive time and output ceilings");
@@ -56,6 +77,7 @@ pub(crate) async fn run_bounded_command(
     let mut capture_failure = capture_failure;
     let mut timed_out = false;
     let mut output_exhausted = false;
+    let mut cancelled = false;
     let status = tokio::select! {
         status = child.wait() => status.context("Could not wait for bounded command")?,
         _ = tokio::time::sleep(timeout) => {
@@ -66,6 +88,10 @@ pub(crate) async fn run_bounded_command(
             output_exhausted = true;
             terminate_child(&mut child).await?
         }
+        _ = wait_for_cancellation(budget) => {
+            cancelled = true;
+            terminate_child(&mut child).await?
+        }
     };
     let stdout = stdout_task
         .await
@@ -74,11 +100,14 @@ pub(crate) async fn run_bounded_command(
         .await
         .context("Bounded stderr reader panicked")??;
     output_exhausted |= *capture_failure.borrow();
+    let output_bytes = consumed.load(Ordering::Acquire);
     Ok(BoundedCommandOutput {
         status,
         stdout,
+        output_bytes,
         timed_out,
         output_exhausted,
+        cancelled,
     })
 }
 
@@ -141,6 +170,13 @@ async fn wait_for_capture_failure(receiver: &mut watch::Receiver<bool>) {
     }
 }
 
+async fn wait_for_cancellation(budget: Option<&CallBudget>) {
+    match budget {
+        Some(budget) => budget.wait_for_cancellation().await,
+        None => std::future::pending::<()>().await,
+    }
+}
+
 async fn terminate_child(child: &mut tokio::process::Child) -> Result<ExitStatus> {
     if let Err(error) = child.kill().await {
         if error.kind() != std::io::ErrorKind::InvalidInput {
@@ -152,7 +188,10 @@ async fn terminate_child(child: &mut tokio::process::Child) -> Result<ExitStatus
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::run_bounded_command;
+    use super::{run_bounded_command, run_bounded_command_cancellable};
+    use crate::execution::budget::CallBudget;
+    use crate::execution::model::sample_execution_limits;
+    use std::sync::Arc;
     use std::time::Duration;
     use tokio::process::Command;
 
@@ -169,6 +208,8 @@ mod tests {
         assert!(output.output_exhausted);
         assert!(!output.timed_out);
         assert!(output.stdout.len() <= 6);
+        assert_eq!(output.output_bytes, 6);
+        assert!(!output.cancelled);
     }
 
     #[tokio::test]
@@ -179,6 +220,28 @@ mod tests {
             .await
             .expect("bounded command");
         assert!(output.timed_out);
+        assert!(!output.output_exhausted);
+        assert!(!output.cancelled);
+    }
+
+    #[tokio::test]
+    async fn command_cancellation_stops_and_reaps_the_child() {
+        let budget =
+            CallBudget::for_tests(&sample_execution_limits(), 0).expect("cancellation budget");
+        let cancelling = Arc::clone(&budget);
+        let canceller = tokio::spawn(async move {
+            tokio::task::yield_now().await;
+            cancelling.cancel();
+        });
+        let mut command = Command::new("/bin/sh");
+        command.arg("-c").arg("while :; do :; done").env_clear();
+        let output =
+            run_bounded_command_cancellable(&mut command, Duration::from_secs(2), 64, &budget)
+                .await
+                .expect("cancelled bounded command");
+        canceller.await.expect("canceller task");
+        assert!(output.cancelled);
+        assert!(!output.timed_out);
         assert!(!output.output_exhausted);
     }
 }

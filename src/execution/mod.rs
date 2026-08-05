@@ -4,6 +4,7 @@ pub(crate) mod artifact;
     reason = "Phase 3 proves budget enforcement before Phase 4 isolation permits Phase 5 execution"
 )]
 mod budget;
+mod cancellation;
 mod isolation;
 mod lease;
 mod model;

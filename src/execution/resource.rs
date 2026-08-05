@@ -12,10 +12,10 @@ impl ResourceSampler {
         }
     }
 
-    pub(crate) fn sample_resources(&self) -> ResourceEvidence {
-        ResourceEvidence {
-            elapsed_ms: u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX),
-            ..ResourceEvidence::default()
-        }
+    pub(crate) fn sample_resources(&self, mut observed: ResourceEvidence) -> ResourceEvidence {
+        observed.elapsed_ms = observed
+            .elapsed_ms
+            .max(u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX));
+        observed
     }
 }
