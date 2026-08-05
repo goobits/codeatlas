@@ -488,6 +488,14 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
+For restart context, read this introduction, the current verdict, the order
+rules, and only the first incomplete phase plus its active child. Completed
+foundations and the verification log are audit history and do not need to be
+reloaded unless a claim is under review. The immediate plan-only-host queue is
+Phase 8A, then Phase 16. A newly available OCI capability preempts that static
+queue at Phase 9; after Phase 9, continue numerically through the execution
+track, Phase 16A, performance, cost search, and final signoff.
+
 ### Current verdict
 
 The public grammar, schema registry, HQA renderer, immutable execution
@@ -500,7 +508,11 @@ now serves code, HTTP, and PostgreSQL without merging their graph semantics.
 The current host cannot grant a live OCI isolation capability, so execution
 remains plan-only here and Phase 9 retains the hard continuation gate. On
 implementation progress rather than proposal-design progress, the complete
-program is approximately 61 percent done.
+program is approximately 61 percent done. That estimate is weighted by the
+accepted implementation phases, not by raw checkbox count. One hundred percent
+means every remaining tracker item is either verified and checked here or
+removed through an accepted scope change; a child status line alone is not
+completion evidence.
 
 ### Order and ownership rules
 
@@ -706,6 +718,33 @@ the later observation-backed report shapes.
   reused.
 - [x] Run focused repository-scope/config tests and dogfood, then commit
   subject-parity Phase 1 without advertising the later public commands.
+
+### Phase 8A: Close CodeAtlas neutral-contract wiring
+
+Active children: [`codeatlas-hqa-seeding.md`](codeatlas-hqa-seeding.md) and the
+interop acceptance surface. CodeAtlas consumes the external contracts
+read-only and never edits their repository.
+
+- [ ] Validate the complete resolution assertion document against
+  `agentspeak-resolution-conformance-v1.schema.json` from the sibling
+  `agentspeak-contracts` repository, including its cross-file source-target
+  `$ref`, instead of checking only the schema-version string.
+- [ ] Remove the resolution test's implementation-ignore gate now that the
+  schema exists, while retaining one explicit standalone-checkout diagnostic
+  when the external contract repository is unavailable.
+- [ ] Verify the corrected `https://agentspeak.org/` source-target identity,
+  digest-bound range semantics, and lowercase-alphanumeric annotation namespace
+  through the external schema. Do not generate, vendor, or publish a CodeAtlas
+  copy.
+- [ ] Keep the HQA application-inventory golden's neutral-schema migration
+  visibly blocked until that schema is actually published by the contract
+  owner; do not reconstruct it from HQA's implementation tree.
+- [ ] Record that future hints producers must validate the full embedded target
+  and reject duplicate `(kind, key)` pairs before serialization. Free-form
+  evidence never weakens the target block.
+- [ ] Run the focused interop/schema tests, full contract drift checks, bounded
+  CodeAtlas dogfood, and commit the CodeAtlas-only wiring without modifying
+  HQA, TypeMill, or `agentspeak-contracts`.
 
 ### Phase 9: Pass the live OCI isolation continuation gate
 
@@ -916,6 +955,9 @@ Active child: subject evidence parity Phases 2 through 4.
   explicit init writes only one selected strict configuration file.
 - [ ] Enrich PostgreSQL usage/docs only from an explicitly supplied exact
   observation reference, with no hidden target or database execution.
+- [ ] Enrich HTTP and PostgreSQL inspection only from accepted typed fuzz or
+  observation artifact references; reject wrong-kind, stale, or path-only
+  evidence without changing the static graph path.
 - [x] Extract one generic bounded graph projection owner from code context
   slicing without merging code, HTTP, and PostgreSQL graph semantics.
 - [x] Keep existing code inspection bytes and cursor behavior exact after the
@@ -954,6 +996,44 @@ Active child: subject evidence parity Phases 5 and 6.
   real duplicate through its canonical owner.
 - [ ] Run full checks and code/HTTP/PostgreSQL dogfood, update the public matrix
   and lexicon, audit external state, and commit Phases 5 and 6 separately.
+
+### Phase 16A: Add the gated source-impact projection for HQA
+
+This follow-on starts only after Phase 8A and the live Phase 9 isolation proof.
+Its schemas remain externally owned. CodeAtlas may write its proposal before
+those gates close, but it does not implement or locally reconstruct an
+unpublished family contract.
+
+- [ ] Write and accept one CodeAtlas-only source-impact proposal with explicit
+  LOC, language/framework capability, schema, safety, and continuation gates.
+  Treat `agentspeak.graph-alignment/v1` as a separate external dependency, not
+  an implied CodeAtlas implementation.
+- [ ] Define one typed `(surface hint, action) -> entry symbols` binding edge so
+  shared handlers and action-specific bindings remain explicit. A symbol or
+  source target alone is not the interaction identity.
+- [ ] Project effects and unresolved boundaries only from the existing source
+  graph and `CallableContract` evidence. Add no second effect walker, and point
+  semantic-role-sibling dogfood at every new impact module.
+- [ ] Scope named state reads and writes honestly. Extend the existing callable
+  evidence owner with a typed state-access fact only if deterministic parity is
+  proven across applicable languages; otherwise omit the field rather than
+  deriving state identity from a coarse effect kind.
+- [ ] Give Svelte and React surface-to-action mapping their own bounded adapter
+  phase with exact capability and incompleteness evidence. Do not bury UI
+  framework discovery inside the manifest renderer.
+- [ ] Persist the explicit syntax, structure, and dependency manifests plus
+  named reads, writes, effects, and boundaries, then digest their RFC
+  8785-canonical bytes. Follow the external explainable-manifest convention;
+  never emit an opaque-only comparison hash.
+- [ ] Label every source-impact result as a hypothesis, invalidation hint, or
+  retest hint. Never claim that a source change proves a runtime behavior
+  change; HQA owns runtime confirmation.
+- [ ] Once the contract owner publishes accepted source-impact, graph-alignment,
+  and hints schemas, bind them by sibling reference, validate full embedded
+  source-target blocks, enforce unique `(kind, key)` hints, and vendor no copy.
+- [ ] Pass deterministic fixture, cross-language, framework, schema, sibling,
+  boundedness, and CodeAtlas self-dogfood checks, then commit the proposal's
+  independently reviewable phases.
 
 ### Phase 17: Add base performance observations, curves, and candidates
 
@@ -1156,7 +1236,8 @@ Phases 1 through 3.
   contracts and zero gates. A single warm engineering probe measured
   `usage code` at 1.197 seconds and `check code` at 1.226 seconds with RSS
   unavailable; it is recorded as phase evidence, not a performance claim.
-- 2026-08-05: subject-parity Phases 2 through static Phase 4 pass deterministic
+- 2026-08-05: subject-parity Phases 2 through static Phase 4 are committed
+  through `2efbe11` and pass deterministic
   HTTP/PostgreSQL usage, docs, init, and bounded inspection acceptance. Shared
   projection extraction preserves the exact code-inspection checkpoint bytes.
   Dogfood corrected Rust module/callable collisions, grouped `self` imports,
@@ -1209,15 +1290,17 @@ existing report bytes do not churn.
 
 ## Program stage 3: CodeAtlas HQA seeding
 
-Status: [x] Complete
+Status: [~] Renderer complete; neutral-contract wiring remains in Phase 8A
 
 LOC: +815 / -9
 
 Verify: Source and OpenAPI routes render deterministically into the published
 HQA v1 inventory with unique IDs, honest completeness, conservative dynamic
 paths, no invented roles, and no HQA repository edit. Default CodeAtlas JSON
-remains byte-identical; the golden validates against the exact external schema;
-all repository checks and bounded CodeAtlas dogfood pass with zero gates.
+remains byte-identical. The renderer's golden currently validates against HQA's
+accepted schema; Phase 8A/21 must move that drift gate to the neutral owner once
+the application-inventory schema exists there. All repository checks and
+bounded CodeAtlas dogfood pass with zero gates.
 
 ```text
 ~ proposals/codeatlas-hqa-seeding.md
@@ -1300,8 +1383,9 @@ baseline/diff pass.
 ## Program stage 9: HTTP and PostgreSQL evidence parity
 
 Status: [~] Accepted; repository-scope, HTTP/PostgreSQL usage, truthful docs,
-and generalized initialization Phases 1-3 are complete; bounded inspection is
-next while observation-backed enrichment remains deferred
+generalized initialization, and static bounded inspection Phases 1-4 are
+complete; repository lexicon is next while artifact-backed enrichment remains
+deferred
 
 LOC: +8,738-9,688 / -1,556-1,986 product and tests, plus generated schemas
 

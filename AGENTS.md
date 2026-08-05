@@ -5,10 +5,13 @@
 At the start of every agent session, and again after a context compaction,
 summary handoff, crash, or resumed long-running task:
 
-1. Re-read this file and the active proposal before changing source. The
-   umbrella program is
-   [`proposals/codeatlas-fuzz-performance.md`](proposals/codeatlas-fuzz-performance.md);
-   its accepted child for the current phase is the working checklist.
+1. Re-read this file and the active child proposal in full before changing
+   source. The canonical ordering tracker is the `Canonical v1 completion
+   tracker` in
+   [`proposals/codeatlas-fuzz-performance.md`](proposals/codeatlas-fuzz-performance.md).
+   Read its introduction, current verdict, order rules, and first incomplete
+   phase. Completed foundations and old verification entries are audit history;
+   do not reload them merely to reconstruct context.
 2. Inspect Git status plus staged and unstaged diffs. Do not trust remembered
    cleanliness or a handoff narrative.
 3. Verify live processes, exact binaries, external state roots, capabilities,
