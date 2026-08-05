@@ -581,10 +581,7 @@ mod tests {
                     "invalid namespaced artifact version {version}"
                 );
                 assert_eq!(schema.contract_id, version);
-                let expected_filename = format!(
-                    "{}.schema.json",
-                    version.replace(['.', '/'], "-")
-                );
+                let expected_filename = format!("{}.schema.json", version.replace(['.', '/'], "-"));
                 assert_eq!(schema.filename, expected_filename);
                 version
                     .rsplit_once('/')
