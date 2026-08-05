@@ -145,7 +145,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
     assert!(configured_html.contains("--atlas-accent: #c4b5fd"));
 
     let json = outputs::json::render(&report).expect("JSON report");
-    assert!(json.contains("\"schema_version\": 3"));
+    assert!(json.contains("\"schema_version\": 4"));
     assert!(json.contains("\"package\""));
     assert!(json.contains("\"export_paths\""));
     let mut reordered = report.clone();

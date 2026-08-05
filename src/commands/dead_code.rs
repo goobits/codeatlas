@@ -46,12 +46,26 @@ fn analyze(
     let scope = crate::config::RepositoryScope::resolve(&project, workspace)?;
     let projects = scope.analysis_projects();
     let graph = languages::reachability::build_source_graph(projects)?;
+    let reachability = crate::analysis::reachability::Reachability::analyze(&graph)
+        .map_err(crate::analysis::reachability::render_diagnostics)?;
+    if check {
+        crate::fuzz::code::build_inventory_with_reachability(
+            &graph,
+            &reachability,
+            &project.config.fuzz.exclude.code,
+            project.config.fuzz.limits.max_cases,
+        )?;
+    }
     let required = projects
         .iter()
         .filter(|project| project.require_complete)
         .map(|project| project.id.0.clone())
         .collect::<BTreeSet<_>>();
-    let mut report = dead_code::analyze(&graph)?;
+    let mut report = if check {
+        dead_code::analyze_check_with_reachability(&graph, &reachability)
+    } else {
+        dead_code::analyze_with_reachability(&graph, &reachability)
+    };
     report.apply_completeness_requirements(&required);
     let displayed_report = gates_only.then(|| {
         let mut displayed = report.clone();

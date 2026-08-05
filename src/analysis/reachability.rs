@@ -119,6 +119,17 @@ impl Reachability {
     }
 }
 
+pub(crate) fn render_diagnostics(diagnostics: Vec<GraphDiagnostic>) -> anyhow::Error {
+    anyhow::anyhow!(
+        "{}",
+        diagnostics
+            .into_iter()
+            .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
+            .collect::<Vec<_>>()
+            .join("; ")
+    )
+}
+
 fn adjacencies(
     graph: &SourceGraph,
 ) -> (
@@ -360,6 +371,7 @@ mod tests {
                     visibility: crate::domain::source_graph::SourceVisibility::Private,
                     span: None,
                     callable: None,
+                    fuzz_policy: None,
                 }),
             )
             .expect("symbol");
@@ -435,6 +447,7 @@ mod tests {
                         visibility: crate::domain::source_graph::SourceVisibility::Public,
                         span: None,
                         callable: None,
+                        fuzz_policy: None,
                     }),
                 )
                 .expect("symbol");
@@ -631,6 +644,7 @@ mod tests {
                     visibility: SourceVisibility::Private,
                     span: None,
                     callable: None,
+                    fuzz_policy: None,
                 }),
             )
             .expect("Rust symbol");

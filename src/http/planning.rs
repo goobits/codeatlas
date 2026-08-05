@@ -64,6 +64,11 @@ pub(crate) fn build_fuzz_execution_plan(
     validate_fuzz_workload(&workload)?;
     validate_engine_source(&workload.engine_source, schemathesis)?;
     validate_fuzz_execution_limits(&workload.limits, &execution_limits)?;
+    let mut configured_exclusions = project.config.fuzz.exclude.http.clone();
+    configured_exclusions.sort();
+    if workload.excluded_operations != configured_exclusions {
+        anyhow::bail!("HTTP fuzz workload does not match current checked-in exclusions");
+    }
     let target = project.http_fuzz_target(Some(&workload.target_id))?;
     if target.contract != workload.contract_id {
         anyhow::bail!(
@@ -71,6 +76,15 @@ pub(crate) fn build_fuzz_execution_plan(
             target.id,
             workload.contract_id
         );
+    }
+    if let ResolvedHttpFuzzOperationSelection::Explicit(operations) = &target.operation_selection {
+        if !operations.is_empty()
+            && operations
+                .iter()
+                .all(|operation| workload.excluded_operations.contains(&operation.name))
+        {
+            anyhow::bail!("Checked-in HTTP fuzz exclusions remove every selected operation");
+        }
     }
     let contracts = project.http_contracts(&[])?;
     let contract = fuzz_contract(&contracts, &target.contract)?;

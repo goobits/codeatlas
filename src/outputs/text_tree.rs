@@ -169,6 +169,7 @@ mod tests {
             span: None,
             signature: format!("interface {name}"),
             callable: None,
+            fuzz_policy: None,
             docs: None,
             export_paths: Vec::new(),
             referenced: false,

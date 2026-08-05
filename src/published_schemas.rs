@@ -16,7 +16,9 @@ use crate::execution::{
     EXECUTION_RECEIPT_SCHEMA_VERSION,
 };
 use crate::fuzz::reproducer::Reproducer;
-use crate::fuzz::FUZZ_REPRODUCER_SCHEMA_VERSION;
+use crate::fuzz::{
+    CodeFuzzInventory, CODE_FUZZ_INVENTORY_SCHEMA_VERSION, FUZZ_REPRODUCER_SCHEMA_VERSION,
+};
 use crate::http::{
     HttpBaselineReport, HttpCheckReport, HttpDiffReport, HttpFuzzReport, HttpFuzzWorkload,
     HttpInventoryReport, HTTP_API_VERSION, HTTP_BASELINE_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION,
@@ -329,21 +331,27 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<Reproducer>,
     ),
     PublishedSchema::new_artifact(
+        CODE_FUZZ_INVENTORY_SCHEMA_VERSION,
+        "codeatlas-code-fuzz-inventory-v1.schema.json",
+        "fuzz::code",
+        generate_schema::<CodeFuzzInventory>,
+    ),
+    PublishedSchema::new_artifact(
         HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION,
-        "codeatlas-http-fuzz-workload-v1.schema.json",
+        "codeatlas-http-fuzz-workload-v2.schema.json",
         "http",
         generate_schema::<HttpFuzzWorkload>,
     ),
     PublishedSchema::new(
-        "codeatlas.scan/v3",
-        "codeatlas-scan-v3.schema.json",
+        "codeatlas.scan/v4",
+        "codeatlas-scan-v4.schema.json",
         PayloadVersion::from_schema(SCAN_SCHEMA_VERSION),
         "domain",
         generate_schema::<ScanReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.dead-code/v5",
-        "codeatlas-dead-code-v5.schema.json",
+        "codeatlas.dead-code/v6",
+        "codeatlas-dead-code-v6.schema.json",
         PayloadVersion::from_schema(DEAD_CODE_SCHEMA_VERSION),
         "dead_code",
         generate_schema::<DeadCodeReport>,
@@ -359,8 +367,8 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<PublicApiBaseline>,
     ),
     PublishedSchema::new(
-        "codeatlas.context-slice/v4",
-        "codeatlas-context-slice-v4.schema.json",
+        "codeatlas.context-slice/v5",
+        "codeatlas-context-slice-v5.schema.json",
         PayloadVersion::from_schema(CONTEXT_SLICE_SCHEMA_VERSION),
         "context_slice",
         generate_schema::<ContextSliceReport>,
@@ -432,22 +440,22 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<HttpFuzzReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.postgres-inventory/v2",
-        "codeatlas-postgres-inventory-v2.schema.json",
+        "codeatlas.postgres-inventory/v3",
+        "codeatlas-postgres-inventory-v3.schema.json",
         PayloadVersion::from_schema_and_api(POSTGRES_SCHEMA_VERSION, POSTGRES_API_VERSION),
         "postgres",
         generate_schema::<PostgresInventoryReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.postgres-check/v2",
-        "codeatlas-postgres-check-v2.schema.json",
+        "codeatlas.postgres-check/v3",
+        "codeatlas-postgres-check-v3.schema.json",
         PayloadVersion::from_schema_and_api(POSTGRES_SCHEMA_VERSION, POSTGRES_API_VERSION),
         "postgres",
         generate_schema::<PostgresCheckReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.postgres-test/v2",
-        "codeatlas-postgres-test-v2.schema.json",
+        "codeatlas.postgres-test/v3",
+        "codeatlas-postgres-test-v3.schema.json",
         PayloadVersion::from_schema_and_api(
             POSTGRES_TEST_SCHEMA_VERSION,
             POSTGRES_TEST_API_VERSION,
@@ -456,8 +464,8 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<PostgresTestReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.postgres-baseline/v2",
-        "codeatlas-postgres-baseline-v2.schema.json",
+        "codeatlas.postgres-baseline/v3",
+        "codeatlas-postgres-baseline-v3.schema.json",
         PayloadVersion::from_schema_and_api(
             POSTGRES_BASELINE_SCHEMA_VERSION,
             POSTGRES_BASELINE_API_VERSION,
@@ -466,8 +474,8 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<PostgresBaselineReport>,
     ),
     PublishedSchema::new(
-        "codeatlas.postgres-diff/v2",
-        "codeatlas-postgres-diff-v2.schema.json",
+        "codeatlas.postgres-diff/v3",
+        "codeatlas-postgres-diff-v3.schema.json",
         PayloadVersion::from_schema_and_api(
             POSTGRES_DIFF_SCHEMA_VERSION,
             POSTGRES_DIFF_API_VERSION,

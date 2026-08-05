@@ -148,7 +148,7 @@ fn collect_modules(
                 }),
             )
             .map_err(anyhow::Error::from)?;
-        let info = match index.parse_file("rust-module-v2", &source_path, &project.root, |source| {
+        let info = match index.parse_file("rust-module-v3", &source_path, &project.root, |source| {
             parser::parse_module_info(&source_path, &project.root, source)
         }) {
             Ok(info) => info,
@@ -250,6 +250,7 @@ impl SymbolCollector<'_> {
             visibility,
             span: symbol.span.clone(),
             callable: symbol.callable.clone(),
+            fuzz_policy: symbol.fuzz_policy.clone(),
         };
         match self.graph.nodes.get_mut(&id) {
             None => self
@@ -270,6 +271,7 @@ impl SymbolCollector<'_> {
                     (None, Some(other)) => existing.callable = Some(other),
                     (_, None) => {}
                 }
+                crate::fuzz::directive::merge_policy(&mut existing.fuzz_policy, node.fuzz_policy);
                 self.graph.record_boundary(
                     &self.project.id,
                     Some(id.clone()),
@@ -302,7 +304,7 @@ impl SymbolCollector<'_> {
         }
         if symbol.visibility == Visibility::Public {
             self.graph.edges.insert(SourceEdge {
-                from: self.file.clone(),
+                from: parent.clone(),
                 to: EdgeTarget::Node(id.clone()),
                 kind: SourceEdgeKind::ReExport,
                 bindings: Vec::new(),

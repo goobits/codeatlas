@@ -112,7 +112,7 @@ fn collect_project_modules(
             .map_err(anyhow::Error::from)?;
 
         let (info, script) =
-            match index.parse_file("python-module-v2", &source_path, &project.root, |source| {
+            match index.parse_file("python-module-v3", &source_path, &project.root, |source| {
                 Ok((
                     parser::parse_module_info(&source_path, &project.root, source)?,
                     source.starts_with("#!"),
@@ -166,40 +166,56 @@ fn add_symbols(
 ) -> Result<BTreeMap<String, BTreeSet<NodeId>>> {
     let mut by_name = BTreeMap::<String, BTreeSet<NodeId>>::new();
     for symbol in symbols {
-        let id = NodeId::symbol(file, &symbol.id);
-        graph
-            .add_node(
-                id.clone(),
-                SourceNode::Symbol(SourceSymbol {
-                    project: project.id.clone(),
-                    file: file.clone(),
-                    name: symbol.name.clone(),
-                    symbol_kind: symbol.kind.into(),
-                    visibility: symbol.visibility.into(),
-                    span: symbol.span.clone(),
-                    callable: symbol.callable.clone(),
-                }),
-            )
-            .map_err(anyhow::Error::from)?;
-        graph.edges.insert(SourceEdge {
-            from: file.clone(),
-            to: EdgeTarget::Node(id.clone()),
-            kind: SourceEdgeKind::Contains,
-            bindings: Vec::new(),
-            evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
-        });
-        if symbol.visibility == Visibility::Public {
-            graph.edges.insert(SourceEdge {
-                from: file.clone(),
-                to: EdgeTarget::Node(id.clone()),
-                kind: SourceEdgeKind::ReExport,
-                bindings: Vec::new(),
-                evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
-            });
-        }
+        let id = add_symbol(graph, project, path, file, file, symbol)?;
         by_name.entry(symbol.name.clone()).or_default().insert(id);
     }
     Ok(by_name)
+}
+
+fn add_symbol(
+    graph: &mut SourceGraph,
+    project: &ResolvedAnalysisProject,
+    path: &str,
+    file: &NodeId,
+    parent: &NodeId,
+    symbol: &Symbol,
+) -> Result<NodeId> {
+    let id = NodeId::symbol(file, &symbol.id);
+    graph
+        .add_node(
+            id.clone(),
+            SourceNode::Symbol(SourceSymbol {
+                project: project.id.clone(),
+                file: file.clone(),
+                name: symbol.name.clone(),
+                symbol_kind: symbol.kind.into(),
+                visibility: symbol.visibility.into(),
+                span: symbol.span.clone(),
+                callable: symbol.callable.clone(),
+                fuzz_policy: symbol.fuzz_policy.clone(),
+            }),
+        )
+        .map_err(anyhow::Error::from)?;
+    graph.edges.insert(SourceEdge {
+        from: parent.clone(),
+        to: EdgeTarget::Node(id.clone()),
+        kind: SourceEdgeKind::Contains,
+        bindings: Vec::new(),
+        evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
+    });
+    if symbol.visibility == Visibility::Public {
+        graph.edges.insert(SourceEdge {
+            from: parent.clone(),
+            to: EdgeTarget::Node(id.clone()),
+            kind: SourceEdgeKind::ReExport,
+            bindings: Vec::new(),
+            evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
+        });
+    }
+    for child in &symbol.children {
+        add_symbol(graph, project, path, file, &id, child)?;
+    }
+    Ok(id)
 }
 
 fn connect_module(

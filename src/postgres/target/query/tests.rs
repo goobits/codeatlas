@@ -77,6 +77,16 @@ fn analyze(
     catalog: Option<&PostgresCatalogInventory>,
     policy: Option<&PostgresQueryPolicyConfig>,
 ) -> crate::postgres::model::PostgresQueryContract {
+    analyze_with_exclusions(sql, dynamic, catalog, policy, &[])
+}
+
+fn analyze_with_exclusions(
+    sql: &str,
+    dynamic: bool,
+    catalog: Option<&PostgresCatalogInventory>,
+    policy: Option<&PostgresQueryPolicyConfig>,
+    fuzz_exclusions: &[String],
+) -> crate::postgres::model::PostgresQueryContract {
     analyze_query(
         StaticQueryInput {
             contract_id: "accounts",
@@ -86,10 +96,33 @@ fn analyze(
             sha256: "sha256:query",
             sql,
             dynamic,
+            fuzz_policy: None,
+            fuzz_exclusions,
         },
         catalog,
         policy,
     )
+}
+
+#[test]
+fn exact_fuzz_exclusion_is_a_visible_hard_block() {
+    let catalog = catalog();
+    let sql = "SELECT id FROM users WHERE id = $1";
+    let discovered = analyze(sql, false, Some(&catalog), None);
+    let excluded = analyze_with_exclusions(
+        sql,
+        false,
+        Some(&catalog),
+        None,
+        std::slice::from_ref(&discovered.id),
+    );
+
+    assert_eq!(excluded.id, discovered.id);
+    assert_eq!(excluded.eligibility, PostgresQueryEligibility::Blocked);
+    assert!(excluded.eligibility_reasons.iter().any(|reason| {
+        reason.code == PostgresQueryEligibilityReasonCode::BlockedByPolicy
+            && reason.subject.as_deref() == Some("config")
+    }));
 }
 
 #[test]

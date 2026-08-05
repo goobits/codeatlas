@@ -459,6 +459,79 @@
       ],
       "type": "string"
     },
+    "FuzzDenial": {
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "FuzzDirectiveIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/FuzzDirectiveIssueKind"
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "kind",
+        "message"
+      ],
+      "type": "object"
+    },
+    "FuzzDirectiveIssueKind": {
+      "enum": [
+        "malformed",
+        "unsupported_action",
+        "empty_reason",
+        "reason_too_long",
+        "duplicate",
+        "conflicting"
+      ],
+      "type": "string"
+    },
+    "FuzzPolicyEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "denial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FuzzDenial"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/FuzzDirectiveIssue"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "ParameterRequirement": {
       "enum": [
         "required",
@@ -1246,6 +1319,16 @@
         "file": {
           "type": "string"
         },
+        "fuzz_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FuzzPolicyEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "name": {
           "type": "string"
         },
@@ -1416,7 +1499,7 @@
       "type": "string"
     }
   },
-  "$id": "codeatlas.context-slice/v4",
+  "$id": "codeatlas.context-slice/v5",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "boundaries": {
@@ -1485,7 +1568,7 @@
       "type": "integer"
     },
     "schema_version": {
-      "const": 4,
+      "const": 5,
       "format": "uint32",
       "minimum": 0,
       "type": "integer"

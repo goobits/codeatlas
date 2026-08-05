@@ -644,6 +644,7 @@ mod tests {
                 PostgresQueryEligibility::RequiresEvidence
             },
             eligibility_reasons: Vec::new(),
+            fuzz_policy: None,
             catalog_digest: None,
         }
     }

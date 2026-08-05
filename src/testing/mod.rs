@@ -76,16 +76,3 @@ fn repository_path(project_root: &str, file_path: &str) -> String {
         format!("{root}/{file_path}")
     }
 }
-
-fn render_diagnostics(
-    diagnostics: Vec<crate::domain::source_graph::GraphDiagnostic>,
-) -> anyhow::Error {
-    anyhow::anyhow!(
-        "{}",
-        diagnostics
-            .into_iter()
-            .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
-            .collect::<Vec<_>>()
-            .join("; ")
-    )
-}

@@ -1,6 +1,7 @@
 # Sandboxed callable code fuzzing
 
-Status: Accepted follow-on; implementation waits for the execution sandbox gate
+Status: Accepted follow-on; static Phase 1A is complete, while harness
+execution waits for the execution sandbox gate
 
 Decision scope: Deterministic boundary corpora, language harnesses, native
 engine adapters, and `fuzz code`
@@ -9,8 +10,9 @@ Depends on:
 
 - [`codeatlas-evidence-lifecycle-cli.md`](codeatlas-evidence-lifecycle-cli.md)
 - [`codeatlas-structured-callable-evidence.md`](codeatlas-structured-callable-evidence.md)
-- [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md),
-  including a passing isolation backend
+- [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md);
+  its shared models are available to the static checkpoint, while a passing
+  isolation backend remains a hard prerequisite for harness execution
 
 ## Decision
 
@@ -339,28 +341,90 @@ source files into the checkout.
 - Every automatic failure identifies its oracle and minimized reproducer.
 - CodeAtlas dogfood creates no source-adjacent state or fake public library.
 
-## Phase 1: Corpus, harness, and reproducer foundation
+## Phase 1A: Static corpus, exclusions, and fuzzability evidence
 
-Status: [ ] Not started
+Status: [x] Complete; dependency-independent and makes zero target calls
 
-LOC: +900-1,400 / -80-180
+Measured LOC: +2,714 / -259 authored; +8,843 / -6,820 generated schema
 
-Verify: Boundary corpus ordering, size/depth limits, plan/reproducer artifacts,
-pre-call permits, exhaustive public-contract accounting, one-way exact
-exclusions, watchdog limits, external-only harness state, and seed replay pass
-using controlled language-neutral fixtures.
+Verify: Boundary descriptor ordering and finite pairwise selection, exhaustive
+public-contract accounting, one-way exact exclusions, and the Rust, Python,
+JavaScript, TypeScript, and SQL directive conformance table pass without
+advertising or executing `fuzz code`.
 
 ```text
 + src/fuzz/corpus.rs
 + src/fuzz/code/mod.rs
 + src/fuzz/code/corpus.rs
++ src/fuzz/code/report.rs
++ src/fuzz/directive.rs
++ tests/fixtures/code_fuzz/
+~ README.md
+~ docs/concepts/lexicon.md
+~ proposals/codeatlas-code-fuzzing.md
+~ proposals/codeatlas-fuzz-performance.md
+~ src/analysis/{effects,reachability}.rs
+~ src/architecture/source_conformance.rs
+~ src/commands/{dead_code,diff,fuzz}.rs
+~ src/config/fuzz.rs
+~ src/context_slice/{mod,model,slice,targets}.rs
+~ src/domain/model.rs
+~ src/domain/source_graph.rs
+~ src/http/{mod,model,planning}.rs
+~ src/languages/ecmascript/collection.rs
+~ src/languages/python/{parser,reachability}.rs
+~ src/languages/rust/parser.rs
+~ src/languages/rust/reachability.rs
+~ src/languages/typescript/{parser,parser/visitor}.rs
+~ src/lexicon/{analyze,callables,grammar_candidates}.rs
+~ src/outputs/text_tree.rs
+~ src/postgres/{diff,model}.rs
+~ src/postgres/source/{mod,query}.rs
+~ src/postgres/target/{query,query/classification,query/tests}.rs
+~ src/dead_code/model.rs
+~ src/dead_code/analyze.rs
+~ src/dead_code/mod.rs
+~ src/published_schemas.rs
+~ src/source_index/mod.rs
+~ src/testing/{impact,mod,witnesses}.rs
+~ src/tests/
+~ schemas/
+~ tasks/check-package.js
+~ tests/{cli_contract,fuzz_plan,postgres_cli}.rs
+```
+
+Phase 1A owns only deterministic evidence. It may define the report and corpus
+models later consumed by planning, but it cannot add a target-running shortcut,
+native engine, harness executor, or public command that implies the isolation
+gate passed. SQL remains config-first; its leading comment is a convenience for
+one handwritten static query, not a claim of ORM or dynamic-query parity.
+
+Verification checkpoint (2026-08-05): the five-adapter attachment table, exact
+public-callable inventory, corpus ordering/bounds, subject exclusions,
+PostgreSQL policy, HTTP zero-call planning, 30-schema registry, 399-unit-test
+suite, CLI suites, warning-denying Clippy, package audit, and complete static
+CodeAtlas dogfood pass. The dogfood scan found 2,581 callable contracts and
+zero gates. One warm engineering sample measured `usage code` at 1.197 seconds
+and `check code` at 1.226 seconds; RSS was unavailable, and this observation is
+not a performance-product claim.
+
+## Phase 1B: Harness, plan, and reproducer foundation
+
+Status: [ ] Waiting for the live isolation gate and HTTP kernel migration
+
+LOC: +350-500 / -30-60
+
+Verify: Zero-call plans and replay derivation, exact evidence digests,
+pre-call permits, watchdog limits, external-only harness state, unchanged-seed
+replay, and the full target-observed isolation suite pass using controlled
+language-neutral fixtures.
+
+```text
 + src/fuzz/code/harness.rs
 + src/fuzz/code/runner.rs
-+ src/fuzz/code/report.rs
 + tests/code_fuzz_cli.rs
-+ tests/fixtures/code_fuzz/
+~ src/fuzz/code/report.rs
 ~ src/fuzz/model.rs
-~ src/fuzz/report.rs
 ~ src/fuzz/reproducer.rs
 ~ src/commands/fuzz.rs
 ~ src/cli/fuzz.rs
@@ -432,7 +496,7 @@ harness generation and four real runtime adapters. It must not grow a second
 callable/effect model, source-local fuzz projects, or language-private execution
 controls.
 
-Total LOC: +2,400-3,800 / -430-880
+Total projected authored LOC: +4,564-5,614 / -639-1,019
 
 ## Layman's wins
 

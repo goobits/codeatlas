@@ -1,11 +1,11 @@
-use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
+use crate::domain::{FuzzPolicyEvidence, Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use syn::{
-    visit::Visit, Attribute, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait,
-    ItemType, Visibility as SynVis,
+    spanned::Spanned, visit::Visit, Attribute, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct,
+    ItemTrait, ItemType, Visibility as SynVis,
 };
 
 mod callable;
@@ -260,6 +260,7 @@ impl SymbolVisitor {
             span: span_obj,
             signature,
             callable: None,
+            fuzz_policy: None,
             docs: None,
             export_paths: vec![],
             referenced: false,
@@ -270,15 +271,21 @@ impl SymbolVisitor {
 
     fn create_callable_symbol(
         &self,
-        name: String,
+        signature: &syn::Signature,
         kind: SymbolKind,
         visibility: Visibility,
-        span: proc_macro2::Span,
-        signature_text: String,
         contract: crate::domain::CallableContract,
+        attributes: &[Attribute],
     ) -> Symbol {
-        let mut symbol = self.create_symbol(name, kind, visibility, span, signature_text);
+        let mut symbol = self.create_symbol(
+            signature.ident.to_string(),
+            kind,
+            visibility,
+            signature.ident.span(),
+            format_fn_signature(signature),
+        );
         symbol.callable = Some(contract);
+        symbol.fuzz_policy = fuzz_policy(attributes);
         symbol
     }
 
@@ -347,22 +354,19 @@ fn kind_to_str(kind: SymbolKind) -> &'static str {
 
 impl<'ast> Visit<'ast> for SymbolVisitor {
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        let name = node.sig.ident.to_string();
         let vis = map_vis(&node.vis);
-        let sig = format_fn_signature(&node.sig);
 
         self.symbols.push(self.create_callable_symbol(
-            name,
+            &node.sig,
             SymbolKind::Function,
             vis,
-            node.sig.ident.span(),
-            sig,
             callable::contract(
                 &node.sig,
                 crate::domain::CallableKind::Function,
                 crate::domain::CallableBody::Present,
                 Some(&node.block),
             ),
+            &node.attrs,
         ));
     }
 
@@ -432,22 +436,19 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
 
             for item in &node.items {
                 if let syn::ImplItem::Fn(method) = item {
-                    let m_name = method.sig.ident.to_string();
                     let m_vis = map_vis(&method.vis);
-                    let m_sig = format_fn_signature(&method.sig);
 
                     let sym = self.create_callable_symbol(
-                        m_name.clone(),
+                        &method.sig,
                         SymbolKind::Method,
                         m_vis,
-                        method.sig.ident.span(),
-                        m_sig,
                         callable::contract(
                             &method.sig,
                             crate::domain::CallableKind::Method,
                             crate::domain::CallableBody::Present,
                             Some(&method.block),
                         ),
+                        &method.attrs,
                     );
 
                     if let Some(idx) = parent_idx {
@@ -479,22 +480,19 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
 
             for item in &node.items {
                 if let syn::ImplItem::Fn(method) = item {
-                    let m_name = method.sig.ident.to_string();
                     let m_vis = map_vis(&method.vis);
-                    let m_sig = format_fn_signature(&method.sig);
 
                     let mut sym = self.create_callable_symbol(
-                        m_name,
+                        &method.sig,
                         SymbolKind::Method,
                         m_vis,
-                        method.sig.ident.span(),
-                        m_sig,
                         callable::contract(
                             &method.sig,
                             crate::domain::CallableKind::Method,
                             crate::domain::CallableBody::Present,
                             Some(&method.block),
                         ),
+                        &method.attrs,
                     );
 
                     if let Some(idx) = parent_idx {
@@ -555,17 +553,13 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
         // Collect trait methods as children
         for item in &node.items {
             if let syn::TraitItem::Fn(method) = item {
-                let m_name = method.sig.ident.to_string();
-                let m_sig = format_fn_signature(&method.sig);
                 // Trait methods are public by default (part of the trait's contract)
                 let m_vis = Visibility::Public;
 
                 let mut sym = self.create_callable_symbol(
-                    m_name,
+                    &method.sig,
                     SymbolKind::Method,
                     m_vis,
-                    method.sig.ident.span(),
-                    m_sig,
                     callable::contract(
                         &method.sig,
                         crate::domain::CallableKind::Method,
@@ -576,6 +570,7 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                         },
                         method.default.as_ref(),
                     ),
+                    &method.attrs,
                 );
                 self.qualify_child(&name, &mut sym);
                 self.symbols[idx].children.push(sym);
@@ -607,6 +602,24 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
             sig,
         ));
     }
+}
+
+fn fuzz_policy(attributes: &[Attribute]) -> Option<FuzzPolicyEvidence> {
+    crate::fuzz::directive::parse_directive_lines(attributes.iter().filter_map(|attribute| {
+        if !attribute.path().is_ident("doc") {
+            return None;
+        }
+        let syn::Meta::NameValue(value) = &attribute.meta else {
+            return None;
+        };
+        let syn::Expr::Lit(value) = &value.value else {
+            return None;
+        };
+        let syn::Lit::Str(value) = &value.lit else {
+            return None;
+        };
+        Some((attribute.span().start().line as u32, value.value()))
+    }))
 }
 
 fn collect_uses(

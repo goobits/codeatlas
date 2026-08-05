@@ -1,10 +1,11 @@
 use super::compiler::CompileResult;
 use super::diagnostic::Severity;
-use crate::analysis::reachability::Reachability;
+use crate::analysis::reachability::{render_diagnostics, Reachability};
 use crate::domain::source_graph::{
     ContextRole, EdgeTarget, NodeId, ProjectId, SourceEdgeKind, SourceEvidence, SourceGraph,
     SourceNode,
 };
+use anyhow::Context;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -69,16 +70,9 @@ fn analyze(
     architecture_graph_digest: &str,
     source_graph: &SourceGraph,
 ) -> anyhow::Result<SourceConformanceReport> {
-    let reachability = Reachability::analyze(source_graph).map_err(|diagnostics| {
-        anyhow::anyhow!(
-            "Invalid source graph: {}",
-            diagnostics
-                .into_iter()
-                .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
-                .collect::<Vec<_>>()
-                .join("; ")
-        )
-    })?;
+    let reachability = Reachability::analyze(source_graph)
+        .map_err(render_diagnostics)
+        .context("Invalid source graph")?;
     let dependencies = workspace_dependencies(source_graph, &reachability);
     let package_bindings = npm_package_bindings(architecture);
     let mut findings = intrinsic_findings(source_graph, &reachability);

@@ -1,0 +1,14 @@
+{
+	"root": ".",
+	"languages": ["rs", "py", "js", "ts"],
+	"package_exports": false,
+	"postgres": {
+		"contracts": [
+			{
+				"id": "code-fuzz",
+				"query_roots": ["sql"],
+				"source_complete": true
+			}
+		]
+	}
+}

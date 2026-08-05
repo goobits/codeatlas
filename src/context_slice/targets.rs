@@ -3,7 +3,7 @@ use crate::domain::source_graph::{NodeId, ProjectId, SourceGraph, SourceNode};
 use anyhow::{Context, Result};
 use std::collections::BTreeSet;
 
-pub(super) fn resolve_target(graph: &SourceGraph, query: &str) -> Result<TargetResolution> {
+pub(crate) fn resolve_target(graph: &SourceGraph, query: &str) -> Result<TargetResolution> {
     let query = query.trim();
     if let Some((id, _)) = graph.nodes.iter().find(|(id, _)| id.0 == query) {
         return Ok(TargetResolution {
@@ -20,7 +20,7 @@ pub(super) fn resolve_target(graph: &SourceGraph, query: &str) -> Result<TargetR
                 .find(|candidate| candidate.0 == project)
                 .cloned()
                 .with_context(|| {
-                    format!("context target {query:?} names unknown project {project:?}")
+                    format!("source target {query:?} names unknown project {project:?}")
                 })?;
             (Some(project), selector)
         }
@@ -34,7 +34,10 @@ pub(super) fn resolve_target(graph: &SourceGraph, query: &str) -> Result<TargetR
     if let Some(symbol_name) = symbol_name {
         for (id, node) in &graph.nodes {
             if let SourceNode::Symbol(symbol) = node {
-                if files.contains(&symbol.file) && symbol.name == symbol_name {
+                let qualified_name = id.0.rsplit_once('#').map(|(_, qualified)| qualified);
+                if files.contains(&symbol.file)
+                    && (symbol.name == symbol_name || qualified_name == Some(symbol_name))
+                {
                     nodes.insert(id.clone());
                 }
             }
@@ -44,7 +47,7 @@ pub(super) fn resolve_target(graph: &SourceGraph, query: &str) -> Result<TargetR
     }
     if nodes.is_empty() {
         anyhow::bail!(
-            "context target {query:?} did not match an exact node ID, project::path, repository path, source path, or symbol selector"
+            "source target {query:?} did not match an exact node ID, project::path, repository path, source path, or symbol selector"
         );
     }
     Ok(TargetResolution {
@@ -98,7 +101,7 @@ fn resolve_files(
         .collect::<BTreeSet<_>>();
     if projects.len() > 1 {
         anyhow::bail!(
-            "context target {query:?} is ambiguous across projects {}; qualify it as project::path",
+            "source target {query:?} is ambiguous across projects {}; qualify it as project::path",
             projects
                 .iter()
                 .map(|project| project.0.as_str())

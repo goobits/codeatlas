@@ -6,7 +6,7 @@ use crate::domain::{EvidenceClass, SourceDisposition};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(crate) const DEAD_CODE_SCHEMA_VERSION: u32 = 5;
+pub(crate) const DEAD_CODE_SCHEMA_VERSION: u32 = 6;
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct DeadCodeReport {
@@ -140,6 +140,7 @@ pub(crate) enum DeadCodeFindingKind {
     WorkspaceSourceBypass,
     UnresolvedInternalEdge,
     DynamicBoundary,
+    MalformedFuzzDirective,
 }
 
 impl DeadCodeFindingKind {
@@ -154,6 +155,7 @@ impl DeadCodeFindingKind {
             Self::WorkspaceSourceBypass => "workspace_source_bypass",
             Self::UnresolvedInternalEdge => "unresolved_internal_edge",
             Self::DynamicBoundary => "dynamic_boundary",
+            Self::MalformedFuzzDirective => "malformed_fuzz_directive",
         }
     }
 
@@ -166,6 +168,7 @@ impl DeadCodeFindingKind {
                     | Self::UnexportedWorkspaceImport
                     | Self::WorkspaceSourceBypass
                     | Self::UnresolvedInternalEdge
+                    | Self::MalformedFuzzDirective
             )
     }
 }

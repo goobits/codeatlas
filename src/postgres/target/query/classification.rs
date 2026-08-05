@@ -329,7 +329,9 @@ pub(super) fn query_eligibility(
 fn is_hard_block(code: PostgresQueryEligibilityReasonCode) -> bool {
     matches!(
         code,
-        PostgresQueryEligibilityReasonCode::DynamicSql
+        PostgresQueryEligibilityReasonCode::BlockedByPolicy
+            | PostgresQueryEligibilityReasonCode::MalformedFuzzDirective
+            | PostgresQueryEligibilityReasonCode::DynamicSql
             | PostgresQueryEligibilityReasonCode::UnbalancedSyntax
             | PostgresQueryEligibilityReasonCode::MultipleStatements
             | PostgresQueryEligibilityReasonCode::UnsupportedStatement

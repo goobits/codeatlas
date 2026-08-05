@@ -13,6 +13,7 @@ use self::shape::{
     query_result, resolve_table_references,
 };
 use crate::config::PostgresQueryPolicyConfig;
+use crate::domain::FuzzPolicyEvidence;
 use crate::execution::ExecutionEffect;
 use crate::postgres::model::{
     PostgresCatalogInventory, PostgresQueryContract, PostgresQueryEligibilityReason,
@@ -32,6 +33,8 @@ pub(in crate::postgres) struct StaticQueryInput<'a> {
     pub(in crate::postgres) sha256: &'a str,
     pub(in crate::postgres) sql: &'a str,
     pub(in crate::postgres) dynamic: bool,
+    pub(in crate::postgres) fuzz_policy: Option<&'a FuzzPolicyEvidence>,
+    pub(in crate::postgres) fuzz_exclusions: &'a [String],
 }
 
 pub(in crate::postgres) fn analyze_query(
@@ -114,6 +117,26 @@ pub(in crate::postgres) fn analyze_query(
     }
 
     let mut reasons = BTreeSet::new();
+    if input.fuzz_exclusions.iter().any(|excluded| excluded == &id) {
+        reasons.insert(subject_reason(
+            PostgresQueryEligibilityReasonCode::BlockedByPolicy,
+            "config".to_string(),
+        ));
+    }
+    if let Some(policy) = input.fuzz_policy {
+        if policy.denial.is_some() {
+            reasons.insert(subject_reason(
+                PostgresQueryEligibilityReasonCode::BlockedByPolicy,
+                "source_directive".to_string(),
+            ));
+        }
+        if !policy.issues.is_empty() {
+            reasons.insert(subject_reason(
+                PostgresQueryEligibilityReasonCode::MalformedFuzzDirective,
+                "source_directive".to_string(),
+            ));
+        }
+    }
     if input.dynamic {
         effects.insert(ExecutionEffect::Unknown);
         reasons.insert(reason(PostgresQueryEligibilityReasonCode::DynamicSql));
@@ -192,6 +215,7 @@ pub(in crate::postgres) fn analyze_query(
         effects: effects.into_iter().collect(),
         eligibility,
         eligibility_reasons,
+        fuzz_policy: input.fuzz_policy.cloned(),
         catalog_digest: catalog.map(|catalog| catalog.digest.clone()),
     }
 }

@@ -10,6 +10,79 @@
       ],
       "type": "string"
     },
+    "FuzzDenial": {
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "FuzzDirectiveIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/FuzzDirectiveIssueKind"
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "kind",
+        "message"
+      ],
+      "type": "object"
+    },
+    "FuzzDirectiveIssueKind": {
+      "enum": [
+        "malformed",
+        "unsupported_action",
+        "empty_reason",
+        "reason_too_long",
+        "duplicate",
+        "conflicting"
+      ],
+      "type": "string"
+    },
+    "FuzzPolicyEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "denial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FuzzDenial"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/FuzzDirectiveIssue"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "PostgresColumnBinding": {
       "properties": {
         "column": {
@@ -328,6 +401,16 @@
           },
           "type": "array"
         },
+        "fuzzPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FuzzPolicyEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "id": {
           "type": "string"
         },
@@ -419,6 +502,8 @@
     },
     "PostgresQueryEligibilityReasonCode": {
       "enum": [
+        "blocked_by_policy",
+        "malformed_fuzz_directive",
         "dynamic_sql",
         "unbalanced_syntax",
         "multiple_statements",
@@ -703,11 +788,11 @@
       "type": "object"
     }
   },
-  "$id": "codeatlas.postgres-inventory/v2",
+  "$id": "codeatlas.postgres-inventory/v3",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "apiVersion": {
-      "const": "codeatlas.postgres/v2",
+      "const": "codeatlas.postgres/v3",
       "type": "string"
     },
     "contracts": {
@@ -717,7 +802,7 @@
       "type": "array"
     },
     "schemaVersion": {
-      "const": 2,
+      "const": 3,
       "format": "uint32",
       "minimum": 0,
       "type": "integer"

@@ -1,10 +1,10 @@
 use super::inventory::scripts_for_project;
 use super::{
-    compile_subject, configured_subjects, display_node, render_diagnostics, repository_path,
-    ChangedPathImpact, ChangedPathResolution, ImpactedTestContext, ImpactedTestProject,
-    TestImpactEvidence, TestImpactEvidenceKind, TestingImpactReport,
+    compile_subject, configured_subjects, display_node, repository_path, ChangedPathImpact,
+    ChangedPathResolution, ImpactedTestContext, ImpactedTestProject, TestImpactEvidence,
+    TestImpactEvidenceKind, TestingImpactReport,
 };
-use crate::analysis::reachability::{project_confidence, Reachability};
+use crate::analysis::reachability::{project_confidence, render_diagnostics, Reachability};
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
 use crate::domain::source_graph::{
     ContextId, ContextRole, FindingConfidence, NodeId, ProjectId, SourceContext, SourceGraph,

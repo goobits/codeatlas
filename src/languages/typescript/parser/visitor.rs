@@ -7,7 +7,7 @@ use super::format::{
 use crate::domain::{
     CallableContract, CallableKind, Language, Span, Symbol, SymbolKind, Visibility,
 };
-use swc_core::common::{sync::Lrc, SourceMap};
+use swc_core::common::{sync::Lrc, SourceFile, SourceMap};
 use swc_core::ecma::ast::*;
 use swc_core::ecma::visit::{Visit, VisitWith};
 
@@ -15,6 +15,7 @@ pub(super) struct SymbolVisitor {
     pub(super) symbols: Vec<Symbol>,
     pub(super) relative_path: String,
     pub(super) source_map: Lrc<SourceMap>,
+    pub(super) source: Lrc<SourceFile>,
 }
 
 impl SymbolVisitor {
@@ -28,7 +29,7 @@ impl SymbolVisitor {
     ) -> Symbol {
         let start = self.source_map.lookup_char_pos(span.lo);
         let end = self.source_map.lookup_char_pos(span.hi);
-        Symbol {
+        let mut symbol = Symbol {
             id: format!("ts:{}:{}#{}", self.relative_path, kind_to_str(kind), name),
             name,
             kind,
@@ -43,12 +44,15 @@ impl SymbolVisitor {
             }),
             signature,
             callable: None,
+            fuzz_policy: None,
             docs: None,
             export_paths: vec![],
             referenced: false,
             package: None,
             children: vec![],
-        }
+        };
+        symbol.fuzz_policy = super::directive::fuzz_policy(&self.source.src, start.line as u32);
+        symbol
     }
 
     fn create_callable_symbol(

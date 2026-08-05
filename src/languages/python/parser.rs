@@ -1,4 +1,4 @@
-use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
+use crate::domain::{FuzzPolicyEvidence, Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
 use rustpython_parser::source_code::LineIndex;
 use rustpython_parser::text_size::TextRange;
@@ -147,6 +147,7 @@ impl SymbolVisitor {
             span,
             signature,
             callable: None,
+            fuzz_policy: None,
             docs: None,
             export_paths: vec![],
             referenced: false,
@@ -212,6 +213,7 @@ impl SymbolVisitor {
                     is_class_member: self.class_member,
                     is_declaration_file: self.relative_path.ends_with(".pyi"),
                 }));
+                symbol.fuzz_policy = python_fuzz_policy(&f.body, &self.source, &self.line_index);
                 self.symbols.push(symbol);
             }
             ast::Stmt::AsyncFunctionDef(f) => {
@@ -232,6 +234,7 @@ impl SymbolVisitor {
                     is_class_member: self.class_member,
                     is_declaration_file: self.relative_path.ends_with(".pyi"),
                 }));
+                symbol.fuzz_policy = python_fuzz_policy(&f.body, &self.source, &self.line_index);
                 self.symbols.push(symbol);
             }
             ast::Stmt::ClassDef(c) => {
@@ -266,12 +269,8 @@ impl SymbolVisitor {
                 for mut child in child_visitor.symbols {
                     if child.kind == SymbolKind::Function {
                         child.kind = SymbolKind::Method;
-                        child.id =
-                            format!("py:{}:method#{}.{}", self.relative_path, name, child.name);
-                    } else if child.kind == SymbolKind::Property {
-                        child.id =
-                            format!("py:{}:property#{}.{}", self.relative_path, name, child.name);
                     }
+                    self.qualify_child(&name, &mut child);
                     symbol.children.push(child);
                 }
 
@@ -296,6 +295,45 @@ impl SymbolVisitor {
             _ => {}
         }
     }
+
+    fn qualify_child(&self, parent: &str, child: &mut Symbol) {
+        let qualified_name = format!("{parent}.{}", child.name);
+        child.id = format!(
+            "py:{}:{}#{}",
+            self.relative_path,
+            kind_to_str(child.kind),
+            qualified_name
+        );
+        for descendant in &mut child.children {
+            self.qualify_child(&qualified_name, descendant);
+        }
+    }
+}
+
+fn python_fuzz_policy(
+    body: &[ast::Stmt],
+    source: &str,
+    line_index: &LineIndex,
+) -> Option<FuzzPolicyEvidence> {
+    let Some(ast::Stmt::Expr(expression)) = body.first() else {
+        return None;
+    };
+    let ast::Expr::Constant(constant) = &*expression.value else {
+        return None;
+    };
+    let ast::Constant::Str(documentation) = &constant.value else {
+        return None;
+    };
+    let start = line_index
+        .source_location(expression.range.start(), source)
+        .row
+        .get();
+    crate::fuzz::directive::parse_directive_lines(
+        documentation
+            .lines()
+            .enumerate()
+            .map(|(offset, line)| (start.saturating_add(offset as u32), line.to_string())),
+    )
 }
 
 fn span_from_range(range: TextRange, source: &str, line_index: &LineIndex) -> Span {

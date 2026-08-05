@@ -1,15 +1,16 @@
 use crate::config::{PostgresPsqlMetaCommandMode, PostgresTransactionMode};
+use crate::domain::FuzzPolicyEvidence;
 use crate::execution::ExecutionEffect;
 use serde::{Deserialize, Serialize};
 
-pub(crate) const POSTGRES_API_VERSION: &str = "codeatlas.postgres/v2";
-pub(crate) const POSTGRES_SCHEMA_VERSION: u32 = 2;
-pub(crate) const POSTGRES_TEST_API_VERSION: &str = "codeatlas.postgres-test/v2";
-pub(crate) const POSTGRES_TEST_SCHEMA_VERSION: u32 = 2;
-pub(crate) const POSTGRES_BASELINE_API_VERSION: &str = "codeatlas.postgres-baseline/v2";
-pub(crate) const POSTGRES_BASELINE_SCHEMA_VERSION: u32 = 2;
-pub(crate) const POSTGRES_DIFF_API_VERSION: &str = "codeatlas.postgres-diff/v2";
-pub(crate) const POSTGRES_DIFF_SCHEMA_VERSION: u32 = 2;
+pub(crate) const POSTGRES_API_VERSION: &str = "codeatlas.postgres/v3";
+pub(crate) const POSTGRES_SCHEMA_VERSION: u32 = 3;
+pub(crate) const POSTGRES_TEST_API_VERSION: &str = "codeatlas.postgres-test/v3";
+pub(crate) const POSTGRES_TEST_SCHEMA_VERSION: u32 = 3;
+pub(crate) const POSTGRES_BASELINE_API_VERSION: &str = "codeatlas.postgres-baseline/v3";
+pub(crate) const POSTGRES_BASELINE_SCHEMA_VERSION: u32 = 3;
+pub(crate) const POSTGRES_DIFF_API_VERSION: &str = "codeatlas.postgres-diff/v3";
+pub(crate) const POSTGRES_DIFF_SCHEMA_VERSION: u32 = 3;
 
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -93,6 +94,8 @@ pub(crate) struct PostgresQueryContract {
     pub eligibility: PostgresQueryEligibility,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub eligibility_reasons: Vec<PostgresQueryEligibilityReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuzz_policy: Option<FuzzPolicyEvidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog_digest: Option<String>,
 }
@@ -283,6 +286,8 @@ pub(crate) struct PostgresQueryEligibilityReason {
 )]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PostgresQueryEligibilityReasonCode {
+    BlockedByPolicy,
+    MalformedFuzzDirective,
     DynamicSql,
     UnbalancedSyntax,
     MultipleStatements,

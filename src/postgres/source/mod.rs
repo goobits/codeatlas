@@ -73,6 +73,22 @@ pub(crate) fn collect(project: &ProjectConfig) -> Result<CollectedPostgres> {
     queries.sort_by(|left, right| {
         (&left.contract_id, &left.contract.id).cmp(&(&right.contract_id, &right.contract.id))
     });
+    let discovered_query_ids = queries
+        .iter()
+        .map(|query| query.contract.id.as_str())
+        .collect::<BTreeSet<_>>();
+    if let Some(stale) = project
+        .config
+        .fuzz
+        .exclude
+        .postgres
+        .iter()
+        .find(|excluded| !discovered_query_ids.contains(excluded.as_str()))
+    {
+        anyhow::bail!(
+            "PostgreSQL fuzz exclusion {stale:?} does not identify a discovered static query"
+        );
+    }
     let report = PostgresInventoryReport::new(inventories);
     for contract in &report.contracts {
         dependency_order(&report, &contract.id)?;

@@ -152,7 +152,8 @@
         "unexported_workspace_import",
         "workspace_source_bypass",
         "unresolved_internal_edge",
-        "dynamic_boundary"
+        "dynamic_boundary",
+        "malformed_fuzz_directive"
       ],
       "type": "string"
     },
@@ -338,7 +339,7 @@
       "type": "object"
     }
   },
-  "$id": "codeatlas.dead-code/v5",
+  "$id": "codeatlas.dead-code/v6",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "findings": {
@@ -354,7 +355,7 @@
       "type": "array"
     },
     "schema_version": {
-      "const": 5,
+      "const": 6,
       "format": "uint32",
       "minimum": 0,
       "type": "integer"

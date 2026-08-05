@@ -1,9 +1,9 @@
 use super::{
-    compile_subject, configured_subjects, display_node, render_diagnostics, repository_path,
-    DeclaredTestWitness, DetachedTestContext, ObservedTestWitness, PublicApiTestWitness,
-    TestWitnessStatus, TestingWitnessReport,
+    compile_subject, configured_subjects, display_node, repository_path, DeclaredTestWitness,
+    DetachedTestContext, ObservedTestWitness, PublicApiTestWitness, TestWitnessStatus,
+    TestingWitnessReport,
 };
-use crate::analysis::reachability::{symbol_confidence, Reachability};
+use crate::analysis::reachability::{render_diagnostics, symbol_confidence, Reachability};
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
 use crate::domain::source_graph::{
     ContextId, ContextRole, ContextScope, FindingConfidence, ProjectId, SourceContext, SourceGraph,

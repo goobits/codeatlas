@@ -112,8 +112,8 @@ pub(super) fn collect_project_modules(
 
         let info = index.parse_file(
             match language {
-                SourceLanguage::Svelte => "svelte-module-v2",
-                _ => "ecmascript-module-v2",
+                SourceLanguage::Svelte => "svelte-module-v3",
+                _ => "ecmascript-module-v3",
             },
             &source_path,
             &project.root,
@@ -224,35 +224,62 @@ fn add_symbols(
         if symbol.name.contains('.') {
             continue;
         }
-        let id = NodeId::symbol(file, &symbol.id);
-        graph
-            .add_node(
-                id.clone(),
-                SourceNode::Symbol(SourceSymbol {
-                    project: project.id.clone(),
-                    file: file.clone(),
-                    name: symbol.name.clone(),
-                    symbol_kind: symbol.kind.into(),
-                    visibility: if language == SourceLanguage::Svelte {
-                        SourceVisibility::Unknown
-                    } else {
-                        symbol.visibility.into()
-                    },
-                    span: symbol.span.clone(),
-                    callable: symbol.callable.clone(),
-                }),
-            )
-            .map_err(anyhow::Error::from)?;
-        graph.edges.insert(SourceEdge {
-            from: file.clone(),
-            to: EdgeTarget::Node(id.clone()),
-            kind: SourceEdgeKind::Contains,
-            bindings: Vec::new(),
-            evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
-        });
+        let id = add_symbol(graph, project, path, file, file, language, symbol)?;
         by_name.entry(symbol.name.clone()).or_default().insert(id);
     }
     Ok(by_name)
+}
+
+fn add_symbol(
+    graph: &mut SourceGraph,
+    project: &ResolvedAnalysisProject,
+    path: &str,
+    file: &NodeId,
+    parent: &NodeId,
+    language: SourceLanguage,
+    symbol: &Symbol,
+) -> Result<NodeId> {
+    let id = NodeId::symbol(file, &symbol.id);
+    let visibility = if language == SourceLanguage::Svelte {
+        SourceVisibility::Unknown
+    } else {
+        symbol.visibility.into()
+    };
+    graph
+        .add_node(
+            id.clone(),
+            SourceNode::Symbol(SourceSymbol {
+                project: project.id.clone(),
+                file: file.clone(),
+                name: symbol.name.clone(),
+                symbol_kind: symbol.kind.into(),
+                visibility,
+                span: symbol.span.clone(),
+                callable: symbol.callable.clone(),
+                fuzz_policy: symbol.fuzz_policy.clone(),
+            }),
+        )
+        .map_err(anyhow::Error::from)?;
+    graph.edges.insert(SourceEdge {
+        from: parent.clone(),
+        to: EdgeTarget::Node(id.clone()),
+        kind: SourceEdgeKind::Contains,
+        bindings: Vec::new(),
+        evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
+    });
+    if visibility == SourceVisibility::Public {
+        graph.edges.insert(SourceEdge {
+            from: parent.clone(),
+            to: EdgeTarget::Node(id.clone()),
+            kind: SourceEdgeKind::ReExport,
+            bindings: Vec::new(),
+            evidence: SourceEvidence::new(path, symbol.span.clone(), EXTRACTOR),
+        });
+    }
+    for child in &symbol.children {
+        add_symbol(graph, project, path, file, &id, language, child)?;
+    }
+    Ok(id)
 }
 
 fn source_language(path: &Path) -> Option<SourceLanguage> {

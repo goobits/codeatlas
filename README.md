@@ -74,8 +74,9 @@ Run `codeatlas <command> <subject> --help` for the complete option set.
 
 HTTP fuzz planning operates at a configured transport boundary and makes zero
 target calls. PostgreSQL live testing validates database contracts; it is not
-SQL fuzzing. CodeAtlas does not yet fuzz SQL parameters or in-process code
-APIs.
+SQL fuzzing. CodeAtlas now validates static callable and SQL fuzzability
+evidence, but it does not advertise or execute code or PostgreSQL fuzzing until
+the shared isolation gate and subject adapters pass.
 
 ## Code Evidence
 
@@ -102,11 +103,63 @@ distinguishes importable API from implementation-only declarations. Default
 discovery excludes dependencies, generated output, conventional tests, and
 fixture-data trees unless configuration explicitly selects them.
 
-JSON scan reports use schema version 3. A callable symbol carries one optional
+JSON scan reports use schema version 4. A callable symbol carries one optional
 structured `CallableContract` with ordered signatures, receivers, parameter
 roles and types, result shape, conservative effects, and exact block reasons.
 The display signature remains presentation evidence; policy consumers do not
-reparse it. A missing effect is never presented as proof of purity.
+reparse it. A missing effect is never presented as proof of purity. Source
+policy evidence is attached separately so it cannot masquerade as a type or
+effect oracle.
+
+### Static fuzzability and one-way exclusions
+
+`check code` builds and validates a zero-call fuzzability inventory for every
+discovered public Rust, Python, JavaScript, and TypeScript callable. Each
+internal entry has the shared callable contract, deterministic boundary
+descriptors and bounded pairwise prefix, supported result-shape evidence, or
+exact block reasons. `scan code` exposes the callable and source-policy
+evidence, while `check code` emits malformed-directive findings. The complete
+fuzzability inventory has a registered schema for later planning but is not yet
+a standalone CLI report, and no `fuzz code` execution command is advertised
+before sandboxed harness execution exists.
+
+Maintainers can place one subtractive directive beside the declaration:
+
+```text
+@codeatlas-fuzz deny: <maintainer reason>
+```
+
+Rust doc comments, JavaScript/TypeScript JSDoc, and Python docstrings attach it
+through their existing syntax adapters. `deny` means never fuzz that target,
+even under verified isolation. Ordinary mutation and effects stay in typed
+effect evidence and target classification. There is no `allow`: a stale source
+comment may reduce authority but can never expand what runs. Malformed,
+duplicate-conflicting, and unsupported directives are gating `check code`
+findings.
+
+Strict config provides the same exact fallback without wildcards:
+
+```json
+{
+  "fuzz": {
+    "exclude": {
+      "code": ["src/publisher.rs#ArtifactPublisher.publish"],
+      "http": ["POST /admin/export"],
+      "postgres": ["query_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+    }
+  }
+}
+```
+
+Code selectors use `path#symbol` and qualify members as `Type.method` when
+needed. HTTP plans persist the canonical excluded-operation set and reject an
+excluded `--operation`. PostgreSQL exclusions use content-addressed query IDs.
+An unresolved code or PostgreSQL exclusion fails closed instead of silently
+doing nothing.
+
+For handwritten static `.sql` files, a leading SQL comment may carry the same
+directive as a convenience. PostgreSQL remains config-first: embedded ORM and
+dynamic SQL do not acquire comment attachment through a second parser.
 
 ### Reachability and consumers
 
@@ -187,10 +240,11 @@ It recognizes static imports, re-exports, and literal dynamic imports from
 JavaScript, TypeScript, and Svelte consumer trees. Namespace, default, and
 runtime-dependent imports are handled conservatively.
 
-#### Dead-code report v5
+#### Code usage/check report v6
 
 `usage code --format json` and `check code --format json` emit schema version
-5. The report keeps project completeness separate from individual findings.
+6. The report keeps project completeness separate from individual findings;
+check-only policy findings do not change the question answered by `usage code`.
 
 Project summaries include:
 
@@ -212,7 +266,8 @@ roots, confidence, source evidence, and these review fields:
 | `gates` | boolean | Whether this exact finding can fail `check code` |
 
 Only high-confidence unreachable files, unused private symbols, workspace
-export or source-bypass violations, and unresolved internal imports can gate.
+export or source-bypass violations, unresolved internal imports, and malformed
+fuzz directives can gate. Malformed directives appear only in `check code`.
 Public symbols with no known consumer, dynamic boundaries, test-only code, and
 tooling-only code remain visible evidence, not automatic deletion authority.
 
@@ -234,8 +289,8 @@ codeatlas --root . inspect code \
 Direction is `incoming`, `outgoing`, or `both`. The default is `both`.
 Ambiguous project-relative targets fail with a qualification hint.
 
-Context reports use schema version 4 and preserve the same callable contract on
-symbol nodes. Each page includes:
+Context reports use schema version 5 and preserve the same callable contract
+and source-policy evidence on symbol nodes. Each page includes:
 
 - `graph_digest`, `direction`, `depth`, and `max_nodes`
 - `page_offset`, `remaining_nodes`, and omitted project, node, edge, context,
@@ -491,7 +546,7 @@ recommended general source: it is versioned and CC BY 4.0, but its roughly
 code identifiers. Prepare a small attributed relation file in a separate source
 refresh process, mark its coverage `filtered`, and pin its resulting bytes.
 
-JSON reports use lexicon schema version 3. They expose deterministic candidate
+JSON reports use lexicon schema version 5. They expose deterministic candidate
 IDs and ordering, source manifests and record counts, evidence relation and
 direction, available source ranges for observed symbols, project/domain tiers,
 qualitative confidence, stable rules and reasons, preferred terms when
@@ -720,10 +775,11 @@ Explicit OpenAPI adds schema conformance, authentication probes, declared
 status checks, and optional stateful traversal through OpenAPI Links.
 
 The target's operation list is the fuzz authority. `--operation` may narrow it
-for local diagnosis but cannot expand it. Every plan contains its concrete
-seed and finite limits. Plans and receipts exclude secret values; future run
-reports also exclude request and response bodies, sensitive headers, and URL
-query values.
+for local diagnosis but cannot expand it or select a checked-in
+`fuzz.exclude.http` operation. Every plan contains its excluded-operation set,
+concrete seed, and finite limits. Plans and receipts exclude secret values;
+future run reports also exclude request and response bodies, sensitive headers,
+and URL query values.
 
 HTTP configuration also supports:
 
@@ -797,14 +853,16 @@ templates, and database calls. Unresolved interpolation, identifier helpers,
 raw fragments, and dynamic SQL remain visible boundaries and are never
 executed.
 
-PostgreSQL inventory v2 gives every discovered application query one stable
+PostgreSQL inventory v3 gives every discovered application query one stable
 `query_<digest>` identity and one typed query contract. It records placeholder
 order, statement class, known parameter and result shapes, referenced objects,
-constraints, effects, eligibility, and exact block reasons. Static source alone
-does not invent catalog OIDs or prove answer correctness; unavailable catalog
-or result evidence remains explicit. Dynamic SQL, DDL, transaction control,
-privileged operations, filesystem/program access, external links, and unknown
-functions are blocked from generated execution.
+constraints, effects, fuzz policy, eligibility, and exact block reasons. A
+source denial or exact config exclusion reports `blocked_by_policy`; malformed
+leading-comment markup is a gating finding and blocks the query contract.
+Static source alone does not invent catalog OIDs or prove answer correctness;
+unavailable catalog or result evidence remains explicit. Dynamic SQL, DDL,
+transaction control, privileged operations, filesystem/program access,
+external links, and unknown functions are blocked from generated execution.
 
 Placeholder evidence is bounded: only observed positions are materialized, and
 position zero, missing positions, or a position above 1,024 hard-blocks the
@@ -913,8 +971,8 @@ Common top-level fields are:
 - `projects`: named reachability projects and contexts
 - `execution`: finite call, rate, concurrency, time, memory, process, output,
   artifact, and isolation ceilings
-- `fuzz`: finite case, shrink, failure, and per-case time ceilings shared by
-  fuzz subjects
+- `fuzz`: finite case, shrink, failure, and per-case time ceilings plus exact
+  one-way `code`, `http`, and `postgres` exclusions shared by fuzz subjects
 - `docs`, `http`, and `postgres`: domain-specific contracts
 
 CLI limit flags may only tighten their checked-in values. Zero, unlimited

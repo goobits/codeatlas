@@ -17,7 +17,7 @@ const requiredFiles = [
 	'LICENSE',
 	'package.json',
 	'README.md',
-	'schemas/codeatlas-scan-v3.schema.json',
+	'schemas/codeatlas-scan-v4.schema.json',
 	'src/http/schemathesis/hooks.py',
 	'src/http/schemathesis/requirements.txt',
 	'src/main.rs'

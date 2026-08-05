@@ -56,6 +56,7 @@ fn dependencies_of_unreferenced_public_symbols_do_not_gate_deletion() {
                     visibility,
                     span: None,
                     callable: None,
+                    fuzz_policy: None,
                 }),
             )
             .expect("symbol");
@@ -254,6 +255,7 @@ fn unrelated_dynamic_imports_do_not_lower_private_symbol_confidence() {
                 visibility: SourceVisibility::Private,
                 span: None,
                 callable: None,
+                fuzz_policy: None,
             }),
         )
         .expect("symbol");
@@ -331,7 +333,7 @@ fn dead_code_json_is_canonical_and_schema_versioned() {
     let first = outputs::dead_code::render_json(&report).expect("first JSON");
     let second = outputs::dead_code::render_json(&report).expect("second JSON");
     assert_eq!(first, second);
-    assert!(first.contains("\"schema_version\": 5"));
+    assert!(first.contains("\"schema_version\": 6"));
     assert!(first.contains("\"evidence_class\""));
     assert!(first.contains("\"source_disposition\""));
     assert!(first.contains("\"completeness_reasons\""));

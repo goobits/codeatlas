@@ -4,7 +4,7 @@ use super::{
 };
 use crate::config::{PostgresContractConfig, ProjectConfig};
 use crate::paths;
-use crate::postgres::model::{PostgresFinding, PostgresFindingSeverity};
+use crate::postgres::model::{PostgresEvidence, PostgresFinding, PostgresFindingSeverity};
 use crate::postgres::target::query::{analyze_query, StaticQueryInput};
 use crate::source_discovery::{self, SourceDiscoveryRequest};
 use anyhow::{Context, Result};
@@ -21,7 +21,10 @@ pub(super) fn collect(
     for path in paths {
         if discovery::is_sql_file(&path) {
             match collect_query_file(project, contract, &path) {
-                Ok(query) => queries.push(query),
+                Ok(query) => {
+                    append_fuzz_policy_findings(contract, &query, diagnostics);
+                    queries.push(query);
+                }
                 Err(error) => diagnostics.push(source_error(
                     "query-read-failed",
                     project,
@@ -34,12 +37,14 @@ pub(super) fn collect(
         }
         match ecmascript::extract(&project.root, std::slice::from_ref(&path)) {
             Ok(extracted) => {
-                queries.extend(
-                    extracted
-                        .queries
-                        .into_iter()
-                        .map(|query| collected_query(&contract.id, query.sql)),
-                );
+                queries.extend(extracted.queries.into_iter().map(|query| {
+                    collected_query(
+                        &contract.id,
+                        query.sql,
+                        None,
+                        &project.config.fuzz.exclude.postgres,
+                    )
+                }));
             }
             Err(error) => diagnostics.push(PostgresFinding::new(
                 if contract.source_complete {
@@ -180,6 +185,7 @@ fn collect_query_file(
             path.display()
         )
     })?;
+    let fuzz_policy = leading_sql_fuzz_policy(&text);
     Ok(collected_query(
         &contract.id,
         ecmascript::StaticSql {
@@ -189,10 +195,17 @@ fn collect_query_file(
             column: 1,
             dynamic: false,
         },
+        fuzz_policy,
+        &project.config.fuzz.exclude.postgres,
     ))
 }
 
-fn collected_query(contract_id: &str, sql: ecmascript::StaticSql) -> CollectedQuery {
+fn collected_query(
+    contract_id: &str,
+    sql: ecmascript::StaticSql,
+    fuzz_policy: Option<crate::domain::FuzzPolicyEvidence>,
+    fuzz_exclusions: &[String],
+) -> CollectedQuery {
     let parameters = parameters::analyze(&sql.text);
     let dynamic = sql.dynamic || parameters.dynamic;
     let sha256 = digest(&sql.text);
@@ -205,6 +218,8 @@ fn collected_query(contract_id: &str, sql: ecmascript::StaticSql) -> CollectedQu
             sha256: &sha256,
             sql: &parameters.sql,
             dynamic,
+            fuzz_policy: fuzz_policy.as_ref(),
+            fuzz_exclusions,
         },
         None,
         None,
@@ -213,5 +228,108 @@ fn collected_query(contract_id: &str, sql: ecmascript::StaticSql) -> CollectedQu
         contract_id: contract_id.to_string(),
         sql: (!contract.dynamic).then_some(parameters.sql),
         contract,
+    }
+}
+
+fn leading_sql_fuzz_policy(source: &str) -> Option<crate::domain::FuzzPolicyEvidence> {
+    let mut index = 0;
+    let mut line = 1_u32;
+    let bytes = source.as_bytes();
+    let mut documentation = Vec::new();
+    loop {
+        while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+            if bytes[index] == b'\n' {
+                line = line.saturating_add(1);
+            }
+            index += 1;
+        }
+        if source[index..].starts_with("--") {
+            let start_line = line;
+            let end = source[index..]
+                .find('\n')
+                .map_or(bytes.len(), |offset| index + offset);
+            documentation.push((start_line, source[index + 2..end].trim().to_string()));
+            index = end;
+            continue;
+        }
+        if source[index..].starts_with("/*") {
+            let start_line = line;
+            let Some(offset) = source[index + 2..].find("*/") else {
+                break;
+            };
+            let end = index + 2 + offset;
+            for (line_offset, value) in source[index + 2..end].lines().enumerate() {
+                let value = value
+                    .trim()
+                    .strip_prefix('*')
+                    .unwrap_or(value.trim())
+                    .trim();
+                documentation.push((
+                    start_line.saturating_add(line_offset as u32),
+                    value.to_string(),
+                ));
+            }
+            line = line.saturating_add(
+                source[index..end + 2]
+                    .bytes()
+                    .filter(|byte| *byte == b'\n')
+                    .count() as u32,
+            );
+            index = end + 2;
+            continue;
+        }
+        break;
+    }
+    crate::fuzz::directive::parse_directive_lines(documentation)
+}
+
+fn append_fuzz_policy_findings(
+    contract: &PostgresContractConfig,
+    query: &CollectedQuery,
+    diagnostics: &mut Vec<PostgresFinding>,
+) {
+    let Some(policy) = &query.contract.fuzz_policy else {
+        return;
+    };
+    for issue in &policy.issues {
+        diagnostics.push(PostgresFinding::new(
+            PostgresFindingSeverity::Error,
+            "fuzz-directive-invalid",
+            &contract.id,
+            Some(query.contract.id.clone()),
+            issue.message.clone(),
+            true,
+            Some(PostgresEvidence {
+                path: query.contract.path.clone(),
+                line: issue.line,
+                column: None,
+            }),
+        ));
+    }
+}
+
+#[cfg(test)]
+mod fuzz_directive_tests {
+    use super::leading_sql_fuzz_policy;
+    use crate::domain::FuzzDirectiveIssueKind;
+
+    #[test]
+    fn sql_directive_is_leading_comment_convenience_only() {
+        let policy = leading_sql_fuzz_policy(
+            "-- @codeatlas-fuzz deny: invokes an extension that sends real email\nWITH value AS (SELECT 1) SELECT * FROM value",
+        )
+        .expect("leading SQL directive");
+        assert_eq!(
+            policy.denial.as_ref().map(|denial| denial.reason.as_str()),
+            Some("invokes an extension that sends real email")
+        );
+
+        assert!(leading_sql_fuzz_policy("SELECT 1; -- @codeatlas-fuzz deny: too late").is_none());
+        let unsupported = leading_sql_fuzz_policy("/* @codeatlas-fuzz allow: stale */\nSELECT 1")
+            .expect("unsupported directive evidence");
+        assert_eq!(
+            unsupported.issues[0].kind,
+            FuzzDirectiveIssueKind::UnsupportedAction
+        );
     }
 }

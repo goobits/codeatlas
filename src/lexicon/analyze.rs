@@ -282,6 +282,7 @@ mod tests {
             span: None,
             signature: signature.to_string(),
             callable,
+            fuzz_policy: None,
             docs: None,
             export_paths: Vec::new(),
             referenced: false,

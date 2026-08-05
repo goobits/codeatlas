@@ -82,7 +82,7 @@ fn scan_writes_machine_readable_json_to_the_requested_directory() {
             .expect("scan should write atlas.json"),
     )
     .expect("scan report should be JSON");
-    assert_eq!(report["schema_version"], 3);
+    assert_eq!(report["schema_version"], 4);
     assert_eq!(report["stats"]["files_scanned"], 3);
     assert!(report["stats"]["symbols_found"].as_u64().unwrap_or(0) >= 2);
 }
@@ -711,7 +711,7 @@ fn dead_code_check_only_fails_when_gating_is_requested() {
         &fs::read(&checked_report_path).expect("checked dead-code report should be written"),
     )
     .expect("dead-code report should be JSON");
-    assert_eq!(report["schema_version"], 5);
+    assert_eq!(report["schema_version"], 6);
     assert!(report["findings"]
         .as_array()
         .expect("findings should be an array")
@@ -746,7 +746,7 @@ fn dead_code_check_fails_closed_for_required_incomplete_projects() {
         &fs::read(&report_path).expect("required-complete report should be written"),
     )
     .expect("required-complete report should be JSON");
-    assert_eq!(report["schema_version"], 5);
+    assert_eq!(report["schema_version"], 6);
     assert_eq!(report["projects"][0]["require_complete"], true);
     assert_eq!(report["projects"][0]["completeness"], "partial");
     assert!(!report["projects"][0]["completeness_reasons"]
@@ -796,7 +796,7 @@ fn inspect_code_resumes_exact_directed_pages() {
     ]);
     assert_success(&first, "first context page");
     let first: Value = serde_json::from_slice(&first.stdout).expect("context page should be JSON");
-    assert_eq!(first["schema_version"], 4);
+    assert_eq!(first["schema_version"], 5);
     assert_eq!(first["direction"], "outgoing");
     assert_eq!(first["page_offset"], 0);
     let cursor = first["continuation"]

@@ -4,7 +4,7 @@ use crate::domain::source_graph::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const CONTEXT_SLICE_SCHEMA_VERSION: u32 = 4;
+pub(crate) const CONTEXT_SLICE_SCHEMA_VERSION: u32 = 5;
 
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

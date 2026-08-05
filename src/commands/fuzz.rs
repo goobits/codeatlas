@@ -82,6 +82,8 @@ fn plan_target(project: &ProjectConfig, options: &HttpOptions<'_>) -> Result<i32
         options.profile.profile_max_cases(),
     )?;
     let target = project.http_fuzz_target(options.target)?;
+    let mut excluded_operations = project.config.fuzz.exclude.http.clone();
+    excluded_operations.sort();
     let workload = HttpFuzzWorkload {
         schema_version: HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION.to_string(),
         target_id: target.id.clone(),
@@ -90,6 +92,7 @@ fn plan_target(project: &ProjectConfig, options: &HttpOptions<'_>) -> Result<i32
         stateful: options.profile.includes_stateful_workflows(),
         seed: options.seed.map(|seed| seed.to_string()),
         operation: options.operation.map(str::to_string),
+        excluded_operations,
         engine: "schemathesis".to_string(),
         engine_source: if options.schemathesis.is_some() {
             "explicit"

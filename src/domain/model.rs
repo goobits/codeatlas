@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
-pub(crate) const SCAN_SCHEMA_VERSION: u32 = 3;
+pub(crate) const SCAN_SCHEMA_VERSION: u32 = 4;
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ScanReport {
@@ -97,6 +97,8 @@ pub(crate) struct Symbol {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callable: Option<CallableContract>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuzz_policy: Option<FuzzPolicyEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub docs: Option<SymbolDocs>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub export_paths: Vec<String>,
@@ -130,6 +132,60 @@ pub(crate) struct SymbolDocs {
     pub returns: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub throws: Vec<String>,
+}
+
+#[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FuzzPolicyEvidence {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denial: Option<FuzzDenial>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub issues: Vec<FuzzDirectiveIssue>,
+}
+
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FuzzDenial {
+    pub line: u32,
+    pub reason: String,
+}
+
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FuzzDirectiveIssue {
+    pub line: u32,
+    pub kind: FuzzDirectiveIssueKind,
+    pub message: String,
+}
+
+#[derive(
+    schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum FuzzDirectiveIssueKind {
+    Malformed,
+    UnsupportedAction,
+    EmptyReason,
+    ReasonTooLong,
+    Duplicate,
+    Conflicting,
+}
+
+impl FuzzDirectiveIssueKind {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Malformed => "malformed",
+            Self::UnsupportedAction => "unsupported_action",
+            Self::EmptyReason => "empty_reason",
+            Self::ReasonTooLong => "reason_too_long",
+            Self::Duplicate => "duplicate",
+            Self::Conflicting => "conflicting",
+        }
+    }
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

@@ -750,39 +750,53 @@ Active child: execution kernel Phases 5 and 6.
 - [ ] Run focused HTTP/execution checks, the full required suite, dogfood, and
   the checkout-state audit, then commit Phases 5 and 6 separately.
 
-### Phase 11: Build the shared corpus and callable harness foundation
+### Phase 11: Build the shared corpus and callable fuzz foundation
 
-Active child: [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) Phase 1.
+Active child: [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) Phases
+1A and 1B. Phase 1A is dependency-independent, static, and zero-call; Phase 1B
+waits for Phases 9 and 10 and cannot be used to route around the live sandbox
+gate.
 
-- [ ] Define domain-neutral scalar and collection boundary descriptors,
+Static checkpoint (Phase 1A; can proceed on a plan-only host):
+
+- [x] Define domain-neutral scalar and collection boundary descriptors,
   canonical ordering, finite depth/size limits, and deterministic pairwise
   selection in `src/fuzz/corpus.rs`.
-- [ ] Map only supported `CallableContract` types and constructibility evidence
+- [x] Map only supported `CallableContract` types and constructibility evidence
   into descriptors. Keep native value materialization domain-owned.
-- [ ] Account for every discovered public callable with receiver/factory,
+- [x] Account for every discovered public callable with receiver/factory,
   ordered-input, semantic-type, constructibility, result, effect, and oracle
   evidence or an exact deterministic block reason; silently omitted APIs fail
   the parity fixture.
-- [ ] Extend the one existing strict fuzz config owner with exact subject-shaped
+- [x] Extend the one existing strict fuzz config owner with exact subject-shaped
   `code`, `http`, and `postgres` exclusions. Reject wildcards and a shared
   target mini-language; emit every denial as `blocked_by_policy` evidence.
-- [ ] Make config and interface exclusions monotonic: they may remove whole
+- [x] Make config and interface exclusions monotonic: they may remove whole
   targets/cases but never grant safety, override detected/unknown effects, skip
   internal branches, waive review, or replace missing isolation.
-- [ ] Parse one source-adjacent
+- [x] Parse one source-adjacent
   `@codeatlas-fuzz deny: <bounded reason>` grammar through the
   existing Rust doc-comment, JavaScript/TypeScript JSDoc, and Python docstring
   adapters. Only `deny` exists; malformed or conflicting
   directives create `check code` findings and block planning.
-- [ ] Define `deny` as never fuzzing the exact target even with verified
+- [x] Define `deny` as never fuzzing the exact target even with verified
   disposable isolation. Keep ordinary mutation/effect evidence in the existing
   callable and kernel target classifiers; reject a duplicative
   `requires_disposable` directive. Make the vocabulary subtractive-only: source
   comments may contract what runs but can never expand it, so no
   stale-comment `allow` path exists.
-- [ ] Permit effectful dependency substitution only through an explicit
+- [x] Permit effectful dependency substitution only through an explicit
   checked-in adapter with independently verifiable target, behavior, effects,
   and oracle evidence; otherwise keep the callable blocked.
+- [x] Pass one attachment and payload conformance table across Rust, Python,
+  JavaScript, TypeScript, and the SQL leading-comment convenience. Treat SQL
+  exclusions as config-first and do not claim ORM or dynamic-query parity.
+- [x] Register any public static report/schema changes, run the static
+  acceptance surface and zero-call dogfood, then commit Phase 1A without
+  advertising `fuzz code` execution.
+
+Execution checkpoint (Phase 1B; waits for Phases 9 and 10):
+
 - [ ] Supply the single planned `CODEATLAS_FUZZ=1` marker to sandboxed code
   harnesses (or one exact protocol-equivalent marker) as evidence, never as a
   safety boundary. When a target branches on it or skips an effect, label the
@@ -799,7 +813,7 @@ Active child: [`codeatlas-code-fuzzing.md`](codeatlas-code-fuzzing.md) Phase 1.
 - [ ] Prove path, symlink, home, `/tmp`, network, subprocess, resource, and
   cancellation escape behavior against controlled fixtures.
 - [ ] Register report/reproducer schema changes, run foundation acceptance
-  tests, dogfood zero-call planning, and commit code-fuzz Phase 1.
+  tests, dogfood zero-call planning, and commit code-fuzz Phase 1B.
 
 ### Phase 12: Add four native callable fuzz adapters and self-fuzzing
 
@@ -1131,6 +1145,14 @@ Phases 1 through 3.
   named dynamic-import boundary agree exactly. The fixture exposed and now
   guards `.e2e.ts` test classification and extensionless computed-import
   incompleteness without adding another resolver or vendored contract.
+- 2026-08-05: callable-fuzz Phase 1A passes the Rust, Python, JavaScript,
+  TypeScript, and SQL directive table; exact public-callable accounting;
+  canonical bounded corpus; code/HTTP/PostgreSQL exclusions; all 30 published
+  schemas; 399 unit tests; CLI suites; warning-denying Clippy; package audit;
+  and complete zero-call CodeAtlas dogfood. The self-scan found 2,581 callable
+  contracts and zero gates. A single warm engineering probe measured
+  `usage code` at 1.197 seconds and `check code` at 1.226 seconds with RSS
+  unavailable; it is recorded as phase evidence, not a performance claim.
 
 ## Existing-first check
 
@@ -1234,9 +1256,10 @@ results never gate; both CodeAtlas dogfood corpora are reviewed.
 
 ## Program stage 7: Callable code fuzzing
 
-Status: [ ] Accepted; waits for the sandbox gate
+Status: [~] Accepted; static Phase 1A is complete, harness execution waits for
+the sandbox gate
 
-LOC: +2,400-3,800 / -430-880
+Projected authored LOC: +4,564-5,614 / -639-1,019
 
 Verify: Accepted callable/effect evidence, four-language parity, deterministic
 boundary/replay, native engine adapters, automatic oracles, and CodeAtlas
@@ -1248,8 +1271,9 @@ self-fuzzing pass.
 
 ## Program stage 8: PostgreSQL fuzzing
 
-Status: [~] Accepted; static Phase 1 is complete, live execution waits for
-isolation, and generated cases wait for the callable corpus foundation
+Status: [~] Accepted; static Phase 1 and the shared corpus foundation are
+complete, while live execution and generated cases wait for isolation and the
+PostgreSQL adapters
 
 LOC: +4,025-4,925 / -469-819 authored; Phase 1 additionally replaced
 +3,544 / -1,778 generated schema lines
@@ -1311,9 +1335,10 @@ sandbox, three execution domains, four language adapters, a typed database
 client, and a performance evidence product. Each child has a final hardening
 phase that removes replaced owners and refuses compatibility residue.
 
-Total authored LOC: +23,811-32,991 / -4,242-7,802
+Total authored LOC: +25,975-34,805 / -4,451-7,941
 
-Generated current-schema JSON: +7,706 LOC
+Generated current-schema JSON at the Phase 11A checkpoint: 15,805 LOC across
+30 registered files
 
 ## Layman's wins
 

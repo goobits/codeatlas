@@ -215,8 +215,28 @@ pub(crate) fn validate_fuzz_workload(workload: &HttpFuzzWorkload) -> Result<()> 
             anyhow::bail!("HTTP fuzz seed must use canonical unsigned decimal form");
         }
     }
-    if let Some(operation) = &workload.operation {
-        target::parse_http_fuzz_operation(operation)?;
+    if let Some(selected) = &workload.operation {
+        let operation = target::parse_http_fuzz_operation(selected)?;
+        if operation.name != *selected {
+            anyhow::bail!("HTTP fuzz workload operation must use canonical `METHOD /path` form");
+        }
+        if workload.excluded_operations.contains(&operation.name) {
+            anyhow::bail!(
+                "HTTP fuzz operation {} is excluded by checked-in policy",
+                operation.name
+            );
+        }
+    }
+    let mut previous = None;
+    for excluded in &workload.excluded_operations {
+        let operation = target::parse_http_fuzz_operation(excluded)?;
+        if operation.name != *excluded {
+            anyhow::bail!("HTTP fuzz exclusions must use canonical uppercase `METHOD /path` form");
+        }
+        if previous.is_some_and(|previous| previous >= excluded.as_str()) {
+            anyhow::bail!("HTTP fuzz exclusions must be unique and canonically sorted");
+        }
+        previous = Some(excluded.as_str());
     }
     Ok(())
 }

@@ -60,7 +60,7 @@ fn inventory_uses_explicit_runner_semantics_without_leaking_sql() {
         .iter()
         .find(|migration| migration["name"] == "001_users.sql")
         .expect("raw SQL migration");
-    assert_eq!(report["apiVersion"], "codeatlas.postgres/v2");
+    assert_eq!(report["apiVersion"], "codeatlas.postgres/v3");
     assert_eq!(report["contracts"][0]["id"], "fixture-postgres");
     assert_eq!(
         report["contracts"][0]["bootstraps"]
@@ -286,7 +286,7 @@ fn managed_postgres_smoke_covers_replay_baseline_diff_and_cleanup() {
     let diff_report: serde_json::Value = serde_json::from_str(&diff_source).expect("diff JSON");
     assert_eq!(
         baseline_report["apiVersion"],
-        "codeatlas.postgres-baseline/v2"
+        "codeatlas.postgres-baseline/v3"
     );
     assert!(baseline_report["serverMajor"].as_u64().is_some());
     assert_eq!(diff_report["breakingChanges"], 0);

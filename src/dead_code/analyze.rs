@@ -3,6 +3,8 @@ use super::model::{
     DeadCodeCompletenessReason, DeadCodeFindingKind, DeadCodeProjectSummary, DeadCodeReport,
     DeadCodeRootContext,
 };
+#[cfg(test)]
+use crate::analysis::reachability::render_diagnostics;
 use crate::analysis::reachability::{
     file_confidence, project_confidence, symbol_confidence, Reachability,
 };
@@ -12,17 +14,37 @@ use crate::domain::source_graph::{
 };
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
+#[cfg(test)]
 pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
-    let reachability = Reachability::analyze(graph).map_err(|diagnostics| {
-        anyhow::anyhow!(
-            "{}",
-            diagnostics
-                .into_iter()
-                .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
-                .collect::<Vec<_>>()
-                .join("; ")
-        )
-    })?;
+    let reachability = Reachability::analyze(graph).map_err(render_diagnostics)?;
+    Ok(analyze_with_reachability(graph, &reachability))
+}
+
+#[cfg(test)]
+pub(crate) fn analyze_check(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
+    let reachability = Reachability::analyze(graph).map_err(render_diagnostics)?;
+    Ok(analyze_check_with_reachability(graph, &reachability))
+}
+
+pub(crate) fn analyze_with_reachability(
+    graph: &SourceGraph,
+    reachability: &Reachability,
+) -> DeadCodeReport {
+    analyze_report(graph, reachability, false)
+}
+
+pub(crate) fn analyze_check_with_reachability(
+    graph: &SourceGraph,
+    reachability: &Reachability,
+) -> DeadCodeReport {
+    analyze_report(graph, reachability, true)
+}
+
+fn analyze_report(
+    graph: &SourceGraph,
+    reachability: &Reachability,
+    include_policy_findings: bool,
+) -> DeadCodeReport {
     let context_names = graph
         .contexts
         .iter()
@@ -424,8 +446,63 @@ pub(crate) fn analyze(graph: &SourceGraph) -> anyhow::Result<DeadCodeReport> {
         ));
     }
 
+    if include_policy_findings {
+        append_fuzz_directive_findings(&mut report, graph, reachability, &context_names);
+    }
     report.canonicalize();
-    Ok(report)
+    report
+}
+
+fn append_fuzz_directive_findings(
+    report: &mut DeadCodeReport,
+    graph: &SourceGraph,
+    reachability: &Reachability,
+    context_names: &BTreeMap<crate::domain::source_graph::ContextId, String>,
+) {
+    for (node_id, node) in &graph.nodes {
+        let SourceNode::Symbol(symbol) = node else {
+            continue;
+        };
+        let Some(policy) = &symbol.fuzz_policy else {
+            continue;
+        };
+        let Some(SourceNode::File(file)) = graph.nodes.get(&symbol.file) else {
+            continue;
+        };
+        let contexts = reachability.contexts(node_id);
+        for issue in &policy.issues {
+            report.findings.push(build_finding(
+                DeadCodeFindingKind::MalformedFuzzDirective,
+                FindingDetails {
+                    project: symbol.project.0.clone(),
+                    node_id: Some(node_id.clone()),
+                    path: file.path.clone(),
+                    symbol: Some(symbol.name.clone()),
+                    language: Some(file.language),
+                    contexts: context_labels(&contexts, context_names),
+                    root_contexts: root_context_labels(
+                        &reachability.roots(node_id),
+                        context_names,
+                        graph,
+                    ),
+                    roles: reachability.roles(node_id),
+                    confidence: FindingConfidence::High,
+                    evidence: SourceEvidence {
+                        path: file.path.clone(),
+                        span: Some(crate::domain::Span {
+                            start_line: issue.line,
+                            start_col: 0,
+                            end_line: issue.line,
+                            end_col: 0,
+                        }),
+                        extractor: "codeatlas.fuzz-directive".to_string(),
+                    },
+                    message: issue.message.clone(),
+                    identity_detail: Some(issue.kind.as_str().to_string()),
+                },
+            ));
+        }
+    }
 }
 
 fn context_only_kind(roles: &BTreeSet<ContextRole>) -> DeadCodeFindingKind {

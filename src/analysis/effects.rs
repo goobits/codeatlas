@@ -379,6 +379,7 @@ mod tests {
                         visibility: SourceVisibility::Private,
                         span: None,
                         callable: Some(empty_contract()),
+                        fuzz_policy: None,
                     }),
                 )
                 .expect("symbol");

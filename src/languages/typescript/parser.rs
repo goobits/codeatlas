@@ -1,5 +1,6 @@
 mod callable;
 mod callable_effects;
+mod directive;
 mod format;
 mod module_info;
 mod visitor;
@@ -27,7 +28,7 @@ pub(crate) fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<crate:
 }
 
 pub(crate) fn parse_module_info(file_path: &Path, root_dir: &Path) -> Result<TypeScriptModuleInfo> {
-    let (module, source_map, has_shebang) = parse_syntax_tree_with_metadata(file_path)?;
+    let (module, source_map, has_shebang, source) = parse_syntax_tree_with_metadata(file_path)?;
     let relative_path = pathdiff::diff_paths(file_path, root_dir)
         .unwrap_or(file_path.to_path_buf())
         .to_string_lossy()
@@ -37,6 +38,7 @@ pub(crate) fn parse_module_info(file_path: &Path, root_dir: &Path) -> Result<Typ
         source_map,
         relative_path,
         has_shebang,
+        source,
     ))
 }
 
@@ -47,7 +49,7 @@ pub(crate) fn parse_source(source: &str, relative_path: &str) -> Result<TypeScri
         source.to_string(),
     );
     let module = parse_source_file(
-        file,
+        file.clone(),
         source_map.clone(),
         syntax_for_path(Path::new(relative_path)),
     )?;
@@ -56,6 +58,7 @@ pub(crate) fn parse_source(source: &str, relative_path: &str) -> Result<TypeScri
         source_map,
         relative_path.to_string(),
         source.starts_with("#!"),
+        file,
     ))
 }
 
@@ -64,11 +67,13 @@ fn build_module_info(
     source_map: Lrc<SourceMap>,
     relative_path: String,
     has_shebang: bool,
+    source: Lrc<SourceFile>,
 ) -> TypeScriptModuleInfo {
     let mut visitor = SymbolVisitor {
         symbols: Vec::new(),
         relative_path,
         source_map: source_map.clone(),
+        source,
     };
 
     module.visit_with(&mut visitor);
@@ -110,6 +115,10 @@ fn consolidate_overloads(symbols: &mut Vec<crate::domain::Symbol>) {
                 (None, Some(other)) => existing.callable = Some(other),
                 (_, None) => {}
             }
+            crate::fuzz::directive::merge_policy(
+                &mut existing.fuzz_policy,
+                symbol.fuzz_policy.take(),
+            );
             existing.children.extend(symbol.children);
             consolidate_overloads(&mut existing.children);
         } else {
@@ -121,16 +130,18 @@ fn consolidate_overloads(symbols: &mut Vec<crate::domain::Symbol>) {
 }
 
 pub(crate) fn parse_syntax_tree(file_path: &Path) -> Result<(Module, Lrc<SourceMap>)> {
-    let (module, source_map, _) = parse_syntax_tree_with_metadata(file_path)?;
+    let (module, source_map, _, _) = parse_syntax_tree_with_metadata(file_path)?;
     Ok((module, source_map))
 }
 
-fn parse_syntax_tree_with_metadata(file_path: &Path) -> Result<(Module, Lrc<SourceMap>, bool)> {
+fn parse_syntax_tree_with_metadata(
+    file_path: &Path,
+) -> Result<(Module, Lrc<SourceMap>, bool, Lrc<SourceFile>)> {
     let source_map: Lrc<SourceMap> = Default::default();
     let file = source_map.load_file(file_path)?;
     let has_shebang = file.src.starts_with("#!");
-    let module = parse_source_file(file, source_map.clone(), syntax_for_path(file_path))?;
-    Ok((module, source_map, has_shebang))
+    let module = parse_source_file(file.clone(), source_map.clone(), syntax_for_path(file_path))?;
+    Ok((module, source_map, has_shebang, file))
 }
 
 fn parse_source_file(

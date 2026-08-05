@@ -230,6 +230,7 @@ mod tests {
                 }],
                 [],
             )),
+            fuzz_policy: None,
             docs: None,
             export_paths: Vec::new(),
             referenced: false,

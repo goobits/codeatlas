@@ -1,4 +1,5 @@
 mod callable_contract;
+mod code_fuzz;
 mod dead_code;
 mod docs;
 mod interop;

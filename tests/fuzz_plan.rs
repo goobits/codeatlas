@@ -112,6 +112,9 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
             "paths": {
                 "/health": {
                     "get": {"responses": {"200": {"description": "ok"}}}
+                },
+                "/admin": {
+                    "post": {"responses": {"204": {"description": "done"}}}
                 }
             }
         }))
@@ -131,13 +134,17 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
                     "executable": workspace.join("missing-container-runtime")
                 }}
             },
-            "fuzz": {"limits": {"max_cases": 10}},
+            "fuzz": {
+                "limits": {"max_cases": 10},
+                "exclude": {"http": ["POST /admin"]}
+            },
             "http": {
                 "contracts": [{"id": "fixture", "openapi": "openapi.json"}],
                 "fuzz": {"targets": [{
                     "id": "local",
                     "contract": "fixture",
                     "base_url": format!("http://{address}"),
+                    "operations": ["GET /health", "POST /admin"],
                     "environment": {"MODE": "test"},
                     "secret_environment": {
                         "RUNTIME_TOKEN": "CODEATLAS_FIXTURE_RUNTIME_TOKEN"
@@ -171,6 +178,22 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
     );
     assert_eq!(invalid.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&invalid.stderr).contains("must use the format `METHOD /path`"));
+    assert_no_target_call(&listener);
+
+    let excluded = run_codeatlas(
+        &workspace,
+        &state,
+        &[
+            "fuzz",
+            "http",
+            "--target",
+            "local",
+            "--operation",
+            "POST /admin",
+        ],
+    );
+    assert_eq!(excluded.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&excluded.stderr).contains("excluded by checked-in policy"));
     assert_no_target_call(&listener);
 
     let config_path = workspace.join("codeatlas.json");
@@ -226,11 +249,15 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
     validate_schema(&plan, "codeatlas-execution-plan-v1.schema.json");
     validate_schema(
         &plan["workload"]["body"],
-        "codeatlas-http-fuzz-workload-v1.schema.json",
+        "codeatlas-http-fuzz-workload-v2.schema.json",
     );
     assert_eq!(plan["schema_version"], "codeatlas.execution-plan/v1");
     assert_eq!(plan["limits"]["max_calls"], 5);
     assert_eq!(plan["workload"]["body"]["limits"]["max_cases"], 3);
+    assert_eq!(
+        plan["workload"]["body"]["excluded_operations"],
+        json!(["POST /admin"])
+    );
     assert_eq!(plan["expected_calls"], json!([]));
     assert_eq!(
         plan["writable_scratch_roots"],
