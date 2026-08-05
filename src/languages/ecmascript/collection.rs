@@ -3,9 +3,9 @@ use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, SourceEdge, SourceEdgeKind,
     SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceSymbol,
-    SourceSymbolKind, SourceVisibility,
+    SourceVisibility,
 };
-use crate::domain::{Symbol, SymbolKind};
+use crate::domain::Symbol;
 use crate::languages::typescript::parser;
 use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
@@ -232,7 +232,7 @@ fn add_symbols(
                     project: project.id.clone(),
                     file: file.clone(),
                     name: symbol.name.clone(),
-                    symbol_kind: source_symbol_kind(symbol.kind),
+                    symbol_kind: symbol.kind.into(),
                     visibility: if language == SourceLanguage::Svelte {
                         SourceVisibility::Unknown
                     } else {
@@ -261,22 +261,5 @@ fn source_language(path: &Path) -> Option<SourceLanguage> {
         Some("ts" | "tsx") => Some(SourceLanguage::TypeScript),
         Some("svelte") => Some(SourceLanguage::Svelte),
         _ => None,
-    }
-}
-
-fn source_symbol_kind(kind: SymbolKind) -> SourceSymbolKind {
-    match kind {
-        SymbolKind::Module => SourceSymbolKind::Module,
-        SymbolKind::Class => SourceSymbolKind::Class,
-        SymbolKind::Method => SourceSymbolKind::Method,
-        SymbolKind::Function => SourceSymbolKind::Function,
-        SymbolKind::Interface => SourceSymbolKind::Interface,
-        SymbolKind::Struct => SourceSymbolKind::Struct,
-        SymbolKind::Const => SourceSymbolKind::Constant,
-        SymbolKind::Property => SourceSymbolKind::Property,
-        SymbolKind::Enum => SourceSymbolKind::Enum,
-        SymbolKind::Trait => SourceSymbolKind::Trait,
-        SymbolKind::TypeAlias => SourceSymbolKind::TypeAlias,
-        SymbolKind::Decorator => SourceSymbolKind::Other,
     }
 }

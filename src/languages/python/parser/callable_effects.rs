@@ -1,6 +1,6 @@
 use super::callable::qualified_name;
-use crate::domain::{CallableEffect, EffectKind, EvidenceClass};
-use crate::languages::effects::has_qualified_action;
+use crate::domain::{CallableEffect, EffectKind};
+use crate::languages::effects::{has_qualified_action, record_direct_effect};
 use rustpython_ast::Visitor;
 use rustpython_parser::ast;
 use std::collections::BTreeSet;
@@ -20,11 +20,7 @@ struct PythonEffectCollector {
 
 impl PythonEffectCollector {
     fn record(&mut self, kind: EffectKind) {
-        self.effects.insert(CallableEffect::new_direct(
-            kind,
-            EvidenceClass::BoundaryLimited,
-            None,
-        ));
+        record_direct_effect(&mut self.effects, kind);
     }
 
     fn record_call(&mut self, call: &ast::ExprCall) {

@@ -8,7 +8,7 @@
 //! architecture and observed source reachability have different identities,
 //! authority, and lifecycle rules.
 
-use super::{CallableContract, Span, Visibility};
+use super::{CallableContract, Span, SymbolKind, Visibility};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -353,6 +353,25 @@ pub(crate) enum SourceSymbolKind {
     Other,
 }
 
+impl From<SymbolKind> for SourceSymbolKind {
+    fn from(kind: SymbolKind) -> Self {
+        match kind {
+            SymbolKind::Module => Self::Module,
+            SymbolKind::Class => Self::Class,
+            SymbolKind::Method => Self::Method,
+            SymbolKind::Function => Self::Function,
+            SymbolKind::Interface => Self::Interface,
+            SymbolKind::Struct => Self::Struct,
+            SymbolKind::Const => Self::Constant,
+            SymbolKind::Property => Self::Property,
+            SymbolKind::Enum => Self::Enum,
+            SymbolKind::Trait => Self::Trait,
+            SymbolKind::TypeAlias => Self::TypeAlias,
+            SymbolKind::Decorator => Self::Other,
+        }
+    }
+}
+
 #[derive(
     schemars::JsonSchema,
     Debug,
@@ -647,9 +666,9 @@ fn escape_id_segment(value: &str) -> String {
 mod tests {
     use super::{
         AnalysisCompleteness, BoundaryKind, ContextId, NodeId, ProjectId, SourceEvidence,
-        SourceGraph, SourceLanguage, SourceProject, SourceVisibility,
+        SourceGraph, SourceLanguage, SourceProject, SourceSymbolKind, SourceVisibility,
     };
-    use crate::domain::Visibility;
+    use crate::domain::{SymbolKind, Visibility};
     use std::collections::BTreeSet;
 
     #[test]
@@ -701,6 +720,22 @@ mod tests {
         assert_eq!(
             SourceVisibility::from(Visibility::Internal),
             SourceVisibility::Internal
+        );
+    }
+
+    #[test]
+    fn source_symbol_kind_uses_the_canonical_domain_mapping() {
+        assert_eq!(
+            SourceSymbolKind::from(SymbolKind::Const),
+            SourceSymbolKind::Constant
+        );
+        assert_eq!(
+            SourceSymbolKind::from(SymbolKind::Decorator),
+            SourceSymbolKind::Other
+        );
+        assert_eq!(
+            SourceSymbolKind::from(SymbolKind::TypeAlias),
+            SourceSymbolKind::TypeAlias
         );
     }
 }

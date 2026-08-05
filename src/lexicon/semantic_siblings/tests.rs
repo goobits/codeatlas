@@ -4,8 +4,11 @@ use super::model::{
     SemanticSiblingTarget,
 };
 use super::nominate;
-use super::{NominationSeed, SiblingFact};
-use crate::domain::source_graph::{NodeId, ProjectId, SourceVisibility};
+use super::{collect_type_roles, IncompleteGraphScope, NominationSeed, SiblingFact};
+use crate::domain::source_graph::{
+    AnalysisCompleteness, BoundaryKind, NodeId, ProjectId, SourceEvidence, SourceFile, SourceGraph,
+    SourceLanguage, SourceNode, SourceProject, SourceVisibility,
+};
 use crate::domain::{EffectKind, SemanticType};
 use crate::lexicon::concept_policy::LexiconPolicy;
 use std::collections::BTreeSet;
@@ -125,5 +128,79 @@ fn nomination_expansion_is_bounded_before_pair_evaluation() {
             .map(|omission| omission.count())
             .sum::<usize>(),
         10
+    );
+}
+
+#[test]
+fn local_graph_boundary_does_not_poison_unrelated_sibling_targets() {
+    let project = ProjectId("fixture".to_string());
+    let bounded_file = NodeId::file(&project, "src/bounded.rs");
+    let complete_file = NodeId::file(&project, "src/complete.rs");
+    let mut graph = SourceGraph::new();
+    graph
+        .add_project(SourceProject {
+            id: project.clone(),
+            root: ".".to_string(),
+            languages: BTreeSet::from([SourceLanguage::Rust]),
+            completeness: AnalysisCompleteness::Complete,
+        })
+        .expect("project");
+    for (id, path) in [
+        (bounded_file.clone(), "src/bounded.rs"),
+        (complete_file.clone(), "src/complete.rs"),
+    ] {
+        graph
+            .add_node(
+                id,
+                SourceNode::File(SourceFile {
+                    project: project.clone(),
+                    path: path.to_string(),
+                    language: SourceLanguage::Rust,
+                }),
+            )
+            .expect("file");
+    }
+    graph.record_boundary(
+        &project,
+        Some(bounded_file.clone()),
+        BoundaryKind::Reflection,
+        AnalysisCompleteness::Partial,
+        "local dynamic boundary",
+        SourceEvidence::new("src/bounded.rs", None, "fixture"),
+    );
+
+    let scope = IncompleteGraphScope::from_graph(&graph);
+    assert!(scope.contains(
+        &project,
+        &NodeId::symbol(&bounded_file, "bounded"),
+        &bounded_file,
+        "src/bounded.rs"
+    ));
+    assert!(!scope.contains(
+        &project,
+        &NodeId::symbol(&complete_file, "complete"),
+        &complete_file,
+        "src/complete.rs"
+    ));
+}
+
+#[test]
+fn self_result_is_not_a_cross_target_model_identity() {
+    let mut roles = BTreeSet::new();
+    collect_type_roles(
+        &SemanticType::Named {
+            identity: "Self".to_string(),
+            arguments: vec![SemanticType::Named {
+                identity: "Payload".to_string(),
+                arguments: Vec::new(),
+            }],
+        },
+        "signature:0:result",
+        &mut roles,
+    );
+
+    assert_eq!(
+        roles,
+        BTreeSet::from(["signature:0:result:argument:0:named:Payload".to_string()])
     );
 }

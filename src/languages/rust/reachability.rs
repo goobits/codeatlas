@@ -3,7 +3,7 @@ use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, ProjectId, SourceBinding, SourceEdge,
     SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
-    SourceSymbol, SourceSymbolKind, SourceVisibility,
+    SourceSymbol, SourceVisibility,
 };
 use crate::domain::{Symbol, SymbolKind, Visibility};
 use anyhow::{Context, Result};
@@ -246,7 +246,7 @@ impl SymbolCollector<'_> {
             project: self.project.id.clone(),
             file: self.file.clone(),
             name: symbol.name.clone(),
-            symbol_kind: source_symbol_kind(symbol.kind),
+            symbol_kind: symbol.kind.into(),
             visibility,
             span: symbol.span.clone(),
             callable: symbol.callable.clone(),
@@ -734,19 +734,5 @@ fn connect_resolution(
             ),
             SourceEvidence::new(&module.path, None, EXTRACTOR),
         );
-    }
-}
-
-fn source_symbol_kind(kind: SymbolKind) -> SourceSymbolKind {
-    match kind {
-        SymbolKind::Class => SourceSymbolKind::Class,
-        SymbolKind::Function => SourceSymbolKind::Function,
-        SymbolKind::Method => SourceSymbolKind::Method,
-        SymbolKind::Struct => SourceSymbolKind::Struct,
-        SymbolKind::Enum => SourceSymbolKind::Enum,
-        SymbolKind::Trait => SourceSymbolKind::Trait,
-        SymbolKind::Const => SourceSymbolKind::Constant,
-        SymbolKind::TypeAlias => SourceSymbolKind::TypeAlias,
-        _ => SourceSymbolKind::Other,
     }
 }

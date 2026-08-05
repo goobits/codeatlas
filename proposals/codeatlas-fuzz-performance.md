@@ -492,13 +492,13 @@ not create another program roadmap or copy these tasks into a scratch document.
 
 The public grammar, schema registry, HQA renderer, immutable execution
 artifacts, enforcing HTTP call budget, complete structured callable evidence,
-and locally verifiable OCI implementation are done. The current host cannot
-grant a live OCI isolation capability, so execution remains plan-only here and
-Phase 9 retains the hard continuation gate. Work now follows the independent
-static lane through semantic siblings, the PostgreSQL query contract, and the
-repository-scope foundation. On implementation progress rather than
-proposal-design progress, the complete program is approximately 47 percent
-done.
+semantic-sibling analysis and self-dogfood, and locally verifiable OCI
+implementation are done. The current host cannot grant a live OCI isolation
+capability, so execution remains plan-only here and Phase 9 retains the hard
+continuation gate. Work now follows the independent static lane through the
+PostgreSQL query contract and repository-scope foundation. On implementation
+progress rather than proposal-design progress, the complete program is
+approximately 50 percent done.
 
 ### Order and ownership rules
 
@@ -641,7 +641,7 @@ Status: [x] Complete
 
 Active child: semantic-role siblings Phases 2 and 3.
 
-Status: [~] In progress
+Status: [x] Complete
 
 - [x] Build bounded nomination indexes from contract roles, effects, named
   models, graph positions, and configured concepts without all-pairs scanning.
@@ -651,13 +651,13 @@ Status: [~] In progress
   `inconclusive` dispositions with stable truncation and omission evidence.
 - [x] Add deterministic JSON and text rendering, lexicon schema publication,
   report statistics, and permanently non-gating CLI behavior.
-- [ ] Declare CodeAtlas's language-adapter and HTTP-source-detector comparison
+- [x] Declare CodeAtlas's language-adapter and HTTP-source-detector comparison
   sets and classify every bounded dogfood result.
-- [ ] Rehome only demonstrated shared helpers through their real owner. Keep
+- [x] Rehome only demonstrated shared helpers through their real owner. Keep
   intentional adapters separate when counterevidence supports the boundary.
-- [ ] Refuse Tier 2 body-skeleton work unless a named accepted counterexample
+- [x] Refuse Tier 2 body-skeleton work unless a named accepted counterexample
   proves Tier 1 cannot answer the required question.
-- [ ] Run focused and full dogfood, delete duplicate or speculative residue,
+- [x] Run focused and full dogfood, delete duplicate or speculative residue,
   and commit child Phases 2 and 3 as separate verified checkpoints.
 
 ### Phase 7: Land the static PostgreSQL query contract
@@ -1175,9 +1175,9 @@ is deleted; lexicon/cache/schema identities are exact.
 
 ## Program stage 6: Semantic-role siblings
 
-Status: [~] Accepted advisory analysis; Phases 1-2 complete, dogfood next
+Status: [x] Complete
 
-LOC: +850-1,350 / -100-250
+Measured LOC: +3,446 / -273 authored; +1,205 / -848 generated schema
 
 Verify: Only configured sibling sets are compared; discrete corroboration and
 mandatory counterevidence are exact; shared trait contracts are not proof;

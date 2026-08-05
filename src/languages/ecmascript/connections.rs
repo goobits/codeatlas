@@ -4,6 +4,7 @@ use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, SourceBinding, SourceEdge,
     SourceEdgeKind, SourceEvidence, SourceGraph,
 };
+use crate::languages::reachability::{connect_named_symbol_edges, resolve_reference_sources};
 use crate::languages::typescript::parser;
 use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -65,7 +66,13 @@ pub(super) fn connect_module(
                     &mut HashSet::new(),
                 )
             };
-            let sources = reference_sources(module, &binding.local);
+            let sources = resolve_reference_sources(
+                &module.file,
+                &module.info.reachability.top_level_references,
+                &module.info.reachability.symbol_references,
+                &module.symbols,
+                &binding.local,
+            );
             for source in sources {
                 for target in &targets {
                     graph.edges.insert(SourceEdge {
@@ -240,12 +247,14 @@ fn dynamic_dependency_label(target: &parser::DynamicDependencyTarget) -> String 
 
 fn connect_local_references(graph: &mut SourceGraph, module: &Module) {
     for reference in &module.info.reachability.top_level_references {
-        connect_named_symbols(
+        connect_named_symbol_edges(
             graph,
             &module.file,
             reference,
-            module,
+            &module.symbols,
             SourceEdgeKind::LexicalReference,
+            &module.path,
+            EXTRACTOR,
         );
     }
     for (owner, references) in &module.info.reachability.symbol_references {
@@ -254,12 +263,14 @@ fn connect_local_references(graph: &mut SourceGraph, module: &Module) {
         };
         for owner in owners {
             for reference in references {
-                connect_named_symbols(
+                connect_named_symbol_edges(
                     graph,
                     owner,
                     reference,
-                    module,
+                    &module.symbols,
                     SourceEdgeKind::LexicalReference,
+                    &module.path,
+                    EXTRACTOR,
                 );
             }
         }
@@ -286,47 +297,6 @@ fn connect_local_exports(graph: &mut SourceGraph, module: &Module) {
             }
         }
     }
-}
-
-fn connect_named_symbols(
-    graph: &mut SourceGraph,
-    from: &NodeId,
-    name: &str,
-    module: &Module,
-    kind: SourceEdgeKind,
-) {
-    if let Some(symbols) = module.symbols.get(name) {
-        for symbol in symbols {
-            graph.edges.insert(SourceEdge {
-                from: from.clone(),
-                to: EdgeTarget::Node(symbol.clone()),
-                kind,
-                bindings: Vec::new(),
-                evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
-            });
-        }
-    }
-}
-
-fn reference_sources(module: &Module, local: &str) -> BTreeSet<NodeId> {
-    let mut sources = BTreeSet::new();
-    if module
-        .info
-        .reachability
-        .top_level_references
-        .contains(local)
-    {
-        sources.insert(module.file.clone());
-    }
-    for (owner, references) in &module.info.reachability.symbol_references {
-        if !references.contains(local) {
-            continue;
-        }
-        if let Some(symbols) = module.symbols.get(owner) {
-            sources.extend(symbols.iter().cloned());
-        }
-    }
-    sources
 }
 
 fn connect_module_resolution(

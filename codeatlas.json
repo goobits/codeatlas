@@ -4,5 +4,36 @@
   "entrypoints": ["src/main.rs"],
   "include_private": true,
   "include_types": true,
-  "package_exports": false
+  "package_exports": false,
+  "lexicon": {
+    "semantic_siblings": {
+      "comparison_sets": [
+        {
+          "id": "http_source_detectors",
+          "purpose": "compare peer framework and language HTTP source detectors",
+          "members": [
+            { "id": "ecmascript", "paths": ["src/http/source/ecmascript.rs"] },
+            { "id": "medusa", "paths": ["src/http/source/medusa.rs"] },
+            { "id": "node", "paths": ["src/http/source/node.rs"] },
+            { "id": "python", "paths": ["src/http/source/python.rs"] },
+            { "id": "rust", "paths": ["src/http/source/rust.rs"] },
+            { "id": "sveltekit", "paths": ["src/http/source/sveltekit.rs"] }
+          ],
+          "maximum_nominations": 200
+        },
+        {
+          "id": "language_adapters",
+          "purpose": "compare maintained language adapter responsibilities",
+          "members": [
+            { "id": "ecmascript", "paths": ["src/languages/ecmascript"] },
+            { "id": "python", "paths": ["src/languages/python"] },
+            { "id": "rust", "paths": ["src/languages/rust"] },
+            { "id": "svelte", "paths": ["src/languages/svelte"] },
+            { "id": "typescript", "paths": ["src/languages/typescript"] }
+          ],
+          "maximum_nominations": 200
+        }
+      ]
+    }
+  }
 }

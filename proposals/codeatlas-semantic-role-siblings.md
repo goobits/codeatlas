@@ -1,6 +1,6 @@
 # Semantic-role sibling evidence
 
-Status: Accepted advisory child; Phase 2 complete, Phase 3 pending
+Status: Complete
 
 Decision scope: Deterministic evidence for conceptually duplicated
 implementations across explicitly configured sibling packages or modules
@@ -221,9 +221,10 @@ CodeAtlas declares two real comparison sets:
 - HTTP source detectors under `src/http/source/*`.
 
 The dogfood review classifies every emitted evaluation as actionable review,
-parallel-by-design evidence, or analyzer defect. A finding is not suppressed
-merely because the current duplication is intentional; the counterevidence or
-lexicon distinct-concept policy should explain that decision.
+parallel-by-design evidence, an honest evidence gap, or analyzer defect. A
+finding is not suppressed merely because the current duplication is
+intentional; the counterevidence or lexicon distinct-concept policy should
+explain that decision.
 
 Any chosen refactor remains outside this analyzer. CodeAtlas stays read-only,
 and stable Mill is used only if it advertises the exact refactor capability.
@@ -342,9 +343,9 @@ Checkpoint evidence:
 
 ## Phase 3: CodeAtlas dogfood and consolidation
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +150-250 / -50-120
+Measured LOC: +434 / -197 authored code, tests, configuration, and docs
 
 Verify: Both CodeAtlas comparison sets are reviewed; actionable shared helpers
 are rehomed only through their real owner; intentional parallels carry visible
@@ -360,7 +361,40 @@ counterevidence; no duplicate analyzer/helper/schema or Tier 2 residue remains.
 ~ tests/fixtures/semantic_siblings/
 ```
 
-Total LOC: +850-1,350 / -100-250
+Checkpoint evidence:
+
+- The checked-in `http_source_detectors` and `language_adapters` sets resolve
+  six and five nonoverlapping members respectively. The permanent self-audit
+  verifies those exact IDs, every eight-check counterevidence list, nomination,
+  omission, corroboration and statistic aggregate, and the absence of gating
+  fields without freezing source-dependent result counts.
+- The final byte-stable dogfood report evaluates 312 bounded nominations: 119
+  are `separate_by_evidence`, 193 are `inconclusive` with visible evidence
+  gaps, zero are review candidates, and 3,910 additional nominations are
+  deterministically omitted under the configured ceilings. Every emitted row
+  was classified through the complete disposition/counterevidence table; the
+  highest-corroboration inconclusive rows received exact-target inspection.
+- Dogfooding first exposed two analyzer defects. Local graph boundaries had
+  inherited project-wide incompleteness, and target-relative Rust `Self` was
+  counted as a shared model identity. Boundary scope is now exact to node,
+  indexed file, or genuinely unscoped project evidence; `Self` can no longer
+  corroborate two distinct owners. Focused regression tests preserve both
+  rules.
+- Exact inspection demonstrated and rehomed three repeated pure mechanisms:
+  `SymbolKind` to source-symbol-kind conversion, direct callable-effect
+  recording, and named-symbol/reference-source graph primitives. The old
+  language-private helpers were deleted. Parser-specific kind formatting,
+  detector bodies, native contracts, and Rust path-segment resolution remain
+  adapter-owned because their semantics differ.
+- Tier 2 was refused: no named accepted counterexample required body facts.
+  Remaining unknowns concern effects, external obligations, or graph roles;
+  body-skeleton similarity would not truthfully resolve those evidence gaps.
+- Eleven focused semantic-sibling tests, exact language reachability tests,
+  byte-deterministic CLI dogfood, the seven-command self-audit, and the complete
+  `pnpm check` surface pass from external build and artifact roots. No generated
+  state was created under the checkout.
+
+Measured total LOC: +3,446 / -273 authored; +1,205 / -848 generated schema
 
 ## Layman's wins
 

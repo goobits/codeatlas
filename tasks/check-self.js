@@ -16,6 +16,17 @@ const inspectedCallable = {
 	effectSource:
 		'symbol/file~1default~1src~01commands~01output.rs/rs:src~1commands~1output.rs:fn#write_file'
 }
+const semanticSiblingSetIds = ['http_source_detectors', 'language_adapters']
+const semanticSiblingCounterevidenceKinds = [
+	'conflicting_or_unknown_effects',
+	'different_authority_or_security_boundaries',
+	'different_lifecycle_or_cleanup_ownership',
+	'incompatible_result_or_error_semantics',
+	'disjoint_producer_or_consumer_roles',
+	'different_externally_owned_protocol_obligations',
+	'distinct_configured_concepts',
+	'incomplete_graph_or_type_evidence'
+]
 
 const countBy = (items, field) => {
 	const counts = new Map()
@@ -140,6 +151,63 @@ const validateInspectedCallable = (report) => {
 	return failures
 }
 
+const validateSemanticSiblings = (report) => {
+	const analysis = report.semantic_sibling_analysis
+	if (!analysis || !Array.isArray(analysis.comparison_sets)) {
+		return ['omitted semantic_sibling_analysis.comparison_sets']
+	}
+	const failures = []
+	const ids = analysis.comparison_sets.map((set) => set.id)
+	if (JSON.stringify(ids) !== JSON.stringify(semanticSiblingSetIds)) {
+		failures.push(`resolved unexpected semantic sibling sets ${JSON.stringify(ids)}`)
+	}
+
+	let evaluationCount = 0
+	let reviewCandidateCount = 0
+	let omittedCount = 0
+	for (const set of analysis.comparison_sets) {
+		const evaluations = set.evaluations ?? []
+		evaluationCount += evaluations.length
+		if (set.nominations_considered !== evaluations.length) {
+			failures.push(`${set.id} nomination and evaluation counts disagree`)
+		}
+		const omissionSum = (set.omissions ?? []).reduce(
+			(total, omission) => total + (omission.count ?? 0),
+			0
+		)
+		omittedCount += omissionSum
+		if (set.omitted_nominations !== omissionSum) {
+			failures.push(`${set.id} omission aggregate disagrees with its evidence`)
+		}
+		for (const evaluation of evaluations) {
+			const kinds = (evaluation.counterevidence_checks ?? []).map((check) => check.kind)
+			if (JSON.stringify(kinds) !== JSON.stringify(semanticSiblingCounterevidenceKinds)) {
+				failures.push(`${set.id} evaluation omitted the mandatory counterevidence checklist`)
+			}
+			if (evaluation.corroboration_count !== (evaluation.corroborations ?? []).length) {
+				failures.push(`${set.id} evaluation corroboration aggregate disagrees with its evidence`)
+			}
+			if (evaluation.disposition === 'review_candidate') reviewCandidateCount += 1
+			for (const key of Object.keys(evaluation)) {
+				if (key === 'gate' || key === 'gates') {
+					failures.push(`${set.id} evaluation exposed forbidden gating state`)
+				}
+			}
+		}
+	}
+
+	const stats = report.stats ?? {}
+	for (const [field, actual] of [
+		['semantic_sibling_comparison_sets', analysis.comparison_sets.length],
+		['semantic_sibling_evaluations', evaluationCount],
+		['semantic_sibling_review_candidates', reviewCandidateCount],
+		['semantic_sibling_omitted_nominations', omittedCount]
+	]) {
+		if (stats[field] !== actual) failures.push(`${field} disagrees with report evidence`)
+	}
+	return [...new Set(failures)]
+}
+
 const writePrivate = (destination, content) => {
 	fs.writeFileSync(destination, content, { mode: 0o600 })
 	fs.chmodSync(destination, 0o600)
@@ -200,7 +268,11 @@ try {
 			],
 			validate: validateInspectedCallable
 		},
-		{ id: 'lexicon-code', args: ['lexicon', 'code', '--format', 'json'] },
+		{
+			id: 'lexicon-code',
+			args: ['lexicon', 'code', '--format', 'json'],
+			validate: validateSemanticSiblings
+		},
 		{ id: 'tests-inventory', args: ['scan', 'tests', '--format', 'json'] },
 		{
 			id: 'tests-witnesses',

@@ -262,6 +262,16 @@ mod tests {
         assert!(config.include_private);
         assert!(config.include_types);
         assert!(!config.package_exports);
+        assert_eq!(
+            config
+                .lexicon
+                .semantic_siblings
+                .comparison_sets
+                .iter()
+                .map(|set| set.id.as_str())
+                .collect::<Vec<_>>(),
+            ["http_source_detectors", "language_adapters"]
+        );
     }
 
     #[test]

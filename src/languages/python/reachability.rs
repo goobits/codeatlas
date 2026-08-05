@@ -3,9 +3,10 @@ use crate::config::ResolvedAnalysisProject;
 use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, ProjectId, SourceBinding, SourceEdge,
     SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
-    SourceSymbol, SourceSymbolKind,
+    SourceSymbol,
 };
-use crate::domain::{Symbol, SymbolKind, Visibility};
+use crate::domain::{Symbol, Visibility};
+use crate::languages::reachability::{connect_named_symbol_edges, resolve_reference_sources};
 use anyhow::Result;
 use contexts::{
     add_package_exports, add_pyproject_entrypoints, add_script_context, add_test_context,
@@ -173,7 +174,7 @@ fn add_symbols(
                     project: project.id.clone(),
                     file: file.clone(),
                     name: symbol.name.clone(),
-                    symbol_kind: source_symbol_kind(symbol.kind),
+                    symbol_kind: symbol.kind.into(),
                     visibility: symbol.visibility.into(),
                     span: symbol.span.clone(),
                     callable: symbol.callable.clone(),
@@ -302,7 +303,13 @@ fn connect_plain_import(
                 modules,
             );
         }
-        for source in reference_sources(module, alias) {
+        for source in resolve_reference_sources(
+            &module.file,
+            &module.info.reachability.top_level_references,
+            &module.info.reachability.symbol_references,
+            &module.symbols,
+            alias,
+        ) {
             graph.edges.insert(SourceEdge {
                 from: source,
                 to: EdgeTarget::Node(target.clone()),
@@ -409,7 +416,13 @@ fn connect_from_import(
                 modules,
             );
         }
-        for source in reference_sources(module, local) {
+        for source in resolve_reference_sources(
+            &module.file,
+            &module.info.reachability.top_level_references,
+            &module.info.reachability.symbol_references,
+            &module.symbols,
+            local,
+        ) {
             for target in &targets {
                 graph.edges.insert(SourceEdge {
                     from: source.clone(),
@@ -678,21 +691,25 @@ fn connect_explicit_exports(
 
 fn connect_local_references(graph: &mut SourceGraph, module: &Module) {
     for entrypoint in &module.info.reachability.dynamic_entrypoints {
-        connect_named_symbols(
+        connect_named_symbol_edges(
             graph,
             &module.file,
             entrypoint,
-            module,
+            &module.symbols,
             SourceEdgeKind::AssumeReachable,
+            &module.path,
+            EXTRACTOR,
         );
     }
     for reference in &module.info.reachability.top_level_references {
-        connect_named_symbols(
+        connect_named_symbol_edges(
             graph,
             &module.file,
             reference,
-            module,
+            &module.symbols,
             SourceEdgeKind::LexicalReference,
+            &module.path,
+            EXTRACTOR,
         );
     }
     for (owner, references) in &module.info.reachability.symbol_references {
@@ -701,65 +718,16 @@ fn connect_local_references(graph: &mut SourceGraph, module: &Module) {
         };
         for owner in owners {
             for reference in references {
-                connect_named_symbols(
+                connect_named_symbol_edges(
                     graph,
                     owner,
                     reference,
-                    module,
+                    &module.symbols,
                     SourceEdgeKind::LexicalReference,
+                    &module.path,
+                    EXTRACTOR,
                 );
             }
         }
-    }
-}
-
-fn connect_named_symbols(
-    graph: &mut SourceGraph,
-    from: &NodeId,
-    name: &str,
-    module: &Module,
-    kind: SourceEdgeKind,
-) {
-    if let Some(symbols) = module.symbols.get(name) {
-        for symbol in symbols {
-            graph.edges.insert(SourceEdge {
-                from: from.clone(),
-                to: EdgeTarget::Node(symbol.clone()),
-                kind,
-                bindings: Vec::new(),
-                evidence: SourceEvidence::new(&module.path, None, EXTRACTOR),
-            });
-        }
-    }
-}
-
-fn reference_sources(module: &Module, local: &str) -> BTreeSet<NodeId> {
-    let mut sources = BTreeSet::new();
-    if module
-        .info
-        .reachability
-        .top_level_references
-        .contains(local)
-    {
-        sources.insert(module.file.clone());
-    }
-    for (owner, references) in &module.info.reachability.symbol_references {
-        if references.contains(local) {
-            if let Some(symbols) = module.symbols.get(owner) {
-                sources.extend(symbols.iter().cloned());
-            }
-        }
-    }
-    sources
-}
-
-fn source_symbol_kind(kind: SymbolKind) -> SourceSymbolKind {
-    match kind {
-        SymbolKind::Class => SourceSymbolKind::Class,
-        SymbolKind::Const => SourceSymbolKind::Constant,
-        SymbolKind::Function => SourceSymbolKind::Function,
-        SymbolKind::Method => SourceSymbolKind::Method,
-        SymbolKind::Property => SourceSymbolKind::Property,
-        _ => SourceSymbolKind::Other,
     }
 }

@@ -5,8 +5,8 @@
 
 use crate::config::{AnalysisContextConfig, ResolvedAnalysisProject};
 use crate::domain::source_graph::{
-    AnalysisCompleteness, ContextId, NodeId, SourceContext, SourceGraph, SourceLanguage,
-    SourceNode, SourceProject,
+    AnalysisCompleteness, ContextId, EdgeTarget, NodeId, SourceContext, SourceEdge, SourceEdgeKind,
+    SourceEvidence, SourceGraph, SourceLanguage, SourceNode, SourceProject,
 };
 use anyhow::{Context, Result};
 use globset::{GlobBuilder, GlobMatcher};
@@ -54,6 +54,50 @@ pub(crate) fn build_source_graph(projects: &[ResolvedAnalysisProject]) -> Result
     crate::source_index::build_graph(projects, |index| {
         build_source_graph_uncached(projects, index)
     })
+}
+
+pub(crate) fn connect_named_symbol_edges(
+    graph: &mut SourceGraph,
+    from: &NodeId,
+    name: &str,
+    symbols_by_name: &BTreeMap<String, BTreeSet<NodeId>>,
+    kind: SourceEdgeKind,
+    evidence_path: &str,
+    extractor: &str,
+) {
+    if let Some(symbols) = symbols_by_name.get(name) {
+        for symbol in symbols {
+            graph.edges.insert(SourceEdge {
+                from: from.clone(),
+                to: EdgeTarget::Node(symbol.clone()),
+                kind,
+                bindings: Vec::new(),
+                evidence: SourceEvidence::new(evidence_path, None, extractor),
+            });
+        }
+    }
+}
+
+pub(crate) fn resolve_reference_sources(
+    file: &NodeId,
+    top_level_references: &BTreeSet<String>,
+    symbol_references: &BTreeMap<String, BTreeSet<String>>,
+    symbols_by_name: &BTreeMap<String, BTreeSet<NodeId>>,
+    local: &str,
+) -> BTreeSet<NodeId> {
+    let mut sources = BTreeSet::new();
+    if top_level_references.contains(local) {
+        sources.insert(file.clone());
+    }
+    for (owner, references) in symbol_references {
+        if !references.contains(local) {
+            continue;
+        }
+        if let Some(symbols) = symbols_by_name.get(owner) {
+            sources.extend(symbols.iter().cloned());
+        }
+    }
+    sources
 }
 
 fn build_source_graph_uncached(

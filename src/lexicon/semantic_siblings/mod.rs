@@ -60,6 +60,53 @@ struct NominationSeed {
     key: String,
 }
 
+#[derive(Default)]
+struct IncompleteGraphScope {
+    nodes: BTreeSet<NodeId>,
+    files: BTreeMap<ProjectId, BTreeSet<String>>,
+    projects: BTreeSet<ProjectId>,
+}
+
+impl IncompleteGraphScope {
+    fn from_graph(graph: &SourceGraph) -> Self {
+        let indexed_files = graph
+            .nodes
+            .values()
+            .filter_map(|node| match node {
+                SourceNode::File(file) => Some((file.project.clone(), file.path.clone())),
+                SourceNode::Symbol(_) => None,
+            })
+            .collect::<BTreeSet<_>>();
+        let mut scope = Self::default();
+        for boundary in &graph.boundaries {
+            if boundary.effect == AnalysisCompleteness::Complete {
+                continue;
+            }
+            if let Some(node) = &boundary.node {
+                scope.nodes.insert(node.clone());
+                continue;
+            }
+            let file = (boundary.project.clone(), boundary.evidence.path.clone());
+            if indexed_files.contains(&file) {
+                scope.files.entry(file.0).or_default().insert(file.1);
+            } else {
+                scope.projects.insert(boundary.project.clone());
+            }
+        }
+        scope
+    }
+
+    fn contains(&self, project: &ProjectId, node: &NodeId, file: &NodeId, file_path: &str) -> bool {
+        self.nodes.contains(node)
+            || self.nodes.contains(file)
+            || self
+                .files
+                .get(project)
+                .is_some_and(|paths| paths.contains(file_path))
+            || self.projects.contains(project)
+    }
+}
+
 pub(crate) fn analyze(
     graph: &SourceGraph,
     comparison_sets: &[ResolvedSemanticSiblingComparisonSet],
@@ -81,17 +128,7 @@ pub(crate) fn analyze(
             SourceNode::File(_) => None,
         })
         .collect::<BTreeMap<_, _>>();
-    let incomplete_nodes = graph
-        .boundaries
-        .iter()
-        .filter_map(|boundary| boundary.node.clone())
-        .collect::<BTreeSet<_>>();
-    let incomplete_paths = graph
-        .boundaries
-        .iter()
-        .filter(|boundary| boundary.node.is_none())
-        .map(|boundary| boundary.evidence.path.clone())
-        .collect::<BTreeSet<_>>();
+    let incomplete_scope = IncompleteGraphScope::from_graph(graph);
     let mut analyses = Vec::with_capacity(comparison_sets.len());
 
     for comparison_set in comparison_sets {
@@ -100,8 +137,7 @@ pub(crate) fn analyze(
             graph,
             &file_paths,
             &member_by_file,
-            &incomplete_nodes,
-            &incomplete_paths,
+            &incomplete_scope,
             policy,
         )?;
         attach_graph_roles(graph, &node_roles, &mut facts);
@@ -197,8 +233,7 @@ fn collect_facts(
     graph: &SourceGraph,
     file_paths: &BTreeMap<NodeId, String>,
     member_by_file: &BTreeMap<NodeId, String>,
-    incomplete_nodes: &BTreeSet<NodeId>,
-    incomplete_paths: &BTreeSet<String>,
+    incomplete_scope: &IncompleteGraphScope,
     policy: &LexiconPolicy,
 ) -> Result<Vec<SiblingFact>> {
     graph
@@ -264,12 +299,12 @@ fn collect_facts(
                 producer_roles: BTreeSet::new(),
                 consumer_roles: BTreeSet::new(),
                 external_protocols: BTreeSet::new(),
-                graph_incomplete: incomplete_nodes.contains(node_id)
-                    || incomplete_nodes.contains(&symbol.file)
-                    || incomplete_paths.contains(file_path)
-                    || graph.projects.get(&symbol.project).is_some_and(|project| {
-                        project.completeness != AnalysisCompleteness::Complete
-                    }),
+                graph_incomplete: incomplete_scope.contains(
+                    &symbol.project,
+                    node_id,
+                    &symbol.file,
+                    file_path,
+                ),
                 node_id: node_id.clone(),
             })
         })
@@ -345,7 +380,9 @@ fn collect_type_roles(semantic_type: &SemanticType, role: &str, roles: &mut BTre
             identity,
             arguments,
         } => {
-            roles.insert(format!("{role}:named:{identity}"));
+            if identity != "Self" {
+                roles.insert(format!("{role}:named:{identity}"));
+            }
             for (index, argument) in arguments.iter().enumerate() {
                 collect_type_roles(argument, &format!("{role}:argument:{index}"), roles);
             }

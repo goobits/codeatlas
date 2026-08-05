@@ -1,5 +1,16 @@
 //! Shared pure matching primitives for adapter-owned effect evidence.
 
+use crate::domain::{CallableEffect, EffectKind, EvidenceClass};
+use std::collections::BTreeSet;
+
+pub(super) fn record_direct_effect(effects: &mut BTreeSet<CallableEffect>, kind: EffectKind) {
+    effects.insert(CallableEffect::new_direct(
+        kind,
+        EvidenceClass::BoundaryLimited,
+        None,
+    ));
+}
+
 pub(super) fn has_qualified_action(
     path: &str,
     separator: &str,
@@ -20,7 +31,9 @@ pub(super) fn has_qualified_action(
 
 #[cfg(test)]
 mod tests {
-    use super::has_qualified_action;
+    use super::{has_qualified_action, record_direct_effect};
+    use crate::domain::{EffectKind, EffectProvenance, EvidenceClass};
+    use std::collections::BTreeSet;
 
     #[test]
     fn qualified_actions_require_namespace_boundaries_and_exact_actions() {
@@ -38,5 +51,19 @@ mod tests {
                 "{path}"
             );
         }
+    }
+
+    #[test]
+    fn direct_effect_recording_has_one_cross_language_evidence_contract() {
+        let mut effects = BTreeSet::new();
+        record_direct_effect(&mut effects, EffectKind::FilesystemRead);
+        record_direct_effect(&mut effects, EffectKind::FilesystemRead);
+
+        let effect = effects.iter().next().expect("one deduplicated effect");
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effect.kind, EffectKind::FilesystemRead);
+        assert_eq!(effect.evidence, EvidenceClass::BoundaryLimited);
+        assert_eq!(effect.provenance, EffectProvenance::Direct);
+        assert!(effect.span.is_none());
     }
 }

@@ -1,6 +1,6 @@
 use super::format::expression_name;
-use crate::domain::{CallableEffect, EffectKind, EvidenceClass};
-use crate::languages::effects::has_qualified_action;
+use crate::domain::{CallableEffect, EffectKind};
+use crate::languages::effects::{has_qualified_action, record_direct_effect};
 use std::collections::BTreeSet;
 use swc_core::ecma::ast::*;
 use swc_core::ecma::visit::{Visit, VisitWith};
@@ -24,11 +24,7 @@ struct EcmaScriptEffectCollector {
 
 impl EcmaScriptEffectCollector {
     fn record(&mut self, kind: EffectKind) {
-        self.effects.insert(CallableEffect::new_direct(
-            kind,
-            EvidenceClass::BoundaryLimited,
-            None,
-        ));
+        record_direct_effect(&mut self.effects, kind);
     }
 
     fn record_call(&mut self, path: &str) {
