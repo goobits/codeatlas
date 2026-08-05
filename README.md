@@ -102,6 +102,12 @@ distinguishes importable API from implementation-only declarations. Default
 discovery excludes dependencies, generated output, conventional tests, and
 fixture-data trees unless configuration explicitly selects them.
 
+JSON scan reports use schema version 3. A callable symbol carries one optional
+structured `CallableContract` with ordered signatures, receivers, parameter
+roles and types, result shape, conservative effects, and exact block reasons.
+The display signature remains presentation evidence; policy consumers do not
+reparse it. A missing effect is never presented as proof of purity.
+
 ### Reachability and consumers
 
 Use named contexts to describe production, test, and tooling roots:
@@ -228,7 +234,8 @@ codeatlas --root . inspect code \
 Direction is `incoming`, `outgoing`, or `both`. The default is `both`.
 Ambiguous project-relative targets fail with a qualification hint.
 
-Context reports use schema version 3. Each page includes:
+Context reports use schema version 4 and preserve the same callable contract on
+symbol nodes. Each page includes:
 
 - `graph_digest`, `direction`, `depth`, and `max_nodes`
 - `page_offset`, `remaining_nodes`, and omitted project, node, edge, context,
@@ -308,8 +315,8 @@ constructions: `verb_object[_qualifier]`, `object[_qualifier]_actor`, and
 qualifier order is preserved, and predicates (`is`, `has`, `can`, `supports`)
 remain semantically distinct from actions. A grammar pair is reported only when
 same-language, compatible symbol kinds also share a cross-file typed callable
-contract, untyped callable shape, or structural type shape. Untyped evidence is
-clearly lower confidence.
+role shape, untyped callable shape, or structural type shape. Untyped evidence
+is clearly lower confidence.
 
 The built-in grammar uses a reviewed, closed programming morphology table for
 actor/result forms of `build`, `collect`, `convert`, `format`, `load`, `parse`,

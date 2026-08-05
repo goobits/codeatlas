@@ -1,6 +1,6 @@
 # Structured callable evidence
 
-Status: Accepted program child; implementation in progress
+Status: Complete (2026-08-05)
 
 Decision scope: One cross-language `CallableContract`, deterministic effect
 evidence, consumer migration, and the corresponding lexicon schema transition
@@ -444,7 +444,73 @@ heuristic is gone.
 
 ## Phase 3: Dogfood and hardening
 
-Status: [ ] Not started
+Status: [x] Complete (2026-08-05)
+
+Execution checklist:
+
+- [x] Classify CodeAtlas's own callable, constructibility, direct-effect,
+  propagated-effect, and unknown-boundary evidence without suppressing it.
+- [x] Add no receiver, invariant, or effect declaration unless an exact
+  digest-bound self-dogfood need proves it belongs in strict `codeatlas.json`.
+- [x] Prove exact target identity and callable bytes are stable across cold and
+  warm source-index runs, and strengthen the bounded self-audit at that target.
+- [x] Reconcile the canonical lexicon, public docs, dependent fuzz assumptions,
+  schemas, fixtures, and cache identities with the implemented evidence shape.
+- [x] Run duplicate-owner/residue searches, focused and full checks, bounded
+  self-dogfood, external-state audit, tracker synchronization, and a clean
+  Phase 3 commit.
+
+Starting checkpoint, 2026-08-05:
+
+- Consumer migration is clean at `cfaffe8`; lexicon v4 retains 42 bounded
+  candidates, testing-witness v2 reuses `CallableContract`, and the execution
+  state root is empty.
+- This phase begins with read-only evidence classification and a self-audit
+  contract adjustment, not an exact semantic source move. Stable Mill is
+  therefore not invoked merely to manufacture a refactor-shaped task.
+
+Completion evidence, 2026-08-05:
+
+- The self scan classifies 2,344 callables. Its 163 known direct effects are 56
+  filesystem reads, 45 filesystem writes, 42 environment reads, 13 process
+  operations, three time reads, two randomness reads, and two ambient-state
+  operations. Parameter construction is 1,227 direct, 2,314 factory-required,
+  and 147 unknown; receiver construction is 1,920 direct and 424
+  factory-required. Exact block-reason counts remain visible rather than being
+  suppressed.
+- The 44 `dynamic_boundary` findings are medium-confidence, nongating source
+  completeness evidence for conditional compilation, `tokio::select!`, merged
+  platform definitions, debug assertions, and inline test modules. They are not
+  silently converted into callable purity. This corpus has no emitted unknown
+  callable effect, so no receiver, invariant, factory, or known-effect override
+  was added to `codeatlas.json`; doing so would invent execution evidence rather
+  than harden the static contract.
+- Self-audit inspection now resolves only
+  `src/commands/output.rs#write_text_or_print`, outgoing at depth one and 32
+  nodes maximum. It returns three nodes and six edges, asserts the exact node
+  ID and callable digest
+  `sha256:d58ae8bd40f5c98774a5b5e223bd770ccf490209a264b2f06cfa6bbf39f3ee73`,
+  verifies the propagated filesystem-write source is `write_file`, and retains
+  the exact factory block on the optional `Path` parameter. This replaces the
+  broader `main` slice with smaller, decision-relevant evidence.
+- Fresh-cache and warm-cache inspection reports are byte-identical at
+  `sha256:7c73d152a4e44af556c5cba14644e982c4cb52e7cfe5376afba0c86e4165cfec`;
+  both carry graph digest
+  `sha256:ed374cc5f48962c204b48ba0eeb3af227c8ec4d33373c2eb157a119df6f72943`.
+  The normalized exact-target plus callable projection is also identical at
+  `sha256:70f6a8e288e2db788856503e7e4dff149cbbab30a272da7ea47f0925b64a5e42`.
+- README now truthfully names scan v3, context-slice v4, shared callable
+  evidence, presentation-only signatures, and conservative effects. The
+  canonical lexicon distinguishes `callable contract`, `callable shape`, and
+  constructibility. The code-fuzzing child was reread completely and already
+  consumes this owner without restating it, so no ceremonial edit was made.
+- The full repository check passes 15 Node tests and 395 Rust tests with four
+  intentional live-test ignores, plus architecture-spec validation,
+  warnings-denied clippy, self-dogfood, and package validation. Repeated
+  dogfood retains 42 bounded lexicon candidates and zero code gates. Searches
+  find no second contract, callable parser, effect owner, retired public
+  schema, stale fixture, or compatibility alias. The execution state root is
+  empty and every generated artifact remains under the external task root.
 
 LOC: +100-150 / -30-50
 
@@ -461,9 +527,10 @@ survives; focused and full dogfood pass from external state.
 ~ tests/callable_contract.rs
 ```
 
-Implemented Phase 1: +3,526 / -54 authored lines.
-
-Remaining Phase 2-3 estimate: +350-500 / -160-270 authored lines.
+Implemented Phases 1-3: +4,539 / -365 authored product and canonical-documentation
+lines, plus their generated schema transitions. The larger-than-estimated
+contract work is one shared owner used by every current and planned consumer;
+the completed child leaves no legacy parser or compatibility layer.
 
 ## Layman's wins
 

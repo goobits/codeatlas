@@ -2,11 +2,20 @@
 
 const fs = require('node:fs')
 const path = require('node:path')
+const crypto = require('node:crypto')
 const { spawnSync } = require('node:child_process')
 const { requireExternalCargoTarget } = require('./storage.js')
 
 const rootDir = path.resolve(__dirname, '..')
 const maxOutputBytes = 32 * 1024 * 1024
+const inspectedCallable = {
+	query: 'src/commands/output.rs#write_text_or_print',
+	nodeId:
+		'symbol/file~1default~1src~01commands~01output.rs/rs:src~1commands~1output.rs:fn#write_text_or_print',
+	digest: 'd58ae8bd40f5c98774a5b5e223bd770ccf490209a264b2f06cfa6bbf39f3ee73',
+	effectSource:
+		'symbol/file~1default~1src~01commands~01output.rs/rs:src~1commands~1output.rs:fn#write_file'
+}
 
 const countBy = (items, field) => {
 	const counts = new Map()
@@ -17,14 +26,50 @@ const countBy = (items, field) => {
 	return Object.fromEntries([...counts].sort(([left], [right]) => left.localeCompare(right)))
 }
 
+const collectSymbols = (roots) => {
+	const pending = [...(roots ?? [])].reverse()
+	const symbols = []
+	while (pending.length > 0) {
+		const symbol = pending.pop()
+		symbols.push(symbol)
+		for (const child of [...(symbol.children ?? [])].reverse()) pending.push(child)
+	}
+	return symbols
+}
+
+const digestJson = (value) =>
+	crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
+
+const resolveInspectedCallable = (report) => {
+	const target = report.targets?.find((candidate) => candidate.query === inspectedCallable.query)
+	if (!target || target.nodes?.length !== 1) return undefined
+	const nodeId = target.nodes[0]
+	return { nodeId, callable: report.nodes?.[nodeId]?.callable }
+}
+
 const summarize = (id, report) => {
 	switch (id) {
-		case 'scan-code':
+		case 'scan-code': {
+			const symbols = collectSymbols(report.symbols)
+			const callables = symbols.map((symbol) => symbol.callable).filter(Boolean)
+			const signatures = callables.flatMap((callable) => callable.signatures ?? [])
+			const parameters = signatures.flatMap((signature) => signature.parameters ?? [])
+			const effects = callables.flatMap((callable) => callable.effects ?? [])
+			const blockReasons = callables.flatMap((callable) => callable.block_reasons ?? [])
 			return {
 				files: report.stats?.files_scanned ?? 0,
 				skipped: report.stats?.files_skipped ?? 0,
-				symbols: report.stats?.symbols_found ?? 0
+				symbols: report.stats?.symbols_found ?? 0,
+				callables: callables.length,
+				effects: countBy(effects, 'kind'),
+				blockReasons: countBy(blockReasons, 'kind'),
+				parameterConstructibility: countBy(parameters, 'constructibility'),
+				receiverConstructibility: countBy(
+					signatures.map((signature) => signature.receiver),
+					'constructibility'
+				)
 			}
+		}
 		case 'check-code':
 		case 'usage-code':
 			return {
@@ -32,13 +77,19 @@ const summarize = (id, report) => {
 				gates: report.findings?.filter((finding) => finding.gates).length ?? 0,
 				kinds: countBy(report.findings, 'kind')
 			}
-		case 'inspect-code':
+		case 'inspect-code': {
+			const inspected = resolveInspectedCallable(report)
 			return {
 				targets: report.targets?.length ?? 0,
 				nodes: Object.keys(report.nodes ?? {}).length,
 				edges: report.edges?.length ?? 0,
-				omitted: report.omitted ?? {}
+				omitted: report.omitted ?? {},
+				targetNode: inspected?.nodeId ?? null,
+				callableDigest: inspected?.callable ? digestJson(inspected.callable) : null,
+				effects: inspected?.callable?.effects ?? [],
+				blockReasons: inspected?.callable?.block_reasons ?? []
 			}
+		}
 		case 'lexicon-code':
 			return report.stats ?? {}
 		case 'tests-inventory':
@@ -61,6 +112,32 @@ const summarize = (id, report) => {
 		default:
 			return {}
 	}
+}
+
+const validateInspectedCallable = (report) => {
+	const inspected = resolveInspectedCallable(report)
+	if (!inspected) return ['did not resolve exactly one inspected callable']
+	const failures = []
+	if (inspected.nodeId !== inspectedCallable.nodeId) {
+		failures.push(`resolved unexpected node ${inspected.nodeId}`)
+	}
+	if (!inspected.callable) return [...failures, 'omitted the structured callable contract']
+	const digest = digestJson(inspected.callable)
+	if (digest !== inspectedCallable.digest) {
+		failures.push(`callable digest changed from ${inspectedCallable.digest} to ${digest}`)
+	}
+	const expectedEffect = inspected.callable.effects?.some(
+		(effect) =>
+			effect.kind === 'filesystem_write' &&
+			effect.provenance?.kind === 'propagated' &&
+			effect.provenance?.source_target === inspectedCallable.effectSource
+	)
+	if (!expectedEffect) failures.push('omitted the propagated filesystem-write effect')
+	const expectedBlock = inspected.callable.block_reasons?.some(
+		(reason) => reason.kind === 'requires_factory' && reason.subject === 'signature:0:parameter:1'
+	)
+	if (!expectedBlock) failures.push('omitted the exact Path factory block')
+	return failures
 }
 
 const writePrivate = (destination, content) => {
@@ -113,12 +190,15 @@ try {
 			args: [
 				'inspect',
 				'code',
-				'src/main.rs#main',
+				inspectedCallable.query,
 				'--depth',
 				'1',
+				'--direction',
+				'outgoing',
 				'--max-nodes',
-				'64'
-			]
+				'32'
+			],
+			validate: validateInspectedCallable
 		},
 		{ id: 'lexicon-code', args: ['lexicon', 'code', '--format', 'json'] },
 		{ id: 'tests-inventory', args: ['scan', 'tests', '--format', 'json'] },
@@ -149,6 +229,9 @@ try {
 		}
 		if (!Number.isInteger(report.schema_version)) {
 			failures.push(`${descriptor.id} omitted an integer schema_version`)
+		}
+		for (const failure of descriptor.validate?.(report) ?? []) {
+			failures.push(`${descriptor.id} ${failure}`)
 		}
 		if (result.status !== 0) {
 			const reason = descriptor.check

@@ -491,12 +491,13 @@ not create another program roadmap or copy these tasks into a scratch document.
 ### Current verdict
 
 The public grammar, schema registry, HQA renderer, immutable execution
-artifacts, enforcing HTTP call budget, and structured callable contract,
-effects, lexicon, and witness migration are complete. Structured callable
-hardening is next. The current host cannot grant an OCI isolation capability,
-so live execution remains plan-only here, but that does not block the static
-evidence lane. On implementation progress rather than proposal-design
-progress, the complete program is approximately 35 percent done.
+artifacts, enforcing HTTP call budget, and the complete structured callable
+evidence child are done. The locally verifiable OCI implementation is next on
+the execution critical path. The current host cannot grant a live OCI isolation
+capability, so execution remains plan-only here, but deterministic fake-runtime
+and command-construction work can proceed. On implementation progress rather
+than proposal-design progress, the complete program is approximately 38
+percent done.
 
 ### Order and ownership rules
 
@@ -579,17 +580,17 @@ Active child: structured callable evidence Phase 2.
 
 Active child: structured callable evidence Phase 3.
 
-- [ ] Add only exact, digest-bound CodeAtlas receiver, invariant, or known
+- [x] Add only exact, digest-bound CodeAtlas receiver, invariant, or known
   effect declarations that the self-dogfood corpus genuinely needs.
-- [ ] Classify CodeAtlas's own callable and effect findings, including unknown
+- [x] Classify CodeAtlas's own callable and effect findings, including unknown
   boundaries, rather than suppressing inconvenient evidence.
-- [ ] Confirm exact scan, witness, lexicon, and inspect target identities remain
+- [x] Confirm exact scan, witness, lexicon, and inspect target identities remain
   stable across cold and warm source-index runs.
-- [ ] Update the canonical lexicon, user-facing contract docs, dependent
+- [x] Update the canonical lexicon, user-facing contract docs, dependent
   proposal assumptions, and self-audit task with the accepted evidence shape.
-- [ ] Verify no duplicate model, parser, cache identity, old schema, stale
+- [x] Verify no duplicate model, parser, cache identity, old schema, stale
   fixture, target call, or checkout-local generated state remains.
-- [ ] Run the required full checks and self-dogfood, synchronize statuses, and
+- [x] Run the required full checks and self-dogfood, synchronize statuses, and
   commit structured-callable Phase 3.
 
 ### Phase 4: Complete the locally verifiable OCI implementation
