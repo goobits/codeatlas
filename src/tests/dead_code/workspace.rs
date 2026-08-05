@@ -40,9 +40,9 @@ fn aggregate_projects_reject_stale_package_owned_duplicates() {
 fn workspace_reachability_discovers_members_resolves_packages_and_preserves_ownership() {
     let root = fixture_root("workspace");
     let project = ProjectConfig::load(&root, None).expect("workspace configuration");
-    let projects = project
-        .workspace_analysis_projects()
-        .expect("workspace projects");
+    let projects = RepositoryScope::resolve(&project, true)
+        .expect("workspace scope")
+        .into_analysis_projects();
     assert_eq!(projects.len(), 6);
     let workspace_root = projects
         .iter()

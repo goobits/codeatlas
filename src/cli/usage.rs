@@ -4,6 +4,8 @@ use crate::commands::testing::TestingFormat;
 use clap::{Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
 
+use super::scope::RepositoryScopeArgs;
+
 #[derive(Copy, Clone, Default, Eq, PartialEq, ValueEnum)]
 pub(super) enum UsageScope {
     /// Classify the full maintained source graph
@@ -23,9 +25,8 @@ pub(super) enum UsageSubject {
         /// External source tree whose package imports count as consumers
         #[arg(long)]
         consumer_root: Option<PathBuf>,
-        /// Discover package projects from the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
+        #[command(flatten)]
+        repository: RepositoryScopeArgs,
         /// Output format for full source reachability
         #[arg(short, long, value_enum, default_value_t = DeadCodeFormat::Text)]
         format: DeadCodeFormat,
@@ -41,9 +42,8 @@ pub(super) enum UsageSubject {
         /// Repository-relative changed path; repeat for a set; omit for Git changes
         #[arg(long)]
         changed: Vec<PathBuf>,
-        /// Discover package projects from the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
+        #[command(flatten)]
+        repository: RepositoryScopeArgs,
         /// Output format
         #[arg(short, long, value_enum, default_value_t = TestingFormat::Text)]
         format: TestingFormat,
@@ -59,7 +59,7 @@ impl UsageSubject {
             Self::Code {
                 scope: UsageScope::All,
                 consumer_root: None,
-                workspace,
+                repository,
                 format,
                 out,
                 gates_only,
@@ -69,7 +69,7 @@ impl UsageSubject {
                 out.as_deref(),
                 false,
                 gates_only,
-                workspace,
+                repository.workspace,
                 config,
             ),
             Self::Code {
@@ -80,7 +80,7 @@ impl UsageSubject {
             Self::Code {
                 scope: UsageScope::Public,
                 consumer_root,
-                workspace: false,
+                repository: RepositoryScopeArgs { workspace: false },
                 format: DeadCodeFormat::Text,
                 out: None,
                 gates_only: false,
@@ -93,13 +93,13 @@ impl UsageSubject {
             ),
             Self::Tests {
                 changed,
-                workspace,
+                repository,
                 format,
                 out,
             } => commands::testing::run_impact(
                 root,
                 &changed,
-                workspace,
+                repository.workspace,
                 format,
                 out.as_deref(),
                 config,

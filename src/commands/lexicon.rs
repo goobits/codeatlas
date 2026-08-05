@@ -32,21 +32,17 @@ fn run_inner(
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let project = load_project(path, config_path)?;
+    let scope = crate::config::RepositoryScope::resolve(&project, workspace)?;
     let policy = lexicon::load_concept_policy(&project.config.lexicon, project.config_base())?;
     let scan = if workspace {
-        scan_workspace(&project)?
+        scan_workspace(&project, &scope)?
     } else {
         scan_source(&project)?
     };
     let semantic_sibling_analysis = if project.semantic_sibling_comparison_sets().is_empty() {
         lexicon::SemanticSiblingAnalysis::default()
     } else {
-        let projects = if workspace {
-            project.workspace_analysis_projects()?
-        } else {
-            project.analysis_projects()?
-        };
-        let graph = crate::languages::reachability::build_source_graph(&projects)?;
+        let graph = crate::languages::reachability::build_source_graph(scope.analysis_projects())?;
         lexicon::analyze_semantic_siblings(
             &graph,
             project.semantic_sibling_comparison_sets(),
@@ -70,20 +66,23 @@ fn scan_source(project: &ProjectConfig) -> Result<ScanReport> {
     Ok(scan)
 }
 
-fn scan_workspace(project: &ProjectConfig) -> Result<ScanReport> {
-    let workspace = crate::package::discover_workspace(&project.root)?;
+fn scan_workspace(
+    project: &ProjectConfig,
+    scope: &crate::config::RepositoryScope,
+) -> Result<ScanReport> {
     let mut source_project = project.clone();
     source_project.config.languages.clear();
     let mut config = build_scan_config(&source_project, true, None)?;
     config.entrypoints = None;
     let mut scan = scan_project(&source_project, &config)?;
 
-    let mut members = workspace
-        .members
-        .into_iter()
+    let mut members = scope
+        .members()
+        .iter()
+        .filter(|member| member.package_member)
         .filter_map(|member| {
             let prefix = crate::paths::normalize_relative_path(&member.root, &project.root);
-            (!prefix.is_empty()).then_some((prefix, member.name, member.root))
+            (!prefix.is_empty()).then_some((prefix, member.id.0.clone(), member))
         })
         .collect::<Vec<_>>();
     members.sort_by(|left, right| {
@@ -115,20 +114,15 @@ fn scan_workspace(project: &ProjectConfig) -> Result<ScanReport> {
     scan.symbols = root_symbols;
     annotate_report(&mut scan, project)?;
 
-    for (prefix, member_name, member_root) in members {
+    for (prefix, member_name, member) in members {
         let Some(symbols) = member_symbols.remove(&prefix) else {
             continue;
         };
-        let local_config = member_root.join("codeatlas.json");
-        let member_project = load_project(
-            &member_root,
-            local_config.is_file().then_some(local_config.as_path()),
-        )?;
         let mut member_scan = ScanReport {
             symbols,
             ..ScanReport::default()
         };
-        annotate_report(&mut member_scan, &member_project)
+        annotate_report(&mut member_scan, member.project())
             .with_context(|| format!("Could not annotate workspace package {member_name}"))?;
         for mut symbol in member_scan.symbols {
             add_symbol_prefix(&mut symbol, &prefix);

@@ -91,6 +91,33 @@ impl ProjectConfig {
         if let Some(projects) = &self.validated_analysis_projects {
             return Ok(projects.clone());
         }
+        let declared = self.resolve_declared_analysis_projects()?;
+        let (resolved, _) = self.resolve_local_analysis_projects(declared)?;
+        Ok(resolved)
+    }
+
+    pub(super) fn declared_analysis_projects(&self) -> Result<Vec<ResolvedAnalysisProject>> {
+        if let Some(projects) = &self.validated_declared_analysis_projects {
+            return Ok(projects.clone());
+        }
+        self.resolve_declared_analysis_projects()
+    }
+
+    pub(super) fn local_project_configs(&self) -> &[ProjectConfig] {
+        &self.local_project_configs
+    }
+
+    pub(super) fn find_local_project_config(&self, root: &Path) -> Option<&ProjectConfig> {
+        self.local_project_configs.iter().find_map(|project| {
+            (project.root == root)
+                .then_some(project)
+                .or_else(|| project.find_local_project_config(root))
+        })
+    }
+
+    pub(super) fn resolve_declared_analysis_projects(
+        &self,
+    ) -> Result<Vec<ResolvedAnalysisProject>> {
         let configured = if self.config.projects.is_empty() {
             vec![AnalysisProjectConfig {
                 id: Some("default".to_string()),
@@ -147,7 +174,7 @@ impl ProjectConfig {
                 }
                 validate_test_subjects(&id, name, context)?;
             }
-            let mut resolved_project = ResolvedAnalysisProject {
+            let resolved_project = ResolvedAnalysisProject {
                 id: crate::domain::source_graph::ProjectId(id),
                 report_root: {
                     let relative = crate::paths::normalize_relative_path(&root, &self.config_dir);
@@ -167,134 +194,14 @@ impl ProjectConfig {
                 workspace_member: false,
                 excluded_roots: Vec::new(),
             };
-            self.merge_local_analysis_settings(&mut resolved_project)?;
             resolved.push(resolved_project);
         }
         self.add_http_contexts(&mut resolved)?;
         self.add_postgres_contexts(&mut resolved)?;
-        add_nested_project_boundaries(&mut resolved);
-        remove_nested_workspace_contexts(&mut resolved)?;
         Ok(resolved)
     }
 
-    pub(crate) fn workspace_analysis_projects(&self) -> Result<Vec<ResolvedAnalysisProject>> {
-        let configured = if self.config.projects.is_empty() {
-            Vec::new()
-        } else {
-            self.analysis_projects()?
-        };
-        let workspace = crate::package::discover_workspace(&self.root)?;
-        let workspace_root = workspace.root.clone();
-        let mut resolved = Vec::with_capacity(
-            workspace.members.len() + configured.len() + usize::from(workspace.root_name.is_some()),
-        );
-        if self.root == workspace.root {
-            if let Some(root_name) = workspace.root_name.clone() {
-                resolved.push(ResolvedAnalysisProject {
-                    id: crate::domain::source_graph::ProjectId(root_name),
-                    root: workspace.root.clone(),
-                    report_root: ".".to_string(),
-                    languages: self.config.languages.clone(),
-                    contexts: self.default_analysis_contexts(),
-                    assume_reachable: Vec::new(),
-                    require_complete: false,
-                    no_default_ignore: self.config.no_default_ignore,
-                    rust: RustAnalysisConfig::default(),
-                    workspace_member: true,
-                    excluded_roots: Vec::new(),
-                });
-            }
-        }
-        for member in workspace.members {
-            let project = ResolvedAnalysisProject {
-                id: crate::domain::source_graph::ProjectId(member.name),
-                root: member.root,
-                report_root: member.report_root,
-                languages: Vec::new(),
-                contexts: BTreeMap::new(),
-                assume_reachable: Vec::new(),
-                require_complete: false,
-                no_default_ignore: self.config.no_default_ignore,
-                rust: RustAnalysisConfig::default(),
-                workspace_member: true,
-                excluded_roots: Vec::new(),
-            };
-            resolved.push(project);
-        }
-        self.merge_workspace_local_analysis_settings(&mut resolved, &workspace_root)?;
-        let aggregate_config = self
-            .config_path
-            .clone()
-            .unwrap_or_else(|| self.config_base().join("codeatlas.json"));
-        for owned in configured {
-            if let Some(project) = resolved
-                .iter_mut()
-                .find(|project| project.root == owned.root)
-            {
-                merge_analysis_settings(project, owned, &aggregate_config)?;
-                continue;
-            }
-            if resolved.iter().any(|project| project.id == owned.id) {
-                anyhow::bail!(
-                    "Workspace analysis project ID {} from {} conflicts with a discovered package",
-                    owned.id.0,
-                    aggregate_config.display()
-                );
-            }
-            resolved.push(owned);
-        }
-        self.add_http_contexts(&mut resolved)?;
-        self.add_postgres_contexts(&mut resolved)?;
-        add_nested_project_boundaries(&mut resolved);
-        remove_nested_workspace_contexts(&mut resolved)?;
-        Ok(resolved)
-    }
-
-    pub(crate) fn workspace_source_projects(&self) -> Result<Vec<ResolvedAnalysisProject>> {
-        let workspace = crate::package::discover_workspace(&self.root)?;
-        let mut resolved = Vec::with_capacity(
-            workspace.members.len() + usize::from(workspace.root_name.is_some()),
-        );
-        if self.root == workspace.root {
-            if let Some(root_name) = workspace.root_name {
-                resolved.push(ResolvedAnalysisProject {
-                    id: crate::domain::source_graph::ProjectId(root_name),
-                    root: workspace.root,
-                    report_root: ".".to_string(),
-                    languages: self.config.languages.clone(),
-                    contexts: BTreeMap::new(),
-                    assume_reachable: Vec::new(),
-                    require_complete: false,
-                    no_default_ignore: self.config.no_default_ignore,
-                    rust: RustAnalysisConfig::default(),
-                    workspace_member: true,
-                    excluded_roots: Vec::new(),
-                });
-            }
-        }
-        resolved.extend(
-            workspace
-                .members
-                .into_iter()
-                .map(|member| ResolvedAnalysisProject {
-                    id: crate::domain::source_graph::ProjectId(member.name),
-                    root: member.root,
-                    report_root: member.report_root,
-                    languages: Vec::new(),
-                    contexts: BTreeMap::new(),
-                    assume_reachable: Vec::new(),
-                    require_complete: false,
-                    no_default_ignore: self.config.no_default_ignore,
-                    rust: RustAnalysisConfig::default(),
-                    workspace_member: true,
-                    excluded_roots: Vec::new(),
-                }),
-        );
-        add_nested_project_boundaries(&mut resolved);
-        Ok(resolved)
-    }
-
-    fn default_analysis_contexts(&self) -> BTreeMap<String, AnalysisContextConfig> {
+    pub(super) fn default_analysis_contexts(&self) -> BTreeMap<String, AnalysisContextConfig> {
         if self.config.entrypoints.is_empty() {
             BTreeMap::new()
         } else {
@@ -310,58 +217,16 @@ impl ProjectConfig {
         }
     }
 
-    fn merge_local_analysis_settings(&self, project: &mut ResolvedAnalysisProject) -> Result<()> {
-        if project.root == self.root || !project.root.starts_with(&self.root) {
-            return Ok(());
-        }
-        let config_path = project.root.join("codeatlas.json");
-        if !config_path.is_file() {
-            return Ok(());
-        }
-        let config_path = config_path.canonicalize().with_context(|| {
-            format!(
-                "Could not resolve analysis project config {}",
-                config_path.display()
-            )
-        })?;
-        if self.config_path.as_ref() == Some(&config_path) {
-            return Ok(());
-        }
-        let local = ProjectConfig::load(&project.root, Some(&config_path)).with_context(|| {
-            format!(
-                "Could not load analysis project config {}",
-                config_path.display()
-            )
-        })?;
-        let owned = local
-            .analysis_projects()?
-            .into_iter()
-            .find(|configured| configured.root == project.root)
-            .with_context(|| {
-                format!(
-                    "Analysis project config {} does not configure its own root {}",
-                    config_path.display(),
-                    project.root.display()
-                )
-            })?;
-        merge_analysis_settings(project, owned, &config_path)
-    }
-
-    fn merge_workspace_local_analysis_settings(
+    pub(super) fn resolve_local_analysis_projects(
         &self,
-        projects: &mut Vec<ResolvedAnalysisProject>,
-        workspace_root: &Path,
-    ) -> Result<()> {
-        let member_roots = projects
-            .iter()
-            .filter(|project| project.workspace_member)
-            .map(|project| project.root.clone())
-            .collect::<Vec<_>>();
-        for member_root in member_roots {
-            if member_root == self.root || !member_root.starts_with(&self.root) {
+        mut projects: Vec<ResolvedAnalysisProject>,
+    ) -> Result<(Vec<ResolvedAnalysisProject>, Vec<ProjectConfig>)> {
+        let mut local_projects = Vec::new();
+        for project in &mut projects {
+            if project.root == self.root || !project.root.starts_with(&self.root) {
                 continue;
             }
-            let config_path = member_root.join("codeatlas.json");
+            let config_path = project.root.join("codeatlas.json");
             if !config_path.is_file() {
                 continue;
             }
@@ -375,45 +240,38 @@ impl ProjectConfig {
                 continue;
             }
             let local =
-                ProjectConfig::load(&member_root, Some(&config_path)).with_context(|| {
+                ProjectConfig::load(&project.root, Some(&config_path)).with_context(|| {
                     format!(
                         "Could not load analysis project config {}",
                         config_path.display()
                     )
                 })?;
-            for mut owned in local.analysis_projects()? {
-                if !owned.root.starts_with(&member_root) {
-                    anyhow::bail!(
-                        "Analysis project {} from {} must stay within its owning workspace member {}",
-                        owned.id.0,
-                        config_path.display(),
-                        member_root.display()
-                    );
-                }
-                if let Some(project) = projects
-                    .iter_mut()
-                    .find(|project| project.root == owned.root)
-                {
-                    merge_analysis_settings(project, owned, &config_path)?;
-                    continue;
-                }
-                if let Some(existing) = projects.iter().find(|project| project.id == owned.id) {
-                    anyhow::bail!(
-                        "Analysis project ID {} from {} conflicts with project root {}",
-                        owned.id.0,
-                        config_path.display(),
-                        existing.root.display()
-                    );
-                }
-                owned.report_root =
-                    crate::paths::normalize_relative_path(&owned.root, workspace_root);
-                projects.push(owned);
+            if local.root != project.root {
+                anyhow::bail!(
+                    "Analysis project config {} must own its project root {}",
+                    config_path.display(),
+                    project.root.display()
+                );
             }
+            let owned = local
+                .analysis_projects()?
+                .into_iter()
+                .find(|configured| configured.root == project.root)
+                .with_context(|| {
+                    format!(
+                        "Analysis project config {} does not configure its own root {}",
+                        config_path.display(),
+                        project.root.display()
+                    )
+                })?;
+            merge_analysis_settings(project, owned, &config_path)?;
+            local_projects.push(local);
         }
-        Ok(())
+        finalize_project_boundaries(&mut projects)?;
+        Ok((projects, local_projects))
     }
 
-    fn add_http_contexts(&self, projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
+    pub(super) fn add_http_contexts(&self, projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
         let mut fuzz_sources = Vec::new();
         for target in &self.config.http.fuzz.targets {
             if let Some(server) = &target.server {
@@ -464,7 +322,10 @@ impl ProjectConfig {
         self.command_sources(&command.command, &command.args, command.cwd.as_deref())
     }
 
-    fn add_postgres_contexts(&self, projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
+    pub(super) fn add_postgres_contexts(
+        &self,
+        projects: &mut [ResolvedAnalysisProject],
+    ) -> Result<()> {
         let mut sources = Vec::new();
         for contract in &self.config.postgres.contracts {
             for configured in contract
@@ -530,7 +391,7 @@ impl ProjectConfig {
     }
 }
 
-fn merge_analysis_settings(
+pub(super) fn merge_analysis_settings(
     project: &mut ResolvedAnalysisProject,
     owned: ResolvedAnalysisProject,
     config_path: &Path,
@@ -581,6 +442,11 @@ fn merge_analysis_settings(
         project.rust = owned.rust;
     }
     Ok(())
+}
+
+pub(super) fn finalize_project_boundaries(projects: &mut [ResolvedAnalysisProject]) -> Result<()> {
+    add_nested_project_boundaries(projects);
+    remove_nested_workspace_contexts(projects)
 }
 
 fn add_inferred_context(

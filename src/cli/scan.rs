@@ -6,6 +6,7 @@ use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
 use super::architecture::ArchitectureScanArgs;
+use super::scope::RepositoryScopeArgs;
 
 #[derive(Subcommand)]
 pub(super) enum ScanSubject {
@@ -44,9 +45,8 @@ pub(super) enum ScanSubject {
     },
     /// Inventory test contexts, scripts, runners, and declarations
     Tests {
-        /// Discover package projects from the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
+        #[command(flatten)]
+        scope: RepositoryScopeArgs,
         /// Output format
         #[arg(short, long, value_enum, default_value_t = TestingFormat::Text)]
         format: TestingFormat,
@@ -78,11 +78,13 @@ impl ScanSubject {
             Self::Postgres { out } => {
                 commands::postgres::run_inventory(root, out.as_deref(), config)
             }
-            Self::Tests {
-                workspace,
+            Self::Tests { scope, format, out } => commands::testing::run_inventory(
+                root,
+                scope.workspace,
                 format,
-                out,
-            } => commands::testing::run_inventory(root, workspace, format, out.as_deref(), config),
+                out.as_deref(),
+                config,
+            ),
             Self::Architecture { args } => args.run(root),
         }
     }

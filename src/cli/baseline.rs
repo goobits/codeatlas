@@ -4,14 +4,14 @@ use std::path::{Path, PathBuf};
 
 use super::architecture::ArchitectureBaselineArgs;
 use super::postgres::PostgresLiveArgs;
+use super::scope::RepositoryScopeArgs;
 
 #[derive(Subcommand)]
 pub(super) enum BaselineSubject {
     /// Save a canonical public code API baseline
     Code {
-        /// Discover public packages from the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
+        #[command(flatten)]
+        scope: RepositoryScopeArgs,
         /// Write the baseline to this file
         #[arg(short, long)]
         out: Option<PathBuf>,
@@ -40,8 +40,8 @@ pub(super) enum BaselineSubject {
 impl BaselineSubject {
     pub(super) fn run(self, root: &Path, config: Option<&Path>) -> i32 {
         match self {
-            Self::Code { workspace, out } => {
-                commands::diff::run_baseline(root, workspace, out.as_deref(), config)
+            Self::Code { scope, out } => {
+                commands::diff::run_baseline(root, scope.workspace, out.as_deref(), config)
             }
             Self::Http { openapi, out } => {
                 commands::http::run_baseline(root, &openapi, out.as_deref(), config)

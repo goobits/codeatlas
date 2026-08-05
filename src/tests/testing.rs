@@ -1,4 +1,4 @@
-use crate::config::ProjectConfig;
+use crate::config::{ProjectConfig, RepositoryScope};
 use crate::testing::{
     ChangedPathResolution, DeclaredTestSubject, TestImpactEvidenceKind, TestWitnessStatus,
 };
@@ -13,9 +13,9 @@ fn fixture() -> (
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/testing");
     let project = ProjectConfig::load(&root, Some(&root.join("codeatlas.json")))
         .expect("testing fixture config");
-    let projects = project
-        .workspace_analysis_projects()
-        .expect("testing fixture projects");
+    let projects = RepositoryScope::resolve(&project, true)
+        .expect("testing fixture scope")
+        .into_analysis_projects();
     let graph = languages::reachability::build_source_graph(&projects)
         .expect("testing fixture source graph");
     (root, projects, graph)

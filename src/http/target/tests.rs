@@ -9,8 +9,13 @@ fn project_config(config: CodeAtlasConfig) -> ProjectConfig {
         config,
         config_dir: root,
         config_path: None,
+        config_source: None,
         config_evidence: json!({"kind": "test"}),
+        config_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            .to_string(),
+        validated_declared_analysis_projects: None,
         validated_analysis_projects: None,
+        local_project_configs: Vec::new(),
         resolved_semantic_siblings: Vec::new(),
     }
 }

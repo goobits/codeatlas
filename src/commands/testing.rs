@@ -158,12 +158,9 @@ fn load_projects(
     config_path: Option<&Path>,
 ) -> Result<(Vec<ResolvedAnalysisProject>, PathBuf)> {
     let project = load_project(path, config_path)?;
-    let repository_root = project.root.clone();
-    let projects = if workspace {
-        project.workspace_analysis_projects()?
-    } else {
-        project.analysis_projects()?
-    };
+    let scope = crate::config::RepositoryScope::resolve(&project, workspace)?;
+    let repository_root = scope.root.clone();
+    let projects = scope.into_analysis_projects();
     Ok((projects, repository_root))
 }
 

@@ -493,12 +493,13 @@ not create another program roadmap or copy these tasks into a scratch document.
 The public grammar, schema registry, HQA renderer, immutable execution
 artifacts, enforcing HTTP call budget, complete structured callable evidence,
 semantic-sibling analysis and self-dogfood, and locally verifiable OCI
-implementation are done. The current host cannot grant a live OCI isolation
-capability, so execution remains plan-only here and Phase 9 retains the hard
-continuation gate. Work now follows the independent static lane through the
-repository-scope foundation after completing the static PostgreSQL query
-contract. On implementation progress rather than proposal-design progress, the
-complete program is approximately 53 percent done.
+implementation are done. The repository-scope/config-edit foundation is also
+complete, with one immutable project/pnpm snapshot shared by code, tests,
+lexicon, HTTP, and PostgreSQL ownership. The current host cannot grant a live
+OCI isolation capability, so execution remains plan-only here and Phase 9
+retains the hard continuation gate. On implementation progress rather than
+proposal-design progress, the complete program is approximately 56 percent
+done.
 
 ### Order and ownership rules
 
@@ -688,20 +689,21 @@ Active child: [`codeatlas-subject-evidence-parity.md`](codeatlas-subject-evidenc
 Phase 1. This phase can start after the CLI hard cut and must not predeclare
 the later observation-backed report shapes.
 
-- [ ] Extract one ordered `RepositoryScope` for root/member ownership, config
+- [x] Extract one ordered `RepositoryScope` for root/member ownership, config
   digests, code contexts, HTTP contracts, PostgreSQL contracts, and truthful
   discovery completeness.
-- [ ] Flatten one `RepositoryScopeArgs` across code, tests, lexicon, HTTP, and
-  PostgreSQL consumers without rescanning or reinterpreting `--workspace`.
-- [ ] Extract one strict JSON config-edit owner from PostgreSQL init, with
+- [x] Flatten one `RepositoryScopeArgs` across current code, tests, and lexicon
+  consumers; HTTP and PostgreSQL commands introduced later consume this same
+  owner rather than rescanning or reinterpreting `--workspace`.
+- [x] Extract one strict JSON config-edit owner from PostgreSQL init, with
   preview-first behavior, exact ownership refusal, reparse validation, and one
   selected-file write.
-- [ ] Preserve single-project and pnpm-workspace code/test behavior while HTTP
+- [x] Preserve single-project and pnpm-workspace code/test behavior while HTTP
   and PostgreSQL contracts resolve through the same ordered member scope.
-- [ ] Prove generic config preview writes nothing, explicit insertion touches
+- [x] Prove generic config preview writes nothing, explicit insertion touches
   only one selected strict config, and every repository input is bounded and
   reused.
-- [ ] Run focused repository-scope/config tests and dogfood, then commit
+- [x] Run focused repository-scope/config tests and dogfood, then commit
   subject-parity Phase 1 without advertising the later public commands.
 
 ### Phase 9: Pass the live OCI isolation continuation gate

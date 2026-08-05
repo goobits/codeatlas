@@ -13,6 +13,7 @@ mod inspect;
 mod lexicon;
 mod postgres;
 mod scan;
+mod scope;
 mod test;
 mod usage;
 

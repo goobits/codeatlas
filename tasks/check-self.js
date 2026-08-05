@@ -12,9 +12,9 @@ const inspectedCallable = {
 	query: 'src/commands/output.rs#write_text_or_print',
 	nodeId:
 		'symbol/file~1default~1src~01commands~01output.rs/rs:src~1commands~1output.rs:fn#write_text_or_print',
-	digest: 'd58ae8bd40f5c98774a5b5e223bd770ccf490209a264b2f06cfa6bbf39f3ee73',
+	digest: 'd25b14c4fd4762161498b6bdd2e692c975fab299c04e631a234815eff3ecbafc',
 	effectSource:
-		'symbol/file~1default~1src~01commands~01output.rs/rs:src~1commands~1output.rs:fn#write_file'
+		'symbol/file~1default~1src~01filesystem.rs/rs:src~1filesystem.rs:fn#replace_file'
 }
 const semanticSiblingSetIds = ['http_source_detectors', 'language_adapters']
 const semanticSiblingCounterevidenceKinds = [

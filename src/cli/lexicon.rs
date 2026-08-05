@@ -3,13 +3,14 @@ use crate::commands::lexicon::LexiconFormat;
 use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
+use super::scope::RepositoryScopeArgs;
+
 #[derive(Subcommand)]
 pub(super) enum LexiconSubject {
     /// Find naming collisions, declared terms, and sourced conceptual overlap
     Code {
-        /// Preserve package ownership while scanning the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
+        #[command(flatten)]
+        scope: RepositoryScopeArgs,
         /// Output format
         #[arg(short, long, value_enum, default_value_t = LexiconFormat::Text)]
         format: LexiconFormat,
@@ -22,11 +23,9 @@ pub(super) enum LexiconSubject {
 impl LexiconSubject {
     pub(super) fn run(self, root: &Path, config: Option<&Path>) -> i32 {
         match self {
-            Self::Code {
-                workspace,
-                format,
-                out,
-            } => commands::lexicon::run(root, workspace, format, out.as_deref(), config),
+            Self::Code { scope, format, out } => {
+                commands::lexicon::run(root, scope.workspace, format, out.as_deref(), config)
+            }
         }
     }
 }

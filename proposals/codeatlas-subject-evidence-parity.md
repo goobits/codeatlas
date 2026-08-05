@@ -1,7 +1,7 @@
 # HTTP and PostgreSQL evidence parity
 
-Status: Accepted follow-on; repository-scope Phase 1 is ready, and later public
-reports wait for stable query and runtime artifact identities
+Status: Accepted follow-on; repository-scope Phase 1 is complete. Later public
+reports wait for stable query and runtime artifact identities.
 
 Decision scope: Repository scope, HTTP/PostgreSQL usage and inspection,
 HTTP/PostgreSQL docs, truthful code/HTTP initialization, and cross-subject
@@ -260,14 +260,38 @@ regeneration; no compatibility envelope remains.
 
 ## Phase 1: Repository scope and config-edit consolidation
 
-Status: [ ] Not started
+Status: [x] Complete
 
-LOC: +450-700 / -180-300
+LOC: +1,304 / -528 (measured)
 
 Verify: Single-project and pnpm-workspace code/test behavior remains exact;
 HTTP/PostgreSQL contracts resolve through the same ordered member scope; local
-config boundaries and digests are stable; init preview writes nothing; all
-three init subjects use one validated JSON edit path.
+config boundaries and digests are stable; init preview writes nothing; the
+existing PostgreSQL initializer uses the one validated JSON edit path that
+Phase 3 extends to code and HTTP.
+
+Execution checkpoint (2026-08-05): the clean CodeAtlas HEAD was registered with
+the installed stable Mill without writing source. Its capability report exposed
+`verify` only and reported rename, move, extract, and transaction planning as
+unavailable because no language backend was active. Phase 1 therefore uses
+ordinary reviewed edits rather than an unreviewable TypeMill workaround.
+
+Completion checkpoint (2026-08-05): `RepositoryScope` now owns project and
+pnpm discovery, ordered members, immutable config snapshots and digests, code
+contexts, and member-qualified HTTP/PostgreSQL contracts. Explicit project
+configs and pnpm members reuse the same loaded snapshot; a regression changes
+a local config after load and proves resolution retains the original evidence
+without reopening it. One flattened CLI argument owns `--workspace`, and the
+PostgreSQL initializer now delegates to the shared strict editor and shared
+file-replacement owner. Ownership searches find one workspace resolver, one
+CLI workspace flag, and one config insertion path.
+
+The full `pnpm check` surface passed. Bounded self-dogfood scanned 284 files and
+2,902 symbols, produced 370 advisory code findings with zero gates, resolved
+the inspected output callable through the new filesystem owner, and emitted
+the standard scan/check/usage/inspect/lexicon/test artifacts under the external
+task root. That inspection caught and then verified the intentional provenance
+change in `tasks/check-self.js`.
 
 ```text
 + src/config/repository.rs
@@ -276,11 +300,26 @@ three init subjects use one validated JSON edit path.
 + tests/repository_scope.rs
 ~ src/config/mod.rs
 ~ src/config/analysis.rs
-~ src/package/workspace.rs
-~ src/cli/init.rs
+~ src/filesystem.rs
+~ src/cli/mod.rs
+~ src/cli/baseline.rs
+~ src/cli/check.rs
+~ src/cli/diff.rs
+~ src/cli/lexicon.rs
+~ src/cli/scan.rs
 ~ src/cli/usage.rs
+~ src/commands/architecture/source_check.rs
+~ src/commands/dead_code.rs
+~ src/commands/diff.rs
+~ src/commands/lexicon.rs
+~ src/commands/output.rs
 ~ src/commands/postgres.rs
-~ tests/cli_contract.rs
+~ src/commands/testing.rs
+~ src/http/target/tests.rs
+~ src/tests/dead_code/mod.rs
+~ src/tests/dead_code/workspace.rs
+~ src/tests/testing.rs
+~ tasks/check-self.js
 ```
 
 ## Phase 2: HTTP and PostgreSQL usage evidence

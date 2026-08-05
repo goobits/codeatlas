@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use super::architecture::ArchitectureDiffArgs;
 use super::postgres::PostgresLiveArgs;
+use super::scope::RepositoryScopeArgs;
 
 #[derive(Subcommand)]
 pub(super) enum DiffSubject {
@@ -12,9 +13,8 @@ pub(super) enum DiffSubject {
         /// Baseline JSON to compare
         #[arg(long)]
         against: PathBuf,
-        /// Discover public packages from the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
+        #[command(flatten)]
+        scope: RepositoryScopeArgs,
         /// Fail on additions as well as removals and changed contracts
         #[arg(long)]
         exact: bool,
@@ -51,9 +51,9 @@ impl DiffSubject {
         match self {
             Self::Code {
                 against,
-                workspace,
+                scope,
                 exact,
-            } => commands::diff::run(&against, root, workspace, exact, config),
+            } => commands::diff::run(&against, root, scope.workspace, exact, config),
             Self::Http {
                 against,
                 openapi,

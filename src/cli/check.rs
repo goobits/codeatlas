@@ -5,14 +5,14 @@ use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
 use super::architecture::ArchitectureCheckArgs;
+use super::scope::RepositoryScopeArgs;
 
 #[derive(Subcommand)]
 pub(super) enum CheckSubject {
     /// Gate high-confidence code reachability and completeness findings
     Code {
-        /// Discover package projects from the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
+        #[command(flatten)]
+        scope: RepositoryScopeArgs,
         /// Output format
         #[arg(short, long, value_enum, default_value_t = DeadCodeFormat::Text)]
         format: DeadCodeFormat,
@@ -51,9 +51,8 @@ pub(super) enum CheckSubject {
     },
     /// Check public APIs for test witness evidence
     Tests {
-        /// Discover package projects from the nearest pnpm workspace
-        #[arg(long)]
-        workspace: bool,
+        #[command(flatten)]
+        scope: RepositoryScopeArgs,
         /// Output format
         #[arg(short, long, value_enum, default_value_t = TestingFormat::Text)]
         format: TestingFormat,
@@ -70,7 +69,7 @@ impl CheckSubject {
     pub(super) fn run(self, root: &Path, config: Option<&Path>) -> i32 {
         match self {
             Self::Code {
-                workspace,
+                scope,
                 format,
                 out,
                 gates_only,
@@ -80,7 +79,7 @@ impl CheckSubject {
                 out.as_deref(),
                 true,
                 gates_only,
-                workspace,
+                scope.workspace,
                 config,
             ),
             Self::Http {
@@ -99,13 +98,13 @@ impl CheckSubject {
             }
             Self::Architecture { args } => args.run(root, config),
             Self::Tests {
-                workspace,
+                scope,
                 format,
                 out,
                 gates_only,
             } => commands::testing::run_witnesses(
                 root,
-                workspace,
+                scope.workspace,
                 format,
                 out.as_deref(),
                 gates_only,

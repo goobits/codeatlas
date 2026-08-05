@@ -105,28 +105,15 @@ fn create_single_baseline(path: &Path, config_path: Option<&Path>) -> Result<Pub
 
 fn create_workspace_baseline(path: &Path, config_path: Option<&Path>) -> Result<PublicApiBaseline> {
     let project = load_project(path, config_path)?;
-    let workspace = crate::package::discover_workspace(&project.root)?;
+    let scope = crate::config::RepositoryScope::resolve(&project, true)?;
     let mut reports = Vec::new();
-    let mut members = workspace
-        .members
-        .into_iter()
-        .map(|member| (member.name, member.root, member.report_root))
-        .collect::<Vec<_>>();
-    if project.root == workspace.root {
-        if let Some(root_name) = workspace.root_name {
-            members.push((root_name, workspace.root, ".".to_string()));
-        }
-    }
-    members.sort_by(|left, right| left.2.cmp(&right.2).then_with(|| left.0.cmp(&right.0)));
-
-    for (member_name, member_root, report_root) in members {
-        let member_config_path = member_root.join("codeatlas.json");
-        let member_project = load_project(
-            &member_root,
-            member_config_path
-                .is_file()
-                .then_some(member_config_path.as_path()),
-        )?;
+    for member in scope
+        .members()
+        .iter()
+        .filter(|member| member.package_member)
+    {
+        let member_name = &member.id.0;
+        let member_project = member.project();
         let Some(package) = crate::package::discover_for_docs(
             &member_project.root,
             member_project.config.docs.declaration_contract,
@@ -142,7 +129,7 @@ fn create_workspace_baseline(path: &Path, config_path: Option<&Path>) -> Result<
             && member_project.config.languages.is_empty()
         {
             reports.push((
-                report_root,
+                member.report_root.clone(),
                 ScanReport {
                     package: Some(package),
                     ..ScanReport::default()
@@ -151,9 +138,9 @@ fn create_workspace_baseline(path: &Path, config_path: Option<&Path>) -> Result<
             continue;
         }
 
-        let report = scan_report(&member_project)
+        let report = scan_report(member_project)
             .with_context(|| format!("Could not scan workspace package {member_name}"))?;
-        reports.push((report_root, report));
+        reports.push((member.report_root.clone(), report));
     }
 
     if reports.is_empty() {

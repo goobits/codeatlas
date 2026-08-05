@@ -4,7 +4,7 @@ mod rust;
 mod source_policy;
 mod workspace;
 
-use crate::config::ProjectConfig;
+use crate::config::{ProjectConfig, RepositoryScope};
 use crate::dead_code::{DeadCodeFinding, DeadCodeFindingKind};
 use crate::domain::source_graph::{
     AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope,

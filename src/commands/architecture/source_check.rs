@@ -64,7 +64,8 @@ fn analyze(
     compilation: &crate::architecture::CompileResult,
 ) -> anyhow::Result<SourceConformanceReport> {
     let project = load_project(options.repository_root, options.config_path)?;
-    let projects = project.workspace_source_projects()?;
+    let scope = crate::config::RepositoryScope::resolve(&project, true)?;
+    let projects = scope.source_projects();
     let graph = languages::reachability::build_source_graph(&projects)?;
     conform_source_dependencies(compilation, &graph)
 }

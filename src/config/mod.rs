@@ -1,14 +1,17 @@
 mod analysis;
+mod edit;
 mod execution;
 mod fuzz;
 mod http;
 mod lexicon;
 mod postgres;
+mod repository;
 mod semantic_siblings;
 
 pub(crate) use analysis::{
     AnalysisContextConfig, AnalysisProjectConfig, ResolvedAnalysisProject, TestSubjectConfig,
 };
+pub(crate) use edit::{ConfigEdit, ConfigSubject};
 pub(crate) use execution::{
     ExecutionConfig, ExecutionContainerIsolationConfig, ExecutionFilesystemIsolation,
     ExecutionIsolationBackend, ExecutionIsolationConfig, ExecutionLimitsConfig,
@@ -30,13 +33,16 @@ pub(crate) use postgres::{
     PostgresQueryPolicyConfig, PostgresSqlSourceConfig, PostgresTargetConfig,
     PostgresTransactionMode,
 };
+pub(crate) use repository::RepositoryScope;
 pub(crate) use semantic_siblings::{
     ResolvedSemanticSiblingComparisonSet, ResolvedSemanticSiblingPath, SemanticSiblingPathKind,
 };
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -123,8 +129,12 @@ pub(crate) struct ProjectConfig {
     pub config: CodeAtlasConfig,
     pub config_dir: PathBuf,
     pub config_path: Option<PathBuf>,
+    pub(crate) config_source: Option<Arc<str>>,
+    pub(crate) config_digest: String,
     pub(crate) config_evidence: serde_json::Value,
+    pub(crate) validated_declared_analysis_projects: Option<Vec<ResolvedAnalysisProject>>,
     pub(crate) validated_analysis_projects: Option<Vec<ResolvedAnalysisProject>>,
+    pub(crate) local_project_configs: Vec<ProjectConfig>,
     pub(crate) resolved_semantic_siblings: Vec<ResolvedSemanticSiblingComparisonSet>,
 }
 
@@ -136,44 +146,61 @@ impl ProjectConfig {
                 .then(|| path.join("codeatlas.json"))
         });
 
-        let (config, config_dir, config_path, config_evidence) = if let Some(config_path) =
-            discovered
-        {
-            let absolute = if config_path.is_absolute() {
-                config_path
+        let (config, config_dir, config_path, config_source, config_evidence, config_digest) =
+            if let Some(config_path) = discovered {
+                let absolute = if config_path.is_absolute() {
+                    config_path
+                } else {
+                    std::env::current_dir()?.join(config_path)
+                };
+                let absolute = absolute.canonicalize().with_context(|| {
+                    format!("CodeAtlas config does not exist: {}", absolute.display())
+                })?;
+                let source = std::fs::read_to_string(&absolute)
+                    .with_context(|| format!("Could not read {}", absolute.display()))?;
+                let config_digest = digest_config_source(source.as_bytes());
+                let config_evidence: serde_json::Value = serde_json::from_str(&source)
+                    .with_context(|| {
+                        format!("Invalid CodeAtlas config at {}", absolute.display())
+                    })?;
+                let config: CodeAtlasConfig = serde_json::from_value(config_evidence.clone())
+                    .with_context(|| {
+                        format!("Invalid CodeAtlas config at {}", absolute.display())
+                    })?;
+                config.validate_values().with_context(|| {
+                    format!("Invalid CodeAtlas config at {}", absolute.display())
+                })?;
+                let config_dir = absolute
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| PathBuf::from("."));
+                (
+                    config,
+                    config_dir,
+                    Some(absolute),
+                    Some(source.into()),
+                    config_evidence,
+                    config_digest,
+                )
             } else {
-                std::env::current_dir()?.join(config_path)
-            };
-            let absolute = absolute.canonicalize().with_context(|| {
-                format!("CodeAtlas config does not exist: {}", absolute.display())
-            })?;
-            let source = std::fs::read_to_string(&absolute)
-                .with_context(|| format!("Could not read {}", absolute.display()))?;
-            let config_evidence: serde_json::Value = serde_json::from_str(&source)
-                .with_context(|| format!("Invalid CodeAtlas config at {}", absolute.display()))?;
-            let config: CodeAtlasConfig = serde_json::from_value(config_evidence.clone())
-                .with_context(|| format!("Invalid CodeAtlas config at {}", absolute.display()))?;
-            config
-                .validate_values()
-                .with_context(|| format!("Invalid CodeAtlas config at {}", absolute.display()))?;
-            let config_dir = absolute
-                .parent()
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| PathBuf::from("."));
-            (config, config_dir, Some(absolute), config_evidence)
-        } else {
-            let config = CodeAtlasConfig::default();
-            config.validate_values()?;
-            (
-                config,
-                std::env::current_dir()?,
-                None,
-                serde_json::json!({
+                let config = CodeAtlasConfig::default();
+                config.validate_values()?;
+                let config_evidence = serde_json::json!({
                     "kind": "built_in_defaults",
                     "tool_version": env!("CARGO_PKG_VERSION")
-                }),
-            )
-        };
+                });
+                let encoded = serde_json_canonicalizer::to_vec(&config_evidence)
+                    .context("Could not canonicalize built-in config evidence")?;
+                let config_digest = digest_config_source(&encoded);
+                (
+                    config,
+                    std::env::current_dir()?,
+                    None,
+                    None,
+                    config_evidence,
+                    config_digest,
+                )
+            };
 
         let root = config
             .root
@@ -189,8 +216,12 @@ impl ProjectConfig {
             config,
             config_dir,
             config_path,
+            config_source,
+            config_digest,
             config_evidence,
+            validated_declared_analysis_projects: None,
             validated_analysis_projects: None,
+            local_project_configs: Vec::new(),
             resolved_semantic_siblings: Vec::new(),
         };
         project.resolved_semantic_siblings = project
@@ -199,7 +230,12 @@ impl ProjectConfig {
             .semantic_siblings
             .resolve(&project.root)?;
         if !project.config.projects.is_empty() {
-            project.validated_analysis_projects = Some(project.analysis_projects()?);
+            let declared = project.resolve_declared_analysis_projects()?;
+            let (resolved, local_project_configs) =
+                project.resolve_local_analysis_projects(declared.clone())?;
+            project.validated_declared_analysis_projects = Some(declared);
+            project.validated_analysis_projects = Some(resolved);
+            project.local_project_configs = local_project_configs;
         }
         Ok(project)
     }
@@ -226,11 +262,19 @@ impl ProjectConfig {
         &self.config_evidence
     }
 
+    pub(crate) fn config_digest(&self) -> &str {
+        &self.config_digest
+    }
+
     pub(crate) fn semantic_sibling_comparison_sets(
         &self,
     ) -> &[ResolvedSemanticSiblingComparisonSet] {
         &self.resolved_semantic_siblings
     }
+}
+
+fn digest_config_source(source: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(source))
 }
 
 impl CodeAtlasConfig {

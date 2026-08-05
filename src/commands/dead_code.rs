@@ -43,12 +43,9 @@ fn analyze(
     config_path: Option<&Path>,
 ) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let projects = if workspace {
-        project.workspace_analysis_projects()?
-    } else {
-        project.analysis_projects()?
-    };
-    let graph = languages::reachability::build_source_graph(&projects)?;
+    let scope = crate::config::RepositoryScope::resolve(&project, workspace)?;
+    let projects = scope.analysis_projects();
+    let graph = languages::reachability::build_source_graph(projects)?;
     let required = projects
         .iter()
         .filter(|project| project.require_complete)
