@@ -1,8 +1,9 @@
+use super::callable::CallableContract;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
-pub(crate) const SCAN_SCHEMA_VERSION: u32 = 2;
+pub(crate) const SCAN_SCHEMA_VERSION: u32 = 3;
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ScanReport {
@@ -93,6 +94,8 @@ pub(crate) struct Symbol {
     pub file_path: String,
     pub span: Option<Span>,
     pub signature: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub callable: Option<CallableContract>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub docs: Option<SymbolDocs>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -1,9 +1,12 @@
+use super::callable;
 use super::format::{
     format_binding_ident, format_constructor_param, format_params, format_pat, format_prop_name,
     format_return_type, format_ts_fn_param, format_ts_type, format_type_args, format_type_params,
     kind_to_str, member_visibility,
 };
-use crate::domain::{Language, Span, Symbol, SymbolKind, Visibility};
+use crate::domain::{
+    CallableContract, CallableKind, Language, Span, Symbol, SymbolKind, Visibility,
+};
 use swc_core::common::{sync::Lrc, SourceMap};
 use swc_core::ecma::ast::*;
 use swc_core::ecma::visit::{Visit, VisitWith};
@@ -39,12 +42,27 @@ impl SymbolVisitor {
                 end_col: end.col.0 as u32,
             }),
             signature,
+            callable: None,
             docs: None,
             export_paths: vec![],
             referenced: false,
             package: None,
             children: vec![],
         }
+    }
+
+    fn create_callable_symbol(
+        &self,
+        name: String,
+        kind: SymbolKind,
+        visibility: Visibility,
+        span: swc_core::common::Span,
+        signature: String,
+        callable: CallableContract,
+    ) -> Symbol {
+        let mut symbol = self.create_symbol(name, kind, visibility, span, signature);
+        symbol.callable = Some(callable);
+        symbol
     }
 
     fn create_type_members(&self, members: &[TsTypeElement]) -> Vec<Symbol> {
@@ -67,7 +85,7 @@ impl SymbolVisitor {
                                 format!(" -> {}", format_ts_type(&annotation.type_ann))
                             })
                             .unwrap_or_default();
-                        symbols.push(self.create_symbol(
+                        symbols.push(self.create_callable_symbol(
                             name.clone(),
                             SymbolKind::Method,
                             Visibility::Public,
@@ -79,6 +97,7 @@ impl SymbolVisitor {
                                 params,
                                 return_type
                             ),
+                            callable::method_signature_contract(method),
                         ));
                     }
                 }
@@ -113,12 +132,13 @@ impl SymbolVisitor {
                                 format!(" -> {}", format_ts_type(&annotation.type_ann))
                             })
                             .unwrap_or_default();
-                        symbols.push(self.create_symbol(
+                        symbols.push(self.create_callable_symbol(
                             name.clone(),
                             SymbolKind::Property,
                             Visibility::Public,
                             getter.span,
                             format!("{}get {}{}(){}", readonly, name, optional, return_type),
+                            callable::getter_signature_contract(getter),
                         ));
                     }
                 }
@@ -127,7 +147,7 @@ impl SymbolVisitor {
                         let name = id.sym.to_string();
                         let readonly = if setter.readonly { "readonly " } else { "" };
                         let optional = if setter.optional { "?" } else { "" };
-                        symbols.push(self.create_symbol(
+                        symbols.push(self.create_callable_symbol(
                             name.clone(),
                             SymbolKind::Property,
                             Visibility::Public,
@@ -139,6 +159,7 @@ impl SymbolVisitor {
                                 optional,
                                 format_ts_fn_param(&setter.param)
                             ),
+                            callable::setter_signature_contract(setter),
                         ));
                     }
                 }
@@ -212,13 +233,23 @@ impl Visit for SymbolVisitor {
             Expr::Class(_) => SymbolKind::Class,
             _ => SymbolKind::Const,
         };
-        self.symbols.push(self.create_symbol(
+        let mut symbol = self.create_symbol(
             "default".to_string(),
             kind,
             Visibility::Public,
             declaration.span,
             "default export".to_string(),
-        ));
+        );
+        symbol.callable = match &*declaration.expr {
+            Expr::Arrow(arrow) => Some(callable::arrow_contract(arrow)),
+            Expr::Fn(function) => Some(callable::function_contract(
+                &function.function,
+                CallableKind::Function,
+                callable::receiver(true),
+            )),
+            _ => None,
+        };
+        self.symbols.push(symbol);
     }
 
     fn visit_class_decl(&mut self, declaration: &ClassDecl) {
@@ -257,12 +288,13 @@ impl Visit for SymbolVisitor {
                         .map(format_constructor_param)
                         .collect::<Vec<_>>()
                         .join(", ");
-                    symbol.children.push(self.create_symbol(
+                    symbol.children.push(self.create_callable_symbol(
                         "constructor".to_string(),
                         SymbolKind::Method,
                         member_visibility(constructor.accessibility, false),
                         constructor.span,
                         format!("constructor({})", params),
+                        callable::constructor_contract(constructor),
                     ));
 
                     for param in &constructor.params {
@@ -315,7 +347,7 @@ impl Visit for SymbolVisitor {
                             format_params(&method.function.params),
                             format_return_type(&method.function)
                         );
-                        symbol.children.push(self.create_symbol(
+                        symbol.children.push(self.create_callable_symbol(
                             name,
                             if method.kind == MethodKind::Method {
                                 SymbolKind::Method
@@ -325,12 +357,21 @@ impl Visit for SymbolVisitor {
                             member_visibility(method.accessibility, false),
                             method.span,
                             signature,
+                            callable::function_contract(
+                                &method.function,
+                                match method.kind {
+                                    MethodKind::Method => CallableKind::Method,
+                                    MethodKind::Getter => CallableKind::Getter,
+                                    MethodKind::Setter => CallableKind::Setter,
+                                },
+                                callable::receiver(method.is_static),
+                            ),
                         ));
                     }
                 }
                 ClassMember::PrivateMethod(method) => {
                     let name = format!("#{}", method.key.id.sym);
-                    symbol.children.push(self.create_symbol(
+                    symbol.children.push(self.create_callable_symbol(
                         name.clone(),
                         if method.kind == MethodKind::Method {
                             SymbolKind::Method
@@ -344,6 +385,15 @@ impl Visit for SymbolVisitor {
                             name,
                             format_params(&method.function.params),
                             format_return_type(&method.function)
+                        ),
+                        callable::function_contract(
+                            &method.function,
+                            match method.kind {
+                                MethodKind::Method => CallableKind::Method,
+                                MethodKind::Getter => CallableKind::Getter,
+                                MethodKind::Setter => CallableKind::Setter,
+                            },
+                            callable::receiver(method.is_static),
                         ),
                     ));
                 }
@@ -396,7 +446,7 @@ impl Visit for SymbolVisitor {
 
     fn visit_fn_decl(&mut self, declaration: &FnDecl) {
         let name = declaration.ident.sym.to_string();
-        self.symbols.push(self.create_symbol(
+        self.symbols.push(self.create_callable_symbol(
             name.clone(),
             SymbolKind::Function,
             Visibility::Internal,
@@ -407,6 +457,11 @@ impl Visit for SymbolVisitor {
                 format_type_params(declaration.function.type_params.as_deref()),
                 format_params(&declaration.function.params),
                 format_return_type(&declaration.function)
+            ),
+            callable::function_contract(
+                &declaration.function,
+                CallableKind::Function,
+                callable::receiver(true),
             ),
         ));
     }
@@ -422,7 +477,7 @@ impl Visit for SymbolVisitor {
                 continue;
             };
             let name = binding.id.sym.to_string();
-            let (kind, signature) = match variable.init.as_deref() {
+            let (kind, signature, callable) = match variable.init.as_deref() {
                 Some(Expr::Arrow(arrow)) => {
                     let params = arrow
                         .params
@@ -438,6 +493,7 @@ impl Visit for SymbolVisitor {
                     (
                         SymbolKind::Function,
                         format!("const {} = ({}) => {}", name, params, return_type),
+                        Some(callable::arrow_contract(arrow)),
                     )
                 }
                 Some(Expr::Fn(function)) => (
@@ -448,6 +504,11 @@ impl Visit for SymbolVisitor {
                         format_params(&function.function.params),
                         format_return_type(&function.function)
                     ),
+                    Some(callable::function_contract(
+                        &function.function,
+                        CallableKind::Function,
+                        callable::receiver(true),
+                    )),
                 ),
                 _ => {
                     let type_annotation = binding
@@ -458,16 +519,14 @@ impl Visit for SymbolVisitor {
                     (
                         SymbolKind::Const,
                         format!("{} {}{}", declaration_kind, name, type_annotation),
+                        None,
                     )
                 }
             };
-            self.symbols.push(self.create_symbol(
-                name,
-                kind,
-                Visibility::Internal,
-                variable.span,
-                signature,
-            ));
+            let mut symbol =
+                self.create_symbol(name, kind, Visibility::Internal, variable.span, signature);
+            symbol.callable = callable;
+            self.symbols.push(symbol);
         }
     }
 

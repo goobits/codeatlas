@@ -242,6 +242,7 @@ mod tests {
             file_path: file_path.to_string(),
             span: None,
             signature: signature.to_string(),
+            callable: None,
             docs: None,
             export_paths: Vec::new(),
             referenced: false,

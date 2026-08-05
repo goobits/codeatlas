@@ -8,12 +8,12 @@
 //! architecture and observed source reachability have different identities,
 //! authority, and lifecycle rules.
 
-use super::{Span, Visibility};
+use super::{CallableContract, Span, Visibility};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-pub(crate) const SOURCE_GRAPH_SCHEMA_VERSION: u32 = 4;
+pub(crate) const SOURCE_GRAPH_SCHEMA_VERSION: u32 = 5;
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SourceGraph {
@@ -293,6 +293,8 @@ pub(crate) struct SourceSymbol {
     pub visibility: SourceVisibility,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub callable: Option<CallableContract>,
 }
 
 #[derive(

@@ -8,6 +8,8 @@ use syn::{
     ItemType, Visibility as SynVis,
 };
 
+mod callable;
+mod callable_effects;
 mod reachability;
 mod signatures;
 
@@ -257,12 +259,27 @@ impl SymbolVisitor {
             file_path: self.relative_path.clone(),
             span: span_obj,
             signature,
+            callable: None,
             docs: None,
             export_paths: vec![],
             referenced: false,
             package: None,
             children: vec![],
         }
+    }
+
+    fn create_callable_symbol(
+        &self,
+        name: String,
+        kind: SymbolKind,
+        visibility: Visibility,
+        span: proc_macro2::Span,
+        signature_text: String,
+        contract: crate::domain::CallableContract,
+    ) -> Symbol {
+        let mut symbol = self.create_symbol(name, kind, visibility, span, signature_text);
+        symbol.callable = Some(contract);
+        symbol
     }
 
     fn attach_pending_methods(&mut self) {
@@ -334,12 +351,18 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
         let vis = map_vis(&node.vis);
         let sig = format_fn_signature(&node.sig);
 
-        self.symbols.push(self.create_symbol(
+        self.symbols.push(self.create_callable_symbol(
             name,
             SymbolKind::Function,
             vis,
             node.sig.ident.span(),
             sig,
+            callable::contract(
+                &node.sig,
+                crate::domain::CallableKind::Function,
+                crate::domain::CallableBody::Present,
+                Some(&node.block),
+            ),
         ));
     }
 
@@ -413,12 +436,18 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                     let m_vis = map_vis(&method.vis);
                     let m_sig = format_fn_signature(&method.sig);
 
-                    let sym = self.create_symbol(
+                    let sym = self.create_callable_symbol(
                         m_name.clone(),
                         SymbolKind::Method,
                         m_vis,
                         method.sig.ident.span(),
                         m_sig,
+                        callable::contract(
+                            &method.sig,
+                            crate::domain::CallableKind::Method,
+                            crate::domain::CallableBody::Present,
+                            Some(&method.block),
+                        ),
                     );
 
                     if let Some(idx) = parent_idx {
@@ -454,12 +483,18 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                     let m_vis = map_vis(&method.vis);
                     let m_sig = format_fn_signature(&method.sig);
 
-                    let mut sym = self.create_symbol(
+                    let mut sym = self.create_callable_symbol(
                         m_name,
                         SymbolKind::Method,
                         m_vis,
                         method.sig.ident.span(),
                         m_sig,
+                        callable::contract(
+                            &method.sig,
+                            crate::domain::CallableKind::Method,
+                            crate::domain::CallableBody::Present,
+                            Some(&method.block),
+                        ),
                     );
 
                     if let Some(idx) = parent_idx {
@@ -525,12 +560,22 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                 // Trait methods are public by default (part of the trait's contract)
                 let m_vis = Visibility::Public;
 
-                let mut sym = self.create_symbol(
+                let mut sym = self.create_callable_symbol(
                     m_name,
                     SymbolKind::Method,
                     m_vis,
                     method.sig.ident.span(),
                     m_sig,
+                    callable::contract(
+                        &method.sig,
+                        crate::domain::CallableKind::Method,
+                        if method.default.is_some() {
+                            crate::domain::CallableBody::Present
+                        } else {
+                            crate::domain::CallableBody::DeclarationOnly
+                        },
+                        method.default.as_ref(),
+                    ),
                 );
                 self.qualify_child(&name, &mut sym);
                 self.symbols[idx].children.push(sym);

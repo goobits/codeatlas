@@ -55,6 +55,7 @@ fn dependencies_of_unreferenced_public_symbols_do_not_gate_deletion() {
                     symbol_kind: SourceSymbolKind::Function,
                     visibility,
                     span: None,
+                    callable: None,
                 }),
             )
             .expect("symbol");
@@ -252,6 +253,7 @@ fn unrelated_dynamic_imports_do_not_lower_private_symbol_confidence() {
                 symbol_kind: SourceSymbolKind::Function,
                 visibility: SourceVisibility::Private,
                 span: None,
+                callable: None,
             }),
         )
         .expect("symbol");

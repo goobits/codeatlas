@@ -533,25 +533,25 @@ Active child:
 [`codeatlas-structured-callable-evidence.md`](codeatlas-structured-callable-evidence.md)
 Phase 1.
 
-- [ ] Implement the bounded `src/analysis/effects.rs` owner over the existing
+- [x] Implement the bounded `src/analysis/effects.rs` owner over the existing
   source graph, with stable node, edge, effect, and work-queue ceilings.
-- [ ] Collect conservative direct filesystem, network, database, process,
+- [x] Collect conservative direct filesystem, network, database, process,
   environment, time, randomness, ambient-state, and unsupported sink facts in
   the Rust, Python, JavaScript, and TypeScript adapters.
-- [ ] Represent unresolved dynamic call boundaries as explicit unknown evidence
+- [x] Represent unresolved dynamic call boundaries as explicit unknown evidence
   without claiming that the absence of a known sink proves purity.
-- [ ] Propagate known effects from callee to caller through resolved lexical
+- [x] Propagate known effects from callee to caller through resolved lexical
   edges with deterministic cycle handling, provenance, and ordering.
-- [ ] Attach the enriched contract once to the cached source snapshot and
+- [x] Attach the enriched contract once to the cached source snapshot and
   reject stale parser, graph, and analysis identities.
-- [ ] Extend the four-language conformance table for equivalent direct,
+- [x] Extend the four-language conformance table for equivalent direct,
   propagated, unknown, receiver, overload, and block-reason behavior.
-- [ ] Generate scan v3 and context-slice v4 schemas, delete the replaced schema
+- [x] Generate scan v3 and context-slice v4 schemas, delete the replaced schema
   files, and update package drift assertions in the same slice.
-- [ ] Prove zero target calls, deterministic bytes, bounded failure behavior,
+- [x] Prove zero target calls, deterministic bytes, bounded failure behavior,
   external-only generated state, and exact target stability through focused
   tests and CodeAtlas dogfood.
-- [ ] Synchronize the child and umbrella checkpoints and commit callable Phase
+- [x] Synchronize the child and umbrella checkpoints and commit callable Phase
   1 without unrelated paths.
 
 ### Phase 2: Migrate every callable consumer
@@ -988,6 +988,14 @@ Phases 1 through 3.
 
 ### Phase 21: Whole-program v1 consolidation and signoff
 
+- [ ] Add the CodeAtlas half of the cross-tool resolution conformance gate:
+  one checked-in repository fixture with an exact symbol, resolved consumer
+  owners, and explicit unresolved counterexamples; generate its evidence from
+  the existing source graph rather than a second resolver, retain a versioned
+  published artifact, and drift-test the exact normalized consumer set. The
+  external TypeMill half must prove that a rename plan edits the target plus
+  exactly those resolved consumer paths and never an unresolved path; any set
+  difference is a named conformance failure. No CodeAtlas phase edits TypeMill.
 - [ ] Confirm every child status, phase checklist, schema version, CLI example,
   LOC record, and dependency statement matches the implemented repository.
 - [ ] Regenerate every published schema externally and prove exact registry,

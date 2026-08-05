@@ -1,3 +1,5 @@
+mod callable;
+mod callable_effects;
 mod format;
 mod module_info;
 mod visitor;
@@ -102,6 +104,11 @@ fn consolidate_overloads(symbols: &mut Vec<crate::domain::Symbol>) {
             {
                 existing.signature.push('\n');
                 existing.signature.push_str(&symbol.signature);
+            }
+            match (&mut existing.callable, symbol.callable.take()) {
+                (Some(existing), Some(other)) => existing.merge(other),
+                (None, Some(other)) => existing.callable = Some(other),
+                (_, None) => {}
             }
             existing.children.extend(symbol.children);
             consolidate_overloads(&mut existing.children);

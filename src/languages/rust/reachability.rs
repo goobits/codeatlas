@@ -148,7 +148,7 @@ fn collect_modules(
                 }),
             )
             .map_err(anyhow::Error::from)?;
-        let info = match index.parse_file("rust-module-v1", &source_path, &project.root, |source| {
+        let info = match index.parse_file("rust-module-v2", &source_path, &project.root, |source| {
             parser::parse_module_info(&source_path, &project.root, source)
         }) {
             Ok(info) => info,
@@ -249,6 +249,7 @@ impl SymbolCollector<'_> {
             symbol_kind: source_symbol_kind(symbol.kind),
             visibility,
             span: symbol.span.clone(),
+            callable: symbol.callable.clone(),
         };
         match self.graph.nodes.get_mut(&id) {
             None => self
@@ -263,6 +264,11 @@ impl SymbolCollector<'_> {
             {
                 if existing.visibility != visibility {
                     existing.visibility = SourceVisibility::Unknown;
+                }
+                match (&mut existing.callable, node.callable) {
+                    (Some(existing), Some(other)) => existing.merge(other),
+                    (None, Some(other)) => existing.callable = Some(other),
+                    (_, None) => {}
                 }
                 self.graph.record_boundary(
                     &self.project.id,

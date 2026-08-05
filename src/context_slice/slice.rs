@@ -354,7 +354,7 @@ mod tests {
             },
         )
         .expect("batched project-aware slice");
-        assert_eq!(report.schema_version, 3);
+        assert_eq!(report.schema_version, 4);
         assert_eq!(report.targets.len(), 2);
         assert_eq!(report.targets[0].nodes.len(), 1);
         assert_eq!(report.targets[1].nodes, [file]);

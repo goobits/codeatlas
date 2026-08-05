@@ -3,6 +3,7 @@ use std::path::Path;
 
 mod dependency_types;
 pub(crate) mod docs;
+pub(crate) mod effects;
 mod imports;
 mod package_exports;
 pub(crate) mod reachability;

@@ -112,8 +112,8 @@ pub(super) fn collect_project_modules(
 
         let info = index.parse_file(
             match language {
-                SourceLanguage::Svelte => "svelte-module-v1",
-                _ => "ecmascript-module-v1",
+                SourceLanguage::Svelte => "svelte-module-v2",
+                _ => "ecmascript-module-v2",
             },
             &source_path,
             &project.root,
@@ -239,6 +239,7 @@ fn add_symbols(
                         symbol.visibility.into()
                     },
                     span: symbol.span.clone(),
+                    callable: symbol.callable.clone(),
                 }),
             )
             .map_err(anyhow::Error::from)?;

@@ -128,6 +128,7 @@ fn build_source_graph_uncached(
         }
         add_contexts(&mut graph, project)?;
     }
+    crate::analysis::effects::annotate_callable_effects(&mut graph)?;
     graph
         .validate()
         .map_err(|diagnostics| {

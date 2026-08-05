@@ -168,6 +168,7 @@ mod tests {
             file_path: "src/example.ts".to_string(),
             span: None,
             signature: format!("interface {name}"),
+            callable: None,
             docs: None,
             export_paths: Vec::new(),
             referenced: false,

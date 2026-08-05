@@ -92,26 +92,29 @@ fn format_default_expr(expression: &Expr) -> String {
         Expr::Object(object) if object.props.is_empty() => "{}".to_string(),
         Expr::Array(array) if array.elems.is_empty() => "[]".to_string(),
         Expr::Call(call) => match &call.callee {
-            Callee::Expr(callee) => format!("{}(...)", format_expression_name(callee)),
+            Callee::Expr(callee) => format!(
+                "{}(...)",
+                expression_name(callee).unwrap_or_else(|| "...".to_string())
+            ),
             _ => "...".to_string(),
         },
         _ => "...".to_string(),
     }
 }
 
-fn format_expression_name(expression: &Expr) -> String {
+pub(super) fn expression_name(expression: &Expr) -> Option<String> {
     match expression {
-        Expr::Ident(ident) => ident.sym.to_string(),
+        Expr::Ident(ident) => Some(ident.sym.to_string()),
         Expr::Member(member) => {
-            let object = format_expression_name(&member.obj);
-            let property = member
-                .prop
-                .as_ident()
-                .map(|ident| ident.sym.to_string())
-                .unwrap_or_else(|| "...".to_string());
-            format!("{}.{}", object, property)
+            let object = expression_name(&member.obj)?;
+            let property = member.prop.as_ident()?.sym.to_string();
+            Some(format!("{}.{}", object, property))
         }
-        _ => "...".to_string(),
+        Expr::Paren(parenthesized) => expression_name(&parenthesized.expr),
+        Expr::TsAs(assertion) => expression_name(&assertion.expr),
+        Expr::TsNonNull(non_null) => expression_name(&non_null.expr),
+        Expr::TsTypeAssertion(assertion) => expression_name(&assertion.expr),
+        _ => None,
     }
 }
 
@@ -162,7 +165,7 @@ pub(super) fn format_constructor_param(param: &ParamOrTsParamProp) -> String {
     }
 }
 
-fn format_entity_name(name: &TsEntityName) -> String {
+pub(super) fn format_entity_name(name: &TsEntityName) -> String {
     match name {
         TsEntityName::Ident(id) => id.sym.to_string(),
         TsEntityName::TsQualifiedName(name) => {

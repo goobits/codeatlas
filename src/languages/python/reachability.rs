@@ -111,7 +111,7 @@ fn collect_project_modules(
             .map_err(anyhow::Error::from)?;
 
         let (info, script) =
-            match index.parse_file("python-module-v1", &source_path, &project.root, |source| {
+            match index.parse_file("python-module-v2", &source_path, &project.root, |source| {
                 Ok((
                     parser::parse_module_info(&source_path, &project.root, source)?,
                     source.starts_with("#!"),
@@ -176,6 +176,7 @@ fn add_symbols(
                     symbol_kind: source_symbol_kind(symbol.kind),
                     visibility: symbol.visibility.into(),
                     span: symbol.span.clone(),
+                    callable: symbol.callable.clone(),
                 }),
             )
             .map_err(anyhow::Error::from)?;

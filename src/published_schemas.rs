@@ -326,8 +326,8 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<HttpFuzzWorkload>,
     ),
     PublishedSchema::new(
-        "codeatlas.scan/v2",
-        "codeatlas-scan-v2.schema.json",
+        "codeatlas.scan/v3",
+        "codeatlas-scan-v3.schema.json",
         PayloadVersion::from_schema(SCAN_SCHEMA_VERSION),
         "domain",
         generate_schema::<ScanReport>,
@@ -350,8 +350,8 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<PublicApiBaseline>,
     ),
     PublishedSchema::new(
-        "codeatlas.context-slice/v3",
-        "codeatlas-context-slice-v3.schema.json",
+        "codeatlas.context-slice/v4",
+        "codeatlas-context-slice-v4.schema.json",
         PayloadVersion::from_schema(CONTEXT_SLICE_SCHEMA_VERSION),
         "context_slice",
         generate_schema::<ContextSliceReport>,

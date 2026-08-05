@@ -359,6 +359,7 @@ mod tests {
                     symbol_kind: crate::domain::source_graph::SourceSymbolKind::Function,
                     visibility: crate::domain::source_graph::SourceVisibility::Private,
                     span: None,
+                    callable: None,
                 }),
             )
             .expect("symbol");
@@ -433,6 +434,7 @@ mod tests {
                         symbol_kind: crate::domain::source_graph::SourceSymbolKind::Function,
                         visibility: crate::domain::source_graph::SourceVisibility::Public,
                         span: None,
+                        callable: None,
                     }),
                 )
                 .expect("symbol");
@@ -628,6 +630,7 @@ mod tests {
                     symbol_kind: SourceSymbolKind::Function,
                     visibility: SourceVisibility::Private,
                     span: None,
+                    callable: None,
                 }),
             )
             .expect("Rust symbol");

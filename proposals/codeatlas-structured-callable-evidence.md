@@ -1,6 +1,6 @@
 # Structured callable evidence
 
-Status: Accepted program child; implementation pending
+Status: Accepted program child; implementation in progress
 
 Decision scope: One cross-language `CallableContract`, deterministic effect
 evidence, consumer migration, and the corresponding lexicon schema transition
@@ -57,35 +57,27 @@ not retained as a fallback or compatibility path.
 
 ```text
 CallableContract
-  target_id
-  language
-  visibility and export identities
-  callable_kind
-  owner/receiver
-    requirement
-    constructibility
-    implemented/declared contract identity when proven
-  type_parameters
-    identity
-    resolved constraints or explicit unknown
-  parameters[]
-    position
-    semantic role/name
-    semantic type
-    required/default/variadic state
-    declared constraints
-    constructibility
-  result
-    semantic type
-    error/result shape
+  signatures[]
+    callable kind and body availability
+    async state
+    owner/receiver requirement and constructibility
+    type parameters and resolved constraints
+    ordered parameters
+      semantic role/name
+      semantic type
+      required/default/variadic state
+      constructibility
+    result semantic type and error/result shape
   effects[]
-  source evidence
-  evidence completeness and block reasons
+  stable block reasons
 ```
 
-Target identity is the existing CodeAtlas symbol/node identity. Display
-signatures may remain for presentation, but no policy depends on parsing them.
-Language-specific syntax nodes do not leak into the shared model.
+Target identity, language, visibility, exports, source span, and source file
+remain owned by the containing `Symbol` or source-graph `NodeId`; the nested
+contract does not duplicate them. A signature vector represents overloads
+without concatenating and reparsing display text. Display signatures may remain
+for presentation, but no policy depends on parsing them. Language-specific
+syntax nodes do not leak into the shared model.
 
 The contract is immutable evidence on one source snapshot. Stable ordering is
 target ID, parameter position, effect kind, and evidence location. Equivalent
@@ -160,6 +152,12 @@ default.
 Moving callable candidates to structured evidence changes both meaning and, if
 the serialized fields change as expected, public shape:
 
+- bump scan from v2 to v3, publish and drift-test its generated schema, and
+  remove the v2 schema from the shipped package in the same phase that adds the
+  serialized callable field;
+- bump context-slice from v3 to v4 because inspect serializes the same
+  source-graph symbol nodes; publish and drift-test that schema in the same
+  phase rather than hiding the nested public change;
 - bump the source-graph/analysis algorithm identity so old cache entries cannot
   masquerade as structured evidence;
 - bump the lexicon report from v3 to v4 when its actual serialized diff adds or
@@ -219,31 +217,140 @@ schema parser, runtime type checker, harness, executor, or fuzz value engine.
 
 ## Phase 1: Contract and language evidence
 
-Status: [ ] Not started
+Status: [x] Complete (2026-08-04)
 
-LOC: +550-800 / -40-80
+Execution checklist:
 
-Verify: The four-language conformance table, stable target/type/receiver model,
-unknown evidence, and deterministic effect propagation pass from one source
-snapshot.
+- [x] Map the existing symbol, parser, graph, lexicon, witness, cache, and
+  inspection owners; record exact reusable evidence and retireable heuristics.
+- [x] Pin the smallest language-neutral callable/type/receiver/completeness
+  model without exposing parser syntax or creating a second symbol identity.
+- [x] Emit equivalent deterministic contracts from Rust, Python, JavaScript,
+  and TypeScript through one cross-language conformance table.
+- [x] Add bounded direct and propagated effect evidence with explicit unknown
+  boundaries over the existing source graph and snapshot.
+- [x] Prove zero-call behavior, deterministic ordering/block reasons, external
+  generated state, focused checks, self-dogfood, and a clean Phase 1 commit.
+
+Starting checkpoint, 2026-08-04:
+
+- The execution fail-closed checkpoint is committed as `c4fac1b`; this static
+  branch assumes no sandbox capability and makes no target calls.
+- The worktree is clean, CodeAtlas self-dogfood passes over 261 files, and all
+  build/cache/report state remains under `/tmp/codeatlas-xdo-cache.hTn1Nk`.
+- Stable Mill may be considered only for an exact semantic move/delete after
+  a clean committed checkpoint. Phase 1 begins with additive contract/parser
+  work, so no mutation tool is assumed before the owner map is complete.
+
+Owner map and model decisions, 2026-08-04:
+
+- Rust, Python, and ECMAScript parsers already emit the same recursive `Symbol`
+  values consumed by scan, public-API projection, lexicon, witnesses, and the
+  source-graph collectors. `Symbol.callable` is therefore the single parsed
+  owner; source-graph nodes carry that evidence forward rather than parsing it
+  again.
+- Existing source-graph lexical-reference edges run caller to referenced
+  target. `src/analysis/effects.rs` can propagate adapter-owned direct sink
+  facts over those edges with no second graph or resolver.
+- `src/lexicon/callable_contract.rs` is the retireable display-signature
+  heuristic. It remains only until Phase 2 migrates both current consumers, and
+  it will not become a fallback.
+- Source-index facts are the parse-once cache. The scan schema, source-graph
+  schema, source-index algorithm identity, and Rust/Python/ECMAScript parser
+  namespaces change with the structured evidence so stale cache entries cannot
+  deserialize as current facts.
+- A callable contract contains ordered overload signatures and effects, but no
+  target ID, language, visibility, export path, file, or span already owned by
+  its containing symbol/node. Contract completeness is derived from one sorted,
+  deduplicated block-reason set rather than stored as a second fallible truth.
+- The initial four-language conformance gate passes for typed and explicitly
+  untyped functions, instance receivers, and overload merging. Scan and inspect
+  share the serialized symbol evidence, so their v3/v4 schema transitions are
+  part of this phase rather than deferred consumer work.
+- One shared qualified-action matcher owns namespace-boundary semantics while
+  each adapter retains its own language/domain sink vocabulary. Focused
+  `callable_effects` modules keep effect walking separate from semantic type
+  mapping rather than growing three mixed-responsibility parser files.
+- Effect propagation uses a stable delta worklist: each unique origin fact is
+  propagated once per reachable callable edge, bounded independently by node,
+  edge, fact, and work-item ceilings. Limit failures leave the public graph
+  unchanged.
+
+Implementation diff: +3,526 / -54 authored lines; +2,812 / -1,072 generated
+schema lines. The accepted estimate understated the language-specific semantic
+type mappers and four-language conformance surface; no universal parser was
+introduced to force the implementation back under that estimate.
+
+Completion evidence, 2026-08-04:
+
+- The cross-language table proves callable shapes, receivers, overloads, exact
+  block reasons, and all nine known direct effect kinds across Rust, Python,
+  JavaScript, and TypeScript. Bounded propagation, cycles, exact unknown
+  boundaries, graph immutability on limit failure, and namespace boundaries
+  have focused tests.
+- `cargo test --locked --jobs 1` passes 392 tests with four intentionally
+  ignored live cases; clippy passes for all targets with warnings denied; 15
+  Node tests, architecture-spec validation, and package validation pass.
+- Scan v3 and context-slice v4 are generated from the registered Rust models;
+  the schema updater and read-only registry drift test pass, and the retired
+  v2/v3 schema files are absent.
+- Final repeated scan bytes are identical at
+  `sha256:92d382150efe4e6599c121acf3b36fce84971f410d57ddfa0c1cb4a0490d9750`;
+  repeated propagated-effect inspection bytes are identical at
+  `sha256:739cd6d4ef5dab6016860c4b3cb0a67825b2b39f12251b0e1e73a932b997dac0`.
+  The exact `write_text_or_print` target carries a propagated filesystem-write
+  fact whose original source target is `write_file`.
+- Final self-audit covers 270 files and 2,691 scan symbols with zero gates.
+  The execution state root is empty, this phase made zero target calls, and all
+  compiler/cache/report state remains under `/tmp/codeatlas-xdo-cache.hTn1Nk`.
+  Mill was not used because this additive phase never reached a clean committed
+  semantic-move checkpoint.
 
 ```text
 + src/domain/callable.rs
 + src/analysis/effects.rs
-+ src/config/code.rs
-+ tests/callable_contract.rs
++ src/languages/effects.rs
++ src/tests/callable_contract.rs
+~ src/analysis/mod.rs
+~ src/analysis/reachability.rs
+~ src/commands/diff.rs
+~ src/context_slice/model.rs
+~ src/context_slice/slice.rs
 ~ src/domain/mod.rs
 ~ src/domain/model.rs
 ~ src/domain/source_graph.rs
-~ src/languages/definition.rs
 ~ src/languages/ecmascript/collection.rs
+~ src/languages/mod.rs
+~ src/languages/reachability.rs
++ src/languages/typescript/parser.rs
++ src/languages/typescript/parser/callable.rs
++ src/languages/typescript/parser/callable_effects.rs
+~ src/languages/typescript/parser/format.rs
 ~ src/languages/typescript/parser/visitor.rs
 ~ src/languages/python/parser.rs
++ src/languages/python/parser/callable.rs
++ src/languages/python/parser/callable_effects.rs
 ~ src/languages/python/reachability.rs
 ~ src/languages/rust/parser.rs
-~ src/languages/rust/parser/signatures.rs
++ src/languages/rust/parser/callable.rs
++ src/languages/rust/parser/callable_effects.rs
 ~ src/languages/rust/reachability.rs
+~ src/lexicon/analyze.rs
+~ src/lexicon/callables.rs
+~ src/lexicon/grammar_candidates.rs
+~ src/outputs/text_tree.rs
 ~ src/source_index/mod.rs
+~ src/published_schemas.rs
+~ src/tests/dead_code/rust.rs
+~ src/tests/dead_code/source_policy.rs
+~ src/tests/docs/rendering.rs
+~ src/tests/mod.rs
+~ tasks/check-package.js
+~ tests/cli_contract.rs
++ schemas/codeatlas-scan-v3.schema.json
+- schemas/codeatlas-scan-v2.schema.json
++ schemas/codeatlas-context-slice-v4.schema.json
+- schemas/codeatlas-context-slice-v3.schema.json
 ```
 
 ## Phase 2: Consumer migration and lexicon v4
@@ -290,7 +397,9 @@ survives; focused and full dogfood pass from external state.
 ~ tests/callable_contract.rs
 ```
 
-Total LOC: +900-1,300 / -200-350
+Implemented Phase 1: +3,526 / -54 authored lines.
+
+Remaining Phase 2-3 estimate: +350-500 / -160-270 authored lines.
 
 ## Layman's wins
 

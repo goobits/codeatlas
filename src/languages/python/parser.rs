@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 
+mod callable;
+mod callable_effects;
 mod reachability;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +95,7 @@ pub(crate) fn parse_module_info(
         source,
         line_index,
         assignment_kind: Some(SymbolKind::Const),
+        class_member: false,
     };
 
     visitor.visit_suite(&ast);
@@ -113,6 +116,7 @@ struct SymbolVisitor {
     source: Arc<str>,
     line_index: LineIndex,
     assignment_kind: Option<SymbolKind>,
+    class_member: bool,
 }
 
 impl SymbolVisitor {
@@ -142,6 +146,7 @@ impl SymbolVisitor {
             file_path: self.relative_path.clone(),
             span,
             signature,
+            callable: None,
             docs: None,
             export_paths: vec![],
             referenced: false,
@@ -196,7 +201,17 @@ impl SymbolVisitor {
                 let ret_str = format_py_returns(&f.returns);
                 let dec_str = format_decorators(&f.decorator_list);
                 let sig = format!("{}def {}({}){}", dec_str, name, args_str, ret_str);
-                let symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, sig);
+                let mut symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, sig);
+                symbol.callable = Some(callable::contract(callable::PythonCallable {
+                    args: &f.args,
+                    returns: &f.returns,
+                    type_parameters: &f.type_params,
+                    decorators: &f.decorator_list,
+                    body: &f.body,
+                    is_async: false,
+                    is_class_member: self.class_member,
+                    is_declaration_file: self.relative_path.ends_with(".pyi"),
+                }));
                 self.symbols.push(symbol);
             }
             ast::Stmt::AsyncFunctionDef(f) => {
@@ -206,7 +221,17 @@ impl SymbolVisitor {
                 let ret_str = format_py_returns(&f.returns);
                 let dec_str = format_decorators(&f.decorator_list);
                 let sig = format!("{}async def {}({}){}", dec_str, name, args_str, ret_str);
-                let symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, sig);
+                let mut symbol = self.create_symbol(name, SymbolKind::Function, vis, f.range, sig);
+                symbol.callable = Some(callable::contract(callable::PythonCallable {
+                    args: &f.args,
+                    returns: &f.returns,
+                    type_parameters: &f.type_params,
+                    decorators: &f.decorator_list,
+                    body: &f.body,
+                    is_async: true,
+                    is_class_member: self.class_member,
+                    is_declaration_file: self.relative_path.ends_with(".pyi"),
+                }));
                 self.symbols.push(symbol);
             }
             ast::Stmt::ClassDef(c) => {
@@ -233,6 +258,7 @@ impl SymbolVisitor {
                     source: self.source.clone(),
                     line_index: self.line_index.clone(),
                     assignment_kind: Some(SymbolKind::Property),
+                    class_member: true,
                 };
                 child_visitor.visit_suite(&c.body);
 

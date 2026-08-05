@@ -222,6 +222,7 @@ fn partial_rust_analysis_does_not_emit_false_hard_gates() {
                 symbol_kind: SourceSymbolKind::Function,
                 visibility: SourceVisibility::Private,
                 span: None,
+                callable: None,
             }),
         )
         .expect("symbol");

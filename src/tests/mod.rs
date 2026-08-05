@@ -1,3 +1,4 @@
+mod callable_contract;
 mod dead_code;
 mod docs;
 mod public_api;
