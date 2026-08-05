@@ -1022,11 +1022,16 @@ Locally verified implementation checkpoint, 2026-08-05:
   `sha256:6f00734c8fc337ef06dee0850173e5c809fec1cef523f92db67eeccbe403d7d8`;
   1,464 nodes, 9,054 edges, five contexts, and 11 boundaries remain explicitly
   omitted by the requested cap.
-- The current host still has no usable local OCI socket or effective namespace
-  authority. The live test remains ignored with an exact operator-input
-  contract and grants no capability here. Phase 9 must run that same path
-  against a digest-pinned probe image on a capable rootful, rootless, or nested
-  runtime before Phase 5 execution is enabled.
+- The current host still has no usable outer OCI socket or effective namespace
+  authority. An administrator probe confirmed that sudo root remains bounded
+  without `CAP_SYS_ADMIN`, `CAP_NET_ADMIN`, or `CAP_SYS_RESOURCE`; cgroup v2 is
+  read-only and user, mount, and network namespace creation is denied. A
+  VFS-backed nested Docker daemon can initialize its API, but its first image
+  layer fails to register with `unshare: operation not permitted`, so it cannot
+  launch a target and grants no isolation evidence. The live test remains
+  ignored with an exact operator-input contract. Phase 9 must run that same
+  path against a digest-pinned probe image on a capable rootful, rootless, or
+  nested runtime before Phase 5 execution is enabled.
 
 This local implementation slice is +2,503 / -127 source and test lines before
 this checkpoint text. Together with the earlier fail-closed Phase 4 slice, the

@@ -767,9 +767,13 @@ Active child: execution kernel Phase 4. This task preempts Phases 5 through 8
 as soon as an eligible runner is available.
 
 Blocked input: a capable local OCI runner, local control socket, and
-digest-pinned probe image. The current host has no socket, zero effective
-capabilities, read-only cgroup v2, and denied user/mount namespace creation, so
-it remains plan-only.
+digest-pinned probe image. The current host has no outer runtime socket. Sudo
+can start a VFS-backed nested Docker API, but the outer container's capability
+bounding set omits `CAP_SYS_ADMIN`, `CAP_NET_ADMIN`, and `CAP_SYS_RESOURCE`;
+cgroup v2 is read-only and user, mount, and network namespace creation is
+denied. The nested daemon therefore fails its first image-layer registration
+with `unshare: operation not permitted` and cannot launch a target. This host
+remains plan-only; daemon initialization alone is not isolation evidence.
 
 - [ ] Resolve an exact rootful, rootless, or nested OCI runner with a local
   socket, digest-pinned probe image, external writable state, and no need to
