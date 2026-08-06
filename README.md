@@ -793,7 +793,7 @@ and manifest digest with all state outside the repository:
 
 ```bash
 export CARGO_TARGET_DIR=/tmp/codeatlas-cargo-target
-pnpm probe:build -- \
+pnpm probe:build \
   --runtime /usr/bin/docker \
   --socket /var/run/docker.sock \
   --build-image docker.io/library/rust@sha256:<exact-musl-image-digest> \
