@@ -418,6 +418,14 @@ public library is manufactured for dogfooding. All caches, compilers, package
 stores, harnesses, profiles, observations, and reports remain outside the
 checkout.
 
+The completed v1 release qualification fuzzes CodeAtlas itself across every
+truthfully modeled, safely fuzzable public interface using disposable fixtures
+and finite kernel budgets. It retains deterministic reproducers for crashes,
+invariant violations, and performance cliffs, and unresolved qualifying
+findings block release. Self-fuzzing grants no extra authority: source remains
+read-only, writable state remains external, and adjacent deny directives remove
+targets that must not run even under the verified sandbox.
+
 The latest stable-lifecycle checkpoint records:
 
 - 233 source files and 2,241 scan symbols.

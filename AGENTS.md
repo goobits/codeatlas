@@ -289,6 +289,15 @@ witness evidence. Classify findings honestly; do not weaken a gate or suppress
 a real finding merely to make self-analysis green. Performance claims require
 the corresponding observation or baseline evidence.
 
+Treat CodeAtlas self-fuzzing as release qualification for CodeAtlas, not as an
+optional demonstration. Exercise every truthfully modeled and safely fuzzable
+public interface against disposable fixtures; retain deterministic reproducers
+for crashes, invariant violations, and performance cliffs; and block release on
+unresolved qualifying findings. Self-fuzzing never relaxes execution safety:
+the checkout stays read-only, all writable state stays external, calls and
+resources remain finite, and adjacent deny directives exclude targets that must
+not run even inside a verified disposable sandbox.
+
 Perform CodeAtlas source refactors through the installed stable `mill` when it
 advertises the exact required capability:
 
