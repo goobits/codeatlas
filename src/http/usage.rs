@@ -1,5 +1,4 @@
 use super::model::{HttpConfidence, HttpSourceCompleteness, HttpSourceOperation};
-use super::target::{ResolvedHttpContract, ResolvedHttpOpenApiSource};
 use crate::analysis::reachability::Reachability;
 use crate::config::{RepositoryMember, RepositoryScope, RepositoryScopeEvidence};
 use crate::domain::source_graph::{
@@ -248,12 +247,8 @@ pub(super) fn analyze_collected(
                 .filter(|operation| !observed.contains(operation.as_str()))
                 .cloned()
                 .collect::<Vec<_>>();
-            let inventory_is_complete = contract.source.completeness
-                == HttpSourceCompleteness::Complete
-                && resolved
-                    .openapi
-                    .as_ref()
-                    .is_none_or(|source| matches!(source, ResolvedHttpOpenApiSource::File(_)));
+            let inventory_is_complete =
+                contract.source.completeness == HttpSourceCompleteness::Complete;
             if inventory_is_complete {
                 if let [unknown, ..] = unmatched_external_operations.as_slice() {
                     anyhow::bail!(
@@ -266,7 +261,6 @@ pub(super) fn analyze_collected(
                 id: contract.id.clone(),
                 completeness: usage_completeness(
                     contract,
-                    resolved,
                     graph_completeness,
                     graph.is_some(),
                     unmatched_external_operations.len(),
@@ -325,7 +319,6 @@ fn validate_external_operations(
 
 fn usage_completeness(
     contract: &super::model::HttpContractInventory,
-    resolved: &ResolvedHttpContract,
     source_graph: AnalysisCompleteness,
     graph_available: bool,
     unmatched_external_operations: usize,
@@ -337,16 +330,6 @@ fn usage_completeness(
             "{} HTTP source file(s) could not be inspected.",
             contract.source.skipped_files.len()
         ));
-    }
-    if resolved
-        .openapi
-        .as_ref()
-        .is_some_and(|source| !matches!(source, ResolvedHttpOpenApiSource::File(_)))
-    {
-        reasons.push(
-            "The configured non-file OpenAPI provider was not invoked by this zero-call command."
-                .to_string(),
-        );
     }
     if !graph_available {
         reasons.push("Repository source-graph evidence is unavailable.".to_string());

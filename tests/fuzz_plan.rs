@@ -381,13 +381,13 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
     assert_eq!(receipt["calls"]["consumed"], 0);
     assert_eq!(receipt["calls"]["by_category"], json!([]));
     assert_eq!(receipt["runtime"]["capabilities"], json!([]));
-    assert!(receipt["reasons"]
-        .as_array()
-        .expect("blocked reasons")
-        .iter()
-        .any(|reason| reason
-            .as_str()
-            .is_some_and(|reason| reason.contains("Container runtime"))));
+    let reasons = receipt["reasons"].as_array().expect("blocked reasons");
+    assert!(
+        reasons.iter().any(|reason| reason.as_str().is_some_and(
+            |reason| reason.contains("header secret reference CODEATLAS_FIXTURE_HEADER_TOKEN")
+        )),
+        "unexpected blocked reasons: {reasons:?}"
+    );
     assert_eq!(receipt["cleanup"].as_array().map(Vec::len), Some(1));
     assert_eq!(receipt["cleanup"][0]["resource"], "isolation_scratch");
     assert_eq!(receipt["cleanup"][0]["released"], true);

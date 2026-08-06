@@ -1,19 +1,16 @@
 use super::{
     evidence::{RedactionPolicy, REDACTED},
-    junit::render,
-    sanitize_events, set_private_dir, summarize,
+    sanitize_events, summarize,
     summary::{
         is_reported_server_error, summarize_reader, summarize_reader_with_expected_non_success,
     },
-    EVENTS_FILENAME, JUNIT_FILENAME,
+    EVENTS_FILENAME,
 };
 use crate::http::model::{HttpFuzzContractMode, HttpFuzzPositiveCoverage};
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::Cursor;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -39,8 +36,9 @@ fn preserves_the_exact_managed_seed_when_event_json_is_lossy() {
     .expect("lossy seed event");
     let seed = 6_120_375_554_226_921_864_643_509_329_822_053_u128;
 
+    let events = fs::read(&event_path).expect("lossy event bytes");
     let report = summarize(
-        &event_path,
+        &events,
         "local",
         "fixture-api",
         HttpFuzzContractMode::OpenApi,
@@ -119,69 +117,22 @@ fn redacts_credentials_payloads_and_url_queries() {
 }
 
 #[test]
-fn sanitizes_retained_events_and_discards_raw_junit() {
+fn sanitizes_bounded_events_in_memory_and_removes_raw_evidence() {
     let directory = TestReportDirectory::new();
-    set_private_dir(&directory.0).expect("private directory");
+    let event_path = directory.0.join(EVENTS_FILENAME);
     fs::write(
-        directory.0.join(EVENTS_FILENAME),
+        &event_path,
         "{\"Initialize\":{\"seed\":42},\"request\":{\"headers\":{\"X-Test-Auth\":\"private-test-token\"},\"body\":\"secret\"}}\n",
     )
     .expect("raw events");
-    fs::write(directory.0.join(JUNIT_FILENAME), "private-test-token").expect("raw JUnit");
 
-    let event_path = sanitize_events(&directory.0, [("X-Test-Auth", "private-test-token")])
+    let retained = sanitize_events(&event_path, 4_096, [("X-Test-Auth", "private-test-token")])
         .expect("sanitized events");
-    let retained = fs::read_to_string(event_path).expect("retained events");
+    let retained = String::from_utf8(retained).expect("sanitized UTF-8 events");
 
     assert!(!retained.contains("private-test-token"));
     assert!(!retained.contains("\"secret\""));
-    assert!(!directory.0.join(JUNIT_FILENAME).exists());
-    #[cfg(unix)]
-    {
-        assert_eq!(
-            fs::metadata(&directory.0)
-                .expect("directory metadata")
-                .permissions()
-                .mode()
-                & 0o777,
-            0o700
-        );
-        assert_eq!(
-            fs::metadata(directory.0.join(EVENTS_FILENAME))
-                .expect("event metadata")
-                .permissions()
-                .mode()
-                & 0o777,
-            0o600
-        );
-    }
-}
-
-#[test]
-fn renders_compact_junit_without_raw_exchange_evidence() {
-    let mut report = summarize_reader(
-        Cursor::new(include_str!(
-            "../../../../tests/fixtures/http/schemathesis.ndjson"
-        )),
-        "local<&",
-        "fixture-api",
-        HttpFuzzContractMode::OpenApi,
-        "standard",
-    )
-    .expect("fixture should summarize");
-    report.operations[0].operation = "GET /widgets?<unsafe>".to_string();
-    report.operations[0].server_errors = 1;
-
-    let junit = render(&report, true);
-    let json = serde_json::to_value(&report).expect("fuzz report should serialize");
-
-    assert!(junit.contains("local&lt;&amp;"));
-    assert_eq!(json["contractMode"], "openapi");
-    assert!(junit.contains("GET /widgets?&lt;unsafe&gt;"));
-    assert!(junit.contains("server errors: 1; check failures: 0"));
-    assert!(!junit.contains("Schemathesis or CodeAtlas coverage policy failed"));
-    assert!(!junit.contains("body"));
-    assert!(!junit.contains("headers"));
+    assert!(!event_path.exists());
 }
 
 #[test]
@@ -263,7 +214,6 @@ fn summarizes_declared_non_success_operation_coverage() {
     )
     .expect("declared non-success operation should summarize");
 
-    assert_eq!(report.api_version, "codeatlas.http-fuzz/v2");
     assert_eq!(report.totals.success_observed_operations, 0);
     assert_eq!(report.totals.expected_non_success_operations, 1);
     assert_eq!(report.totals.operations_without_success, 0);

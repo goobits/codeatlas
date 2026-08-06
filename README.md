@@ -721,11 +721,14 @@ baselines, and schema-backed fuzzing.
       }
     ],
     "fuzz": {
+      "image": "ghcr.io/example/codeatlas-http-fuzz@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "targets": [
         {
           "id": "public-local",
           "contract": "public-api",
           "base_url": "http://127.0.0.1:3443",
+          "environment_class": "disposable",
+          "preauthorized": true,
           "operations": ["GET /health", "POST /v1/sessions"],
           "environment": {
             "NODE_ENV": "test",
@@ -776,7 +779,33 @@ immutable content-addressed plan under the external state root. `--plan ...
 --execute` revalidates that exact plan before any target work. A missing
 required isolation capability produces a blocked zero-call receipt; review
 never waives it. Set `CODEATLAS_STATE_DIR` to choose the external private
-artifact base.
+artifact base. Execution also requires the exact digest-pinned
+`http.fuzz.image`; managed server, preparation, adapter, and Schemathesis
+commands run inside that network-isolated workload image, never as host
+processes.
+
+The repository owns the standard Schemathesis workload recipe and its one
+hash-locked Python dependency set. From a clean commit, build its canonical OCI
+archive through the same bounded image transaction as the isolation probe:
+
+```bash
+export CARGO_TARGET_DIR=/tmp/codeatlas-cargo-target
+pnpm http-workload:build \
+  --runtime /usr/bin/docker \
+  --socket /var/run/docker.sock \
+  --python-image python@sha256:<exact-python-image-digest> \
+  --buildkit-image moby/buildkit@sha256:<exact-buildkit-image-digest> \
+  --platform linux/amd64 \
+  --network allow \
+  --out /tmp/codeatlas-http-workload.oci.tar
+```
+
+The final image starts from scratch metadata, contains Schemathesis 4.24.3,
+and carries no inherited base-image environment. The build task accepts
+network access only for hash-verified dependency installation; runtime remains
+`--network none`. Publish the built image under its exact repository digest and
+use that reference as `http.fuzz.image`. A project needing extra managed-server
+dependencies derives and pins its own image from this recipe.
 
 Isolation probes use one exact local container executable and Unix socket with
 a private, empty client configuration. Runtime version and security metadata
@@ -820,11 +849,12 @@ The repository's `Live OCI isolation gate` GitHub Actions workflow owns the
 complete capable-runner path. It is manual-only and default-branch-only, uses a
 fresh `ubuntu-24.04` runner with read-only repository permission, builds from a
 clean exact commit through one digest-pinned disposable BuildKit builder,
-publishes the probe only to a bounded loopback registry, runs the baseline and
-destructive cases through the same container owner, verifies cleanup, and
-uploads the receipt, evidence summary, OCI metadata, and private diagnostic
-logs. It never mounts the Docker socket into a child or accepts a
-caller-supplied command.
+publishes the probe and HTTP workload only to one bounded loopback registry,
+runs the isolation matrix plus standard and stateful managed HTTP workloads
+through the same container owner, verifies cleanup, and uploads the receipt,
+evidence summary, both OCI artifacts, metadata, and private diagnostic logs.
+It never mounts the Docker socket into a child or accepts a caller-supplied
+command.
 The evidence records the built OCI manifest, loaded image ID, and published
 manifest separately; Docker media-type normalization is visible rather than
 misreported as digest preservation.
@@ -833,9 +863,9 @@ That workflow restores and saves one Cargo cache keyed by runner OS and
 architecture, the exact `rustc -Vv` digest, both Cargo lockfiles, and both
 manifests. The uncompressed payload is limited to 6 GB and reports hit/miss,
 restored bytes, save outcome, and saved payload bytes in the job summary.
-Probe-image building deliberately retains `--no-cache`: cached Rust
-dependencies and test outputs accelerate reruns, while the isolation image is
-rebuilt from the exact committed probe source for every live proof.
+Image building deliberately retains `--no-cache`: cached Rust dependencies and
+test outputs accelerate reruns, while both committed runtime images are rebuilt
+through one disposable BuildKit owner for every live proof.
 
 The `hqa-inventory` format projects the same bounded source and OpenAPI union
 into HQA application-inventory v1. Endpoint and OpenAPI-only operations are
@@ -859,7 +889,7 @@ and URL query values.
 
 HTTP configuration also supports:
 
-- OpenAPI providers from a file, command, URL, or configured fuzz target
+- one bounded file-backed OpenAPI contract per configured contract
 - exact source operation filters after path filters
 - an explicit operation list or `"operations": "contract"`
 - literal non-secret process environment plus `secret_environment` mappings
@@ -872,13 +902,19 @@ HTTP configuration also supports:
   `codeatlas.http-request-adapter/v3` JSONL protocol for project-owned fixture,
   signing, and authentication logic
 
+Generated or remote OpenAPI evidence must be materialized to a file before
+CodeAtlas reads it. Pre-v1 object providers (`kind: file|command|url|target`)
+and target `openapi_path` were removed: they could start an unplanned host
+process or make a target call from a static evidence command. Replace an
+object provider with its materialized path string and remove `openapi_path`;
+there is no compatibility reader or host-execution fallback.
+
 The profile ceilings are 75 cases for `standard`, 750 for `thorough`, and 25
 stateful cases across explicit OpenAPI Links. Checked-in `fuzz.limits.max_cases`
 (50 by default) remains the hard ceiling, and `--max-cases` may only tighten
-it. The retained `codeatlas.http-fuzz/v2` summary separates positive successes,
+it. The `codeatlas.http-fuzz-report/v1` artifact separates positive successes,
 expected denials, negative rejections, server errors, authentication-only
-results, and stateful coverage; the execution-kernel migration reconnects its
-producer without preserving a direct executor.
+results, and stateful coverage and is linked to the exact plan and receipt.
 
 ## PostgreSQL Contracts
 

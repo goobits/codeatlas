@@ -129,15 +129,15 @@ pub(super) fn validate_container_inspection(
     let mut actual_environment = inspection.config.env;
     actual_environment.sort();
     if actual_environment != spec.environment {
-        anyhow::bail!("Container environment differs from the exact probe allowlist");
+        anyhow::bail!("Container environment differs from the exact allowlist");
     }
     if inspection.config.user != spec.user
-        || inspection.config.working_dir != WORKSPACE_MOUNT
+        || inspection.config.working_dir != spec.working_directory
         || inspection.config.entrypoint != [spec.entrypoint.as_str()]
         || inspection.config.cmd.as_slice() != spec.arguments.as_slice()
         || inspection.config.image != spec.image
     {
-        anyhow::bail!("Container command identity differs from the planned probe command");
+        anyhow::bail!("Container command identity differs from the planned command");
     }
     let host = inspection.host_config;
     let no_new_privileges_count = host
@@ -197,11 +197,14 @@ fn validate_ulimit(ulimits: &[InspectedUlimit], name: &str, expected: u64) -> Re
 }
 
 fn validate_mounts(mounts: &[InspectedMount], spec: &ContainerLaunchSpec) -> Result<()> {
-    let expected = [
+    let mut expected = vec![
         (spec.workspace_root.as_path(), WORKSPACE_MOUNT, false),
         (spec.scratch_root.as_path(), SCRATCH_MOUNT, true),
         (spec.temp_root.as_path(), TEMP_MOUNT, true),
     ];
+    if let Some(runtime_root) = &spec.runtime_root {
+        expected.push((runtime_root.as_path(), super::command::RUNTIME_MOUNT, false));
+    }
     if mounts.len() != expected.len() {
         anyhow::bail!("Container runtime exposed an unexpected mount");
     }
@@ -406,7 +409,7 @@ mod tests {
         evaluate_conformance, ExecutionCapability, RequiredNullableVec, CONFORMANCE_SCHEMA_VERSION,
     };
     use crate::execution::model::sample_execution_limits;
-    use crate::execution::sandbox::container::command::{ContainerLaunchSpec, ProbeLaunch};
+    use crate::execution::sandbox::container::command::{ContainerLaunchSpec, ContainerProbeSpec};
     use codeatlas_isolation_conformance::ProbeMode;
     use serde_json::json;
 
@@ -438,12 +441,12 @@ mod tests {
         let mut limits = sample_execution_limits();
         limits.max_rss_bytes = 64 * 1024 * 1024;
         let spec = ContainerLaunchSpec::new_probe(
-            ProbeLaunch::new(
-                "codeatlas-probe-test".to_string(),
-                format!("probe@sha256:{}", "a".repeat(64)),
-                "nonce".to_string(),
-                ProbeMode::Verify,
-            ),
+            ContainerProbeSpec {
+                name: "codeatlas-probe-test".to_string(),
+                image: format!("probe@sha256:{}", "a".repeat(64)),
+                nonce: "nonce".to_string(),
+                mode: ProbeMode::Verify,
+            },
             true,
             &workspace,
             &scratch,

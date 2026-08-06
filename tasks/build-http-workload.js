@@ -11,14 +11,9 @@ const { requireDigestImage } = require('./container-runtime.js')
 const { requireExternalCargoTarget } = require('./storage.js')
 
 const repositoryRoot = path.resolve(__dirname, '..')
-const probeRoot = path.join(repositoryRoot, 'crates', 'isolation-conformance')
-const containerfile = path.join(
-	repositoryRoot,
-	'containers',
-	'isolation-conformance',
-	'Containerfile'
-)
-const maxArchiveBytes = 64 * 1024 * 1024
+const context = repositoryRoot
+const containerfile = path.join(repositoryRoot, 'containers', 'http-fuzz', 'Containerfile')
+const maxArchiveBytes = 512 * 1024 * 1024
 
 const parseArguments = arguments_ => {
 	const values = new Map()
@@ -26,29 +21,29 @@ const parseArguments = arguments_ => {
 		const name = arguments_[index]
 		const value = arguments_[index + 1]
 		if (!name?.startsWith('--') || value === undefined || value.startsWith('--')) {
-			throw new Error('Probe build options must be exact --name value pairs')
+			throw new Error('HTTP workload build options must be exact --name value pairs')
 		}
-		if (values.has(name)) throw new Error(`Probe build option ${name} was repeated`)
+		if (values.has(name)) throw new Error(`HTTP workload build option ${name} was repeated`)
 		values.set(name, value)
 	}
 	const known = new Set([
 		'--runtime',
 		'--socket',
-		'--build-image',
+		'--python-image',
 		'--buildkit-image',
 		'--platform',
 		'--network',
 		'--out'
 	])
 	for (const name of values.keys()) {
-		if (!known.has(name)) throw new Error(`Unknown probe build option ${name}`)
+		if (!known.has(name)) throw new Error(`Unknown HTTP workload build option ${name}`)
 	}
 	for (const name of known) {
-		if (!values.has(name)) throw new Error(`Missing required probe build option ${name}`)
+		if (!values.has(name)) throw new Error(`Missing required HTTP workload build option ${name}`)
 	}
 	const network = values.get('--network')
-	if (network !== 'allow' && network !== 'deny') {
-		throw new Error('--network must be exactly allow or deny')
+	if (network !== 'allow') {
+		throw new Error('--network must be exactly allow for hash-locked dependency installation')
 	}
 	const platform = values.get('--platform')
 	if (!/^linux\/(amd64|arm64)$/.test(platform)) {
@@ -57,7 +52,7 @@ const parseArguments = arguments_ => {
 	return {
 		runtime: values.get('--runtime'),
 		socket: values.get('--socket'),
-		buildImage: requireDigestImage(values.get('--build-image'), '--build-image'),
+		pythonImage: requireDigestImage(values.get('--python-image'), '--python-image'),
 		buildkitImage: requireDigestImage(
 			values.get('--buildkit-image'),
 			'--buildkit-image'
@@ -68,13 +63,13 @@ const parseArguments = arguments_ => {
 	}
 }
 
-const probeSpecification = ({ buildImage, out, loadOut }) => ({
-	name: 'Probe',
-	slug: 'isolation-probe',
+const httpWorkloadSpecification = ({ pythonImage, out, loadOut }) => ({
+	name: 'HTTP workload',
+	slug: 'http-workload',
 	containerfile,
-	context: probeRoot,
-	buildArguments: { BUILD_IMAGE: buildImage },
-	pinnedImages: [{ image: buildImage, label: 'build image' }],
+	context,
+	buildArguments: { PYTHON_IMAGE: pythonImage },
+	pinnedImages: [{ image: pythonImage, label: 'Python image' }],
 	maxArchiveBytes,
 	out,
 	loadOut
@@ -83,8 +78,8 @@ const probeSpecification = ({ buildImage, out, loadOut }) => ({
 const createBuildArguments = options =>
 	createContainerBuildArguments({
 		...options,
-		specification: probeSpecification({
-			buildImage: options.buildImage,
+		specification: httpWorkloadSpecification({
+			pythonImage: options.pythonImage,
 			out: options.out,
 			loadOut: options.loadOut
 		})
@@ -96,10 +91,10 @@ const validateBuildArtifacts = (archive, metadata, loadArchive) =>
 		metadata,
 		loadArchive,
 		maxArchiveBytes,
-		'Probe'
+		'HTTP workload'
 	)
 
-const buildProbe = options => {
+const buildHttpWorkload = options => {
 	requireExternalCargoTarget(repositoryRoot)
 	return buildContainerImage(
 		{
@@ -110,13 +105,15 @@ const buildProbe = options => {
 			network: options.network,
 			logRoot: options.logRoot
 		},
-		probeSpecification(options)
+		httpWorkloadSpecification(options)
 	)
 }
 
 if (require.main === module) {
 	try {
-		process.stdout.write(`${JSON.stringify(buildProbe(parseArguments(process.argv.slice(2))))}\n`)
+		process.stdout.write(
+			`${JSON.stringify(buildHttpWorkload(parseArguments(process.argv.slice(2))))}\n`
+		)
 	} catch (error) {
 		process.stderr.write(`${error.message}\n`)
 		process.exitCode = 1
@@ -124,9 +121,9 @@ if (require.main === module) {
 }
 
 module.exports = {
-	buildProbe,
+	buildHttpWorkload,
 	createBuildArguments,
+	httpWorkloadSpecification,
 	parseArguments,
-	probeSpecification,
 	validateBuildArtifacts
 }

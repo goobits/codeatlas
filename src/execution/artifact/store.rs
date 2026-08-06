@@ -1,11 +1,11 @@
 use super::identity::{is_artifact_id, validate_artifact_id};
-use super::{has_file_metadata_changed, ManagedArtifact};
+use super::ManagedArtifact;
 use crate::execution::private_fs::{
     create_private_directory, create_private_file, prepare_private_disjoint_directory,
+    read_bounded_file,
 };
 use anyhow::{Context, Result};
-use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -109,7 +109,7 @@ impl ArtifactStore {
         if expected_id.is_some() {
             verify_private_managed_file(&path)?;
         }
-        let bytes = read_bounded(&path, self.max_artifact_bytes, T::LABEL)?;
+        let bytes = read_bounded_file(&path, self.max_artifact_bytes, T::LABEL)?;
         self.validate_size(T::LABEL, bytes.len())?;
         let artifact: T = serde_json::from_slice(&bytes)
             .with_context(|| format!("Invalid {} JSON at {}", T::LABEL, path.display()))?;
@@ -139,7 +139,7 @@ impl ArtifactStore {
 fn write_private_immutable(path: &Path, bytes: &[u8], max_bytes: u64) -> Result<()> {
     if path.exists() {
         verify_private_managed_file(path)?;
-        let existing = read_bounded(path, max_bytes, "existing artifact")?;
+        let existing = read_bounded_file(path, max_bytes, "existing artifact")?;
         if existing == bytes {
             return Ok(());
         }
@@ -164,7 +164,7 @@ fn write_private_immutable(path: &Path, bytes: &[u8], max_bytes: u64) -> Result<
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 verify_private_managed_file(path)?;
-                let existing = read_bounded(path, max_bytes, "raced artifact")?;
+                let existing = read_bounded_file(path, max_bytes, "raced artifact")?;
                 if existing == bytes {
                     Ok(())
                 } else {
@@ -177,44 +177,6 @@ fn write_private_immutable(path: &Path, bytes: &[u8], max_bytes: u64) -> Result<
     })();
     let _ = std::fs::remove_file(&temporary);
     result
-}
-
-fn read_bounded(path: &Path, max_bytes: u64, label: &str) -> Result<Vec<u8>> {
-    let mut file =
-        File::open(path).with_context(|| format!("Could not read {label} {}", path.display()))?;
-    let metadata = file
-        .metadata()
-        .with_context(|| format!("Could not inspect {label} {}", path.display()))?;
-    if !metadata.is_file() {
-        anyhow::bail!("{label} {} is not a regular file", path.display());
-    }
-    if metadata.len() > max_bytes {
-        anyhow::bail!(
-            "{label} {} exceeds the {max_bytes} byte artifact ceiling",
-            path.display()
-        );
-    }
-    let read_ceiling = max_bytes
-        .checked_add(1)
-        .context("artifact read ceiling overflow")?;
-    let mut bytes = Vec::new();
-    (&mut file)
-        .take(read_ceiling)
-        .read_to_end(&mut bytes)
-        .with_context(|| format!("Could not read {label} {}", path.display()))?;
-    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > max_bytes {
-        anyhow::bail!(
-            "{label} {} exceeds the {max_bytes} byte artifact ceiling",
-            path.display()
-        );
-    }
-    let final_metadata = file
-        .metadata()
-        .with_context(|| format!("Could not recheck {label} {}", path.display()))?;
-    if has_file_metadata_changed(&metadata, &final_metadata) {
-        anyhow::bail!("{label} {} changed while it was read", path.display());
-    }
-    Ok(bytes)
 }
 
 fn verify_private_managed_file(path: &Path) -> Result<()> {

@@ -22,9 +22,9 @@ use crate::fuzz::{
 use crate::http::{
     HttpBaselineReport, HttpCheckReport, HttpDiffReport, HttpFuzzReport, HttpFuzzWorkload,
     HttpInspectionReport, HttpInventoryReport, HttpUsageReport, HTTP_API_VERSION,
-    HTTP_BASELINE_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION, HTTP_FUZZ_API_VERSION,
-    HTTP_FUZZ_SCHEMA_VERSION, HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION, HTTP_INSPECTION_SCHEMA_VERSION,
-    HTTP_SCHEMA_VERSION, HTTP_USAGE_SCHEMA_VERSION,
+    HTTP_BASELINE_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION, HTTP_FUZZ_REPORT_SCHEMA_VERSION,
+    HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION, HTTP_INSPECTION_SCHEMA_VERSION, HTTP_SCHEMA_VERSION,
+    HTTP_USAGE_SCHEMA_VERSION,
 };
 use crate::lexicon::{
     LexiconReport, RepositoryLexiconReport, LEXICON_SCHEMA_VERSION,
@@ -348,6 +348,12 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         generate_schema::<HttpFuzzWorkload>,
     ),
     PublishedSchema::new_artifact(
+        HTTP_FUZZ_REPORT_SCHEMA_VERSION,
+        "codeatlas-http-fuzz-report-v1.schema.json",
+        "http::schemathesis",
+        generate_schema::<HttpFuzzReport>,
+    ),
+    PublishedSchema::new_artifact(
         HTTP_USAGE_SCHEMA_VERSION,
         "codeatlas-http-usage-v1.schema.json",
         "http::usage",
@@ -466,13 +472,6 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         PayloadVersion::from_schema_and_api(HTTP_SCHEMA_VERSION, HTTP_API_VERSION),
         "http",
         generate_schema::<HttpDiffReport>,
-    ),
-    PublishedSchema::new(
-        "codeatlas.http-fuzz/v2",
-        "codeatlas-http-fuzz-v2.schema.json",
-        PayloadVersion::from_schema_and_api(HTTP_FUZZ_SCHEMA_VERSION, HTTP_FUZZ_API_VERSION),
-        "http",
-        generate_schema::<HttpFuzzReport>,
     ),
     PublishedSchema::new(
         "codeatlas.postgres-inventory/v3",

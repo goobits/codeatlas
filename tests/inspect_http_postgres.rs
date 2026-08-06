@@ -75,7 +75,6 @@ fn node_kinds(report: &Value) -> BTreeSet<String> {
 #[test]
 fn http_inspection_is_exact_bounded_resumable_stale_safe_and_zero_call() {
     let fixture = TestDirectory::create("codeatlas-http-inspect");
-    let sentinel = fixture.path().join("provider-ran");
     let config = json!({
         "languages": ["ts"],
         "package_exports": false,
@@ -86,13 +85,8 @@ fn http_inspection_is_exact_bounded_resumable_stale_safe_and_zero_call() {
                 "source_roots": ["src"],
                 "source_complete": false
             }, {
-                "id": "provider-api",
-                "openapi": {
-                    "kind": "command",
-                    "command": "sh",
-                    "args": ["-c", format!("printf invoked > {}", sentinel.display())]
-                },
-                "source_roots": ["provider-src"],
+                "id": "source-only-api",
+                "source_roots": ["source-only"],
                 "source_complete": false
             }]
         }
@@ -131,7 +125,7 @@ app.get("/users/{id}", getUser);
         "src/routes.test.ts",
         "export async function routeTest() { await fetch(\"/users/{id}\"); }\n",
     );
-    fs::create_dir_all(fixture.path().join("provider-src")).expect("provider root");
+    fs::create_dir_all(fixture.path().join("source-only")).expect("source-only root");
     let root = fixture.path().to_str().expect("fixture UTF-8");
     let base = [
         "--root",
@@ -151,10 +145,6 @@ app.get("/users/{id}", getUser);
     let repeated = run(&base);
     assert_success(&repeated, "repeated HTTP inspection page");
     assert_eq!(first_output.stdout, repeated.stdout);
-    assert!(
-        !sentinel.exists(),
-        "inspection must not run OpenAPI providers"
-    );
     let first: Value = serde_json::from_slice(&first_output.stdout).expect("first HTTP page");
     assert_eq!(first["schemaVersion"], "codeatlas.http-inspection/v1");
     assert_eq!(first["pageOffset"], 0);
@@ -285,7 +275,6 @@ app.get("/users/{id}", getUser);
     ]);
     assert!(!stale.status.success());
     assert!(String::from_utf8_lossy(&stale.stderr).contains("stale"));
-    assert!(!sentinel.exists());
 }
 
 #[test]

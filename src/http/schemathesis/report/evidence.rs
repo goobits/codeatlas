@@ -1,123 +1,66 @@
-use super::{EVENTS_FILENAME, JUNIT_FILENAME};
-use crate::execution::private_fs;
+use crate::execution::private_fs::read_bounded_file;
 use anyhow::{Context, Result};
 use serde_json::Value;
 use std::collections::BTreeSet;
-use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::path::{Path, PathBuf};
+use std::io::{BufRead, Cursor};
+use std::path::Path;
 
 pub(super) const REDACTED: &str = "[REDACTED]";
 
-pub(super) fn write_private(path: &Path, contents: &[u8]) -> Result<()> {
-    private_fs::write_private_file(path, contents)
-}
-
-pub(super) fn set_private_dir(path: &Path) -> Result<()> {
-    private_fs::secure_directory(path)
-}
-
-pub(super) fn discard_raw(report_dir: &Path) {
-    for name in [EVENTS_FILENAME, JUNIT_FILENAME] {
-        let _ = std::fs::remove_file(report_dir.join(name));
-    }
-}
-
 pub(super) fn sanitize_events<'a>(
-    report_dir: &Path,
+    event_path: &Path,
+    max_bytes: u64,
     configured_headers: impl IntoIterator<Item = (&'a str, &'a str)>,
-) -> Result<PathBuf> {
-    let event_path = report_dir.join(EVENTS_FILENAME);
-    let sanitized_path = report_dir.join(format!(".{EVENTS_FILENAME}.sanitized"));
-    let _ = std::fs::remove_file(report_dir.join(JUNIT_FILENAME));
-    let _ = std::fs::remove_file(&sanitized_path);
+) -> Result<Vec<u8>> {
+    let bytes = read_bounded_file(event_path, max_bytes, "Schemathesis event evidence")?;
+    std::fs::remove_file(event_path).with_context(|| {
+        format!(
+            "Could not remove raw Schemathesis events {}",
+            event_path.display()
+        )
+    })?;
     let mut policy = RedactionPolicy::new(configured_headers);
-    let result = (|| {
-        let file = File::open(&event_path).with_context(|| {
-            format!(
-                "Could not read Schemathesis events at {}",
-                event_path.display()
-            )
-        })?;
-        for (index, line) in BufReader::new(file).lines().enumerate() {
-            let line = line.with_context(|| {
-                format!(
-                    "Could not read Schemathesis event at line {}",
-                    index.saturating_add(1)
-                )
-            })?;
-            if line.trim().is_empty() {
-                continue;
-            }
-            let event: Value = serde_json::from_str(&line).with_context(|| {
-                format!(
-                    "Invalid Schemathesis event JSON at line {}",
-                    index.saturating_add(1)
-                )
-            })?;
-            policy.collect_event_secrets(&event);
+    for (index, line) in Cursor::new(&bytes).lines().enumerate() {
+        let line = event_line(line, index)?;
+        if line.trim().is_empty() {
+            continue;
         }
-
-        let source = File::open(&event_path).with_context(|| {
-            format!(
-                "Could not reopen Schemathesis events at {}",
-                event_path.display()
-            )
-        })?;
-        let destination = private_file(&sanitized_path)?;
-        let mut writer = BufWriter::new(destination);
-        for (index, line) in BufReader::new(source).lines().enumerate() {
-            let line = line.with_context(|| {
-                format!(
-                    "Could not read Schemathesis event at line {}",
-                    index.saturating_add(1)
-                )
-            })?;
-            if line.trim().is_empty() {
-                continue;
-            }
-            let mut event: Value = serde_json::from_str(&line).with_context(|| {
-                format!(
-                    "Invalid Schemathesis event JSON at line {}",
-                    index.saturating_add(1)
-                )
-            })?;
-            policy.redact(&mut event);
-            serde_json::to_writer(&mut writer, &event)?;
-            writer.write_all(b"\n")?;
-        }
-        writer.flush()?;
-        Ok(())
-    })();
-    if let Err(error) = result {
-        let _ = std::fs::remove_file(&sanitized_path);
-        discard_raw(report_dir);
-        return Err(error);
+        let event = event_value(&line, index)?;
+        policy.collect_event_secrets(&event);
     }
-
-    #[cfg(windows)]
-    std::fs::remove_file(&event_path).with_context(|| {
-        format!(
-            "Could not replace raw Schemathesis events at {}",
-            event_path.display()
-        )
-    })?;
-    std::fs::rename(&sanitized_path, &event_path).with_context(|| {
-        format!(
-            "Could not install sanitized Schemathesis events at {}",
-            event_path.display()
-        )
-    })?;
-    set_private_file(&event_path)?;
-    Ok(event_path)
+    let mut sanitized = Vec::with_capacity(bytes.len());
+    for (index, line) in Cursor::new(&bytes).lines().enumerate() {
+        let line = event_line(line, index)?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let mut event = event_value(&line, index)?;
+        policy.redact(&mut event);
+        serde_json::to_writer(&mut sanitized, &event)?;
+        sanitized.push(b'\n');
+    }
+    if u64::try_from(sanitized.len()).unwrap_or(u64::MAX) > max_bytes {
+        anyhow::bail!("Sanitized Schemathesis evidence exceeds its byte ceiling");
+    }
+    Ok(sanitized)
 }
 
-fn private_file(path: &Path) -> Result<File> {
-    private_fs::create_private_file(path)
+fn event_line(line: std::io::Result<String>, index: usize) -> Result<String> {
+    line.with_context(|| {
+        format!(
+            "Could not read Schemathesis event at line {}",
+            index.saturating_add(1)
+        )
+    })
 }
 
-fn set_private_file(path: &Path) -> Result<()> {
-    private_fs::secure_file(path)
+fn event_value(line: &str, index: usize) -> Result<Value> {
+    serde_json::from_str(line).with_context(|| {
+        format!(
+            "Invalid Schemathesis event JSON at line {}",
+            index.saturating_add(1)
+        )
+    })
 }
 
 pub(super) struct RedactionPolicy {

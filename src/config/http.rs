@@ -25,7 +25,7 @@ impl HttpConfig {
 pub(crate) struct HttpContractConfig {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub openapi: Option<HttpOpenApiSourceConfig>,
+    pub openapi: Option<PathBuf>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub external_operations: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -39,35 +39,6 @@ pub(crate) struct HttpContractConfig {
     pub source_include_operations: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_exclude_operations: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-pub(crate) enum HttpOpenApiSourceConfig {
-    File(PathBuf),
-    Provider(HttpOpenApiProviderConfig),
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum HttpOpenApiProviderConfig {
-    File {
-        path: PathBuf,
-    },
-    Command {
-        command: String,
-        #[serde(default)]
-        args: Vec<String>,
-        cwd: Option<PathBuf>,
-        #[serde(default)]
-        environment: BTreeMap<String, String>,
-    },
-    Url {
-        url: String,
-    },
-    Target {
-        target: String,
-    },
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -84,16 +55,16 @@ impl HttpFuzzConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct HttpFuzzTargetConfig {
     pub id: String,
     pub contract: String,
     pub base_url: String,
-    pub openapi_path: String,
     pub environment: BTreeMap<String, String>,
     pub secret_environment: BTreeMap<String, String>,
     pub headers: Vec<HttpFuzzHeaderConfig>,
+    pub environment_class: HttpFuzzEnvironmentClassConfig,
     pub preauthorized: bool,
     pub server: Option<HttpFuzzServerConfig>,
     pub request_adapter: Option<HttpFuzzCommandConfig>,
@@ -104,26 +75,14 @@ pub(crate) struct HttpFuzzTargetConfig {
     pub suppress_warnings: bool,
 }
 
-impl Default for HttpFuzzTargetConfig {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            contract: String::new(),
-            base_url: String::new(),
-            openapi_path: "/openapi.json".to_string(),
-            environment: BTreeMap::new(),
-            secret_environment: BTreeMap::new(),
-            headers: Vec::new(),
-            preauthorized: false,
-            server: None,
-            request_adapter: None,
-            operations: HttpFuzzOperationSelectionConfig::default(),
-            expected_non_success_operations: Vec::new(),
-            positive_coverage: HttpFuzzPositiveCoverageConfig::default(),
-            suppress_health_checks: Vec::new(),
-            suppress_warnings: false,
-        }
-    }
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HttpFuzzEnvironmentClassConfig {
+    Disposable,
+    Staging,
+    Production,
+    #[default]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -201,7 +160,8 @@ impl HttpFuzzHealthCheck {
 #[cfg(test)]
 mod tests {
     use crate::config::{
-        CodeAtlasConfig, HttpFuzzOperationScopeConfig, HttpFuzzOperationSelectionConfig,
+        CodeAtlasConfig, HttpFuzzEnvironmentClassConfig, HttpFuzzOperationScopeConfig,
+        HttpFuzzOperationSelectionConfig,
     };
 
     #[test]
@@ -221,6 +181,7 @@ mod tests {
                             "id": "public-local",
                             "contract": "public-api",
                             "base_url": "http://127.0.0.1:3443",
+                            "environment_class": "disposable",
                             "preauthorized": true,
                             "environment": {
                                 "MODE": "test"
@@ -275,12 +236,15 @@ mod tests {
         assert_eq!(contract.source_exclude_operations, ["POST /health"]);
         assert_eq!(target.id, "public-local");
         assert_eq!(target.contract, "public-api");
+        assert_eq!(
+            target.environment_class,
+            HttpFuzzEnvironmentClassConfig::Disposable
+        );
         assert!(target.preauthorized);
         assert_eq!(
             config.http.fuzz.image.as_deref(),
             Some("ghcr.io/goobits/codeatlas-http-fuzz@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         );
-        assert_eq!(target.openapi_path, "/openapi.json");
         assert_eq!(
             target.headers[0].value_env.as_deref(),
             Some("LOCAL_API_TOKEN")
@@ -356,5 +320,18 @@ mod tests {
         )
         .expect("strict configuration shape");
         assert!(invalid.http.validate_values().is_err());
+    }
+
+    #[test]
+    fn http_contracts_are_file_backed_and_targets_have_no_schema_fetch_path() {
+        for source in [
+            r#"{"http":{"contracts":[{"id":"api","openapi":{"kind":"command","command":"generate-schema"}}]}}"#,
+            r#"{"http":{"contracts":[{"id":"api"}],"fuzz":{"targets":[{"id":"local","contract":"api","base_url":"http://127.0.0.1:3000","openapi_path":"/openapi.json"}]}}}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<CodeAtlasConfig>(source).is_err(),
+                "retired dynamic contract input must fail closed"
+            );
+        }
     }
 }

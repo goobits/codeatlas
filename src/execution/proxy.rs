@@ -1,10 +1,13 @@
 use super::budget::{CallBudget, CallDisposition};
+use super::lease::ExecutionLease;
 use super::model::{CallCategory, ExecutionLimits};
 use super::scheduler::ExecutionContext;
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::Incoming;
+#[cfg(unix)]
+use hyper::client::conn::http1;
 use hyper::header::{HeaderName, HeaderValue, CONNECTION, CONTENT_LENGTH, HOST, LOCATION, TE};
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode, Uri};
@@ -18,14 +21,28 @@ use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 use rustls::ServerConfig;
 use std::collections::HashSet;
 use std::convert::Infallible;
+#[cfg(target_os = "linux")]
+use std::fs::File;
+use std::io;
 use std::net::{IpAddr, Ipv4Addr};
+#[cfg(target_os = "linux")]
+use std::os::fd::AsRawFd;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::task::{Context as TaskContext, Poll};
 use std::time::Duration;
-use tokio::net::TcpListener;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+#[cfg(test)]
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{watch, Semaphore};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_rustls::TlsAcceptor;
 use url::Url;
+
+#[cfg(unix)]
+use tokio::net::{UnixListener, UnixStream};
 
 pub(crate) const CALL_CATEGORY_HEADER: &str = "x-codeatlas-call-category";
 
@@ -34,9 +51,20 @@ type UpstreamConnector = HttpsConnector<HttpConnector>;
 type UpstreamClient = Client<UpstreamConnector, ProxyBody>;
 
 #[derive(Clone, Debug)]
+pub(crate) enum ProxyUpstream {
+    Network,
+    #[cfg(unix)]
+    ManagedServerSocket {
+        host_path: PathBuf,
+    },
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct ProxyEndpoint {
+    #[cfg(test)]
     pub base_url: Url,
     pub ca_pem: String,
+    #[cfg(test)]
     pub ca_der: Vec<u8>,
 }
 
@@ -44,34 +72,107 @@ pub(crate) struct EnforcingProxy {
     endpoint: ProxyEndpoint,
     shutdown: watch::Sender<bool>,
     task: Option<JoinHandle<Result<()>>>,
+    socket_path: Option<PathBuf>,
+    managed_server_peer_pid: Option<Arc<AtomicU32>>,
 }
 
 impl EnforcingProxy {
+    #[cfg(test)]
     pub(crate) async fn start(
         context: &ExecutionContext,
         upstream: Url,
         limits: &ExecutionLimits,
         call_timeout_ms: u64,
     ) -> Result<Self> {
-        validate_upstream(&upstream)?;
-        if call_timeout_ms == 0 || call_timeout_ms > limits.run_timeout_ms {
-            anyhow::bail!("Proxy call timeout must be within the execution timeout");
-        }
+        validate_proxy_start(&upstream, limits, call_timeout_ms)?;
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
             .await
             .context("Could not bind the enforcing HTTP proxy")?;
         let address = listener
             .local_addr()
             .context("Could not inspect the enforcing proxy address")?;
+        Self::start_with_listener(
+            context,
+            upstream,
+            ProxyUpstream::Network,
+            limits,
+            call_timeout_ms,
+            ProxyBinding {
+                listener: ProxyListener::Tcp(listener),
+                endpoint_port: address.port(),
+                socket_path: None,
+            },
+        )
+        .await
+    }
+
+    #[cfg(unix)]
+    pub(crate) async fn start_unix(
+        context: &ExecutionContext,
+        upstream: Url,
+        upstream_transport: ProxyUpstream,
+        limits: &ExecutionLimits,
+        call_timeout_ms: u64,
+        socket_path: &Path,
+        container_port: u16,
+    ) -> Result<Self> {
+        validate_proxy_start(&upstream, limits, call_timeout_ms)?;
+        if container_port == 0 {
+            anyhow::bail!("Unix enforcing proxy needs a container port");
+        }
+        validate_unix_socket_parent(socket_path)?;
+        if std::fs::symlink_metadata(socket_path).is_ok() {
+            anyhow::bail!(
+                "Unix enforcing proxy socket already exists: {}",
+                socket_path.display()
+            );
+        }
+        let socket_address = UnixSocketAddress::new(socket_path)?;
+        let listener = UnixListener::bind(socket_address.path()).with_context(|| {
+            format!(
+                "Could not bind Unix enforcing proxy {}",
+                socket_path.display()
+            )
+        })?;
+        if let Err(error) = crate::execution::private_fs::secure_file(socket_path) {
+            drop(listener);
+            let _ = std::fs::remove_file(socket_path);
+            return Err(error);
+        }
+        Self::start_with_listener(
+            context,
+            upstream,
+            upstream_transport,
+            limits,
+            call_timeout_ms,
+            ProxyBinding {
+                listener: ProxyListener::Unix(listener),
+                endpoint_port: container_port,
+                socket_path: Some(socket_path.to_path_buf()),
+            },
+        )
+        .await
+    }
+
+    async fn start_with_listener(
+        context: &ExecutionContext,
+        upstream: Url,
+        upstream_transport: ProxyUpstream,
+        limits: &ExecutionLimits,
+        call_timeout_ms: u64,
+        binding: ProxyBinding,
+    ) -> Result<Self> {
         let tls = create_proxy_tls_identity()?;
-        let mut base_url = Url::parse(&format!("https://{address}/"))?;
+        let mut base_url = Url::parse(&format!("https://127.0.0.1:{}/", binding.endpoint_port))?;
         base_url.set_path(upstream.path());
         let endpoint = ProxyEndpoint {
+            #[cfg(test)]
             base_url: base_url.clone(),
             ca_pem: tls.ca_pem,
+            #[cfg(test)]
             ca_der: tls.ca_der,
         };
-        let client = create_upstream_client()?;
+        let (client, managed_server_peer_pid) = ProxyUpstreamClient::new(upstream_transport)?;
         let state = Arc::new(ProxyState {
             upstream,
             endpoint: base_url,
@@ -89,7 +190,7 @@ impl EnforcingProxy {
             .map_err(|_| anyhow::anyhow!("max_concurrency does not fit this host"))?;
         let (shutdown, receiver) = watch::channel(false);
         let task = tokio::spawn(serve_proxy(
-            listener,
+            binding.listener,
             acceptor,
             state,
             Arc::new(Semaphore::new(max_connections)),
@@ -99,6 +200,8 @@ impl EnforcingProxy {
             endpoint,
             shutdown,
             task: Some(task),
+            socket_path: binding.socket_path,
+            managed_server_peer_pid,
         })
     }
 
@@ -106,36 +209,253 @@ impl EnforcingProxy {
         &self.endpoint
     }
 
+    pub(crate) fn cleanup_lease(&self) -> ExecutionLease {
+        let shutdown = self.shutdown.clone();
+        let socket_path = self.socket_path.clone();
+        ExecutionLease::new("execution_kernel", "http_proxy", move || {
+            shutdown.send_replace(true);
+            remove_socket_path(socket_path.as_deref())
+        })
+    }
+
+    pub(crate) fn corroborate_managed_server_peer(&self, pid: u32) -> Result<()> {
+        if pid == 0 {
+            anyhow::bail!("Managed-server bridge peer PID must be positive");
+        }
+        let expected = self
+            .managed_server_peer_pid
+            .as_ref()
+            .context("Enforcing proxy has no managed-server bridge")?;
+        expected
+            .compare_exchange(0, pid, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| anyhow::anyhow!("Managed-server bridge peer PID is already fixed"))?;
+        Ok(())
+    }
+
     pub(crate) async fn shutdown(mut self) -> Result<()> {
         self.shutdown.send_replace(true);
         if let Some(task) = self.task.take() {
             task.await.context("Enforcing HTTP proxy task panicked")??;
         }
+        self.remove_socket()?;
         Ok(())
+    }
+
+    fn remove_socket(&mut self) -> Result<()> {
+        let path = self.socket_path.take();
+        remove_socket_path(path.as_deref()).map(|_| ())
+    }
+}
+
+fn remove_socket_path(path: Option<&Path>) -> Result<bool> {
+    let Some(path) = path else {
+        return Ok(true);
+    };
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!("Could not remove Unix enforcing proxy {}", path.display())
+            });
+        }
+    }
+    Ok(!path.exists())
+}
+
+enum ProxyListener {
+    #[cfg(test)]
+    Tcp(TcpListener),
+    #[cfg(unix)]
+    Unix(UnixListener),
+}
+
+struct ProxyBinding {
+    listener: ProxyListener,
+    endpoint_port: u16,
+    socket_path: Option<PathBuf>,
+}
+
+impl ProxyListener {
+    async fn accept(&self) -> io::Result<ProxyStream> {
+        match self {
+            #[cfg(test)]
+            Self::Tcp(listener) => listener
+                .accept()
+                .await
+                .map(|(stream, _)| ProxyStream::Tcp(stream)),
+            #[cfg(unix)]
+            Self::Unix(listener) => listener
+                .accept()
+                .await
+                .map(|(stream, _)| ProxyStream::Unix(stream)),
+        }
+    }
+}
+
+enum ProxyStream {
+    #[cfg(test)]
+    Tcp(TcpStream),
+    #[cfg(unix)]
+    Unix(UnixStream),
+}
+
+impl AsyncRead for ProxyStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        context: &mut TaskContext<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            #[cfg(test)]
+            Self::Tcp(stream) => Pin::new(stream).poll_read(context, buffer),
+            #[cfg(unix)]
+            Self::Unix(stream) => Pin::new(stream).poll_read(context, buffer),
+        }
+    }
+}
+
+impl AsyncWrite for ProxyStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        context: &mut TaskContext<'_>,
+        buffer: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        match self.get_mut() {
+            #[cfg(test)]
+            Self::Tcp(stream) => Pin::new(stream).poll_write(context, buffer),
+            #[cfg(unix)]
+            Self::Unix(stream) => Pin::new(stream).poll_write(context, buffer),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, context: &mut TaskContext<'_>) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            #[cfg(test)]
+            Self::Tcp(stream) => Pin::new(stream).poll_flush(context),
+            #[cfg(unix)]
+            Self::Unix(stream) => Pin::new(stream).poll_flush(context),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, context: &mut TaskContext<'_>) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            #[cfg(test)]
+            Self::Tcp(stream) => Pin::new(stream).poll_shutdown(context),
+            #[cfg(unix)]
+            Self::Unix(stream) => Pin::new(stream).poll_shutdown(context),
+        }
     }
 }
 
 impl Drop for EnforcingProxy {
     fn drop(&mut self) {
         self.shutdown.send_replace(true);
+        let _ = self.remove_socket();
     }
 }
 
 struct ProxyTlsIdentity {
     server: Arc<ServerConfig>,
     ca_pem: String,
+    #[cfg(test)]
     ca_der: Vec<u8>,
 }
 
 struct ProxyState {
     upstream: Url,
     endpoint: Url,
-    client: UpstreamClient,
+    client: ProxyUpstreamClient,
     budget: Arc<CallBudget>,
     max_body_bytes: usize,
     call_timeout: Duration,
     connection_timeout: Duration,
     max_streams: u32,
+}
+
+enum ProxyUpstreamClient {
+    Network(Box<UpstreamClient>),
+    #[cfg(unix)]
+    ManagedServerSocket {
+        host_path: PathBuf,
+        expected_peer_pid: Arc<AtomicU32>,
+    },
+}
+
+impl ProxyUpstreamClient {
+    fn new(transport: ProxyUpstream) -> Result<(Self, Option<Arc<AtomicU32>>)> {
+        match transport {
+            ProxyUpstream::Network => create_upstream_client()
+                .map(Box::new)
+                .map(Self::Network)
+                .map(|client| (client, None)),
+            #[cfg(unix)]
+            ProxyUpstream::ManagedServerSocket { host_path } => {
+                validate_unix_socket_parent(&host_path)?;
+                let expected_peer_pid = Arc::new(AtomicU32::new(0));
+                Ok((
+                    Self::ManagedServerSocket {
+                        host_path,
+                        expected_peer_pid: Arc::clone(&expected_peer_pid),
+                    },
+                    Some(expected_peer_pid),
+                ))
+            }
+        }
+    }
+
+    async fn request(
+        &self,
+        request: Request<ProxyBody>,
+    ) -> std::result::Result<Response<Incoming>, ForwardFailure> {
+        match self {
+            Self::Network(client) => client
+                .request(request)
+                .await
+                .map_err(|_| ForwardFailure::Failed),
+            #[cfg(unix)]
+            Self::ManagedServerSocket {
+                host_path,
+                expected_peer_pid,
+            } => {
+                use std::os::unix::fs::FileTypeExt;
+
+                let expected_peer_pid = expected_peer_pid.load(Ordering::Acquire);
+                if expected_peer_pid == 0 {
+                    return Err(ForwardFailure::Rejected);
+                }
+                let metadata =
+                    std::fs::symlink_metadata(host_path).map_err(|_| ForwardFailure::Failed)?;
+                if !metadata.file_type().is_socket() {
+                    return Err(ForwardFailure::Rejected);
+                }
+                let socket_address =
+                    UnixSocketAddress::new(host_path).map_err(|_| ForwardFailure::Failed)?;
+                let stream = UnixStream::connect(socket_address.path())
+                    .await
+                    .map_err(|_| ForwardFailure::Failed)?;
+                let peer_pid = stream
+                    .peer_cred()
+                    .ok()
+                    .and_then(|credential| credential.pid())
+                    .and_then(|pid| u32::try_from(pid).ok());
+                if peer_pid != Some(expected_peer_pid) {
+                    return Err(ForwardFailure::Rejected);
+                }
+                let (mut sender, connection) =
+                    http1::handshake::<_, ProxyBody>(TokioIo::new(stream))
+                        .await
+                        .map_err(|_| ForwardFailure::Failed)?;
+                tokio::spawn(async move {
+                    let _ = connection.await;
+                });
+                sender
+                    .send_request(request)
+                    .await
+                    .map_err(|_| ForwardFailure::Failed)
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -154,7 +474,7 @@ impl ForwardFailure {
 }
 
 async fn serve_proxy(
-    listener: TcpListener,
+    listener: ProxyListener,
     acceptor: TlsAcceptor,
     state: Arc<ProxyState>,
     connection_limit: Arc<Semaphore>,
@@ -172,7 +492,7 @@ async fn serve_proxy(
                 permit.context("Enforcing proxy connection scheduler closed")?
             }
         };
-        let (stream, _) = tokio::select! {
+        let stream = tokio::select! {
             changed = shutdown.changed() => {
                 let _ = changed;
                 break;
@@ -210,6 +530,79 @@ async fn serve_proxy(
     connections.abort_all();
     while connections.join_next().await.is_some() {}
     Ok(())
+}
+
+fn validate_proxy_start(
+    upstream: &Url,
+    limits: &ExecutionLimits,
+    call_timeout_ms: u64,
+) -> Result<()> {
+    validate_upstream(upstream)?;
+    if call_timeout_ms == 0 || call_timeout_ms > limits.run_timeout_ms {
+        anyhow::bail!("Proxy call timeout must be within the execution timeout");
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn validate_unix_socket_parent(path: &Path) -> Result<()> {
+    if !path.is_absolute() {
+        anyhow::bail!("Unix enforcing proxy socket must be absolute");
+    }
+    let parent = path
+        .parent()
+        .context("Unix enforcing proxy socket has no parent")?;
+    let metadata = std::fs::symlink_metadata(parent).with_context(|| {
+        format!(
+            "Could not inspect Unix enforcing proxy directory {}",
+            parent.display()
+        )
+    })?;
+    if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+        anyhow::bail!("Unix enforcing proxy parent must be a real directory");
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+struct UnixSocketAddress {
+    path: PathBuf,
+    #[cfg(target_os = "linux")]
+    _parent: File,
+}
+
+#[cfg(unix)]
+impl UnixSocketAddress {
+    fn new(path: &Path) -> Result<Self> {
+        validate_unix_socket_parent(path)?;
+        #[cfg(target_os = "linux")]
+        {
+            let parent_path = path.parent().context("Unix socket path has no parent")?;
+            let file_name = path
+                .file_name()
+                .context("Unix socket path has no file name")?;
+            let parent = File::open(parent_path).with_context(|| {
+                format!(
+                    "Could not open Unix socket directory {}",
+                    parent_path.display()
+                )
+            })?;
+            let path =
+                PathBuf::from(format!("/proc/self/fd/{}", parent.as_raw_fd())).join(file_name);
+            Ok(Self {
+                path,
+                _parent: parent,
+            })
+        }
+        #[cfg(not(target_os = "linux"))]
+        Ok(Self {
+            path: path.to_path_buf(),
+        })
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
 }
 
 async fn handle_request(
@@ -284,11 +677,7 @@ async fn forward_request(
     let upstream = upstream
         .body(Full::new(request_body))
         .map_err(|_| ForwardFailure::Rejected)?;
-    let response = state
-        .client
-        .request(upstream)
-        .await
-        .map_err(|_| ForwardFailure::Failed)?;
+    let response = state.client.request(upstream).await?;
     let (parts, body) = response.into_parts();
     let response_body = Limited::new(body, state.max_body_bytes)
         .collect()
@@ -498,6 +887,7 @@ fn create_proxy_tls_identity() -> Result<ProxyTlsIdentity> {
     Ok(ProxyTlsIdentity {
         server: Arc::new(config),
         ca_pem: ca.pem(),
+        #[cfg(test)]
         ca_der: ca.der().to_vec(),
     })
 }
@@ -513,7 +903,7 @@ fn error_response(status: StatusCode) -> Response<ProxyBody> {
 mod tests {
     use super::{
         copy_headers, has_expected_proxy_origin, EnforcingProxy, ProxyBody, ProxyEndpoint,
-        CALL_CATEGORY_HEADER,
+        ProxyUpstream, CALL_CATEGORY_HEADER,
     };
     use crate::execution::budget::CallDisposition;
     use crate::execution::model::{CallCategory, ExecutionLimits};
@@ -522,6 +912,8 @@ mod tests {
     use bytes::Bytes;
     use http_body_util::{BodyExt, Full};
     use hyper::body::Incoming;
+    #[cfg(unix)]
+    use hyper::client::conn::http1;
     use hyper::service::service_fn;
     use hyper::{HeaderMap, Request, Response, StatusCode, Uri};
     use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
@@ -530,6 +922,8 @@ mod tests {
     use hyper_util::rt::{TokioExecutor, TokioIo};
     use hyper_util::server::conn::auto::Builder as ServerBuilder;
     use rustls::pki_types::CertificateDer;
+    #[cfg(unix)]
+    use rustls::pki_types::ServerName;
     use rustls::{ClientConfig, RootCertStore};
     use std::collections::BTreeMap;
     use std::convert::Infallible;
@@ -537,9 +931,13 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::Arc;
     use tokio::net::TcpListener;
+    #[cfg(unix)]
+    use tokio::net::{UnixListener, UnixStream};
     use tokio::sync::{watch, Notify};
     use tokio::task::{JoinHandle, JoinSet};
     use tokio_rustls::TlsAcceptor;
+    #[cfg(unix)]
+    use tokio_rustls::TlsConnector;
     use url::Url;
 
     type ProxyClient = Client<HttpsConnector<HttpConnector>, ProxyBody>;
@@ -749,6 +1147,48 @@ mod tests {
         Ok((status, body))
     }
 
+    #[cfg(unix)]
+    async fn request_unix(
+        sender: &mut http1::SendRequest<ProxyBody>,
+        endpoint: &ProxyEndpoint,
+    ) -> Result<StatusCode> {
+        let response = sender
+            .send_request(
+                Request::builder()
+                    .method("GET")
+                    .uri(endpoint.base_url.as_str())
+                    .body(Full::new(Bytes::new()))?,
+            )
+            .await?;
+        let status = response.status();
+        response.into_body().collect().await?;
+        Ok(status)
+    }
+
+    #[cfg(unix)]
+    async fn unix_client(
+        socket: &std::path::Path,
+        endpoint: &ProxyEndpoint,
+    ) -> Result<(
+        http1::SendRequest<ProxyBody>,
+        JoinHandle<std::result::Result<(), hyper::Error>>,
+    )> {
+        let mut roots = RootCertStore::empty();
+        roots.add(CertificateDer::from(endpoint.ca_der.clone()))?;
+        let config = ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        let socket_address = super::UnixSocketAddress::new(socket)?;
+        let tls = TlsConnector::from(Arc::new(config))
+            .connect(
+                ServerName::try_from("localhost")?,
+                UnixStream::connect(socket_address.path()).await?,
+            )
+            .await?;
+        let (sender, connection) = http1::handshake(TokioIo::new(tls)).await?;
+        Ok((sender, tokio::spawn(connection)))
+    }
+
     #[test]
     fn proxy_blocks_call_max_plus_one_before_the_target_observes_it() {
         let limits = limits(2, 1024);
@@ -782,6 +1222,133 @@ mod tests {
                 Ok(())
             })
             .expect("proxy conformance");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_listener_uses_the_same_tls_and_call_budget_boundary() {
+        let root = std::env::temp_dir().join(format!(
+            "codeatlas-proxy-unix-{}-{}",
+            std::process::id(),
+            "long-state-root".repeat(8)
+        ));
+        std::fs::create_dir(&root).expect("private Unix proxy fixture root");
+        let socket = root.join("client.sock");
+        let limits = limits(1, 1024);
+        let scheduler = ExecutionScheduler::new(&limits, 0).expect("scheduler");
+        let result = scheduler.run(|context| {
+            let socket = socket.clone();
+            async move {
+                let target = TestTarget::start(TargetBehavior::Success).await?;
+                let proxy = EnforcingProxy::start_unix(
+                    &context,
+                    target.url.clone(),
+                    ProxyUpstream::Network,
+                    &limits,
+                    3_000,
+                    &socket,
+                    8443,
+                )
+                .await?;
+
+                let (mut sender, connection) = unix_client(&socket, proxy.endpoint()).await?;
+
+                assert_eq!(
+                    request_unix(&mut sender, proxy.endpoint()).await?,
+                    StatusCode::OK
+                );
+                assert_eq!(
+                    request_unix(&mut sender, proxy.endpoint()).await?,
+                    StatusCode::TOO_MANY_REQUESTS
+                );
+                assert_eq!(target.calls.load(Ordering::SeqCst), 1);
+                drop(sender);
+                proxy.shutdown().await?;
+                let _ = connection.await;
+                assert!(!socket.exists(), "Unix proxy socket must be removed");
+                target.shutdown().await?;
+                Ok(())
+            }
+        });
+        std::fs::remove_dir(&root).expect("remove Unix proxy fixture root");
+        result.expect("Unix listener conformance");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn managed_server_socket_reuses_the_same_proxy_policy() {
+        let root = std::env::temp_dir().join(format!(
+            "codeatlas-proxy-managed-{}-{}",
+            std::process::id(),
+            "long-state-root".repeat(8)
+        ));
+        std::fs::create_dir(&root).expect("private managed-server fixture root");
+        let client_socket = root.join("client.sock");
+        let server_socket = root.join("server.sock");
+        let limits = limits(2, 1024);
+        let scheduler = ExecutionScheduler::new(&limits, 0).expect("scheduler");
+        let result = scheduler.run(|context| {
+            let client_socket = client_socket.clone();
+            let server_socket = server_socket.clone();
+            async move {
+                let server_address = super::UnixSocketAddress::new(&server_socket)?;
+                let listener = UnixListener::bind(server_address.path())?;
+                let calls = Arc::new(AtomicU64::new(0));
+                let observed = Arc::clone(&calls);
+                let target = tokio::spawn(async move {
+                    let (stream, _) = listener.accept().await?;
+                    serve_target_connection(
+                        stream,
+                        observed,
+                        Arc::new(AtomicBool::new(false)),
+                        Arc::new(Notify::new()),
+                        TargetBehavior::Success,
+                    )
+                    .await;
+                    Ok::<_, anyhow::Error>(())
+                });
+                let upstream = Url::parse("http://127.0.0.1:41002/")?;
+                let proxy = EnforcingProxy::start_unix(
+                    &context,
+                    upstream,
+                    ProxyUpstream::ManagedServerSocket {
+                        host_path: server_socket.clone(),
+                    },
+                    &limits,
+                    3_000,
+                    &client_socket,
+                    41001,
+                )
+                .await?;
+                let (mut sender, connection) =
+                    unix_client(&client_socket, proxy.endpoint()).await?;
+
+                assert_eq!(
+                    request_unix(&mut sender, proxy.endpoint()).await?,
+                    StatusCode::BAD_GATEWAY
+                );
+                assert_eq!(calls.load(Ordering::SeqCst), 0);
+                proxy.corroborate_managed_server_peer(std::process::id())?;
+                assert_eq!(
+                    request_unix(&mut sender, proxy.endpoint()).await?,
+                    StatusCode::OK
+                );
+                assert_eq!(
+                    request_unix(&mut sender, proxy.endpoint()).await?,
+                    StatusCode::TOO_MANY_REQUESTS
+                );
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                drop(sender);
+                proxy.shutdown().await?;
+                let _ = connection.await;
+                target.await.context("managed-server fixture task")??;
+                assert!(!client_socket.exists());
+                std::fs::remove_file(&server_socket)?;
+                Ok(())
+            }
+        });
+        std::fs::remove_dir(&root).expect("remove managed-server fixture root");
+        result.expect("managed-server proxy conformance");
     }
 
     #[test]

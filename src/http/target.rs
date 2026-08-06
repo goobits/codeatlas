@@ -1,7 +1,7 @@
 use crate::config::{
-    HttpFuzzCommandConfig, HttpFuzzHealthCheck, HttpFuzzOperationScopeConfig,
-    HttpFuzzOperationSelectionConfig, HttpFuzzPositiveCoverageConfig, HttpFuzzServerConfig,
-    HttpOpenApiProviderConfig, HttpOpenApiSourceConfig, ProjectConfig,
+    HttpFuzzCommandConfig, HttpFuzzEnvironmentClassConfig, HttpFuzzHealthCheck,
+    HttpFuzzOperationScopeConfig, HttpFuzzOperationSelectionConfig, HttpFuzzPositiveCoverageConfig,
+    HttpFuzzServerConfig, ProjectConfig,
 };
 use crate::execution::CALL_CATEGORY_HEADER;
 use anyhow::{Context, Result};
@@ -15,7 +15,7 @@ pub(super) const SCHEMATHESIS_HOOKS_ENV: &str = "SCHEMATHESIS_HOOKS";
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedHttpContract {
     pub id: String,
-    pub openapi: Option<ResolvedHttpOpenApiSource>,
+    pub openapi: Option<PathBuf>,
     pub openapi_display: Option<String>,
     pub external_operations: Vec<String>,
     pub source_roots: Vec<PathBuf>,
@@ -28,30 +28,15 @@ pub(crate) struct ResolvedHttpContract {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum ResolvedHttpOpenApiSource {
-    File(PathBuf),
-    Command {
-        command: String,
-        args: Vec<String>,
-        cwd: PathBuf,
-        environment: BTreeMap<String, String>,
-    },
-    Url {
-        url: Url,
-    },
-    Target(Box<ResolvedHttpFuzzTarget>),
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct ResolvedHttpFuzzTarget {
     pub id: String,
     pub contract: String,
     pub workload_image: Option<String>,
     pub base_url: Url,
-    pub openapi_url: Url,
     pub environment: BTreeMap<String, String>,
     pub secret_environment: BTreeMap<String, String>,
     pub headers: Vec<ResolvedHttpFuzzHeader>,
+    pub environment_class: HttpFuzzEnvironmentClassConfig,
     pub preauthorized: bool,
     pub server: Option<ResolvedHttpFuzzServer>,
     pub request_adapter: Option<ResolvedHttpFuzzCommand>,
@@ -97,8 +82,8 @@ pub(crate) struct ResolvedHttpFuzzServer {
 }
 
 impl ResolvedHttpFuzzTarget {
-    pub(crate) fn resolve_runtime_environment(&self) -> Result<BTreeMap<String, String>> {
-        let mut environment = self.environment.clone();
+    pub(crate) fn resolve_secret_environment(&self) -> Result<BTreeMap<String, String>> {
+        let mut environment = BTreeMap::new();
         for (name, reference) in &self.secret_environment {
             let value = std::env::var(reference).with_context(|| {
                 format!(
@@ -106,6 +91,13 @@ impl ResolvedHttpFuzzTarget {
                     self.id, reference, name
                 )
             })?;
+            if value.is_empty() {
+                anyhow::bail!(
+                    "HTTP fuzz target {} secret environment reference {} is empty",
+                    self.id,
+                    reference
+                );
+            }
             environment.insert(name.clone(), value);
         }
         Ok(environment)
@@ -117,12 +109,22 @@ impl ResolvedHttpFuzzTarget {
             .map(|header| {
                 let value = match (&header.value, &header.value_reference) {
                     (Some(value), None) => value.clone(),
-                    (None, Some(reference)) => std::env::var(reference).with_context(|| {
-                        format!(
-                            "HTTP fuzz target {} needs header secret reference {}",
-                            self.id, reference
-                        )
-                    })?,
+                    (None, Some(reference)) => {
+                        let value = std::env::var(reference).with_context(|| {
+                            format!(
+                                "HTTP fuzz target {} needs header secret reference {}",
+                                self.id, reference
+                            )
+                        })?;
+                        if value.is_empty() {
+                            anyhow::bail!(
+                                "HTTP fuzz target {} has an empty secret header reference for {}",
+                                self.id,
+                                header.name
+                            );
+                        }
+                        value
+                    }
                     _ => anyhow::bail!(
                         "HTTP fuzz target {} has an invalid resolved header source",
                         self.id
@@ -179,7 +181,7 @@ impl ProjectConfig {
                     }
                     Ok(ResolvedHttpContract {
                         id,
-                        openapi: Some(ResolvedHttpOpenApiSource::File(openapi)),
+                        openapi: Some(openapi),
                         openapi_display: Some(crate::paths::normalize_relative_path(
                             &unresolved,
                             &self.root,
@@ -228,19 +230,21 @@ impl ProjectConfig {
                         current_dir.join(path)
                     };
                     Some((
-                        ResolvedHttpOpenApiSource::File(absolute_existing(
-                            path,
-                            &current_dir,
-                            "OpenAPI contract",
-                        )?),
+                        absolute_existing(path, &current_dir, "OpenAPI contract")?,
+                        crate::paths::normalize_relative_path(&unresolved, &self.root),
+                    ))
+                } else if let Some(path) = &contract.openapi {
+                    let unresolved = if path.is_absolute() {
+                        path.clone()
+                    } else {
+                        self.config_dir.join(path)
+                    };
+                    Some((
+                        absolute_existing(path, &self.config_dir, "OpenAPI contract")?,
                         crate::paths::normalize_relative_path(&unresolved, &self.root),
                     ))
                 } else {
-                    contract
-                        .openapi
-                        .as_ref()
-                        .map(|source| self.resolve_http_openapi_source(source))
-                        .transpose()?
+                    None
                 };
                 let source_roots = if contract.source_roots.is_empty() {
                     vec![self.root.clone()]
@@ -268,83 +272,6 @@ impl ProjectConfig {
                 })
             })
             .collect()
-    }
-
-    fn resolve_http_openapi_source(
-        &self,
-        source: &HttpOpenApiSourceConfig,
-    ) -> Result<(ResolvedHttpOpenApiSource, String)> {
-        match source {
-            HttpOpenApiSourceConfig::File(path)
-            | HttpOpenApiSourceConfig::Provider(HttpOpenApiProviderConfig::File { path }) => {
-                let unresolved = if path.is_absolute() {
-                    path.clone()
-                } else {
-                    self.config_dir.join(path)
-                };
-                Ok((
-                    ResolvedHttpOpenApiSource::File(absolute_existing(
-                        path,
-                        &self.config_dir,
-                        "OpenAPI contract",
-                    )?),
-                    crate::paths::normalize_relative_path(&unresolved, &self.root),
-                ))
-            }
-            HttpOpenApiSourceConfig::Provider(HttpOpenApiProviderConfig::Command {
-                command,
-                args,
-                cwd,
-                environment,
-            }) => {
-                if command.trim().is_empty()
-                    || command.contains('\0')
-                    || args.iter().any(|argument| argument.contains('\0'))
-                {
-                    anyhow::bail!("OpenAPI command provider needs a valid command and arguments");
-                }
-                validate_environment(environment, "OpenAPI command provider")?;
-                let unresolved = cwd
-                    .as_ref()
-                    .map(|cwd| self.config_dir.join(cwd))
-                    .unwrap_or_else(|| self.root.clone());
-                let cwd = unresolved.canonicalize().with_context(|| {
-                    format!(
-                        "OpenAPI command provider working directory does not exist: {}",
-                        unresolved.display()
-                    )
-                })?;
-                if !cwd.is_dir() {
-                    anyhow::bail!(
-                        "OpenAPI command provider working directory is not a directory: {}",
-                        cwd.display()
-                    );
-                }
-                Ok((
-                    ResolvedHttpOpenApiSource::Command {
-                        command: command.clone(),
-                        args: args.clone(),
-                        cwd,
-                        environment: environment.clone(),
-                    },
-                    format!("command:{command}"),
-                ))
-            }
-            HttpOpenApiSourceConfig::Provider(HttpOpenApiProviderConfig::Url { url }) => {
-                let url = parse_http_url(url, "OpenAPI URL provider", false)?;
-                Ok((
-                    ResolvedHttpOpenApiSource::Url { url: url.clone() },
-                    url.to_string(),
-                ))
-            }
-            HttpOpenApiSourceConfig::Provider(HttpOpenApiProviderConfig::Target { target }) => {
-                let resolved = self.http_fuzz_target(Some(target))?;
-                Ok((
-                    ResolvedHttpOpenApiSource::Target(Box::new(resolved)),
-                    format!("target:{target}"),
-                ))
-            }
-        }
     }
 
     pub(crate) fn http_fuzz_target(
@@ -418,16 +345,6 @@ impl ProjectConfig {
             &format!("HTTP fuzz target {} `base_url`", target.id),
             true,
         )?;
-        if !target.openapi_path.starts_with('/')
-            || target.openapi_path.chars().any(char::is_whitespace)
-            || target.openapi_path.contains(['?', '#'])
-        {
-            anyhow::bail!(
-                "HTTP fuzz target {} needs an absolute path-only, whitespace-free `openapi_path`",
-                target.id
-            );
-        }
-        let openapi_url = join_base_path(&base_url, &target.openapi_path)?;
         validate_environment(
             &target.environment,
             &format!("HTTP fuzz target {}", target.id),
@@ -542,10 +459,10 @@ impl ProjectConfig {
             contract: target.contract.clone(),
             workload_image: self.config.http.fuzz.image.clone(),
             base_url,
-            openapi_url,
             environment: target.environment.clone(),
             secret_environment: target.secret_environment.clone(),
             headers,
+            environment_class: target.environment_class,
             preauthorized: target.preauthorized,
             server,
             request_adapter,
@@ -726,16 +643,6 @@ fn parse_http_url(value: &str, label: &str, base: bool) -> Result<Url> {
         anyhow::bail!("{label} must not contain a query or fragment");
     }
     Ok(url)
-}
-
-fn join_base_path(base: &Url, path: &str) -> Result<Url> {
-    let mut directory = base.clone();
-    let mut base_path = directory.path().trim_end_matches('/').to_string();
-    base_path.push('/');
-    directory.set_path(&base_path);
-    directory
-        .join(path.trim_start_matches('/'))
-        .with_context(|| format!("Could not join HTTP target URL {base} with {path:?}"))
 }
 
 fn is_http_token(value: &str) -> bool {

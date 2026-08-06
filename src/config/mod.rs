@@ -19,9 +19,9 @@ pub(crate) use execution::{
 };
 pub(crate) use fuzz::{FuzzConfig, FuzzLimitsConfig};
 pub(crate) use http::{
-    HttpConfig, HttpContractConfig, HttpFuzzCommandConfig, HttpFuzzHealthCheck,
-    HttpFuzzOperationScopeConfig, HttpFuzzOperationSelectionConfig, HttpFuzzPositiveCoverageConfig,
-    HttpFuzzServerConfig, HttpOpenApiProviderConfig, HttpOpenApiSourceConfig,
+    HttpConfig, HttpContractConfig, HttpFuzzCommandConfig, HttpFuzzEnvironmentClassConfig,
+    HttpFuzzHealthCheck, HttpFuzzOperationScopeConfig, HttpFuzzOperationSelectionConfig,
+    HttpFuzzPositiveCoverageConfig, HttpFuzzServerConfig,
 };
 pub(crate) use lexicon::{
     validate_lexicon_identifier, LexiconAbbreviationConfig, LexiconConfig, LexiconGrammarConfig,

@@ -1,25 +1,22 @@
+use super::adapter::schemathesis_arguments;
 use super::request_adapter::HOOK_SOURCE;
 use super::{
-    checks, clear_owned_report_files, collect_expected_non_success_operations,
-    expected_non_success_operations, operation_report_component, phases,
-    positive_coverage_failures, render_schemathesis_config, schemathesis_args, schemathesis_config,
-    select_operations, selected_operation_failures, RunOptions, SchemathesisFiles, CHECKS,
-    PROVIDED_OPENAPI_FILENAME, SCHEMATHESIS_CONFIG_FILENAME, SOURCE_TRANSPORT_CHECKS,
-    STATEFUL_CONFIG,
+    checks, collect_expected_non_success_operations, expected_non_success_operations, phases,
+    positive_coverage_failures, render_schemathesis_config, schemathesis_config, select_operations,
+    selected_operation_failures, CHECKS, SOURCE_TRANSPORT_CHECKS, STATEFUL_CONFIG,
 };
 use crate::config::{HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig};
 use crate::execution::CALL_CATEGORY_HEADER;
 use crate::http::model::{
     HttpFuzzContractMode, HttpFuzzOperationSummary, HttpFuzzPositiveCoverage, HttpFuzzTotals,
+    HttpFuzzWorkload, HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION,
 };
 use crate::http::target::{
     parse_http_fuzz_operation, ResolvedHttpFuzzHeader, ResolvedHttpFuzzOperationSelection,
     ResolvedHttpFuzzTarget,
 };
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 fn target_with_operations(operations: &[&str]) -> ResolvedHttpFuzzTarget {
     ResolvedHttpFuzzTarget {
@@ -27,10 +24,10 @@ fn target_with_operations(operations: &[&str]) -> ResolvedHttpFuzzTarget {
         contract: "public-api".to_string(),
         workload_image: None,
         base_url: url::Url::parse("http://127.0.0.1:3443").expect("base URL"),
-        openapi_url: url::Url::parse("http://127.0.0.1:3443/openapi.json").expect("OpenAPI URL"),
         environment: BTreeMap::new(),
         secret_environment: BTreeMap::new(),
         headers: Vec::new(),
+        environment_class: crate::config::HttpFuzzEnvironmentClassConfig::Unknown,
         preauthorized: false,
         server: None,
         request_adapter: None,
@@ -48,37 +45,6 @@ fn target_with_operations(operations: &[&str]) -> ResolvedHttpFuzzTarget {
 }
 
 #[test]
-fn report_cleanup_removes_only_codeatlas_owned_files() {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock should be after epoch")
-        .as_nanos();
-    let report_dir = std::env::temp_dir().join(format!("codeatlas-owned-reports-{nonce}"));
-    fs::create_dir(&report_dir).expect("report directory");
-    let owned = [
-        SCHEMATHESIS_CONFIG_FILENAME,
-        PROVIDED_OPENAPI_FILENAME,
-        super::report::EVENTS_FILENAME,
-        super::report::JUNIT_FILENAME,
-        super::report::SUMMARY_FILENAME,
-        super::transport_schema::FILENAME,
-        ".events.ndjson.sanitized",
-    ];
-    for name in owned {
-        fs::write(report_dir.join(name), "stale").expect("owned report");
-    }
-    fs::write(report_dir.join("keep.txt"), "unrelated").expect("unrelated file");
-
-    clear_owned_report_files(&report_dir).expect("report cleanup");
-
-    assert!(report_dir.join("keep.txt").exists());
-    for name in owned {
-        assert!(!report_dir.join(name).exists());
-    }
-    fs::remove_dir_all(report_dir).expect("test cleanup");
-}
-
-#[test]
 fn schemathesis_arguments_centralize_the_http_fuzz_policy() {
     let mut target = target_with_operations(&["GET /health", "POST /widgets/{id}"]);
     target.headers.push(ResolvedHttpFuzzHeader {
@@ -88,31 +54,33 @@ fn schemathesis_arguments_centralize_the_http_fuzz_policy() {
     });
     target.suppress_health_checks = vec![HttpFuzzHealthCheck::FilterTooMuch];
     target.suppress_warnings = true;
-    let options = RunOptions {
-        max_examples: 75,
-        profile: "standard",
+    let workload = HttpFuzzWorkload {
+        schema_version: HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION.to_string(),
+        target_id: target.id.clone(),
+        contract_id: target.contract.clone(),
+        profile: "standard".to_string(),
         stateful: false,
-        seed: Some(42),
-        operation: Some("POST /widgets/{id}"),
-        schemathesis: None,
+        seed: Some("42".to_string()),
+        operation: Some("POST /widgets/{id}".to_string()),
+        excluded_operations: Vec::new(),
+        engine: "schemathesis".to_string(),
+        engine_executable: "/usr/local/bin/schemathesis".to_string(),
+        limits: crate::fuzz::FuzzLimits {
+            max_cases: 75,
+            max_shrinks: 100,
+            max_failures: 5,
+            case_timeout_ms: 30_000,
+        },
     };
-    let operation =
-        parse_http_fuzz_operation(options.operation.expect("operation")).expect("filter");
-    let args = schemathesis_args(
+    let operation = parse_http_fuzz_operation(workload.operation.as_deref().expect("operation"))
+        .expect("filter");
+    let args = schemathesis_arguments(
         &target,
         HttpFuzzContractMode::OpenApi,
-        &options,
-        options.seed.expect("seed"),
+        &workload,
+        42,
         std::slice::from_ref(&operation),
-        &SchemathesisFiles {
-            schema: Path::new("reports/provided-openapi.yaml"),
-            config: Path::new("reports/schemathesis.toml"),
-            report_dir: Path::new("reports"),
-        },
-    )
-    .into_iter()
-    .map(|argument| argument.to_string_lossy().into_owned())
-    .collect::<Vec<_>>();
+    );
     let checks = CHECKS.join(",");
 
     assert!(args
@@ -135,28 +103,20 @@ fn schemathesis_arguments_centralize_the_http_fuzz_policy() {
         .any(|pair| pair == ["--phases", "examples,coverage,fuzzing"]));
     assert!(args
         .windows(2)
-        .any(|pair| pair == ["--config-file", "reports/schemathesis.toml"]));
+        .any(|pair| pair == ["--config-file", "/codeatlas/runtime/http/schemathesis.toml"]));
     assert!(!args.iter().any(|argument| argument == "--header"));
     assert!(!args
         .iter()
         .any(|argument| argument.contains("Bearer invalid")));
 
     target.suppress_warnings = false;
-    let source_args = schemathesis_args(
+    let source_args = schemathesis_arguments(
         &target,
         HttpFuzzContractMode::SourceTransport,
-        &options,
-        options.seed.expect("seed"),
+        &workload,
+        42,
         std::slice::from_ref(&operation),
-        &SchemathesisFiles {
-            schema: Path::new("reports/source-transport-openapi.json"),
-            config: Path::new("reports/schemathesis.toml"),
-            report_dir: Path::new("reports"),
-        },
-    )
-    .into_iter()
-    .map(|argument| argument.to_string_lossy().into_owned())
-    .collect::<Vec<_>>();
+    );
     assert!(source_args
         .windows(2)
         .any(|pair| pair == ["--warnings", "off"]));
@@ -224,15 +184,6 @@ fn managed_schemathesis_config_ignores_ambient_repository_configuration() {
 fn operation_filters_require_an_exact_method_and_absolute_path() {
     let filter = parse_http_fuzz_operation("post /widgets/{id}").expect("valid filter");
     assert_eq!(filter.name, "POST /widgets/{id}");
-    let component = operation_report_component(&filter);
-    assert!(component.starts_with("post-widgets-id-"));
-    assert_eq!(component.len(), "post-widgets-id-".len() + 12);
-    assert_ne!(
-        component,
-        operation_report_component(
-            &parse_http_fuzz_operation("GET /widgets/{id}").expect("filter")
-        )
-    );
     assert!(parse_http_fuzz_operation("POST").is_err());
     assert!(parse_http_fuzz_operation("POST widgets").is_err());
     assert!(parse_http_fuzz_operation("POST /widget path").is_err());

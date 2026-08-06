@@ -13,6 +13,7 @@ use tokio::sync::watch;
 pub(crate) struct BoundedCommandOutput {
     pub status: ExitStatus,
     pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
     pub output_bytes: u64,
     pub timed_out: bool,
     pub output_exhausted: bool,
@@ -96,7 +97,7 @@ async fn run_bounded_command_inner(
     let stdout = stdout_task
         .await
         .context("Bounded stdout reader panicked")??;
-    let _stderr = stderr_task
+    let stderr = stderr_task
         .await
         .context("Bounded stderr reader panicked")??;
     output_exhausted |= *capture_failure.borrow();
@@ -104,6 +105,7 @@ async fn run_bounded_command_inner(
     Ok(BoundedCommandOutput {
         status,
         stdout,
+        stderr,
         output_bytes,
         timed_out,
         output_exhausted,

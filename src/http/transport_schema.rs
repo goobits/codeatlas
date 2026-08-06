@@ -1,29 +1,16 @@
 use super::model::{HttpSourceInventory, HttpSourceOperationKind};
 use super::target::ResolvedHttpFuzzTarget;
-use crate::execution::private_fs;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
 
-pub(super) const FILENAME: &str = "source-transport-openapi.json";
-
-pub(super) fn write(
-    report_dir: &Path,
+pub(super) fn render(
     target: &ResolvedHttpFuzzTarget,
     source: &HttpSourceInventory,
-) -> Result<PathBuf> {
-    let document = generate(target, source)?;
-    let mut rendered = serde_json::to_vec_pretty(&document)?;
+) -> Result<Vec<u8>> {
+    let mut rendered = serde_json::to_vec_pretty(&generate(target, source)?)?;
     rendered.push(b'\n');
-    let path = report_dir.join(FILENAME);
-    private_fs::write_private_file(&path, &rendered).with_context(|| {
-        format!(
-            "Could not write generated source transport contract {}",
-            path.display()
-        )
-    })?;
-    Ok(path)
+    Ok(rendered)
 }
 
 fn generate(target: &ResolvedHttpFuzzTarget, source: &HttpSourceInventory) -> Result<Value> {
@@ -168,11 +155,10 @@ mod tests {
             contract: "source-api".to_string(),
             workload_image: None,
             base_url: url::Url::parse("http://127.0.0.1:3443").expect("base URL"),
-            openapi_url: url::Url::parse("http://127.0.0.1:3443/openapi.json")
-                .expect("OpenAPI URL"),
             environment: BTreeMap::new(),
             secret_environment: BTreeMap::new(),
             headers: Vec::new(),
+            environment_class: crate::config::HttpFuzzEnvironmentClassConfig::Unknown,
             preauthorized: false,
             server: None,
             request_adapter: None,

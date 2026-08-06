@@ -20,6 +20,8 @@ use std::os::unix::net::UnixListener;
 
 const PROBE_IMAGE: &str =
     "fixture/codeatlas-probe@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const HEADER_SECRET: &str = "fixture-header-secret-value";
+const RUNTIME_SECRET: &str = "fixture-runtime-secret-value";
 static NEXT_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(unix)]
@@ -71,7 +73,9 @@ fn codeatlas_command(root: &Path, state: &Path) -> Command {
         .arg(root)
         .env("CODEATLAS_STATE_DIR", state)
         .env("CODEATLAS_CACHE_DIR", state.join("cache"))
-        .env("CODEATLAS_TEST_AMBIENT_SECRET", "must-not-enter-sandbox");
+        .env("CODEATLAS_TEST_AMBIENT_SECRET", "must-not-enter-sandbox")
+        .env("CODEATLAS_TEST_HEADER_SECRET", HEADER_SECRET)
+        .env("CODEATLAS_TEST_RUNTIME_SECRET", RUNTIME_SECRET);
     command
 }
 
@@ -120,6 +124,31 @@ impl IsolationFixture {
             .expect("OpenAPI JSON"),
         )
         .expect("OpenAPI fixture");
+        fs::write(
+            workspace.join("server.py"),
+            r#"from http.server import BaseHTTPRequestHandler, HTTPServer
+import sys
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def do_GET(self):
+        body = b'{"status":"ok"}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, _format, *_arguments):
+        pass
+
+
+HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
+"#,
+        )
+        .expect("managed HTTP server fixture");
         let runtime = directory.path().join("fake-runtime.py");
         fs::copy(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -158,8 +187,8 @@ impl IsolationFixture {
                     "isolation": {
                         "backend": "container",
                         "filesystem": "scratch_only",
-                        "network": "deny",
-                        "processes": "deny",
+                        "network": "proxy_only",
+                        "processes": "planned_only",
                         "container": {
                             "executable": runtime,
                             "socket": socket_path,
@@ -173,7 +202,8 @@ impl IsolationFixture {
                     "fuzz": {"targets": [{
                         "id": "local",
                         "contract": "fixture",
-                        "base_url": format!("http://{address}")
+                        "base_url": format!("http://{address}"),
+                        "operations": "contract"
                     }]}
                 }
             }))
@@ -195,12 +225,123 @@ impl IsolationFixture {
         fs::write(self.runtime.with_extension("mode"), mode).expect("fake runtime mode");
     }
 
+    fn enable_workload(&self, preauthorized: bool) {
+        let workspace = &self.workspace;
+        self.update_config(|config| {
+            config["http"]["fuzz"]["image"] = Value::String(PROBE_IMAGE.to_string());
+            let target = &mut config["http"]["fuzz"]["targets"][0];
+            target["preauthorized"] = json!(preauthorized);
+            target["server"] = json!({
+                "command": "/usr/bin/python3",
+                "args": ["-c", "raise SystemExit('fixture runtime executes the managed target')"],
+                "cwd": workspace
+            });
+        });
+    }
+
+    fn enable_live_workload(&self, image: &str) {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/http");
+        for filename in ["openapi.yaml", "server.py", "request_adapter.py"] {
+            fs::copy(fixture.join(filename), self.workspace.join(filename))
+                .unwrap_or_else(|error| panic!("copy live HTTP {filename} fixture: {error}"));
+        }
+        let workspace = &self.workspace;
+        let port = self
+            .target
+            .local_addr()
+            .expect("target fixture address")
+            .port();
+        self.update_config(|config| {
+            config["http"]["contracts"][0]["openapi"] = Value::String("openapi.yaml".to_string());
+            config["http"]["fuzz"]["image"] = Value::String(image.to_string());
+            let target = &mut config["http"]["fuzz"]["targets"][0];
+            target["preauthorized"] = Value::Bool(false);
+            target["headers"] = json!([{
+                "name": "X-CodeAtlas-Static",
+                "value": "fixture-static-token"
+            }]);
+            target["server"] = json!({
+                "command": "/usr/local/bin/python3",
+                "args": [
+                    "server.py",
+                    port.to_string(),
+                    "openapi.yaml",
+                    "fixture-runtime-token"
+                ],
+                "cwd": workspace,
+                "startup_timeout_seconds": 15
+            });
+            target["request_adapter"] = json!({
+                "command": "/usr/local/bin/python3",
+                "args": ["request_adapter.py", "/codeatlas/scratch/adapter.ndjson"],
+                "cwd": workspace
+            });
+        });
+    }
+
+    fn enable_secrets(&self) {
+        self.update_config(|config| {
+            let target = &mut config["http"]["fuzz"]["targets"][0];
+            target["secret_environment"] = json!({
+                "FIXTURE_RUNTIME_SECRET": "CODEATLAS_TEST_RUNTIME_SECRET"
+            });
+            target["headers"] = json!([{
+                "name": "Authorization",
+                "value_env": "CODEATLAS_TEST_HEADER_SECRET"
+            }]);
+        });
+    }
+
+    fn enable_request_adapter(&self) {
+        fs::write(
+            self.workspace.join("adapter.py"),
+            "raise SystemExit('fake runtime must not execute the host adapter')\n",
+        )
+        .expect("request-adapter fixture");
+        let workspace = &self.workspace;
+        self.update_config(|config| {
+            config["http"]["fuzz"]["targets"][0]["request_adapter"] = json!({
+                "command": "/usr/bin/python3",
+                "args": ["adapter.py"],
+                "cwd": workspace
+            });
+        });
+    }
+
+    fn set_environment_class(&self, class: &str) {
+        self.update_config(|config| {
+            let target = &mut config["http"]["fuzz"]["targets"][0];
+            target["environment_class"] = Value::String(class.to_string());
+        });
+    }
+
+    fn set_base_url(&self, base_url: &str) {
+        self.update_config(|config| {
+            config["http"]["fuzz"]["targets"][0]["base_url"] = Value::String(base_url.to_string());
+        });
+    }
+
+    fn update_config(&self, update: impl FnOnce(&mut Value)) {
+        let path = self.workspace.join("codeatlas.json");
+        let mut config: Value =
+            serde_json::from_slice(&fs::read(&path).expect("HTTP target config fixture"))
+                .expect("HTTP target config JSON");
+        update(&mut config);
+        fs::write(
+            path,
+            serde_json::to_vec_pretty(&config).expect("HTTP target config bytes"),
+        )
+        .expect("write HTTP target config");
+    }
+
     fn plan(&self) -> Value {
-        let output = run_codeatlas(
-            &self.workspace,
-            &self.state,
-            &["fuzz", "http", "--target", "local", "--seed", "42"],
-        );
+        self.plan_with(&[])
+    }
+
+    fn plan_with(&self, extra: &[&str]) -> Value {
+        let mut arguments = vec!["fuzz", "http", "--target", "local", "--seed", "42"];
+        arguments.extend_from_slice(extra);
+        let output = run_codeatlas(&self.workspace, &self.state, &arguments);
         assert!(
             output.status.success(),
             "planning failed:\n{}",
@@ -211,6 +352,19 @@ impl IsolationFixture {
     }
 
     fn execute(&self, plan: &Value) -> Value {
+        self.execute_with_status(plan, 2)
+    }
+
+    fn execute_with_status(&self, plan: &Value, expected_status: i32) -> Value {
+        self.execute_with_status_and_export(plan, expected_status, true)
+    }
+
+    fn execute_with_status_and_export(
+        &self,
+        plan: &Value,
+        expected_status: i32,
+        export: bool,
+    ) -> Value {
         let plan_id = plan["id"].as_str().expect("plan ID");
         let output = run_codeatlas(
             &self.workspace,
@@ -219,16 +373,63 @@ impl IsolationFixture {
         );
         assert_eq!(
             output.status.code(),
-            Some(2),
-            "execution stderr:\n{}",
+            Some(expected_status),
+            "execution stdout:\n{}\nexecution stderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
         assert_no_target_call(&self.target);
-        if let Some(path) = std::env::var_os("CODEATLAS_TEST_OCI_RECEIPT_OUT") {
-            write_live_receipt(Path::new(&path), &output.stdout)
-                .expect("persist private external live receipt");
+        if export {
+            if let Some(path) = std::env::var_os("CODEATLAS_TEST_OCI_RECEIPT_OUT") {
+                write_live_receipt(Path::new(&path), &output.stdout)
+                    .expect("persist private external live receipt");
+            }
         }
         serde_json::from_slice(&output.stdout).expect("execution receipt JSON")
+    }
+
+    fn execute_and_interrupt(&self, plan: &Value, marker: &Path) -> Value {
+        let plan_id = plan["id"].as_str().expect("plan ID");
+        let mut child = codeatlas_command(&self.workspace, &self.state)
+            .args(["fuzz", "http", "--plan", plan_id, "--execute"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("interruptible CodeAtlas execution");
+        let marker_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !marker.is_file() {
+            if let Some(status) = child.try_wait().expect("inspect interruptible execution") {
+                let output = child
+                    .wait_with_output()
+                    .expect("collect early interruptible execution");
+                panic!(
+                    "execution exited before its interrupt marker ({status}): {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            if std::time::Instant::now() >= marker_deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("execution did not expose its interrupt marker");
+            }
+            std::thread::yield_now();
+        }
+        let interrupt = Command::new("/bin/kill")
+            .args(["-INT", &child.id().to_string()])
+            .status()
+            .expect("send SIGINT to CodeAtlas");
+        assert!(interrupt.success());
+        let output = child
+            .wait_with_output()
+            .expect("collect interrupted CodeAtlas execution");
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "interrupted stdout:\n{}\ninterrupted stderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("cancelled execution receipt JSON")
     }
 
     fn assert_runtime_absent(&self) {
@@ -239,6 +440,49 @@ impl IsolationFixture {
         .expect("fake runtime state JSON");
         assert_eq!(state["exists"], false);
         assert_eq!(state["sentinel_verified"], true);
+    }
+
+    fn report(&self, receipt: &Value) -> Value {
+        let link = receipt["links"]
+            .as_array()
+            .expect("receipt artifact links")
+            .iter()
+            .find(|link| link["kind"] == "report")
+            .expect("HTTP fuzz report link");
+        let id = link["id"].as_str().expect("HTTP fuzz report ID");
+        let path = self
+            .state
+            .join("codeatlas/execution/v1/reports")
+            .join(format!("{id}.json"));
+        let report: Value = serde_json::from_slice(&fs::read(&path).unwrap_or_else(|error| {
+            panic!(
+                "could not read linked HTTP fuzz report {}: {error}",
+                path.display()
+            )
+        }))
+        .expect("HTTP fuzz report JSON");
+        assert_eq!(report["id"], link["id"]);
+        assert_eq!(report["content_digest"], link["content_digest"]);
+        report
+    }
+
+    fn assert_state_excludes(&self, values: &[&str]) {
+        for entry in walkdir::WalkDir::new(&self.state).follow_links(false) {
+            let entry = entry.expect("external state entry");
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let bytes = fs::read(entry.path()).expect("external state bytes");
+            for value in values {
+                assert!(
+                    !bytes
+                        .windows(value.len())
+                        .any(|window| window == value.as_bytes()),
+                    "secret value survived in {}",
+                    entry.path().display()
+                );
+            }
+        }
     }
 }
 
@@ -285,21 +529,137 @@ fn live_receipt_export_is_private_external_and_immutable() {
 
 #[cfg(unix)]
 #[test]
-fn target_observed_container_contract_grants_only_proven_capabilities() {
-    let fixture = IsolationFixture::create("codeatlas-isolation-conformance");
+fn missing_workload_image_blocks_before_the_runtime_probe() {
+    let fixture = IsolationFixture::create("codeatlas-workload-image-block");
     let plan = fixture.plan();
     let receipt = fixture.execute(&plan);
+
     assert_eq!(receipt["outcome"], "blocked");
-    assert!(
-        receipt["reasons"]
-            .as_array()
-            .expect("receipt reasons")
-            .iter()
-            .any(|reason| reason
-                .as_str()
-                .is_some_and(|reason| reason.contains("remains disconnected until Phase 5"))),
-        "unexpected receipt reasons: {}",
-        receipt["reasons"]
+    assert!(receipt["reasons"]
+        .as_array()
+        .expect("blocked reasons")
+        .iter()
+        .any(|reason| reason
+            .as_str()
+            .is_some_and(|reason| reason.contains("no managed image"))));
+    assert!(!fixture.runtime.with_extension("log").exists());
+    assert_no_target_call(&fixture.target);
+}
+
+#[cfg(unix)]
+#[test]
+fn missing_secret_blocks_inside_the_kernel_before_the_runtime_probe() {
+    let fixture = IsolationFixture::create("codeatlas-workload-secret-block");
+    fixture.enable_workload(false);
+    fixture.enable_secrets();
+    let plan = fixture.plan();
+    let plan_id = plan["id"].as_str().expect("plan ID");
+    let output = codeatlas_command(&fixture.workspace, &fixture.state)
+        .env_remove("CODEATLAS_TEST_RUNTIME_SECRET")
+        .args(["fuzz", "http", "--plan", plan_id, "--execute"])
+        .output()
+        .expect("missing-secret execution should start");
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "missing-secret stdout:\n{}\nmissing-secret stderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: Value =
+        serde_json::from_slice(&output.stdout).expect("missing-secret execution receipt JSON");
+    assert_eq!(receipt["outcome"], "blocked");
+    assert!(receipt["reasons"]
+        .as_array()
+        .expect("missing-secret reasons")
+        .iter()
+        .any(|reason| reason.as_str().is_some_and(|reason| {
+            reason.contains("needs secret environment reference CODEATLAS_TEST_RUNTIME_SECRET")
+        })));
+    assert!(!fixture.runtime.with_extension("log").exists());
+    assert_no_target_call(&fixture.target);
+}
+
+#[cfg(unix)]
+#[test]
+fn production_is_blocked_and_uncontained_targets_cannot_use_single_shot() {
+    let production = IsolationFixture::create("codeatlas-production-target-block");
+    production.enable_workload(false);
+    production.set_environment_class("production");
+    let plan = production.plan();
+    assert_eq!(plan["authorization"]["disposition"], "blocked");
+    let receipt = production.execute(&plan);
+    assert_eq!(receipt["outcome"], "blocked");
+    assert_eq!(receipt["cleanup"], json!([]));
+    assert!(!production.runtime.with_extension("log").exists());
+    assert_no_target_call(&production.target);
+
+    let remote = IsolationFixture::create("codeatlas-remote-single-shot-block");
+    remote.enable_workload(true);
+    remote.set_environment_class("disposable");
+    remote.set_base_url("https://remote.example.invalid:443");
+    let output = run_codeatlas(
+        &remote.workspace,
+        &remote.state,
+        &[
+            "fuzz",
+            "http",
+            "--target",
+            "local",
+            "--seed",
+            "42",
+            "--execute",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("requires reviewed authorization"));
+    assert!(!remote.runtime.with_extension("log").exists());
+    assert_no_target_call(&remote.target);
+
+    let local_external = IsolationFixture::create("codeatlas-local-external-single-shot-block");
+    local_external.update_config(|config| {
+        config["http"]["fuzz"]["image"] = Value::String(PROBE_IMAGE.to_string());
+        let target = &mut config["http"]["fuzz"]["targets"][0];
+        target["environment_class"] = Value::String("disposable".to_string());
+        target["preauthorized"] = Value::Bool(true);
+    });
+    let output = run_codeatlas(
+        &local_external.workspace,
+        &local_external.state,
+        &[
+            "fuzz",
+            "http",
+            "--target",
+            "local",
+            "--seed",
+            "42",
+            "--execute",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("requires reviewed authorization"));
+    assert!(!local_external.runtime.with_extension("log").exists());
+    assert_no_target_call(&local_external.target);
+}
+
+#[cfg(unix)]
+#[test]
+fn target_observed_container_contract_grants_only_proven_capabilities() {
+    let fixture = IsolationFixture::create("codeatlas-isolation-conformance");
+    fixture.enable_workload(false);
+    fixture.enable_secrets();
+    fixture.enable_request_adapter();
+    let plan = fixture.plan();
+    let receipt = fixture.execute_with_status(&plan, 0);
+    assert_eq!(receipt["outcome"], "passed");
+    let report = fixture.report(&receipt);
+    assert_eq!(report["schema_version"], "codeatlas.http-fuzz-report/v1");
+    assert_eq!(report["plan_id"], plan["id"]);
+    assert_eq!(report["plan_content_digest"], plan["content_digest"]);
+    assert_eq!(
+        fs::read_to_string(fixture.runtime.with_extension("target-calls"))
+            .expect("target-side call count"),
+        "1"
     );
     let capabilities = receipt["runtime"]["capabilities"]
         .as_array()
@@ -328,7 +688,7 @@ fn target_observed_container_contract_grants_only_proven_capabilities() {
         .is_some_and(|bytes| bytes > 0 && bytes <= 65536));
     assert_eq!(receipt["resources"]["cpu_time_ms"], 1);
     assert_eq!(receipt["resources"]["peak_rss_bytes"], 4096);
-    assert_eq!(receipt["cleanup"].as_array().map(Vec::len), Some(2));
+    assert_eq!(receipt["cleanup"].as_array().map(Vec::len), Some(4));
     assert!(receipt["cleanup"]
         .as_array()
         .expect("cleanup evidence")
@@ -376,12 +736,109 @@ fn target_observed_container_contract_grants_only_proven_capabilities() {
     assert!(!workspace_mount.contains(workspace_path.as_ref()));
     assert!(workspace_mount.contains(state_path.as_ref()));
     assert!(fixture.runtime_socket.local_addr().is_ok());
+    fixture.assert_state_excludes(&[HEADER_SECRET, RUNTIME_SECRET]);
+}
+
+#[cfg(unix)]
+#[test]
+fn preauthorized_single_shot_uses_the_same_kernel_runner() {
+    let fixture = IsolationFixture::create("codeatlas-http-single-shot");
+    fixture.enable_workload(true);
+    let output = run_codeatlas(
+        &fixture.workspace,
+        &fixture.state,
+        &[
+            "fuzz",
+            "http",
+            "--target",
+            "local",
+            "--seed",
+            "42",
+            "--execute",
+        ],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "single-shot stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: Value =
+        serde_json::from_slice(&output.stdout).expect("single-shot execution receipt JSON");
+    assert_eq!(receipt["outcome"], "passed");
+    assert_eq!(receipt["authorization_mode"], "preauthorized_isolated");
+    assert!(receipt["links"]
+        .as_array()
+        .expect("single-shot artifact links")
+        .iter()
+        .any(|link| link["kind"] == "plan"));
+    assert_eq!(
+        fs::read_to_string(fixture.runtime.with_extension("target-calls"))
+            .expect("single-shot target-side calls"),
+        "1"
+    );
+    fixture.assert_runtime_absent();
+    assert_no_target_call(&fixture.target);
+}
+
+#[cfg(unix)]
+#[test]
+fn call_budget_exhaustion_is_partial_and_never_reaches_the_target() {
+    let fixture = IsolationFixture::create("codeatlas-http-call-budget");
+    fixture.enable_workload(false);
+    fixture.set_mode("workload-budget");
+    let plan = fixture.plan();
+    let receipt = fixture.execute(&plan);
+
+    assert_eq!(receipt["outcome"], "partial");
+    assert_eq!(receipt["calls"]["consumed"], 5);
+    assert_eq!(
+        fs::read_to_string(fixture.runtime.with_extension("target-calls"))
+            .expect("budget target-side calls"),
+        "5"
+    );
+    fixture.assert_runtime_absent();
+    assert_no_target_call(&fixture.target);
+}
+
+#[cfg(unix)]
+#[test]
+fn incomplete_workload_cleanup_is_explicit_and_can_never_pass() {
+    let fixture = IsolationFixture::create("codeatlas-workload-cleanup-incomplete");
+    fixture.enable_workload(false);
+    fixture.set_mode("workload-cleanup-total-fail");
+    let plan = fixture.plan();
+    let receipt = fixture.execute(&plan);
+
+    assert_eq!(receipt["outcome"], "partial");
+    assert!(receipt["reasons"]
+        .as_array()
+        .expect("incomplete cleanup reasons")
+        .iter()
+        .any(|reason| reason
+            .as_str()
+            .is_some_and(|reason| reason.contains("cleanup was incomplete"))));
+    assert!(receipt["cleanup"]
+        .as_array()
+        .expect("incomplete cleanup evidence")
+        .iter()
+        .any(|cleanup| cleanup["resource"]
+            .as_str()
+            .is_some_and(|resource| resource.starts_with("oci_container:"))
+            && cleanup["verified"] == false));
+    assert_eq!(
+        fs::read_to_string(fixture.runtime.with_extension("target-calls"))
+            .expect("cleanup-failure target-side calls"),
+        "1"
+    );
+    assert_no_target_call(&fixture.target);
 }
 
 #[cfg(unix)]
 #[test]
 fn failed_target_observation_blocks_and_cleanup_still_verifies() {
     let fixture = IsolationFixture::create("codeatlas-isolation-negative");
+    fixture.enable_workload(false);
     fixture.set_mode("network-leak");
     let plan = fixture.plan();
     let receipt = fixture.execute(&plan);
@@ -414,6 +871,7 @@ fn failed_target_observation_blocks_and_cleanup_still_verifies() {
 fn execution_and_primary_cleanup_failures_leave_no_container() {
     for mode in ["start-fail", "output-exhausted", "cleanup-primary-fail"] {
         let fixture = IsolationFixture::create("codeatlas-isolation-cleanup");
+        fixture.enable_workload(false);
         fixture.set_mode(mode);
         let plan = fixture.plan();
         let receipt = fixture.execute(&plan);
@@ -437,50 +895,11 @@ fn execution_and_primary_cleanup_failures_leave_no_container() {
 #[test]
 fn interrupt_cancels_the_probe_then_runs_verified_cleanup() {
     let fixture = IsolationFixture::create("codeatlas-isolation-interrupt");
+    fixture.enable_workload(false);
     fixture.set_mode("hang");
     let plan = fixture.plan();
-    let plan_id = plan["id"].as_str().expect("plan ID");
-    let mut child = codeatlas_command(&fixture.workspace, &fixture.state)
-        .args(["fuzz", "http", "--plan", plan_id, "--execute"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("interruptible CodeAtlas execution");
     let started = fixture.runtime.with_extension("started");
-    let marker_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while !started.is_file() {
-        if let Some(status) = child.try_wait().expect("inspect interruptible execution") {
-            let output = child
-                .wait_with_output()
-                .expect("collect early interruptible execution");
-            panic!(
-                "execution exited before the probe started ({status}): {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-        if std::time::Instant::now() >= marker_deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("isolation probe did not expose its start marker");
-        }
-        std::thread::yield_now();
-    }
-    let interrupt = Command::new("/bin/kill")
-        .args(["-INT", &child.id().to_string()])
-        .status()
-        .expect("send SIGINT to CodeAtlas");
-    assert!(interrupt.success());
-    let output = child
-        .wait_with_output()
-        .expect("collect interrupted CodeAtlas execution");
-    assert_eq!(
-        output.status.code(),
-        Some(2),
-        "interrupted execution stderr:\n{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let receipt: Value =
-        serde_json::from_slice(&output.stdout).expect("cancelled execution receipt JSON");
+    let receipt = fixture.execute_and_interrupt(&plan, &started);
     assert_eq!(receipt["outcome"], "cancelled");
     assert!(receipt["reasons"]
         .as_array()
@@ -500,19 +919,45 @@ fn interrupt_cancels_the_probe_then_runs_verified_cleanup() {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "requires an operator-provided digest-pinned probe image and usable local OCI socket"]
-fn live_oci_backend_passes_target_observed_conformance() {
+fn interrupt_cancels_the_workload_then_runs_verified_cleanup() {
+    let fixture = IsolationFixture::create("codeatlas-workload-interrupt");
+    fixture.enable_workload(false);
+    fixture.set_mode("workload-hang");
+    let plan = fixture.plan();
+    let started = fixture.runtime.with_extension("workload-started");
+    let receipt = fixture.execute_and_interrupt(&plan, &started);
+    assert_eq!(receipt["outcome"], "cancelled");
+    assert!(receipt["cleanup"]
+        .as_array()
+        .expect("cancelled workload cleanup evidence")
+        .iter()
+        .all(|cleanup| cleanup["verified"] == true));
+    fixture.assert_runtime_absent();
+    assert_no_target_call(&fixture.target);
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "requires digest-pinned probe/workload images and a usable local OCI socket"]
+fn live_oci_backend_executes_the_managed_http_workload() {
     let runtime = std::env::var_os("CODEATLAS_TEST_OCI_RUNTIME")
         .expect("CODEATLAS_TEST_OCI_RUNTIME is required for the live isolation gate");
     let socket = std::env::var_os("CODEATLAS_TEST_OCI_SOCKET")
         .expect("CODEATLAS_TEST_OCI_SOCKET is required for the live isolation gate");
     let image = std::env::var("CODEATLAS_TEST_OCI_PROBE_IMAGE")
         .expect("CODEATLAS_TEST_OCI_PROBE_IMAGE is required for the live isolation gate");
+    let http_image = std::env::var("CODEATLAS_TEST_OCI_HTTP_IMAGE")
+        .expect("CODEATLAS_TEST_OCI_HTTP_IMAGE is required for the live isolation gate");
     assert!(
         image.contains("@sha256:"),
         "live probe image must be digest-pinned"
     );
+    assert!(
+        http_image.contains("@sha256:"),
+        "live HTTP workload image must be digest-pinned"
+    );
     let fixture = IsolationFixture::create("codeatlas-isolation-live");
+    fixture.enable_live_workload(&http_image);
     let config_path = fixture.workspace.join("codeatlas.json");
     let mut config: Value =
         serde_json::from_slice(&fs::read(&config_path).expect("live config fixture"))
@@ -523,21 +968,79 @@ fn live_oci_backend_passes_target_observed_conformance() {
         Value::String(PathBuf::from(socket).to_string_lossy().into_owned());
     config["execution"]["isolation"]["container"]["probe_image"] = Value::String(image);
     config["execution"]["limits"]["run_timeout_ms"] = json!(120_000);
+    config["execution"]["limits"]["max_cpu_time_ms"] = json!(60_000);
+    config["execution"]["limits"]["max_rss_bytes"] = json!(536_870_912_u64);
+    config["execution"]["limits"]["max_processes"] = json!(32);
+    config["execution"]["limits"]["max_open_files"] = json!(128);
+    config["execution"]["limits"]["max_calls"] = json!(256);
+    config["execution"]["limits"]["calls_per_second"] = json!(50);
+    config["execution"]["limits"]["max_output_bytes"] = json!(1_048_576);
+    config["fuzz"]["limits"]["max_cases"] = json!(12);
     fs::write(
         &config_path,
         serde_json::to_vec_pretty(&config).expect("live config JSON bytes"),
     )
     .expect("write live config fixture");
-    let plan = fixture.plan();
-    let receipt = fixture.execute(&plan);
-    assert_eq!(
-        receipt["runtime"]["capabilities"].as_array().map(Vec::len),
-        Some(7),
-        "unexpected live isolation receipt: {receipt}"
-    );
-    assert!(receipt["cleanup"]
-        .as_array()
-        .expect("live cleanup evidence")
-        .iter()
-        .all(|cleanup| cleanup["released"] == true && cleanup["verified"] == true));
+    let assert_live_receipt = |receipt: &Value| {
+        assert_eq!(
+            receipt["outcome"], "passed",
+            "unexpected live receipt: {receipt}"
+        );
+        let capabilities = receipt["runtime"]["capabilities"]
+            .as_array()
+            .expect("live capabilities");
+        for capability in [
+            "cleanup_verification",
+            "network_allowlist",
+            "process_allowlist",
+            "read_only_checkout",
+            "read_only_runtime",
+            "resource_limits",
+            "scratch_filesystem",
+            "tls_interception",
+        ] {
+            assert!(
+                capabilities.iter().any(|value| value == capability),
+                "missing live capability {capability}: {receipt}"
+            );
+        }
+        assert!(receipt["calls"]["consumed"]
+            .as_u64()
+            .is_some_and(|calls| calls > 0 && calls <= 256));
+        assert!(receipt["cleanup"]
+            .as_array()
+            .expect("live cleanup evidence")
+            .iter()
+            .all(|cleanup| cleanup["released"] == true && cleanup["verified"] == true));
+    };
+
+    let stateful_plan = fixture.plan_with(&["--profile", "stateful", "--max-cases", "4"]);
+    let stateful_receipt = fixture.execute_with_status_and_export(&stateful_plan, 0, false);
+    assert_live_receipt(&stateful_receipt);
+    let stateful_report = fixture.report(&stateful_receipt);
+    assert_eq!(stateful_report["stateful"]["linksSelected"], 2);
+    assert_eq!(stateful_report["stateful"]["linksCovered"], 2);
+    assert!(stateful_report["stateful"]["scenarios"]
+        .as_u64()
+        .is_some_and(|scenarios| scenarios > 0));
+
+    let plan = fixture.plan_with(&["--max-cases", "12"]);
+    let receipt = fixture.execute_with_status(&plan, 0);
+    assert_live_receipt(&receipt);
+    let report = fixture.report(&receipt);
+    assert_eq!(report["totals"]["operations"], 3);
+    assert!(report["totals"]["positiveSuccesses"]
+        .as_u64()
+        .is_some_and(|cases| cases > 0));
+    assert!(report["totals"]["negativeRejections"]
+        .as_u64()
+        .is_some_and(|cases| cases > 0));
+    assert_eq!(report["totals"]["serverErrors"], 0);
+    assert_eq!(report["totals"]["checkFailures"], 0);
+    assert!(report["operations"].as_array().is_some_and(|operations| {
+        operations
+            .iter()
+            .any(|operation| operation["operation"] == "POST /widgets/{id}")
+    }));
+    assert_no_target_call(&fixture.target);
 }

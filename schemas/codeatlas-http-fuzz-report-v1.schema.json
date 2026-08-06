@@ -96,6 +96,12 @@
       ],
       "type": "string"
     },
+    "HttpFuzzReportArtifactKind": {
+      "enum": [
+        "report"
+      ],
+      "type": "string"
+    },
     "HttpFuzzStatefulSummary": {
       "properties": {
         "failedScenarios": {
@@ -259,11 +265,11 @@
       "type": "object"
     }
   },
-  "$id": "codeatlas.http-fuzz/v2",
+  "$id": "codeatlas.http-fuzz-report/v1",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
   "properties": {
-    "apiVersion": {
-      "const": "codeatlas.http-fuzz/v2",
+    "content_digest": {
       "type": "string"
     },
     "contractId": {
@@ -273,20 +279,30 @@
       "$ref": "#/$defs/HttpFuzzContractMode",
       "default": "openapi"
     },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/HttpFuzzReportArtifactKind"
+    },
     "operations": {
       "items": {
         "$ref": "#/$defs/HttpFuzzOperationSummary"
       },
       "type": "array"
     },
+    "plan_content_digest": {
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string"
+    },
     "profile": {
       "type": "string"
     },
-    "schemaVersion": {
-      "const": 2,
-      "format": "uint32",
-      "minimum": 0,
-      "type": "integer"
+    "schema_version": {
+      "const": "codeatlas.http-fuzz-report/v1",
+      "type": "string"
     },
     "seed": {
       "type": [
@@ -315,8 +331,12 @@
     }
   },
   "required": [
-    "schemaVersion",
-    "apiVersion",
+    "schema_version",
+    "kind",
+    "id",
+    "content_digest",
+    "plan_id",
+    "plan_content_digest",
     "toolVersion",
     "targetId",
     "contractId",

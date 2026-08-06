@@ -4,8 +4,7 @@ pub(crate) const HTTP_API_VERSION: &str = "codeatlas.http/v2";
 pub(crate) const HTTP_SCHEMA_VERSION: u32 = 2;
 pub(crate) const HTTP_BASELINE_API_VERSION: &str = "codeatlas.http-baseline/v1";
 pub(crate) const HTTP_BASELINE_SCHEMA_VERSION: u32 = 1;
-pub(crate) const HTTP_FUZZ_API_VERSION: &str = "codeatlas.http-fuzz/v2";
-pub(crate) const HTTP_FUZZ_SCHEMA_VERSION: u32 = 2;
+pub(crate) const HTTP_FUZZ_REPORT_SCHEMA_VERSION: &str = "codeatlas.http-fuzz-report/v1";
 pub(crate) const HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION: &str = "codeatlas.http-fuzz-workload/v3";
 
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -313,11 +312,42 @@ pub(crate) enum HttpChangeKind {
     Breaking,
 }
 
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HttpFuzzReportArtifactKind {
+    Report,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HttpFuzzReport {
+    pub schema_version: String,
+    pub kind: HttpFuzzReportArtifactKind,
+    pub id: String,
+    pub content_digest: String,
+    pub plan_id: String,
+    pub plan_content_digest: String,
+    #[serde(flatten)]
+    pub body: HttpFuzzReportBody,
+}
+
+impl std::ops::Deref for HttpFuzzReport {
+    type Target = HttpFuzzReportBody;
+
+    fn deref(&self) -> &Self::Target {
+        &self.body
+    }
+}
+
+impl std::ops::DerefMut for HttpFuzzReport {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.body
+    }
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct HttpFuzzReport {
-    pub schema_version: u32,
-    pub api_version: String,
+pub(crate) struct HttpFuzzReportBody {
     pub tool_version: String,
     pub target_id: String,
     pub contract_id: String,
@@ -341,15 +371,6 @@ pub(crate) enum HttpFuzzContractMode {
     #[serde(rename = "openapi")]
     OpenApi,
     SourceTransport,
-}
-
-impl HttpFuzzContractMode {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::OpenApi => "openapi",
-            Self::SourceTransport => "source_transport",
-        }
-    }
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]

@@ -12,26 +12,29 @@ use std::path::{Path, PathBuf};
 use std::os::unix::fs::MetadataExt;
 
 pub(super) const PROBE_ENTRYPOINT: &str = "/codeatlas/bin/isolation-conformance";
+pub(super) const RUNTIME_MOUNT: &str = "/codeatlas/runtime";
 const MINIMUM_CONTAINER_MEMORY_BYTES: u64 = 6 * 1024 * 1024;
 const CONFORMANCE_PROCESS_LIMIT: u64 = 1;
 
 #[derive(Clone, Debug)]
-pub(super) struct ProbeLaunch {
-    name: String,
-    image: String,
-    nonce: String,
-    mode: ProbeMode,
+pub(super) struct ContainerProcessSpec {
+    pub name: String,
+    pub image: String,
+    pub hostname: String,
+    pub working_directory: String,
+    pub environment: BTreeMap<String, String>,
+    pub entrypoint: String,
+    pub arguments: Vec<String>,
+    pub process_limit: u64,
+    pub runtime_root: Option<PathBuf>,
 }
 
-impl ProbeLaunch {
-    pub(super) fn new(name: String, image: String, nonce: String, mode: ProbeMode) -> Self {
-        Self {
-            name,
-            image,
-            nonce,
-            mode,
-        }
-    }
+#[derive(Clone, Debug)]
+pub(super) struct ContainerProbeSpec {
+    pub name: String,
+    pub image: String,
+    pub nonce: String,
+    pub mode: ProbeMode,
 }
 
 #[derive(Clone, Debug)]
@@ -42,7 +45,10 @@ pub(super) struct ContainerLaunchSpec {
     pub workspace_root: PathBuf,
     pub scratch_root: PathBuf,
     pub temp_root: PathBuf,
+    pub runtime_root: Option<PathBuf>,
     pub environment: Vec<String>,
+    pub hostname: String,
+    pub working_directory: String,
     pub entrypoint: String,
     pub arguments: Vec<String>,
     pub cpu_time_limit_ms: u64,
@@ -53,54 +59,21 @@ pub(super) struct ContainerLaunchSpec {
 
 impl ContainerLaunchSpec {
     pub(super) fn new_probe(
-        launch: ProbeLaunch,
+        probe: ContainerProbeSpec,
         rootless: bool,
         workspace_root: &Path,
         scratch_root: &Path,
         limits: &ExecutionLimits,
     ) -> Result<Self> {
-        if limits.max_rss_bytes < MINIMUM_CONTAINER_MEMORY_BYTES {
-            anyhow::bail!(
-                "Container memory ceiling {} is below the verified backend minimum {MINIMUM_CONTAINER_MEMORY_BYTES}",
-                limits.max_rss_bytes
-            );
-        }
-        let cpu_seconds = limits.max_cpu_time_ms / 1_000;
-        if cpu_seconds == 0 {
-            anyhow::bail!(
-                "Container CPU-time enforcement requires max_cpu_time_ms of at least 1000"
-            );
-        }
-        validate_mount_source(workspace_root)?;
-        validate_mount_source(scratch_root)?;
-        let temp_root = scratch_root.join("tmp");
-        validate_mount_source(&temp_root)?;
-        workspace_root
-            .to_str()
-            .context("Container workspace mount is not UTF-8")?;
-        scratch_root
-            .to_str()
-            .context("Container scratch mount is not UTF-8")?;
-        temp_root
-            .to_str()
-            .context("Container temporary mount is not UTF-8")?;
-        let user = resolve_container_user(rootless, scratch_root)?;
-        let cpu_time_limit_ms = cpu_seconds * 1_000;
-        let ProbeLaunch {
-            name,
-            image,
-            nonce,
-            mode,
-        } = launch;
-        let mut environment = BTreeMap::from([
-            ("CODEATLAS_CONFORMANCE_NONCE".to_string(), nonce),
+        let environment = BTreeMap::from([
+            ("CODEATLAS_CONFORMANCE_NONCE".to_string(), probe.nonce),
             (
                 "CODEATLAS_CONFORMANCE_SCHEMA".to_string(),
                 CONFORMANCE_SCHEMA_VERSION.to_string(),
             ),
             (
                 "CODEATLAS_LIMIT_CPU_TIME_MS".to_string(),
-                cpu_time_limit_ms.to_string(),
+                (limits.max_cpu_time_ms / 1_000 * 1_000).to_string(),
             ),
             (
                 "CODEATLAS_LIMIT_OPEN_FILES".to_string(),
@@ -131,24 +104,98 @@ impl ContainerLaunchSpec {
                 "XDG_CACHE_HOME".to_string(),
                 format!("{SCRATCH_MOUNT}/cache"),
             ),
-        ])
-        .into_iter()
-        .map(|(name, value)| format!("{name}={value}"))
-        .collect::<Vec<_>>();
-        environment.sort();
+        ]);
+        Self::new(
+            ContainerProcessSpec {
+                name: probe.name,
+                image: probe.image,
+                hostname: "codeatlas-probe".to_string(),
+                working_directory: WORKSPACE_MOUNT.to_string(),
+                environment,
+                entrypoint: PROBE_ENTRYPOINT.to_string(),
+                arguments: vec![probe.mode.as_str().to_string()],
+                process_limit: CONFORMANCE_PROCESS_LIMIT,
+                runtime_root: None,
+            },
+            rootless,
+            workspace_root,
+            scratch_root,
+            limits,
+        )
+    }
+
+    pub(super) fn new(
+        process: ContainerProcessSpec,
+        rootless: bool,
+        workspace_root: &Path,
+        scratch_root: &Path,
+        limits: &ExecutionLimits,
+    ) -> Result<Self> {
+        if limits.max_rss_bytes < MINIMUM_CONTAINER_MEMORY_BYTES {
+            anyhow::bail!(
+                "Container memory ceiling {} is below the verified backend minimum {MINIMUM_CONTAINER_MEMORY_BYTES}",
+                limits.max_rss_bytes
+            );
+        }
+        let cpu_seconds = limits.max_cpu_time_ms / 1_000;
+        if cpu_seconds == 0 {
+            anyhow::bail!(
+                "Container CPU-time enforcement requires max_cpu_time_ms of at least 1000"
+            );
+        }
+        validate_mount_source(workspace_root)?;
+        validate_mount_source(scratch_root)?;
+        let temp_root = scratch_root.join("tmp");
+        validate_mount_source(&temp_root)?;
+        if let Some(runtime_root) = &process.runtime_root {
+            validate_mount_source(runtime_root)?;
+            if paths_overlap(runtime_root, workspace_root)
+                || paths_overlap(runtime_root, scratch_root)
+            {
+                anyhow::bail!(
+                    "Container read-only runtime mount must be disjoint from workspace and writable scratch"
+                );
+            }
+        }
+        workspace_root
+            .to_str()
+            .context("Container workspace mount is not UTF-8")?;
+        scratch_root
+            .to_str()
+            .context("Container scratch mount is not UTF-8")?;
+        temp_root
+            .to_str()
+            .context("Container temporary mount is not UTF-8")?;
+        if process.process_limit == 0 || process.process_limit > limits.max_processes {
+            anyhow::bail!(
+                "Container process ceiling {} is outside the planned maximum {}",
+                process.process_limit,
+                limits.max_processes
+            );
+        }
+        let user = resolve_container_user(rootless, scratch_root)?;
+        let cpu_time_limit_ms = cpu_seconds * 1_000;
+        let environment = process
+            .environment
+            .into_iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect::<Vec<_>>();
         Ok(Self {
-            name,
-            image,
+            name: process.name,
+            image: process.image,
             user,
             workspace_root: workspace_root.to_path_buf(),
             scratch_root: scratch_root.to_path_buf(),
             temp_root,
+            runtime_root: process.runtime_root,
             environment,
-            entrypoint: PROBE_ENTRYPOINT.to_string(),
-            arguments: vec![mode.as_str().to_string()],
+            hostname: process.hostname,
+            working_directory: process.working_directory,
+            entrypoint: process.entrypoint,
+            arguments: process.arguments,
             cpu_time_limit_ms,
             rss_limit_bytes: limits.max_rss_bytes,
-            process_limit: CONFORMANCE_PROCESS_LIMIT,
+            process_limit: process.process_limit,
             open_file_limit: limits.max_open_files,
         })
     }
@@ -190,15 +237,18 @@ impl ContainerLaunchSpec {
             "--stop-timeout",
             "1",
             "--hostname",
-            "codeatlas-probe",
+            &self.hostname,
             "--user",
             &self.user,
             "--workdir",
-            WORKSPACE_MOUNT,
+            &self.working_directory,
         ]);
         push_mount(&mut arguments, &self.workspace_root, WORKSPACE_MOUNT, true)?;
         push_mount(&mut arguments, &self.scratch_root, SCRATCH_MOUNT, false)?;
         push_mount(&mut arguments, &self.temp_root, TEMP_MOUNT, false)?;
+        if let Some(runtime_root) = &self.runtime_root {
+            push_mount(&mut arguments, runtime_root, RUNTIME_MOUNT, true)?;
+        }
         for variable in &self.environment {
             arguments.push(OsString::from("--env"));
             arguments.push(OsString::from(variable));
@@ -271,6 +321,10 @@ fn validate_mount_source(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn paths_overlap(left: &Path, right: &Path) -> bool {
+    left.starts_with(right) || right.starts_with(left)
+}
+
 #[cfg(unix)]
 fn resolve_container_user(rootless: bool, scratch_root: &Path) -> Result<String> {
     if rootless {
@@ -295,8 +349,12 @@ fn resolve_container_user(_rootless: bool, _scratch_root: &Path) -> Result<Strin
 
 #[cfg(test)]
 mod tests {
-    use super::{ContainerLaunchSpec, ProbeLaunch, PROBE_ENTRYPOINT, WORKSPACE_MOUNT};
+    use super::{
+        ContainerLaunchSpec, ContainerProbeSpec, ContainerProcessSpec, PROBE_ENTRYPOINT,
+        WORKSPACE_MOUNT,
+    };
     use crate::execution::model::sample_execution_limits;
+    use std::collections::BTreeMap;
     use std::ffi::OsStr;
 
     #[cfg(unix)]
@@ -311,12 +369,12 @@ mod tests {
         std::fs::create_dir_all(&workspace).expect("workspace fixture");
         std::fs::create_dir_all(scratch.join("tmp")).expect("scratch fixture");
         let spec = ContainerLaunchSpec::new_probe(
-            ProbeLaunch::new(
-                "codeatlas-probe-test".to_string(),
-                format!("probe@sha256:{}", "a".repeat(64)),
-                "nonce".to_string(),
-                codeatlas_isolation_conformance::ProbeMode::Verify,
-            ),
+            ContainerProbeSpec {
+                name: "codeatlas-probe-test".to_string(),
+                image: format!("probe@sha256:{}", "a".repeat(64)),
+                nonce: "nonce".to_string(),
+                mode: codeatlas_isolation_conformance::ProbeMode::Verify,
+            },
             true,
             &workspace,
             &scratch,
@@ -340,6 +398,26 @@ mod tests {
                 || argument.to_string_lossy().contains("podman.sock")
         }));
         assert!(!first.iter().any(|argument| argument == OsStr::new("--pid")));
+
+        let overlapping_runtime = ContainerProcessSpec {
+            name: "codeatlas-overlap-test".to_string(),
+            image: format!("workload@sha256:{}", "a".repeat(64)),
+            hostname: "codeatlas-workload".to_string(),
+            working_directory: WORKSPACE_MOUNT.to_string(),
+            environment: BTreeMap::new(),
+            entrypoint: "/usr/bin/true".to_string(),
+            arguments: Vec::new(),
+            process_limit: 1,
+            runtime_root: Some(scratch.join("runtime")),
+        };
+        assert!(ContainerLaunchSpec::new(
+            overlapping_runtime,
+            true,
+            &workspace,
+            &scratch,
+            &sample_execution_limits_with_memory(),
+        )
+        .is_err());
         std::fs::remove_dir_all(root).expect("remove launch fixture");
     }
 

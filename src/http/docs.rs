@@ -1,7 +1,7 @@
 use super::model::{HttpContractInventory, HttpSourceCompleteness};
 use super::openapi::{HttpOpenApiDocumentation, HttpOperationDocumentation};
 use super::repository::{self, RepositoryHttpOperation};
-use super::target::{ResolvedHttpContract, ResolvedHttpOpenApiSource};
+use super::target::ResolvedHttpContract;
 use crate::config::RepositoryScope;
 use crate::outputs::reference::{
     EvidenceDocument, EvidenceEntry, EvidenceFact, EvidenceGroup, EvidenceSection, EvidenceTable,
@@ -344,13 +344,7 @@ fn combined_description(documentation: Option<&HttpOperationDocumentation>) -> O
 
 fn contract_missing_description(contract: &ResolvedHttpContract) -> String {
     match contract.openapi.as_ref() {
-        Some(ResolvedHttpOpenApiSource::File(_)) => {
-            "The local OpenAPI contract provides no info.description.".to_string()
-        }
-        Some(_) => {
-            "The configured non-file OpenAPI provider was not invoked by this zero-call command."
-                .to_string()
-        }
+        Some(_) => "The local OpenAPI contract provides no info.description.".to_string(),
         None => "No local OpenAPI contract supplies a description.".to_string(),
     }
 }

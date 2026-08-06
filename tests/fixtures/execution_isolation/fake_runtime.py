@@ -1,9 +1,16 @@
 #!/usr/bin/python3
 """Deterministic OCI CLI boundary fixture; it is never capability evidence outside tests."""
 
+import base64
+from contextlib import contextmanager
 import json
+import os
 import signal
+import socket
+import ssl
 import sys
+import threading
+import time
 from pathlib import Path
 
 
@@ -12,6 +19,8 @@ STATE = RUNTIME.with_suffix(".state.json")
 MODE = RUNTIME.with_suffix(".mode")
 LOG = RUNTIME.with_suffix(".log")
 STARTED = RUNTIME.with_suffix(".started")
+WORKLOAD_STARTED = RUNTIME.with_suffix(".workload-started")
+TARGET_CALLS = RUNTIME.with_suffix(".target-calls")
 
 
 def fail(message: str) -> None:
@@ -73,32 +82,51 @@ def create_container(arguments: list[str]) -> None:
     environment = values_after(arguments, "--env")
     environment_map = dict(variable.split("=", 1) for variable in environment)
     mounts = [parse_mount(value) for value in values_after(arguments, "--mount")]
-    workspace_destination = environment_map.get("CODEATLAS_WORKSPACE")
-    workspaces = [
-        mount for mount in mounts if mount["Destination"] == workspace_destination
-    ]
-    if len(workspaces) != 1:
-        fail("missing unique disposable conformance workspace")
-    sentinel_name = environment_map.get("CODEATLAS_WORKSPACE_SENTINEL")
-    if not sentinel_name:
-        fail("missing disposable conformance workspace sentinel name")
-    sentinel = Path(workspaces[0]["Source"]) / sentinel_name
-    sentinel_verified = (
-        sentinel.is_file()
-        and sentinel.read_text(encoding="utf-8")
-        == environment_map.get("CODEATLAS_CONFORMANCE_NONCE")
-    )
-    if not sentinel_verified:
-        fail("disposable conformance workspace sentinel is invalid")
-    image = arguments[-2]
-    mode_argument = arguments[-1]
+    entrypoint = value_after(arguments, "--entrypoint")
+    entrypoint_index = arguments.index("--entrypoint")
+    image = arguments[entrypoint_index + 2]
+    process_arguments = arguments[entrypoint_index + 3 :]
+    if entrypoint == "/codeatlas/bin/isolation-conformance":
+        kind = "probe"
+        workspace_destination = environment_map.get("CODEATLAS_WORKSPACE")
+        workspaces = [
+            mount for mount in mounts if mount["Destination"] == workspace_destination
+        ]
+        if len(workspaces) != 1:
+            fail("missing unique disposable conformance workspace")
+        sentinel_name = environment_map.get("CODEATLAS_WORKSPACE_SENTINEL")
+        if not sentinel_name:
+            fail("missing disposable conformance workspace sentinel name")
+        sentinel = Path(workspaces[0]["Source"]) / sentinel_name
+        sentinel_verified = (
+            sentinel.is_file()
+            and sentinel.read_text(encoding="utf-8")
+            == environment_map.get("CODEATLAS_CONFORMANCE_NONCE")
+        )
+        if not sentinel_verified:
+            fail("disposable conformance workspace sentinel is invalid")
+    elif entrypoint == "/usr/local/bin/python3":
+        kind = "workload"
+        required_mounts = {
+            "/codeatlas/workspace",
+            "/codeatlas/runtime",
+            "/codeatlas/scratch",
+            "/tmp",
+        }
+        if not required_mounts.issubset(
+            {mount["Destination"] for mount in mounts}
+        ):
+            fail("workload container is missing a required mount")
+        sentinel_verified = True
+    else:
+        fail("unexpected container entrypoint")
     inspection = {
         "Config": {
             "Env": environment,
             "User": value_after(arguments, "--user"),
             "WorkingDir": value_after(arguments, "--workdir"),
-            "Entrypoint": [value_after(arguments, "--entrypoint")],
-            "Cmd": [mode_argument],
+            "Entrypoint": [entrypoint],
+            "Cmd": process_arguments,
             "Image": image,
         },
         "HostConfig": {
@@ -126,6 +154,7 @@ def create_container(arguments: list[str]) -> None:
             "id": "c" * 64,
             "name": value_after(arguments, "--name"),
             "inspection": inspection,
+            "kind": kind,
             "sentinel_verified": sentinel_verified,
         }
     )
@@ -207,6 +236,200 @@ def conformance_report(state: dict) -> dict:
     return report
 
 
+def mount_source(state: dict, destination: str) -> Path:
+    matches = [
+        mount["Source"]
+        for mount in state["inspection"]["Mounts"]
+        if mount["Destination"] == destination
+    ]
+    if len(matches) != 1:
+        fail(f"missing unique {destination} mount")
+    return Path(matches[0])
+
+
+def wait_for_path(path: Path, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not path.exists():
+        if time.monotonic() >= deadline:
+            fail(f"timed out waiting for {path.name}")
+        time.sleep(0.01)
+
+
+@contextmanager
+def unix_socket_address(path: Path):
+    """Mirror the container's short mount path while the fake runtime runs on the host."""
+    if not sys.platform.startswith("linux"):
+        yield path
+        return
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        yield Path(f"/proc/self/fd/{parent}") / path.name
+    finally:
+        os.close(parent)
+
+
+def serve_managed_target(path: Path, stopped: threading.Event) -> None:
+    if path.exists():
+        path.unlink()
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    with unix_socket_address(path) as address:
+        listener.bind(str(address))
+    listener.settimeout(0.1)
+    listener.listen()
+    calls = 0
+    try:
+        while not stopped.is_set():
+            try:
+                connection, _ = listener.accept()
+            except TimeoutError:
+                continue
+            with connection:
+                request = bytearray()
+                while b"\r\n\r\n" not in request:
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        break
+                    request.extend(chunk)
+                calls += 1
+                TARGET_CALLS.write_text(str(calls), encoding="utf-8")
+                connection.sendall(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+                )
+    finally:
+        listener.close()
+        if path.exists():
+            path.unlink()
+
+
+def proxy_request(client_socket: Path, ca_path: Path) -> int:
+    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    with unix_socket_address(client_socket) as address:
+        connection.connect(str(address))
+    context = ssl.create_default_context(cafile=str(ca_path))
+    with context.wrap_socket(connection, server_hostname="localhost") as secured:
+        secured.sendall(
+            b"GET /health HTTP/1.1\r\nHost: 127.0.0.1:41001\r\n"
+            b"X-CodeAtlas-Call-Category: generated_case\r\nConnection: close\r\n\r\n"
+        )
+        response = bytearray()
+        while chunk := secured.recv(4096):
+            response.extend(chunk)
+    status_line = bytes(response).split(b"\r\n", 1)[0].split()
+    if len(status_line) < 2:
+        fail("proxy response has no status")
+    return int(status_line[1])
+
+
+def workload_secrets(runtime: Path) -> list[str]:
+    secrets = []
+    hooks_path = runtime / "secrets/request-hooks.json"
+    if hooks_path.exists():
+        hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
+        secrets.extend(
+            header["value"]
+            for header in hooks.get("headers", [])
+            if isinstance(header.get("value"), str)
+        )
+    environment_path = runtime / "secrets/environment.json"
+    if environment_path.exists():
+        environment = json.loads(environment_path.read_text(encoding="utf-8"))
+        secrets.extend(value for value in environment.values() if isinstance(value, str))
+    return secrets
+
+
+def write_workload_events(scratch: Path, status: int, secrets: list[str]) -> None:
+    report = scratch / "reports/http"
+    report.mkdir(parents=True, exist_ok=True)
+    secret = secrets[0] if secrets else "fixture-public-value"
+    events = [
+        {"Initialize": {"seed": 42}},
+        {
+            "ScenarioFinished": {
+                "phase": "Coverage",
+                "status": "success",
+                "is_final": False,
+                "recorder": {
+                    "label": "GET /health",
+                    "cases": {
+                        "positive": {
+                            "value": {
+                                "method": "GET",
+                                "path": "/health",
+                                "meta": {"generation": {"mode": "positive"}},
+                            },
+                            "is_transition_applied": False,
+                        }
+                    },
+                    "checks": {"positive": [{"status": "success"}]},
+                    "interactions": {
+                        "positive": {
+                            "request": {
+                                "url": f"https://fixture.invalid/health?token={secret}",
+                                "headers": {"Authorization": secret},
+                                "body": secret,
+                            },
+                            "response": {"status_code": status},
+                        }
+                    },
+                },
+            }
+        },
+    ]
+    (report / "events.ndjson").write_text(
+        "".join(json.dumps(event, separators=(",", ":")) + "\n" for event in events),
+        encoding="utf-8",
+    )
+
+
+def run_workload(state: dict, mode: str) -> None:
+    scratch = mount_source(state, "/codeatlas/scratch")
+    runtime = mount_source(state, "/codeatlas/runtime")
+    protocol = json.loads((runtime / "workload.json").read_text(encoding="utf-8"))
+    control = scratch / "control"
+    transport = scratch / "transport"
+    stopped = threading.Event()
+    target = threading.Thread(
+        target=serve_managed_target,
+        args=(transport / "server.sock", stopped),
+        daemon=True,
+    )
+    target.start()
+    wait_for_path(transport / "server.sock")
+    (control / "harness-ready").touch(mode=0o600)
+    wait_for_path(control / "start-workload")
+    WORKLOAD_STARTED.write_text("started", encoding="utf-8")
+    if mode == "workload-hang":
+        while True:
+            signal.pause()
+    wait_for_path(transport / "client.sock")
+    statuses = [proxy_request(transport / "client.sock", runtime / "proxy-ca.pem")]
+    if mode == "workload-budget":
+        statuses.extend(
+            proxy_request(transport / "client.sock", runtime / "proxy-ca.pem")
+            for _ in range(5)
+        )
+    stopped.set()
+    target.join(timeout=2.0)
+    secrets = workload_secrets(runtime)
+    write_workload_events(scratch, statuses[0], secrets)
+    output = "fixture workload complete"
+    if secrets:
+        output += ":" + ":".join(secrets)
+    result = {
+        "schema_version": "codeatlas.execution-container-result/v1",
+        "plan_id": protocol["plan_id"],
+        "phase": "workload",
+        "exit_code": 0,
+        "reason": None,
+        "output_exhausted": False,
+        "output_base64": base64.b64encode(output.encode("utf-8")).decode("ascii"),
+    }
+    (control / "result.json").write_text(
+        json.dumps(result, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     arguments = sys.argv[1:]
     LOG.write_text(
@@ -254,6 +477,12 @@ def main() -> None:
     if command[:2] == ["container", "inspect"]:
         if not state.get("exists"):
             raise SystemExit(1)
+        if command[2:4] == ["--format", "{{.State.Pid}}"]:
+            pid = state.get("pid")
+            if not isinstance(pid, int) or pid <= 0:
+                fail("container peer PID is unavailable")
+            print(pid)
+            return
         print(json.dumps(state["inspection"], sort_keys=True))
         return
     if command[:2] == ["container", "start"]:
@@ -270,10 +499,17 @@ def main() -> None:
             sys.stdout.write("x" * (2 * 1024 * 1024))
             sys.stdout.flush()
             return
+        if state.get("kind") == "workload":
+            state["pid"] = os.getpid()
+            save_state(state)
+            run_workload(state, mode)
+            return
         print(json.dumps(conformance_report(state), sort_keys=True))
         return
     if command[:2] == ["container", "rm"]:
         mode = MODE.read_text(encoding="utf-8").strip() if MODE.exists() else "pass"
+        if mode == "workload-cleanup-total-fail" and state.get("kind") == "workload":
+            raise SystemExit(9)
         if mode == "cleanup-primary-fail" and not state.get("cleanup_failed"):
             state["cleanup_failed"] = True
             save_state(state)

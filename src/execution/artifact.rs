@@ -10,9 +10,6 @@ use crate::execution::model::{ArtifactPayload, ExecutionPlan, ExecutionPlanBody}
 #[cfg(test)]
 use serde_json::json;
 
-#[cfg(unix)]
-use std::os::unix::fs::MetadataExt;
-
 #[cfg(test)]
 pub(crate) use identity::is_namespaced_artifact_version;
 pub(crate) use identity::{
@@ -28,28 +25,6 @@ pub(crate) trait ManagedArtifact: Serialize + DeserializeOwned {
 
     fn artifact_id(&self) -> &str;
     fn verify_identity(&self) -> Result<()>;
-}
-
-#[cfg(unix)]
-pub(super) fn has_file_metadata_changed(
-    before: &std::fs::Metadata,
-    after: &std::fs::Metadata,
-) -> bool {
-    before.dev() != after.dev()
-        || before.ino() != after.ino()
-        || before.len() != after.len()
-        || before.mtime() != after.mtime()
-        || before.mtime_nsec() != after.mtime_nsec()
-        || before.ctime() != after.ctime()
-        || before.ctime_nsec() != after.ctime_nsec()
-}
-
-#[cfg(not(unix))]
-pub(super) fn has_file_metadata_changed(
-    before: &std::fs::Metadata,
-    after: &std::fs::Metadata,
-) -> bool {
-    before.len() != after.len() || before.modified().ok() != after.modified().ok()
 }
 
 #[cfg(test)]

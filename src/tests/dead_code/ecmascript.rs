@@ -112,16 +112,6 @@ fn ecmascript_reachability_preserves_context_roles_and_file_gates() {
         &ProjectId("ecmascript".to_string()),
         "tests/httpFuzzServer.ts"
     )));
-    let http_contract_context = graph
-        .contexts
-        .values()
-        .find(|context| context.name == "codeatlas-http-contract")
-        .expect("CodeAtlas HTTP contract context");
-    assert_eq!(http_contract_context.role, ContextRole::Tooling);
-    assert!(http_contract_context.roots.contains(&NodeId::file(
-        &ProjectId("ecmascript".to_string()),
-        "scripts/openapi.ts"
-    )));
     let declaration_context = graph
         .contexts
         .values()

@@ -1,10 +1,9 @@
 use super::target::ResolvedHttpFuzzCommand;
 use super::{
     fingerprint_engine, fuzz_contract, validate_fuzz_workload, FuzzContract, HttpFuzzWorkload,
-    ResolvedHttpFuzzOperationSelection, ResolvedHttpFuzzTarget, ResolvedHttpOpenApiSource,
-    HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION,
+    ResolvedHttpFuzzOperationSelection, ResolvedHttpFuzzTarget, HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION,
 };
-use crate::config::ProjectConfig;
+use crate::config::{HttpFuzzEnvironmentClassConfig, ProjectConfig};
 use crate::execution::artifact::{digest_file, digest_value};
 use crate::execution::{
     classify_target, collect_workspace_evidence, resolve_isolation_policy, ArtifactLink,
@@ -33,10 +32,22 @@ struct SeedEvidence<'a> {
     engine: &'a str,
 }
 
+pub(crate) struct PreparedHttpFuzzPlan {
+    pub plan: ExecutionPlan,
+    pub adapter_input: super::HttpWorkloadInput,
+}
+
 pub(crate) fn rebuild_fuzz_execution_plan(
     project: &ProjectConfig,
     plan: &ExecutionPlan,
 ) -> Result<ExecutionPlan> {
+    Ok(prepare_rebuilt_fuzz_execution(project, plan)?.plan)
+}
+
+pub(crate) fn prepare_rebuilt_fuzz_execution(
+    project: &ProjectConfig,
+    plan: &ExecutionPlan,
+) -> Result<PreparedHttpFuzzPlan> {
     if plan.body.subject != ExecutionSubject::Http || plan.body.operation != "fuzz" {
         anyhow::bail!("Expected an HTTP fuzz execution plan");
     }
@@ -44,7 +55,7 @@ pub(crate) fn rebuild_fuzz_execution_plan(
         .body
         .workload
         .decode::<HttpFuzzWorkload>(HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION)?;
-    build_fuzz_execution_plan(
+    prepare_fuzz_execution_plan(
         project,
         workload,
         plan.body.limits.clone(),
@@ -54,10 +65,19 @@ pub(crate) fn rebuild_fuzz_execution_plan(
 
 pub(crate) fn build_fuzz_execution_plan(
     project: &ProjectConfig,
+    workload: HttpFuzzWorkload,
+    execution_limits: ExecutionLimits,
+    links: Vec<ArtifactLink>,
+) -> Result<ExecutionPlan> {
+    Ok(prepare_fuzz_execution_plan(project, workload, execution_limits, links)?.plan)
+}
+
+pub(crate) fn prepare_fuzz_execution_plan(
+    project: &ProjectConfig,
     mut workload: HttpFuzzWorkload,
     execution_limits: ExecutionLimits,
     mut links: Vec<ArtifactLink>,
-) -> Result<ExecutionPlan> {
+) -> Result<PreparedHttpFuzzPlan> {
     validate_fuzz_workload(&workload)?;
     validate_fuzz_execution_limits(&workload.limits, &execution_limits)?;
     let mut configured_exclusions = project.config.fuzz.exclude.http.clone();
@@ -119,6 +139,12 @@ pub(crate) fn build_fuzz_execution_plan(
         )?);
     }
     validate_fuzz_workload(&workload)?;
+    let adapter_input = super::HttpWorkloadInput::resolve(
+        &project.root,
+        target.clone(),
+        contract,
+        workload.clone(),
+    )?;
     let policy_digest = digest_value(
         "atlas.codeatlas.dev/execution-policy/v1",
         &json!({
@@ -195,7 +221,10 @@ pub(crate) fn build_fuzz_execution_plan(
         authorization,
         links,
     })?;
-    Ok(plan)
+    Ok(PreparedHttpFuzzPlan {
+        plan,
+        adapter_input,
+    })
 }
 
 fn derive_seed(workload: &HttpFuzzWorkload, evidence: &SeedEvidence<'_>) -> Result<String> {
@@ -256,10 +285,10 @@ fn digest_target(target: &ResolvedHttpFuzzTarget) -> Result<String> {
             "contract": target.contract,
             "workload_image": target.workload_image,
             "base_url": target.base_url.as_str(),
-            "openapi_url": target.openapi_url.as_str(),
             "environment": target.environment,
             "secret_environment": target.secret_environment,
             "headers": headers,
+            "environment_class": target.environment_class,
             "operation_selection": operation_selection,
             "expected_non_success": expected_non_success,
             "positive_coverage": {
@@ -277,19 +306,12 @@ fn digest_target(target: &ResolvedHttpFuzzTarget) -> Result<String> {
 
 fn digest_contract(contract: &FuzzContract) -> Result<String> {
     match contract {
-        FuzzContract::OpenApi { source, .. } => match source {
-            ResolvedHttpOpenApiSource::File(path) => digest_file(
-                "atlas.codeatlas.dev/http-contract/v1",
-                path,
-                MAX_HTTP_CONTRACT_EVIDENCE_BYTES,
-            )
-            .map(|(digest, _)| digest),
-            ResolvedHttpOpenApiSource::Command { .. }
-            | ResolvedHttpOpenApiSource::Url { .. }
-            | ResolvedHttpOpenApiSource::Target(_) => anyhow::bail!(
-                "Zero-call HTTP planning requires a file-backed OpenAPI contract; materialize provider evidence first"
-            ),
-        },
+        FuzzContract::OpenApi { source, .. } => digest_file(
+            "atlas.codeatlas.dev/http-contract/v1",
+            source,
+            MAX_HTTP_CONTRACT_EVIDENCE_BYTES,
+        )
+        .map(|(digest, _)| digest),
         FuzzContract::SourceTransport(source) => {
             digest_value("atlas.codeatlas.dev/http-source-contract/v1", source)
         }
@@ -316,17 +338,26 @@ fn classify_http_target(target: &ResolvedHttpFuzzTarget) -> crate::execution::Ta
     let is_local = target.base_url.host_str().is_some_and(|host| {
         host == "localhost" || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
     });
-    let is_disposable = target.server.is_some();
+    let environment = match target.environment_class {
+        HttpFuzzEnvironmentClassConfig::Disposable => TargetEnvironmentClass::Disposable,
+        HttpFuzzEnvironmentClassConfig::Staging => TargetEnvironmentClass::Staging,
+        HttpFuzzEnvironmentClassConfig::Production => TargetEnvironmentClass::Production,
+        HttpFuzzEnvironmentClassConfig::Unknown if target.server.is_some() => {
+            TargetEnvironmentClass::Disposable
+        }
+        HttpFuzzEnvironmentClassConfig::Unknown => TargetEnvironmentClass::Unknown,
+    };
+    let is_managed = target.server.is_some();
+    let is_disposable =
+        is_managed || target.environment_class == HttpFuzzEnvironmentClassConfig::Disposable;
     classify_target(&TargetEvidence {
         is_local,
         is_disposable,
-        environment: if is_disposable {
-            TargetEnvironmentClass::Disposable
-        } else {
-            TargetEnvironmentClass::Unknown
-        },
-        effects: if is_disposable {
+        environment,
+        effects: if is_managed {
             EffectCorroboration::Contained
+        } else if is_disposable {
+            EffectCorroboration::Uncontained
         } else {
             EffectCorroboration::Unknown
         },
@@ -349,7 +380,7 @@ fn network_destination(target: &ResolvedHttpFuzzTarget) -> Result<NetworkDestina
     })
 }
 
-fn managed_command_evidence(
+pub(super) fn managed_command_evidence(
     workspace_root: &Path,
     target: &ResolvedHttpFuzzTarget,
     engine: &ToolIdentity,

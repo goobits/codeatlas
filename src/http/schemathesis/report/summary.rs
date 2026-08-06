@@ -1,6 +1,6 @@
 use crate::http::model::{
-    HttpFuzzContractMode, HttpFuzzOperationSummary, HttpFuzzPositiveCoverage, HttpFuzzReport,
-    HttpFuzzStatefulSummary, HttpFuzzTotals, HTTP_FUZZ_API_VERSION, HTTP_FUZZ_SCHEMA_VERSION,
+    HttpFuzzContractMode, HttpFuzzOperationSummary, HttpFuzzPositiveCoverage, HttpFuzzReportBody,
+    HttpFuzzStatefulSummary, HttpFuzzTotals,
 };
 use anyhow::{Context, Result};
 use serde_json::Value;
@@ -61,7 +61,7 @@ pub(super) fn summarize_reader(
     contract_id: &str,
     contract_mode: HttpFuzzContractMode,
     profile: &str,
-) -> Result<HttpFuzzReport> {
+) -> Result<HttpFuzzReportBody> {
     summarize_reader_with_expected_non_success(
         reader,
         target_id,
@@ -79,7 +79,7 @@ pub(super) fn summarize_reader_with_expected_non_success(
     contract_mode: HttpFuzzContractMode,
     profile: &str,
     expected_non_success_operations: &BTreeSet<String>,
-) -> Result<HttpFuzzReport> {
+) -> Result<HttpFuzzReportBody> {
     let mut seed = None;
     let mut operations = BTreeMap::<String, OperationStats>::new();
     let mut stateful = None::<StatefulStats>;
@@ -229,9 +229,7 @@ pub(super) fn summarize_reader_with_expected_non_success(
         stats.summary.links_covered = stats.covered_links.len() as u64;
         stats.summary
     });
-    Ok(HttpFuzzReport {
-        schema_version: HTTP_FUZZ_SCHEMA_VERSION,
-        api_version: HTTP_FUZZ_API_VERSION.to_string(),
+    Ok(HttpFuzzReportBody {
         tool_version: env!("CARGO_PKG_VERSION").to_string(),
         target_id: target_id.to_string(),
         contract_id: contract_id.to_string(),

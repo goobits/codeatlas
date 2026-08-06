@@ -3,9 +3,9 @@ use crate::cli::execution::FuzzLimitArgs;
 use crate::cli::fuzz::HttpFuzzProfile;
 use crate::config::{ExecutionLimitsConfig, FuzzLimitsConfig, ProjectConfig};
 use crate::execution::{
-    prepare_isolation_checked_execution, resolve_execution_limits, verify_current_evidence,
-    ArtifactLink, ArtifactRef, ArtifactStore, AuthorizationMode, ExecutionLimits, ExecutionPlan,
-    ExecutionSubject, TargetDisposition,
+    execute_isolation_checked_workload, resolve_execution_limits, verify_current_evidence,
+    ArtifactLink, ArtifactRef, ArtifactStore, AuthorizationMode, ExecutionLimits, ExecutionOutcome,
+    ExecutionPlan, ExecutionSubject, TargetDisposition,
 };
 use crate::fuzz::reproducer::Reproducer;
 use crate::fuzz::{resolve_fuzz_limits, FuzzLimits};
@@ -99,7 +99,9 @@ fn plan_target(project: &ProjectConfig, options: &HttpOptions<'_>) -> Result<i32
         engine_executable: http::resolve_engine_executable(options.schemathesis)?,
         limits: fuzz_limits,
     };
-    let plan = http::build_fuzz_execution_plan(project, workload, execution_limits, Vec::new())?;
+    let prepared =
+        http::prepare_fuzz_execution_plan(project, workload, execution_limits, Vec::new())?;
+    let plan = prepared.plan;
     let store = ArtifactStore::new(&project.root, plan.body.limits.max_artifact_bytes)?;
     store.persist(&plan)?;
 
@@ -115,15 +117,17 @@ fn plan_target(project: &ProjectConfig, options: &HttpOptions<'_>) -> Result<i32
             plan.id
         );
     }
-    let receipt = prepare_isolation_checked_execution(
+    let adapter = prepared.adapter_input.into_adapter();
+    let receipt = execute_isolation_checked_workload(
         &store,
         &project.root,
         &project.config.execution.isolation,
         &plan,
         AuthorizationMode::PreauthorizedIsolated,
+        &adapter,
     )?;
     output::write_or_print(&receipt, None, "Execution receipt")?;
-    Ok(2)
+    Ok(receipt_exit_code(receipt.body.outcome))
 }
 
 fn execute_reviewed_plan(project: &ProjectConfig, reference: &str) -> Result<i32> {
@@ -132,7 +136,8 @@ fn execute_reviewed_plan(project: &ProjectConfig, reference: &str) -> Result<i32
         project.config.execution.limits.max_artifact_bytes,
     )?;
     let plan: ExecutionPlan = store.load(&ArtifactRef::parse(reference)?)?;
-    let current = http::rebuild_fuzz_execution_plan(project, &plan)?;
+    let prepared = http::prepare_rebuilt_fuzz_execution(project, &plan)?;
+    let current = &prepared.plan;
     verify_current_evidence(&plan, &current.body.evidence)?;
     if current.id != plan.id {
         anyhow::bail!(
@@ -140,15 +145,25 @@ fn execute_reviewed_plan(project: &ProjectConfig, reference: &str) -> Result<i32
             plan.id
         );
     }
-    let receipt = prepare_isolation_checked_execution(
+    let adapter = prepared.adapter_input.into_adapter();
+    let receipt = execute_isolation_checked_workload(
         &store,
         &project.root,
         &project.config.execution.isolation,
         &plan,
         AuthorizationMode::Reviewed,
+        &adapter,
     )?;
     output::write_or_print(&receipt, None, "Execution receipt")?;
-    Ok(2)
+    Ok(receipt_exit_code(receipt.body.outcome))
+}
+
+fn receipt_exit_code(outcome: ExecutionOutcome) -> i32 {
+    match outcome {
+        ExecutionOutcome::Passed => 0,
+        ExecutionOutcome::Failed => 1,
+        ExecutionOutcome::Partial | ExecutionOutcome::Blocked | ExecutionOutcome::Cancelled => 2,
+    }
 }
 
 fn plan_replay(project: &ProjectConfig, reference: &str, options: &HttpOptions<'_>) -> Result<i32> {

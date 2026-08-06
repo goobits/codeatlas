@@ -5,7 +5,9 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
-const { buildProbe } = require('./build-isolation-probe.js')
+const { buildContainerImages } = require('./build-container-image.js')
+const { httpWorkloadSpecification } = require('./build-http-workload.js')
+const { probeSpecification } = require('./build-isolation-probe.js')
 const {
 	createRuntimeArguments,
 	digestPattern,
@@ -43,6 +45,7 @@ const parseArguments = arguments_ => {
 		'--runtime',
 		'--socket',
 		'--build-image',
+		'--http-base-image',
 		'--buildkit-image',
 		'--registry-image',
 		'--platform',
@@ -67,6 +70,10 @@ const parseArguments = arguments_ => {
 		runtime: values.get('--runtime'),
 		socket: values.get('--socket'),
 		buildImage: requireDigestImage(values.get('--build-image'), '--build-image'),
+		httpBaseImage: requireDigestImage(
+			values.get('--http-base-image'),
+			'--http-base-image'
+		),
 		buildkitImage: requireDigestImage(
 			values.get('--buildkit-image'),
 			'--buildkit-image'
@@ -90,7 +97,7 @@ const createRegistryArguments = (name, image) => [
 	'127.0.0.1::5000',
 	'--read-only',
 	'--tmpfs',
-	'/var/lib/registry:rw,noexec,nosuid,nodev,size=268435456',
+	'/var/lib/registry:rw,noexec,nosuid,nodev,size=536870912',
 	'--cap-drop',
 	'ALL',
 	'--security-opt',
@@ -113,14 +120,14 @@ const parseLoadedImage = output => {
 		.split(/\r?\n/)
 		.map(line => line.match(/^Loaded image ID: (sha256:[0-9a-f]{64})$/)?.[1])
 		.filter(Boolean)
-	if (matches.length !== 1) throw new Error('OCI import did not return one exact image ID')
+	if (matches.length !== 1) throw new Error('Container import did not return one exact image ID')
 	return matches[0]
 }
 
 const verifyLoadedImage = (output, expectedImageId) => {
 	const imageId = JSON.parse(output)
 	if (!digestPattern.test(imageId) || imageId !== expectedImageId) {
-		throw new Error('Imported probe image inspection differs from the loaded image ID')
+		throw new Error('Imported image inspection differs from the loaded image ID')
 	}
 	return imageId
 }
@@ -135,7 +142,7 @@ const parseRegistryAddress = output => {
 
 const selectPublishedReference = (output, repository) => {
 	const digests = JSON.parse(output)
-	if (!Array.isArray(digests)) throw new Error('Published probe image omitted repository digests')
+	if (!Array.isArray(digests)) throw new Error('Published image omitted repository digests')
 	const prefix = `${repository}@`
 	const candidates = digests.filter(value =>
 		typeof value === 'string' &&
@@ -143,7 +150,7 @@ const selectPublishedReference = (output, repository) => {
 		digestPattern.test(value.slice(prefix.length))
 	)
 	if (candidates.length !== 1) {
-		throw new Error('Published probe image did not expose one exact repository digest')
+		throw new Error('Published image did not expose one exact repository digest')
 	}
 	return candidates[0]
 }
@@ -179,6 +186,106 @@ const digestFile = filename => {
 		fs.closeSync(descriptor)
 	}
 	return `sha256:${digest.digest('hex')}`
+}
+
+const importAndPublishImage = ({
+	options,
+	clientRoot,
+	logRoot,
+	address,
+	build,
+	loadArchive,
+	repositoryName,
+	publications
+}) => {
+	const slug = build.slug
+	const publication = {
+		slug,
+		loadedImage: undefined,
+		localTag: undefined,
+		publishedReference: undefined,
+		loadArchiveDigest: digestFile(loadArchive),
+		loadArchiveBytes: build.load_archive_bytes,
+		loadArchiveCleanupVerified: false
+	}
+	publications.push(publication)
+	publication.loadedImage = parseLoadedImage(
+		runRuntime(
+			options.runtime,
+			createRuntimeArguments(clientRoot, options.socket, [
+				'image',
+				'load',
+				'--input',
+				loadArchive
+			]),
+			clientRoot,
+			logRoot,
+			`${slug}-image-load`
+		).stdout
+	)
+	verifyLoadedImage(
+		runRuntime(
+			options.runtime,
+			createRuntimeArguments(clientRoot, options.socket, [
+				'image',
+				'inspect',
+				'--format',
+				'{{json .Id}}',
+				publication.loadedImage
+			]),
+			clientRoot,
+			logRoot,
+			`${slug}-image-id-inspect`
+		).stdout,
+		publication.loadedImage
+	)
+	fs.rmSync(loadArchive)
+	if (fs.existsSync(loadArchive)) {
+		throw new Error(`${build.name} Docker import archive cleanup could not be verified`)
+	}
+	publication.loadArchiveCleanupVerified = true
+	const repository = `${address}/${repositoryName}`
+	publication.localTag = `${repository}:${build.source_commit.slice(0, 12)}`
+	runRuntime(
+		options.runtime,
+		createRuntimeArguments(clientRoot, options.socket, [
+			'image',
+			'tag',
+			publication.loadedImage,
+			publication.localTag
+		]),
+		clientRoot,
+		logRoot,
+		`${slug}-image-tag`
+	)
+	runRuntime(
+		options.runtime,
+		createRuntimeArguments(clientRoot, options.socket, [
+			'image',
+			'push',
+			publication.localTag
+		]),
+		clientRoot,
+		logRoot,
+		`${slug}-image-push`
+	)
+	publication.publishedReference = selectPublishedReference(
+		runRuntime(
+			options.runtime,
+			createRuntimeArguments(clientRoot, options.socket, [
+				'image',
+				'inspect',
+				'--format',
+				'{{json .RepoDigests}}',
+				publication.localTag
+			]),
+			clientRoot,
+			logRoot,
+			`${slug}-image-inspect`
+		).stdout,
+		repository
+	)
+	return publication
 }
 
 const runCommand = (command, arguments_, environment, logRoot, label) => {
@@ -288,14 +395,11 @@ const checkIsolationLive = async options => {
 	const registryName = `codeatlas-live-registry-${process.pid}`
 	const archive = path.join(outDir, 'isolation-probe.oci.tar')
 	const loadArchive = path.join(outDir, 'isolation-probe.docker.tar')
+	const httpArchive = path.join(outDir, 'http-workload.oci.tar')
+	const httpLoadArchive = path.join(outDir, 'http-workload.docker.tar')
 	const receipt = path.join(outDir, receiptFilename)
 	let registryCreated = false
-	let loadedImage
-	let localTag
-	let publishedReference
-	let loadArchiveDigest
-	let loadArchiveBytes
-	let loadArchiveCleanupVerified = false
+	const publications = []
 	let failure
 	let summary
 	try {
@@ -310,6 +414,7 @@ const checkIsolationLive = async options => {
 		}
 		for (const [label, image] of [
 			['build-image-pull', options.buildImage],
+			['http-base-image-pull', options.httpBaseImage],
 			['buildkit-image-pull', options.buildkitImage],
 			['registry-image-pull', options.registryImage]
 		]) {
@@ -321,18 +426,28 @@ const checkIsolationLive = async options => {
 				label
 			)
 		}
-		const build = buildProbe({
-			runtime: options.runtime,
-			socket: options.socket,
-			buildImage: options.buildImage,
-			buildkitImage: options.buildkitImage,
-			platform: options.platform,
-			network: options.network,
-			out: archive,
-			loadOut: loadArchive
-		})
-		loadArchiveDigest = digestFile(loadArchive)
-		loadArchiveBytes = build.load_archive_bytes
+		const [build, httpBuild] = buildContainerImages(
+			{
+				runtime: options.runtime,
+				socket: options.socket,
+				buildkitImage: options.buildkitImage,
+				platform: options.platform,
+				network: options.network,
+				logRoot: path.join(outDir, 'image-build.logs')
+			},
+			[
+				probeSpecification({
+					buildImage: options.buildImage,
+					out: archive,
+					loadOut: loadArchive
+				}),
+				httpWorkloadSpecification({
+					pythonImage: options.httpBaseImage,
+					out: httpArchive,
+					loadOut: httpLoadArchive
+				})
+			]
+		)
 		const registry = runRuntime(
 			options.runtime,
 			createRuntimeArguments(
@@ -363,83 +478,32 @@ const checkIsolationLive = async options => {
 			).stdout
 		)
 		await waitForRegistry(address)
-		loadedImage = parseLoadedImage(
-			runRuntime(
-				options.runtime,
-				createRuntimeArguments(clientRoot, options.socket, [
-					'image',
-					'load',
-					'--input',
-					loadArchive
-				]),
-				clientRoot,
-				logRoot,
-				'probe-image-load'
-			).stdout
-		)
-		verifyLoadedImage(
-			runRuntime(
-				options.runtime,
-				createRuntimeArguments(clientRoot, options.socket, [
-					'image',
-					'inspect',
-					'--format',
-					'{{json .Id}}',
-					loadedImage
-				]),
-				clientRoot,
-				logRoot,
-				'probe-image-id-inspect'
-			).stdout,
-			loadedImage
-		)
-		fs.rmSync(loadArchive)
-		if (fs.existsSync(loadArchive)) {
-			throw new Error('Docker import archive cleanup could not be verified')
-		}
-		loadArchiveCleanupVerified = true
-		const repository = `${address}/codeatlas-isolation-probe`
-		localTag = `${repository}:${build.source_commit.slice(0, 12)}`
-		runRuntime(
-			options.runtime,
-			createRuntimeArguments(clientRoot, options.socket, [
-				'image',
-				'tag',
-				loadedImage,
-				localTag
-			]),
+		const probePublication = importAndPublishImage({
+			options,
 			clientRoot,
 			logRoot,
-			'probe-image-tag'
-		)
-		runRuntime(
-			options.runtime,
-			createRuntimeArguments(clientRoot, options.socket, ['image', 'push', localTag]),
+			address,
+			build,
+			loadArchive,
+			repositoryName: 'codeatlas-isolation-probe',
+			publications
+		})
+		const httpPublication = importAndPublishImage({
+			options,
 			clientRoot,
 			logRoot,
-			'probe-image-push'
-		)
-		publishedReference = selectPublishedReference(
-			runRuntime(
-				options.runtime,
-				createRuntimeArguments(clientRoot, options.socket, [
-					'image',
-					'inspect',
-					'--format',
-					'{{json .RepoDigests}}',
-					localTag
-				]),
-				clientRoot,
-				logRoot,
-				'probe-image-inspect'
-			).stdout,
-			repository
-		)
+			address,
+			build: httpBuild,
+			loadArchive: httpLoadArchive,
+			repositoryName: 'codeatlas-http-workload',
+			publications
+		})
 		const testEnvironment = {
 			...process.env,
 			CODEATLAS_TEST_OCI_RUNTIME: options.runtime,
 			CODEATLAS_TEST_OCI_SOCKET: options.socket,
-			CODEATLAS_TEST_OCI_PROBE_IMAGE: publishedReference,
+			CODEATLAS_TEST_OCI_PROBE_IMAGE: probePublication.publishedReference,
+			CODEATLAS_TEST_OCI_HTTP_IMAGE: httpPublication.publishedReference,
 			CODEATLAS_TEST_OCI_RECEIPT_OUT: receipt,
 			TMPDIR: temporaryRoot
 		}
@@ -452,7 +516,7 @@ const checkIsolationLive = async options => {
 				'1',
 				'--test',
 				'execution_isolation',
-				'live_oci_backend_passes_target_observed_conformance',
+				'live_oci_backend_executes_the_managed_http_workload',
 				'--',
 				'--ignored',
 				'--exact',
@@ -488,6 +552,9 @@ const checkIsolationLive = async options => {
 		if (
 			typeof receiptValue.id !== 'string' ||
 			!/^receipt_[0-9a-f]{64}$/.test(receiptValue.id) ||
+			receiptValue.outcome !== 'passed' ||
+			!Array.isArray(receiptValue.links) ||
+			!receiptValue.links.some(link => link.kind === 'report') ||
 			!Array.isArray(receiptValue.runtime?.capabilities) ||
 			typeof receiptValue.runtime.rootless !== 'boolean' ||
 			typeof receiptValue.runtime.nested !== 'boolean' ||
@@ -511,19 +578,35 @@ const checkIsolationLive = async options => {
 			kernel_release: os.release(),
 			cgroup_digest: `sha256:${crypto.createHash('sha256').update(cgroup).digest('hex')}`,
 			...runtimeEvidence,
-			probe_image: publishedReference,
+			probe_image: probePublication.publishedReference,
 			probe_build_manifest_digest: build.image_digest,
-			probe_published_manifest_digest: publishedReference.split('@')[1],
+			probe_published_manifest_digest: probePublication.publishedReference.split('@')[1],
 			probe_manifest_preserved:
-				publishedReference.split('@')[1] === build.image_digest,
-			probe_loaded_image_id: loadedImage,
+				probePublication.publishedReference.split('@')[1] === build.image_digest,
+			probe_loaded_image_id: probePublication.loadedImage,
 			probe_archive_bytes: build.archive_bytes,
-			probe_import_archive_bytes: loadArchiveBytes,
-			probe_import_archive_digest: loadArchiveDigest,
-			probe_import_archive_cleanup_verified: loadArchiveCleanupVerified,
+			probe_import_archive_bytes: probePublication.loadArchiveBytes,
+			probe_import_archive_digest: probePublication.loadArchiveDigest,
+			probe_import_archive_cleanup_verified:
+				probePublication.loadArchiveCleanupVerified,
 			probe_metadata_bytes: build.metadata_bytes,
 			probe_archive_digest: digestFile(archive),
 			probe_metadata_digest: digestFile(build.metadata),
+			http_workload_image: httpPublication.publishedReference,
+			http_workload_build_manifest_digest: httpBuild.image_digest,
+			http_workload_published_manifest_digest:
+				httpPublication.publishedReference.split('@')[1],
+			http_workload_manifest_preserved:
+				httpPublication.publishedReference.split('@')[1] === httpBuild.image_digest,
+			http_workload_loaded_image_id: httpPublication.loadedImage,
+			http_workload_archive_bytes: httpBuild.archive_bytes,
+			http_workload_import_archive_bytes: httpPublication.loadArchiveBytes,
+			http_workload_import_archive_digest: httpPublication.loadArchiveDigest,
+			http_workload_import_archive_cleanup_verified:
+				httpPublication.loadArchiveCleanupVerified,
+			http_workload_metadata_bytes: httpBuild.metadata_bytes,
+			http_workload_archive_digest: digestFile(httpArchive),
+			http_workload_metadata_digest: digestFile(httpBuild.metadata),
 			receipt_id: receiptValue.id,
 			receipt_digest: digestFile(receipt),
 			capabilities: receiptValue.runtime.capabilities,
@@ -556,21 +639,23 @@ const checkIsolationLive = async options => {
 			if (error) cleanupErrors.push(error)
 		}
 	}
-	for (const [label, image] of [
-		['probe-digest-remove', publishedReference],
-		['probe-tag-remove', localTag],
-		['probe-image-remove', loadedImage]
-	]) {
-		if (!image) continue
-		const error = removeRuntimeObject(
-			options,
-			clientRoot,
-			logRoot,
-			label,
-			['image', 'rm', image],
-			/No such image/
-		)
-		if (error) cleanupErrors.push(error)
+	for (const publication of publications.toReversed()) {
+		for (const [kind, image] of [
+			['digest', publication.publishedReference],
+			['tag', publication.localTag],
+			['image', publication.loadedImage]
+		]) {
+			if (!image) continue
+			const error = removeRuntimeObject(
+				options,
+				clientRoot,
+				logRoot,
+				`${publication.slug}-${kind}-remove`,
+				['image', 'rm', image],
+				/No such image/
+			)
+			if (error) cleanupErrors.push(error)
+		}
 	}
 	for (const [owner, label] of [
 		[ownerLabel, 'execution-containers-after'],

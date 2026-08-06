@@ -37,8 +37,9 @@ The kernel owns:
   leases.
 
 HTTP continues to own OpenAPI interpretation, Schemathesis integration,
-request/response oracles, stateful links, managed server lifecycle, and HTTP
-report evidence.
+request/response oracles, stateful links, the managed-server workload
+description, and HTTP report evidence. The shared kernel owns the actual
+managed process lifecycle.
 
 This proposal does not add callable fuzzing, PostgreSQL parameter fuzzing,
 performance curves, or cost-guided search. Those are independently reviewable
@@ -59,8 +60,9 @@ Reuse these current owners:
 
 - `src/http/schemathesis/*` for generation, stateful execution, reduction, and
   normalized Schemathesis evidence.
-- `src/http/target.rs` and `src/http/runtime.rs` for configured target and
-  managed process lifecycle.
+- `src/http/target.rs` for configured target evidence. The host-direct
+  `src/http/runtime.rs` lifecycle is deletion input for Phase 5, not a retained
+  owner.
 - `src/http/private_fs.rs` as the source behavior to rehome into the shared
   artifact owner, then delete.
 - `src/environment.rs` and `src/source_index/environment.rs` for external state
@@ -1456,21 +1458,32 @@ prospective v1 schema. Rewriting the v1 bytes or retaining a fallback reader
 would violate the artifact identity contract and create pre-release legacy
 cruft.
 
+Phase 5 also hard-cuts HTTP contract discovery to bounded file-backed OpenAPI
+evidence. The retired command, URL, target, and object-wrapped file providers
+could start host processes or make target calls from `scan http` without an
+execution plan. They cannot coexist honestly with zero-call planning and the
+one-kernel rule. Consumers materialize generated or remote OpenAPI evidence to
+a file before CodeAtlas reads it; `openapi` is therefore one path value, and
+static evidence commands never execute a configured provider. The obsolete
+target `openapi_path` setting is removed because the workload mounts the exact
+file whose digest was planned. This is a pre-v1 hard cut with a README upgrade
+note, not a compatibility reader or a second plan ceremony for static scans.
+
 Execution checklist:
 
 - [x] Add strict workload-image and preauthorization configuration, shared
   managed-image plan evidence, schema drift coverage, and zero-call planning
   tests; retire host-path Schemathesis semantics and `report_dir`.
-- [ ] Add one network-none workload launch contract plus strict private
+- [x] Add one network-none workload launch contract plus strict private
   in-container harness protocol; reuse the verified container client,
   scheduler, resource limits, redactor, and lease registry.
-- [ ] Extend the enforcing proxy with one Unix-listener transport and add the
+- [x] Extend the enforcing proxy with one Unix-listener transport and add the
   managed-server reverse bridge without duplicating request policy or call
   accounting.
-- [ ] Split Schemathesis into deterministic scratch preparation and result
+- [x] Split Schemathesis into deterministic scratch preparation and result
   collection, run its engine and managed commands only through the workload
   container, and delete the direct host runtime/toolchain path.
-- [ ] Persist one typed execution report, link it to the exact plan and
+- [x] Persist one typed execution report, link it to the exact plan and
   receipt, and prove bounded secret-free output plus non-passing incomplete
   cleanup and budget outcomes.
 - [ ] Connect reviewed and eligible single-shot CLI paths to the same runner;
@@ -1505,6 +1518,59 @@ Contract checkpoint, 2026-08-06:
 - Next exact action: add the one kernel-owned network-none workload launch and
   strict private harness protocol by extending the verified container client,
   scheduler, redactor, and lease owners—without adding an HTTP-private runner.
+
+Locally verified migration checkpoint, 2026-08-06:
+
+- One strict `codeatlas.container-workload/v1` protocol now carries the exact
+  preparation, delegated adapter, managed service, and fuzz-engine commands
+  through the verified network-none OCI owner. The harness validates one
+  environment and command owner set, waits within the planned deadline until
+  the managed service accepts a loopback TCP connection, and only then starts
+  the workload. Delegated adapter commands remain plan-accounted while the
+  exact Schemathesis hook launches them; no second path mapper or command
+  evidence owner remains.
+- The existing enforcing proxy now accepts one private Unix-socket client
+  transport and one kernel-owned managed-server reverse bridge. TLS
+  termination, exact destination policy, permits, rate/concurrency limits,
+  response ceilings, redaction, cancellation, and call evidence remain in the
+  pre-existing owners. The container receives neither network access nor the
+  runtime control socket.
+- Schemathesis is split into a deterministic scratch adapter and typed report
+  collector. The host-direct runtime, provider, environment, JUnit, and
+  tool-provisioning execution paths are deleted. Static HTTP discovery accepts
+  only bounded file-backed OpenAPI evidence, and the new
+  `codeatlas.http-fuzz-report/v1` artifact is persisted through the shared
+  store and linked to the exact plan and receipt.
+- The deterministic fake-runtime boundary proves the same executor for
+  reviewed and preauthorized-isolated runs, exact command ownership including
+  the request adapter, target-observed calls, finite budgets, report linkage,
+  cancellation, and verified cleanup. Twelve non-live execution-isolation
+  cases pass; the one real OCI case remains ignored locally because this host
+  has no runtime socket.
+- One generic container-image build owner now performs a single clean-HEAD,
+  digest-pinned BuildKit transaction for the probe and standard HTTP workload
+  images. Thin domain recipes contribute only their contexts, pinned base
+  images, arguments, and byte ceilings. The existing manual hosted workflow
+  builds, imports, publishes, exercises, records, and cleans both images; it
+  does not create a second paid workflow or builder.
+- The full local repository gate passed in 184 seconds: 30 Node tests; 426
+  root unit tests with three intentional live/interop ignores; every non-live
+  integration; four probe tests; both warning-denying Clippy surfaces; schema
+  and architecture drift; formatting; self-audit; and a 416-file package.
+  Self-dogfood covers 331 files, 3,513 scan symbols, 2,967 callables, 4,199
+  lexicon symbols, three sibling comparison sets with zero review candidates,
+  16 test contexts, seven scripts, zero gates, and zero duplicate scripts.
+- Repository searches find no HTTP direct process launch, private executor,
+  retired report schema, public `max_examples`, compatibility provider, or
+  duplicate image-builder implementation. Task-generated package-manager
+  residue was moved back under the external task root. A pre-existing ignored
+  4.9 GB `target/` directory has uncertain ownership and is deliberately
+  preserved rather than deleted.
+- Next exact action: commit this locally green candidate, push that exact clean
+  revision, confirm there is no equivalent active or completed workflow run,
+  and dispatch the existing live OCI gate once. Phase 5 cannot close until its
+  target-observed managed HTTP standard/stateful evidence and cleanup artifact
+  pass on that capable runner.
 
 LOC: +700-1,100 / -250-450
 

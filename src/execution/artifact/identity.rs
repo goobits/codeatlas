@@ -1,10 +1,11 @@
-use super::{has_file_metadata_changed, ManagedArtifact};
+use super::ManagedArtifact;
 use crate::execution::model::{
     ArtifactLink, ArtifactPayload, CallCount, ExecutionLimits, ExecutionOutcome, ExecutionPlan,
     ExecutionPlanBody, ExecutionReceipt, ExecutionReceiptBody, PlanArtifactKind,
     ReceiptArtifactKind, ToolIdentity, EXECUTION_PLAN_SCHEMA_VERSION,
     EXECUTION_RECEIPT_SCHEMA_VERSION,
 };
+use crate::execution::private_fs::has_file_metadata_changed;
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;

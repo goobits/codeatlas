@@ -1,6 +1,5 @@
 use super::model::{HttpConfidence, HttpSourceCompleteness};
 use super::repository::RepositoryHttpMember;
-use super::target::ResolvedHttpOpenApiSource;
 use crate::config::RepositoryScope;
 use crate::lexicon::{
     RepositoryLexiconSubject, RepositoryTermCompleteness, RepositoryTermConfidence,
@@ -286,10 +285,6 @@ fn resolve_openapi_path(
         .contracts
         .iter()
         .find(|contract| contract.id == contract_id)
-        .and_then(|contract| match &contract.openapi {
-            Some(ResolvedHttpOpenApiSource::File(path)) => Some(
-                crate::paths::normalize_relative_path(path, &scope.workspace_root),
-            ),
-            _ => None,
-        })
+        .and_then(|contract| contract.openapi.as_ref())
+        .map(|path| crate::paths::normalize_relative_path(path, &scope.workspace_root))
 }

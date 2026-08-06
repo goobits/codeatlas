@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1.7
+
+ARG PYTHON_IMAGE
+FROM ${PYTHON_IMAGE} AS runtime
+
+ARG SOURCE_DATE_EPOCH
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+WORKDIR /opt/codeatlas-http-fuzz
+
+COPY src/http/schemathesis/requirements.txt ./requirements.txt
+
+RUN test -n "${SOURCE_DATE_EPOCH}" \
+    && /usr/local/bin/python3 --version 2>&1 | grep -Eq '^Python 3\.10\.' \
+    && /usr/local/bin/python3 -m pip install \
+        --disable-pip-version-check \
+        --no-cache-dir \
+        --no-compile \
+        --require-hashes \
+        --requirement requirements.txt \
+    && /usr/local/bin/python3 -m compileall \
+        --quiet \
+        --force \
+        --invalidation-mode checked-hash \
+        /usr/local/lib/python3.10/site-packages \
+    && /usr/local/bin/schemathesis --version | grep -Eq '(^| )4\.24\.3($| )' \
+    && test -x /usr/bin/env \
+    && test -x /bin/sh \
+    && rm -rf /root/.cache /tmp/* /opt/codeatlas-http-fuzz
+
+FROM scratch
+COPY --from=runtime / /

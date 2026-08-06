@@ -37,7 +37,12 @@ test('hosted isolation is manual, finite, least-authority, and immutable', () =>
 	]) {
 		assert.ok(workflow.includes(pin), `missing immutable action pin ${pin}`)
 	}
-	for (const imageVariable of ['BUILD_IMAGE', 'BUILDKIT_IMAGE', 'REGISTRY_IMAGE']) {
+	for (const imageVariable of [
+		'BUILD_IMAGE',
+		'HTTP_BASE_IMAGE',
+		'BUILDKIT_IMAGE',
+		'REGISTRY_IMAGE'
+	]) {
 		assert.match(
 			workflow,
 			new RegExp(`^      ${imageVariable}: [a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}$`, 'm')
@@ -81,6 +86,7 @@ test('live isolation accepts one exact bounded runner contract', () => {
 		'--runtime', '/usr/bin/docker',
 		'--socket', '/var/run/docker.sock',
 		'--build-image', `docker.io/library/rust@sha256:${digest}`,
+		'--http-base-image', `docker.io/library/python@sha256:${digest}`,
 		'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
 		'--registry-image', `docker.io/library/registry@sha256:${registryDigest}`,
 		'--platform', 'linux/amd64',
@@ -94,6 +100,7 @@ test('live isolation accepts one exact bounded runner contract', () => {
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/var/run/docker.sock',
 			'--build-image', 'rust:latest',
+			'--http-base-image', `python@sha256:${digest}`,
 			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
 			'--registry-image', `registry@sha256:${registryDigest}`,
 			'--platform', 'linux/amd64',
@@ -107,6 +114,7 @@ test('live isolation accepts one exact bounded runner contract', () => {
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/var/run/docker.sock',
 			'--build-image', `rust@sha256:${digest}`,
+			'--http-base-image', `python@sha256:${digest}`,
 			'--registry-image', `registry@sha256:${registryDigest}`,
 			'--platform', 'linux/amd64',
 			'--network', 'allow',
@@ -156,15 +164,20 @@ test('image import and publication preserve their distinct exact digests', () =>
 	)
 })
 
-test('live orchestration keeps the OCI artifact and uses one Docker import projection', () => {
+test('live orchestration builds both images through one owner and one import each', () => {
 	const source = fs.readFileSync(
 		path.resolve(__dirname, '..', 'tasks', 'check-isolation-live.js'),
 		'utf8'
 	)
 	assert.match(source, /isolation-probe\.oci\.tar/)
 	assert.match(source, /isolation-probe\.docker\.tar/)
-	assert.match(source, /loadOut: loadArchive/)
+	assert.match(source, /http-workload\.oci\.tar/)
+	assert.match(source, /http-workload\.docker\.tar/)
+	assert.equal(source.match(/buildContainerImages\(/g)?.length, 1)
+	assert.match(source, /probeSpecification\(/)
+	assert.match(source, /httpWorkloadSpecification\(/)
 	assert.match(source, /probe_import_archive_cleanup_verified/)
+	assert.match(source, /http_workload_import_archive_cleanup_verified/)
 	assert.doesNotMatch(source, /'image',\s*'load',[\s\S]{0,100}\barchive\b/)
 })
 

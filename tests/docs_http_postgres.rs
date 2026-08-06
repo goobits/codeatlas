@@ -33,8 +33,7 @@ fn write(root: &Path, relative: &str, content: &str) {
 #[test]
 fn http_docs_are_sourced_deterministic_zero_call_and_exactly_checkable() {
     let fixture = TestDirectory::create("codeatlas-http-docs");
-    let sentinel = fixture.path().join("provider-ran");
-    fs::create_dir_all(fixture.path().join("provider-src")).expect("provider source root");
+    fs::create_dir_all(fixture.path().join("source-only")).expect("source-only root");
     let config = json!({
         "languages": ["ts"],
         "package_exports": false,
@@ -45,13 +44,8 @@ fn http_docs_are_sourced_deterministic_zero_call_and_exactly_checkable() {
                 "source_roots": ["src"],
                 "source_complete": false
             }, {
-                "id": "provider-api",
-                "openapi": {
-                    "kind": "command",
-                    "command": "sh",
-                    "args": ["-c", format!("printf invoked > {}", sentinel.display())]
-                },
-                "source_roots": ["provider-src"],
+                "id": "source-only-api",
+                "source_roots": ["source-only"],
                 "source_complete": false
             }]
         }
@@ -113,8 +107,6 @@ app.get("/source-only", sourceOnlyHandler);
     let second = run(&args);
     assert_success(&second, "repeated HTTP Markdown docs");
     assert_eq!(first.stdout, second.stdout, "HTTP docs must be byte-stable");
-    assert!(!sentinel.exists(), "docs http must not invoke providers");
-
     let markdown = String::from_utf8(first.stdout).expect("HTTP Markdown UTF-8");
     for sourced in [
         "Sourced contract description.",
@@ -131,7 +123,7 @@ app.get("/source-only", sourceOnlyHandler);
     }
     assert!(markdown.contains("GET /source-only"));
     assert!(markdown.contains("statically detected source route has no sourced description"));
-    assert!(markdown.contains("configured non-file OpenAPI provider was not invoked"));
+    assert!(markdown.contains("No local OpenAPI contract supplies a description"));
 
     let html = run(&["--root", root, "docs", "http", "--format", "html"]);
     assert_success(&html, "HTTP HTML docs");

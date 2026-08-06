@@ -40,21 +40,15 @@ fn operation<'a>(report: &'a Value, key: &str) -> &'a Value {
 }
 
 #[test]
-fn http_usage_reports_known_declared_and_unknown_consumers_without_running_provider() {
+fn http_usage_reports_known_declared_and_unknown_consumers() {
     let fixture = TestDirectory::create("codeatlas-http-usage");
-    let sentinel = fixture.path().join("provider-ran");
     let config = json!({
         "languages": ["ts"],
         "package_exports": false,
         "http": {
             "contracts": [{
                 "id": "public-api",
-                "openapi": {
-                    "kind": "command",
-                    "command": "sh",
-                    "args": ["-c", format!("printf invoked > {}", sentinel.display())]
-                },
-                "external_operations": ["GET /external", "GET /provider-only"],
+                "external_operations": ["GET /external", "GET /unobserved"],
                 "source_roots": ["src"],
                 "source_complete": false
             }]
@@ -100,11 +94,6 @@ app.get("/external", externalHandler);
         first.stdout, second.stdout,
         "HTTP usage must be byte-stable"
     );
-    assert!(
-        !sentinel.exists(),
-        "usage http must not run OpenAPI providers"
-    );
-
     let report: Value = serde_json::from_slice(&first.stdout).expect("HTTP usage JSON");
     assert_eq!(report["schemaVersion"], "codeatlas.http-usage/v1");
     assert_eq!(
@@ -129,16 +118,7 @@ app.get("/external", externalHandler);
         .expect("external declaration"));
     assert_eq!(
         report["members"][0]["contracts"][0]["unmatchedExternalOperations"],
-        json!(["GET /provider-only"])
-    );
-    assert!(
-        report["members"][0]["contracts"][0]["completeness"]["reasons"]
-            .as_array()
-            .expect("HTTP completeness")
-            .iter()
-            .any(|reason| reason
-                .as_str()
-                .is_some_and(|reason| reason.contains("was not invoked")))
+        json!(["GET /unobserved"])
     );
     assert_eq!(
         report["members"][0]["contracts"][0]["completeness"]["repositoryConsumers"],

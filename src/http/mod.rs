@@ -1,39 +1,17 @@
 mod conformance;
+mod contract_file;
 mod diff;
 mod docs;
-mod environment;
 mod graph;
 mod inspect;
-#[allow(
-    dead_code,
-    reason = "Phase 2 disconnects direct HTTP execution; Phase 5 migrates its report model into the kernel"
-)]
 mod model;
 mod openapi;
 mod planning;
-#[allow(
-    dead_code,
-    reason = "Phase 2 disconnects direct HTTP execution; Phase 5 moves this behavior to the artifact owner"
-)]
-mod provider;
 mod repository;
-mod runtime;
-#[allow(
-    dead_code,
-    reason = "Phase 2 disconnects direct HTTP execution; Phase 5 connects this adapter to the kernel"
-)]
 mod schemathesis;
 mod source;
-#[allow(
-    dead_code,
-    reason = "Phase 2 disconnects direct HTTP execution; Phase 5 migrates the remaining runtime target fields"
-)]
 mod target;
 mod terms;
-#[allow(
-    dead_code,
-    reason = "Phase 2 disconnects direct HTTP execution; Phase 5 reconnects source-transport execution"
-)]
 mod transport_schema;
 mod usage;
 
@@ -57,26 +35,21 @@ pub(crate) use model::{
 };
 #[cfg(test)]
 pub(crate) use model::{
-    HttpFuzzReport, HTTP_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION, HTTP_FUZZ_API_VERSION,
-    HTTP_FUZZ_SCHEMA_VERSION, HTTP_SCHEMA_VERSION,
+    HttpFuzzReport, HTTP_API_VERSION, HTTP_BASELINE_SCHEMA_VERSION,
+    HTTP_FUZZ_REPORT_SCHEMA_VERSION, HTTP_SCHEMA_VERSION,
 };
-pub(crate) use planning::{build_fuzz_execution_plan, rebuild_fuzz_execution_plan};
+pub(crate) use planning::{
+    build_fuzz_execution_plan, prepare_fuzz_execution_plan, prepare_rebuilt_fuzz_execution,
+    rebuild_fuzz_execution_plan,
+};
 pub(crate) use schemathesis::{
-    fingerprint_engine, resolve_engine_executable, Contract as FuzzContract,
+    fingerprint_engine, resolve_engine_executable, Contract as FuzzContract, HttpWorkloadInput,
 };
-pub(crate) use target::{
-    ResolvedHttpFuzzOperationSelection, ResolvedHttpFuzzTarget, ResolvedHttpOpenApiSource,
-};
+pub(crate) use target::{ResolvedHttpFuzzOperationSelection, ResolvedHttpFuzzTarget};
 pub(crate) use terms::collect_repository_terms as collect_repository_lexicon_terms;
 #[cfg(test)]
 pub(crate) use usage::HTTP_USAGE_SCHEMA_VERSION;
 pub(crate) use usage::{analyze as usage, HttpUsageClassification, HttpUsageReport};
-
-#[derive(Clone, Copy)]
-enum InventoryProviderAccess {
-    Configured,
-    LocalFilesOnly,
-}
 
 struct HttpContractEvidence {
     inventory: HttpContractInventory,
@@ -84,7 +57,13 @@ struct HttpContractEvidence {
 }
 
 pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInventoryReport> {
-    inventory_with_provider_access(contracts, InventoryProviderAccess::Configured)
+    let evidence = collect_contract_evidence(contracts)?;
+    Ok(HttpInventoryReport::new(
+        evidence
+            .into_iter()
+            .map(|contract| contract.inventory)
+            .collect(),
+    ))
 }
 
 pub(crate) fn proposed_config(
@@ -137,16 +116,11 @@ pub(crate) fn proposed_config(
 
     let (id, openapi) = if let Some(path) = openapi {
         let display = crate::paths::normalize_relative_path(&path, project.config_base());
-        provider::load(
-            &ResolvedHttpOpenApiSource::File(path.clone()),
+        contract_file::load(
+            &path,
             &crate::paths::normalize_relative_path(&path, &project.root),
         )?;
-        (
-            openapi_contract_id(&path),
-            Some(crate::config::HttpOpenApiSourceConfig::File(PathBuf::from(
-                display,
-            ))),
-        )
+        (openapi_contract_id(&path), Some(PathBuf::from(display)))
     } else {
         ("source".to_string(), None)
     };
@@ -187,28 +161,8 @@ fn openapi_contract_id(path: &std::path::Path) -> String {
     }
 }
 
-fn inventory_with_provider_access(
-    contracts: &[ResolvedHttpContract],
-    access: InventoryProviderAccess,
-) -> Result<HttpInventoryReport> {
-    let evidence = collect_contract_evidence(contracts, access)?;
-    Ok(HttpInventoryReport::new(
-        evidence
-            .into_iter()
-            .map(|contract| contract.inventory)
-            .collect(),
-    ))
-}
-
-fn collect_local_contract_evidence(
-    contracts: &[ResolvedHttpContract],
-) -> Result<Vec<HttpContractEvidence>> {
-    collect_contract_evidence(contracts, InventoryProviderAccess::LocalFilesOnly)
-}
-
 fn collect_contract_evidence(
     contracts: &[ResolvedHttpContract],
-    access: InventoryProviderAccess,
 ) -> Result<Vec<HttpContractEvidence>> {
     let mut inventories = Vec::with_capacity(contracts.len());
     for contract in contracts {
@@ -216,11 +170,7 @@ fn collect_contract_evidence(
             .openapi
             .as_ref()
             .zip(contract.openapi_display.as_deref())
-            .filter(|(source, _)| {
-                matches!(access, InventoryProviderAccess::Configured)
-                    || matches!(source, ResolvedHttpOpenApiSource::File(_))
-            })
-            .map(|(source, display)| provider::load(source, display))
+            .map(|(path, display)| contract_file::load(path, display))
             .transpose()?;
         let mut source = source::inventory(
             &contract.source_roots,

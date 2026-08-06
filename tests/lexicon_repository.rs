@@ -44,7 +44,6 @@ fn term<'a>(report: &'a Value, subject: &str, role: &str, value: &str) -> &'a Va
 #[test]
 fn repository_lexicon_relates_exact_provenance_without_inventing_equivalence_or_calls() {
     let fixture = TestDirectory::create("codeatlas-repository-lexicon");
-    let provider_sentinel = fixture.path().join("provider-ran");
     let config = json!({
         "languages": ["ts"],
         "package_exports": false,
@@ -62,13 +61,8 @@ fn repository_lexicon_relates_exact_provenance_without_inventing_equivalence_or_
                 "source_roots": ["src"],
                 "source_complete": true
             }, {
-                "id": "external-provider",
-                "openapi": {
-                    "kind": "command",
-                    "command": "sh",
-                    "args": ["-c", format!("printf invoked > {}", provider_sentinel.display())]
-                },
-                "source_roots": ["provider-src"],
+                "id": "incomplete-source",
+                "source_roots": ["incomplete-src"],
                 "source_complete": false
             }]
         },
@@ -104,7 +98,7 @@ fn repository_lexicon_relates_exact_provenance_without_inventing_equivalence_or_
         "src/model.ts",
         "/** Account user visible through the public API. */\nexport interface User { userName: string }\n",
     );
-    fs::create_dir_all(fixture.path().join("provider-src")).expect("provider source root");
+    fs::create_dir_all(fixture.path().join("incomplete-src")).expect("incomplete source root");
     write(
         fixture.path(),
         "openapi.json",
@@ -165,11 +159,6 @@ fn repository_lexicon_relates_exact_provenance_without_inventing_equivalence_or_
         first.stdout, defaults.stdout,
         "the concise default must select all supported repository subjects"
     );
-    assert!(
-        !provider_sentinel.exists(),
-        "repository lexicon must not invoke HTTP providers"
-    );
-
     let report: Value = serde_json::from_slice(&first.stdout).expect("repository lexicon JSON");
     assert_eq!(report["schemaVersion"], "codeatlas.repository-lexicon/v1");
     assert_eq!(
@@ -190,7 +179,7 @@ fn repository_lexicon_relates_exact_provenance_without_inventing_equivalence_or_
         .iter()
         .any(|reason| reason
             .as_str()
-            .is_some_and(|reason| reason.contains("external-provider"))));
+            .is_some_and(|reason| reason.contains("incomplete-source"))));
 
     let code = term(&report, "code", "code_symbol", "user");
     assert_eq!(code["observed"], "User");

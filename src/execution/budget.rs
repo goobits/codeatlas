@@ -448,6 +448,7 @@ pub(crate) struct CallPermit {
 }
 
 impl CallPermit {
+    #[cfg(test)]
     pub(crate) fn sequence(&self) -> u64 {
         self.sequence
     }

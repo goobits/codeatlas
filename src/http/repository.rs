@@ -29,7 +29,7 @@ pub(super) fn collect(scope: &RepositoryScope) -> Result<Vec<RepositoryHttpMembe
             continue;
         }
         let contracts = member.project().http_contracts(&[])?;
-        let evidence = super::collect_local_contract_evidence(&contracts)?;
+        let evidence = super::collect_contract_evidence(&contracts)?;
         let (inventory, documentation) = split_evidence(evidence);
         inventories.push(RepositoryHttpMember {
             member,

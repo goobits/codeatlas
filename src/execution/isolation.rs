@@ -3,7 +3,7 @@ use super::model::{ExecutionPlan, ResourceEvidence, RuntimeEvidence};
 use super::private_fs::{
     create_private_directory, prepare_private_disjoint_directory, remove_private_directory,
 };
-use super::sandbox::container::probe_container_runtime;
+use super::sandbox::container::{probe_container_runtime, ContainerBackend};
 use super::scheduler::ExecutionContext;
 use crate::config::{ExecutionIsolationBackend, ExecutionIsolationConfig};
 use anyhow::{Context, Result};
@@ -14,13 +14,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static SCRATCH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct IsolationAssessment {
+    pub backend: Option<ContainerBackend>,
     pub runtime: RuntimeEvidence,
     pub resources: ResourceEvidence,
     pub reasons: Vec<String>,
 }
 
 impl IsolationAssessment {
-    pub(crate) fn is_verified(&self, plan: &ExecutionPlan) -> bool {
+    pub(crate) fn is_backend_verified(&self, plan: &ExecutionPlan) -> bool {
         let proven = self
             .runtime
             .capabilities
@@ -30,12 +31,14 @@ impl IsolationAssessment {
         plan.body
             .required_capabilities
             .iter()
+            .filter(|capability| **capability != super::model::ExecutionCapability::TlsInterception)
             .all(|capability| proven.contains(capability))
             && self.reasons.is_empty()
     }
 
     pub(crate) fn blocked(reason: impl Into<String>) -> Self {
         Self {
+            backend: None,
             runtime: RuntimeEvidence::default(),
             resources: ResourceEvidence::default(),
             reasons: vec![reason.into()],
@@ -101,17 +104,12 @@ pub(crate) async fn assess_isolation(
         }
     };
     let mut reasons = probe.reasons;
-    if plan.body.isolation.network == "proxy_only" {
-        reasons.push(
-            "The OCI conformance probe proves deny-only networking; proxy-only routing remains disconnected until Phase 5"
-                .to_string(),
-        );
-    }
     let proven = probe.capabilities.iter().copied().collect::<BTreeSet<_>>();
     let missing = plan
         .body
         .required_capabilities
         .iter()
+        .filter(|capability| **capability != super::model::ExecutionCapability::TlsInterception)
         .filter(|capability| !proven.contains(capability))
         .map(|capability| capability.as_str())
         .collect::<Vec<_>>();
@@ -124,6 +122,7 @@ pub(crate) async fn assess_isolation(
     reasons.sort();
     reasons.dedup();
     Ok(IsolationAssessment {
+        backend: probe.backend,
         runtime: RuntimeEvidence {
             backend: probe.runtime,
             environment_digest: probe.environment_digest,
@@ -146,11 +145,12 @@ mod tests {
     fn declarations_never_satisfy_required_capabilities() {
         let plan = sample_plan();
         let assessment = IsolationAssessment {
+            backend: None,
             runtime: RuntimeEvidence::default(),
             resources: ResourceEvidence::default(),
             reasons: Vec::new(),
         };
-        assert!(!assessment.is_verified(&plan));
+        assert!(!assessment.is_backend_verified(&plan));
     }
 
     #[test]

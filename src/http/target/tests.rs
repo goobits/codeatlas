@@ -70,8 +70,7 @@ fn fuzz_target_uses_structural_urls_and_rejects_ambiguous_bases() {
                     "fuzz": { "targets": [{
                         "id": "public-local",
                         "contract": "public-api",
-                        "base_url": "http://127.0.0.1:3443/api/",
-                        "openapi_path": "/schema/openapi.json"
+                        "base_url": "http://127.0.0.1:3443/api/"
                     }] }
                 }
             }"#,
@@ -81,10 +80,6 @@ fn fuzz_target_uses_structural_urls_and_rejects_ambiguous_bases() {
         .http_fuzz_target(None)
         .expect("resolved fuzz target");
     assert_eq!(target.base_url.as_str(), "http://127.0.0.1:3443/api/");
-    assert_eq!(
-        target.openapi_url.as_str(),
-        "http://127.0.0.1:3443/api/schema/openapi.json"
-    );
 
     for base_url in [
         "http://user:secret@127.0.0.1:3443",
@@ -137,16 +132,6 @@ fn fuzz_target_rejects_unsafe_runtime_configuration() {
                 "base_url": "http://user:secret@127.0.0.1:3443"
             }),
             "must not contain credentials",
-        ),
-        (
-            "relative OpenAPI path",
-            json!({
-                "id": "public-local",
-                "contract": "public-api",
-                "base_url": "http://127.0.0.1:3443",
-                "openapi_path": "openapi.json"
-            }),
-            "absolute path-only",
         ),
         (
             "reserved hook environment",

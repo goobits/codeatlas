@@ -1,0 +1,5 @@
+**
+!src/
+!src/http/
+!src/http/schemathesis/
+!src/http/schemathesis/requirements.txt

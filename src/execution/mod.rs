@@ -1,8 +1,4 @@
 pub(crate) mod artifact;
-#[allow(
-    dead_code,
-    reason = "Phase 3 proves budget enforcement before Phase 4 isolation permits Phase 5 execution"
-)]
 mod budget;
 mod cancellation;
 mod isolation;
@@ -10,32 +6,21 @@ mod lease;
 mod model;
 mod policy;
 pub(crate) mod private_fs;
-#[allow(
-    dead_code,
-    reason = "Phase 3 proves proxy enforcement before Phase 4 isolation permits Phase 5 execution"
-)]
 mod proxy;
-#[allow(
-    dead_code,
-    reason = "Phase 2 pins shared redaction semantics before Phase 3 captures execution output"
-)]
 mod redaction;
 mod resource;
 mod runner;
 mod sandbox;
-#[allow(
-    dead_code,
-    reason = "Phase 3 proves bounded scheduling before Phase 4 isolation permits Phase 5 execution"
-)]
 mod scheduler;
 mod target;
+mod workload;
 
 pub(crate) use artifact::{ArtifactRef, ArtifactStore};
 pub(crate) use model::{
     ArtifactLink, ArtifactPayload, AuthorizationMode, EvidenceDigests, ExecutionCapability,
-    ExecutionEffect, ExecutionLimits, ExecutionPlan, ExecutionPlanBody, ExecutionSubject,
-    ManagedCommandEvidence, ManagedImageEvidence, NetworkDestination, PlannedTarget,
-    SecretReference, ToolIdentity, WritableScratchRoot,
+    ExecutionEffect, ExecutionLimits, ExecutionOutcome, ExecutionPlan, ExecutionPlanBody,
+    ExecutionSubject, ManagedCommandEvidence, ManagedImageEvidence, NetworkDestination,
+    PlannedTarget, SecretReference, ToolIdentity, WritableScratchRoot,
 };
 #[cfg(test)]
 pub(crate) use model::{
@@ -46,8 +31,17 @@ pub(crate) use policy::{
     ExecutionLimitOverrides,
 };
 pub(crate) use proxy::CALL_CATEGORY_HEADER;
-pub(crate) use runner::{prepare_isolation_checked_execution, verify_current_evidence};
+pub(crate) use redaction::Redactor;
+pub(crate) use runner::{execute_isolation_checked_workload, verify_current_evidence};
+pub(crate) use sandbox::container::{
+    ClientProxyBridge, ContainerWorkloadExecution, ContainerWorkloadProtocol, ManagedServerBridge,
+    WorkloadCommand, WorkloadRuntimeFile, CLIENT_PROXY_SOCKET, MANAGED_SERVER_SOCKET,
+    WORKLOAD_PROTOCOL_SCHEMA_VERSION,
+};
 pub(crate) use target::{
     classify_target, EffectCorroboration, TargetDecision, TargetDisposition,
     TargetEnvironmentClass, TargetEvidence,
+};
+pub(crate) use workload::{
+    ContainerWorkloadRequest, EnforcingProxyWorkload, WorkloadAdapter, WorkloadCompletion,
 };

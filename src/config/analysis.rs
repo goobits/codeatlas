@@ -1,4 +1,4 @@
-use super::http::{HttpFuzzCommandConfig, HttpOpenApiProviderConfig, HttpOpenApiSourceConfig};
+use super::http::HttpFuzzCommandConfig;
 use super::ProjectConfig;
 use anyhow::{Context, Result};
 use globset::GlobBuilder;
@@ -293,28 +293,6 @@ impl ProjectConfig {
             "codeatlas-http-fuzz",
             crate::domain::source_graph::ContextRole::Test,
             &fuzz_sources,
-        )?;
-
-        let contract_sources =
-            self.config
-                .http
-                .contracts
-                .iter()
-                .filter_map(|contract| match contract.openapi.as_ref() {
-                    Some(HttpOpenApiSourceConfig::Provider(
-                        HttpOpenApiProviderConfig::Command {
-                            command, args, cwd, ..
-                        },
-                    )) => Some(self.command_sources(command, args, cwd.as_deref())),
-                    _ => None,
-                })
-                .flatten()
-                .collect::<Vec<_>>();
-        add_inferred_context(
-            projects,
-            "codeatlas-http-contract",
-            crate::domain::source_graph::ContextRole::Tooling,
-            &contract_sources,
         )
     }
 

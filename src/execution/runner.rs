@@ -9,9 +9,17 @@ use super::model::{
 use super::resource::ResourceSampler;
 use super::scheduler::ExecutionScheduler;
 use super::target::TargetDisposition;
+use super::workload::{
+    run_workload, validate_workload_request, WorkloadAdapter, WorkloadRun, WorkloadRunContext,
+};
 use crate::config::ExecutionIsolationConfig;
 use anyhow::Result;
 use std::path::Path;
+
+struct ExecutionAttempt {
+    assessment: IsolationAssessment,
+    workload: Option<Result<WorkloadRun, String>>,
+}
 
 pub(crate) fn verify_current_evidence(
     plan: &ExecutionPlan,
@@ -40,12 +48,13 @@ pub(crate) fn verify_current_evidence(
     Ok(())
 }
 
-pub(crate) fn prepare_isolation_checked_execution(
+pub(crate) fn execute_isolation_checked_workload<A: WorkloadAdapter>(
     store: &ArtifactStore,
     workspace_root: &Path,
     isolation_config: &ExecutionIsolationConfig,
     plan: &ExecutionPlan,
     authorization_mode: AuthorizationMode,
+    adapter: &A,
 ) -> Result<ExecutionReceipt> {
     if authorization_mode == AuthorizationMode::PreauthorizedIsolated
         && plan.body.authorization.disposition != TargetDisposition::PreauthorizedIsolated
@@ -56,14 +65,66 @@ pub(crate) fn prepare_isolation_checked_execution(
         );
     }
     let sampler = ResourceSampler::new();
+    if plan.body.authorization.disposition == TargetDisposition::Blocked {
+        let mut reasons = plan.body.authorization.reasons.clone();
+        if reasons.is_empty() {
+            reasons.push("Execution target policy blocked this plan".to_string());
+        }
+        reasons.sort();
+        reasons.dedup();
+        let receipt = ExecutionReceipt::new(ExecutionReceiptBody {
+            subject: plan.body.subject,
+            operation: plan.body.operation.clone(),
+            tool: plan.body.tool.clone(),
+            plan_id: plan.id.clone(),
+            plan_content_digest: plan.content_digest.clone(),
+            authorization_mode,
+            outcome: ExecutionOutcome::Blocked,
+            reasons,
+            calls: CallUsage::default(),
+            runtime: Default::default(),
+            resources: sampler.sample_resources(Default::default()),
+            cleanup: Vec::new(),
+            result: None,
+            links: vec![ArtifactLink {
+                kind: "plan".to_string(),
+                id: plan.id.clone(),
+                content_digest: plan.content_digest.clone(),
+            }],
+        })?;
+        store.persist(&receipt)?;
+        return Ok(receipt);
+    }
     let mut leases = LeaseRegistry::default();
     let scratch = create_isolation_scratch(workspace_root, &mut leases)?;
-    let (assessment_result, call_snapshot) = match ExecutionScheduler::from_plan(plan) {
+    let (attempt_result, call_snapshot) = match ExecutionScheduler::from_plan(plan) {
         Ok(scheduler) => {
             let leases = &mut leases;
             let scratch = &scratch;
             let result = scheduler.run(|context| async move {
-                assess_isolation(
+                let request = match adapter.prepare(plan) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        return Ok(ExecutionAttempt {
+                            assessment: IsolationAssessment::blocked(format!(
+                                "Workload preparation blocked before isolation: {error:#}"
+                            )),
+                            workload: None,
+                        });
+                    }
+                };
+                let image = match validate_workload_request(plan, &request) {
+                    Ok(image) => image,
+                    Err(error) => {
+                        return Ok(ExecutionAttempt {
+                            assessment: IsolationAssessment::blocked(format!(
+                                "Workload plan validation blocked before isolation: {error:#}"
+                            )),
+                            workload: None,
+                        });
+                    }
+                };
+                let mut assessment = match assess_isolation(
                     &context,
                     isolation_config,
                     plan,
@@ -72,39 +133,126 @@ pub(crate) fn prepare_isolation_checked_execution(
                     leases,
                 )
                 .await
+                {
+                    Ok(assessment) => assessment,
+                    Err(error) => IsolationAssessment::blocked(format!(
+                        "Isolation capability probe failed before execution: {error:#}"
+                    )),
+                };
+                if !assessment.is_backend_verified(plan) {
+                    return Ok(ExecutionAttempt {
+                        assessment,
+                        workload: None,
+                    });
+                }
+                let Some(backend) = assessment.backend.clone() else {
+                    assessment
+                        .reasons
+                        .push("Isolation capability evidence has no reusable backend".to_string());
+                    return Ok(ExecutionAttempt {
+                        assessment,
+                        workload: None,
+                    });
+                };
+                let workload = run_workload(
+                    WorkloadRunContext {
+                        execution: &context,
+                        backend: &backend,
+                        plan,
+                        workspace_root,
+                        scratch_root: scratch,
+                        leases,
+                        store,
+                    },
+                    adapter,
+                    request,
+                    image,
+                )
+                .await
+                .map_err(|error| format!("{error:#}"));
+                Ok(ExecutionAttempt {
+                    assessment,
+                    workload: Some(workload),
+                })
             });
             (result, Some(scheduler.context().budget().snapshot()))
         }
         Err(error) => (Err(error), None),
     };
-    let assessment = match assessment_result {
-        Ok(assessment) => assessment,
-        Err(error) => IsolationAssessment::blocked(format!(
-            "Isolation capability probe failed before execution: {error}"
-        )),
+    let attempt = match attempt_result {
+        Ok(attempt) => attempt,
+        Err(error) => ExecutionAttempt {
+            assessment: IsolationAssessment::blocked(format!(
+                "Isolation capability probe failed before execution: {error}"
+            )),
+            workload: None,
+        },
     };
-    let isolation_verified = assessment.is_verified(plan);
-    let mut reasons = assessment.reasons;
-    if isolation_verified {
-        reasons.push(
-            "Isolation is verified, but HTTP workload execution remains disconnected until Phase 5"
-                .to_string(),
-        );
+    let mut runtime = attempt.assessment.runtime;
+    let mut resources = attempt.assessment.resources;
+    let mut reasons = attempt.assessment.reasons;
+    let mut requested_outcome = ExecutionOutcome::Blocked;
+    let mut execution_complete = false;
+    let mut result = None;
+    let mut links = vec![ArtifactLink {
+        kind: "plan".to_string(),
+        id: plan.id.clone(),
+        content_digest: plan.content_digest.clone(),
+    }];
+    match attempt.workload {
+        Some(Ok(run)) => {
+            requested_outcome = run.completion.outcome;
+            execution_complete = run.execution_complete;
+            reasons.extend(run.completion.reasons);
+            result = run.completion.result;
+            links.extend(run.completion.links);
+            resources.output_bytes = resources.output_bytes.saturating_add(run.output_bytes);
+            resources.result_bytes = run.completion.result_bytes;
+            resources.artifact_bytes = run.completion.artifact_bytes;
+            if run.tls_interception_verified {
+                runtime
+                    .capabilities
+                    .push(super::model::ExecutionCapability::TlsInterception);
+            }
+        }
+        Some(Err(error)) => {
+            requested_outcome = ExecutionOutcome::Partial;
+            reasons.push(format!("Execution workload failed: {error}"));
+        }
+        None => {}
     }
-    reasons.sort();
-    reasons.dedup();
+    runtime.capabilities.sort();
+    runtime.capabilities.dedup();
+    links.sort();
+    links.dedup();
     let cleanup = leases.release_all();
     let budget_termination = call_snapshot
         .as_ref()
         .and_then(|snapshot| snapshot.termination);
-    let requested_outcome = if budget_termination == Some(BudgetTermination::Cancelled) {
-        ExecutionOutcome::Cancelled
-    } else {
-        ExecutionOutcome::Blocked
-    };
-    let outcome = finalize_outcome(requested_outcome, &cleanup, false, budget_termination);
+    if let Some(termination) = budget_termination {
+        reasons.push(budget_termination_reason(termination).to_string());
+    }
+    reasons.extend(
+        cleanup
+            .iter()
+            .filter(|evidence| !evidence.released || !evidence.verified)
+            .map(|evidence| {
+                format!(
+                    "Execution cleanup was incomplete for {}:{}",
+                    evidence.owner, evidence.resource
+                )
+            }),
+    );
+    reasons.sort();
+    reasons.dedup();
+    let outcome = finalize_outcome(
+        requested_outcome,
+        &cleanup,
+        execution_complete,
+        budget_termination,
+    );
     let mut calls = CallUsage::default();
-    let mut resources = sampler.sample_resources(assessment.resources);
+    let mut resources = sampler.sample_resources(resources);
     if let Some(snapshot) = &call_snapshot {
         apply_call_snapshot(&mut calls, &mut resources, snapshot);
     }
@@ -118,18 +266,23 @@ pub(crate) fn prepare_isolation_checked_execution(
         outcome,
         reasons,
         calls,
-        runtime: assessment.runtime,
+        runtime,
         resources,
         cleanup,
-        result: None,
-        links: vec![ArtifactLink {
-            kind: "plan".to_string(),
-            id: plan.id.clone(),
-            content_digest: plan.content_digest.clone(),
-        }],
+        result,
+        links,
     })?;
     store.persist(&receipt)?;
     Ok(receipt)
+}
+
+fn budget_termination_reason(termination: BudgetTermination) -> &'static str {
+    match termination {
+        BudgetTermination::CallsExhausted => "Execution call budget was exhausted",
+        BudgetTermination::CleanupExhausted => "Execution cleanup call allowance was exhausted",
+        BudgetTermination::DeadlineExhausted => "Execution call deadline was exhausted",
+        BudgetTermination::Cancelled => "Execution was cancelled",
+    }
 }
 
 fn finalize_outcome(
@@ -138,13 +291,13 @@ fn finalize_outcome(
     execution_complete: bool,
     budget_termination: Option<BudgetTermination>,
 ) -> ExecutionOutcome {
-    if requested == ExecutionOutcome::Blocked {
-        return ExecutionOutcome::Blocked;
-    }
     if requested == ExecutionOutcome::Cancelled
         || budget_termination == Some(BudgetTermination::Cancelled)
     {
         return ExecutionOutcome::Cancelled;
+    }
+    if requested == ExecutionOutcome::Blocked {
+        return ExecutionOutcome::Blocked;
     }
     let cleanup_complete = cleanup
         .iter()
@@ -167,7 +320,7 @@ fn apply_call_snapshot(
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_call_snapshot, finalize_outcome};
+    use super::{apply_call_snapshot, budget_termination_reason, finalize_outcome};
     use crate::execution::budget::{BudgetTermination, CallRecord, CallSnapshot};
     use crate::execution::model::{
         CallCategory, CallCount, CallUsage, CleanupEvidence, ExecutionOutcome, ResourceEvidence,
@@ -236,5 +389,17 @@ mod tests {
         assert_eq!(calls, snapshot.usage);
         assert_eq!(resources.peak_concurrency, Some(1));
         assert_eq!(resources.peak_calls_per_second_milli, Some(2_000));
+    }
+
+    #[test]
+    fn every_budget_termination_has_one_receipt_reason() {
+        for termination in [
+            BudgetTermination::CallsExhausted,
+            BudgetTermination::CleanupExhausted,
+            BudgetTermination::DeadlineExhausted,
+            BudgetTermination::Cancelled,
+        ] {
+            assert!(!budget_termination_reason(termination).is_empty());
+        }
     }
 }

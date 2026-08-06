@@ -19,12 +19,7 @@
   "http": {
     "contracts": [
       {
-        "id": "fixture",
-        "openapi": {
-          "kind": "command",
-          "command": "node",
-          "args": ["scripts/openapi.ts"]
-        }
+        "id": "fixture"
       }
     ],
     "fuzz": {

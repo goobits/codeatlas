@@ -2,20 +2,25 @@ mod command;
 mod conformance;
 mod metadata;
 mod runtime;
+mod workload;
 
-use self::command::{string_arguments, ContainerLaunchSpec, ProbeLaunch};
+use self::command::{string_arguments, ContainerLaunchSpec, ContainerProbeSpec};
 use self::conformance::{
     evaluate_conformance, validate_container_inspection, validate_image_inspection,
 };
 use self::metadata::{RuntimeInfo, RuntimeVersion, RUNTIME_INFO_FORMAT, RUNTIME_VERSION_FORMAT};
 use self::runtime::RuntimeClient;
+use self::workload::{
+    collect_workload_result, prepare_workload, PreparedWorkload, WorkloadPlacement,
+};
 use crate::config::ExecutionContainerIsolationConfig;
 use crate::execution::artifact::digest_bytes;
 use crate::execution::budget::CLEANUP_RESERVE_FRACTION;
 use crate::execution::lease::{ExecutionLease, LeaseRegistry};
 use crate::execution::model::{ExecutionCapability, ExecutionPlan, ResourceEvidence, ToolIdentity};
 use crate::execution::private_fs::{
-    create_private_directory, prepare_private_disjoint_directory, write_private_file,
+    create_private_directory, create_private_file, prepare_private_disjoint_directory,
+    write_private_file,
 };
 use crate::execution::sandbox::BoundedCommandOutput;
 use crate::execution::scheduler::ExecutionContext;
@@ -27,15 +32,23 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
 
+pub(crate) use self::workload::{
+    ClientProxyBridge, ContainerWorkloadProtocol, ContainerWorkloadResult, ManagedServerBridge,
+    WorkloadCommand, WorkloadRuntimeFile, CLIENT_PROXY_SOCKET, MANAGED_SERVER_SOCKET,
+    WORKLOAD_PROTOCOL_SCHEMA_VERSION,
+};
+
 const RUNTIME_CONTROL_TIMEOUT: Duration = Duration::from_secs(30);
 const CONFORMANCE_STEP_TIMEOUT: Duration = Duration::from_secs(30);
 const RUNTIME_PROBE_OUTPUT_BYTES: u64 = 1024 * 1024;
 const MAX_CLEANUP_OUTPUT_BYTES: u64 = 4 * 1024;
+const MANAGED_PEER_OUTPUT_BYTES: u64 = 4 * 1024;
 
 static CONTAINER_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static NONCE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct ContainerProbe {
+    pub backend: Option<ContainerBackend>,
     pub runtime: Option<ToolIdentity>,
     pub environment_digest: Option<String>,
     pub capabilities: Vec<ExecutionCapability>,
@@ -45,9 +58,199 @@ pub(crate) struct ContainerProbe {
     pub reasons: Vec<String>,
 }
 
+#[derive(Clone)]
+pub(crate) struct ContainerBackend {
+    client: RuntimeClient,
+    rootless: bool,
+}
+
+pub(crate) struct ContainerWorkloadExecution {
+    pub result: ContainerWorkloadResult,
+    pub runtime_stdout: Vec<u8>,
+    pub runtime_stderr: Vec<u8>,
+    pub output_bytes: u64,
+    pub timed_out: bool,
+    pub output_exhausted: bool,
+    pub cancelled: bool,
+}
+
+pub(crate) fn prepare_container_workload(
+    backend: &ContainerBackend,
+    plan: &ExecutionPlan,
+    image: &crate::execution::model::ManagedImageEvidence,
+    protocol: &ContainerWorkloadProtocol,
+    runtime_files: &[WorkloadRuntimeFile],
+    workspace_root: &Path,
+    scratch_root: &Path,
+) -> Result<PreparedWorkload> {
+    let execution_root = scratch_root.join("http-workload");
+    prepare_workload(
+        plan,
+        image,
+        protocol,
+        runtime_files,
+        WorkloadPlacement {
+            rootless: backend.rootless,
+            workspace_root,
+            execution_root: &execution_root,
+            name: container_name(plan, "workload"),
+        },
+    )
+}
+
+pub(crate) async fn execute_container_workload<F>(
+    backend: &ContainerBackend,
+    context: &ExecutionContext,
+    plan: &ExecutionPlan,
+    prepared: &PreparedWorkload,
+    leases: &mut LeaseRegistry,
+    corroborate_managed_peer: F,
+) -> Result<ContainerWorkloadExecution>
+where
+    F: FnOnce(u32) -> Result<()>,
+{
+    let mut output_bytes = 0_u64;
+    let normal_output_ceiling = normal_output_ceiling(plan.body.limits.max_output_bytes)?;
+    let peer_output_ceiling = if prepared.has_managed_server {
+        if normal_output_ceiling <= MANAGED_PEER_OUTPUT_BYTES {
+            anyhow::bail!("Container workload output ceiling cannot reserve peer corroboration");
+        }
+        MANAGED_PEER_OUTPUT_BYTES
+    } else {
+        0
+    };
+    let case_output_ceiling = normal_output_ceiling.saturating_sub(peer_output_ceiling);
+    let image = run_probe_step(
+        &backend.client,
+        context,
+        string_arguments([
+            "image",
+            "inspect",
+            "--format",
+            "{{json .}}",
+            &prepared.launch.image,
+        ]),
+        RUNTIME_CONTROL_TIMEOUT,
+        normal_output_ceiling,
+        &mut output_bytes,
+    )
+    .await?;
+    validate_step_output("workload image inspection", &image)?;
+    validate_image_inspection(&image.stdout, &prepared.launch.image)?;
+
+    let step_timeout = context.budget().normal_time_remaining();
+    if step_timeout.is_zero() {
+        anyhow::bail!("Container workload exhausted normal execution time before launch");
+    }
+    let (output, peer_output_bytes) = {
+        let mut peer_output_bytes = 0_u64;
+        let mut corroborate_managed_peer = Some(corroborate_managed_peer);
+        let running = run_container_case(
+            &backend.client,
+            context,
+            &prepared.launch,
+            leases,
+            &mut output_bytes,
+            case_output_ceiling,
+            plan.body.limits.max_output_bytes,
+            step_timeout,
+        );
+        tokio::pin!(running);
+        let early = tokio::select! {
+            output = &mut running => Some(output?),
+            ready = wait_for_workload_ready(context, prepared) => {
+                ready?;
+                if prepared.has_managed_server {
+                    let inspected = run_probe_step(
+                        &backend.client,
+                        context,
+                        string_arguments([
+                            "container",
+                            "inspect",
+                            "--format",
+                            "{{.State.Pid}}",
+                            &prepared.launch.name,
+                        ]),
+                        RUNTIME_CONTROL_TIMEOUT,
+                        peer_output_ceiling,
+                        &mut peer_output_bytes,
+                    ).await?;
+                    validate_step_output("workload peer inspection", &inspected)?;
+                    let pid = parse_container_pid(&inspected.stdout)?;
+                    corroborate_managed_peer
+                        .take()
+                        .expect("managed peer callback is available")(pid)?;
+                }
+                None
+            }
+        };
+        let output = if let Some(output) = early {
+            output
+        } else {
+            create_private_file(&prepared.start_path())?;
+            running.as_mut().await?
+        };
+        (output, peer_output_bytes)
+    };
+    output_bytes = output_bytes.saturating_add(peer_output_bytes);
+    let result = collect_workload_result(prepared, plan)?;
+    Ok(ContainerWorkloadExecution {
+        result,
+        runtime_stdout: output.stdout,
+        runtime_stderr: output.stderr,
+        output_bytes,
+        timed_out: output.timed_out,
+        output_exhausted: output.output_exhausted,
+        cancelled: output.cancelled,
+    })
+}
+
+fn parse_container_pid(bytes: &[u8]) -> Result<u32> {
+    let pid = std::str::from_utf8(bytes)
+        .context("Container runtime returned a non-UTF-8 workload peer PID")?
+        .trim()
+        .parse::<u32>()
+        .context("Container runtime returned an invalid workload peer PID")?;
+    if pid == 0 {
+        anyhow::bail!("Container runtime returned a zero workload peer PID");
+    }
+    Ok(pid)
+}
+
+async fn wait_for_workload_ready(
+    context: &ExecutionContext,
+    prepared: &PreparedWorkload,
+) -> Result<()> {
+    let deadline = Instant::now()
+        .checked_add(
+            prepared
+                .startup_timeout
+                .min(context.budget().normal_time_remaining()),
+        )
+        .context("Container workload startup deadline exceeds this host")?;
+    loop {
+        match std::fs::symlink_metadata(prepared.ready_path()) {
+            Ok(metadata) if metadata.file_type().is_file() => return Ok(()),
+            Ok(_) => anyhow::bail!("Container workload ready marker is not a regular file"),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error).context("Could not inspect workload ready marker"),
+        }
+        if Instant::now() >= deadline {
+            anyhow::bail!("Container workload did not become ready before its startup ceiling");
+        }
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_millis(10)) => {}
+            () = context.budget().wait_for_cancellation() => {
+                anyhow::bail!("Container workload startup was cancelled");
+            }
+        }
+    }
+}
+
 impl ContainerProbe {
     fn blocked(reason: impl Into<String>) -> Self {
         Self {
+            backend: None,
             runtime: None,
             environment_digest: None,
             capabilities: Vec::new(),
@@ -131,6 +334,7 @@ pub(crate) async fn probe_container_runtime(
 
     let Some(probe_image) = config.probe_image.as_deref() else {
         return Ok(ContainerProbe {
+            backend: None,
             runtime: Some(runtime),
             environment_digest: None,
             capabilities: Vec::new(),
@@ -164,6 +368,10 @@ pub(crate) async fn probe_container_runtime(
     .await;
     match result {
         Ok(outcome) => Ok(ContainerProbe {
+            backend: Some(ContainerBackend {
+                client: client.clone(),
+                rootless,
+            }),
             runtime: Some(runtime),
             environment_digest: Some(outcome.environment_digest),
             capabilities: outcome.capabilities,
@@ -176,6 +384,7 @@ pub(crate) async fn probe_container_runtime(
             reasons: outcome.reasons,
         }),
         Err(error) => Ok(ContainerProbe {
+            backend: None,
             runtime: Some(runtime),
             environment_digest: None,
             capabilities: Vec::new(),
@@ -235,14 +444,14 @@ async fn run_container_conformance(
     ] {
         create_private_directory(&directory)?;
     }
-    let name = container_name(plan);
+    let name = container_name(plan, "probe");
     let spec = ContainerLaunchSpec::new_probe(
-        ProbeLaunch::new(
-            name.clone(),
-            probe_image.to_string(),
-            nonce.clone(),
-            ProbeMode::Verify,
-        ),
+        ContainerProbeSpec {
+            name: name.clone(),
+            image: probe_image.to_string(),
+            nonce: nonce.clone(),
+            mode: ProbeMode::Verify,
+        },
         rootless,
         &conformance_workspace,
         &writable_root,
@@ -456,11 +665,14 @@ fn validate_container_id(bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn container_name(plan: &ExecutionPlan) -> String {
+fn container_name(plan: &ExecutionPlan, kind: &str) -> String {
     let digest = plan.id.strip_prefix("plan_").unwrap_or(&plan.id);
     let prefix = &digest[..digest.len().min(12)];
     let sequence = CONTAINER_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    format!("codeatlas-probe-{prefix}-{}-{sequence}", std::process::id())
+    format!(
+        "codeatlas-{kind}-{prefix}-{}-{sequence}",
+        std::process::id()
+    )
 }
 
 fn conformance_nonce(plan: &ExecutionPlan, runtime: &ToolIdentity) -> Result<String> {
@@ -611,7 +823,7 @@ mod tests {
 mod live_tests {
     use super::{
         normal_output_ceiling, resolve_local_socket, run_container_case, run_probe_step,
-        validate_image_inspection, validate_step_output, ContainerLaunchSpec, ProbeLaunch,
+        validate_image_inspection, validate_step_output, ContainerLaunchSpec, ContainerProbeSpec,
         RuntimeClient, RuntimeInfo, RUNTIME_CONTROL_TIMEOUT, RUNTIME_INFO_FORMAT,
     };
     use crate::execution::lease::LeaseRegistry;
@@ -745,12 +957,12 @@ mod live_tests {
         std::fs::write(workspace.join(WORKSPACE_SENTINEL_NAME), &nonce)
             .expect("live workspace sentinel");
         let spec = ContainerLaunchSpec::new_probe(
-            ProbeLaunch::new(
-                format!("codeatlas-live-{}-{}", mode.as_str(), std::process::id()),
-                image.to_string(),
+            ContainerProbeSpec {
+                name: format!("codeatlas-live-{}-{}", mode.as_str(), std::process::id()),
+                image: image.to_string(),
                 nonce,
                 mode,
-            ),
+            },
             rootless,
             &workspace,
             &scratch,

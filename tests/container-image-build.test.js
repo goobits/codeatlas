@@ -5,12 +5,19 @@ const path = require('node:path')
 const test = require('node:test')
 const {
 	createBuildArguments,
-	createBuilderArguments,
-	createBuilderRemovalArguments,
 	parseArguments,
-	resolveRuntimeDataRoot,
 	validateBuildArtifacts
 } = require('../tasks/build-isolation-probe.js')
+const {
+	createBuilderArguments,
+	createBuilderRemovalArguments,
+	resolveRuntimeDataRoot
+} = require('../tasks/build-container-image.js')
+const {
+	createBuildArguments: createHttpBuildArguments,
+	parseArguments: parseHttpArguments,
+	validateBuildArtifacts: validateHttpBuildArtifacts
+} = require('../tasks/build-http-workload.js')
 const { createRuntimeOptions } = require('../tasks/container-runtime.js')
 
 const digest = 'a'.repeat(64)
@@ -24,6 +31,32 @@ test('probe recipe verifies the musl static default without breaking procedural 
 
 	assert.match(recipe, /rustc --print cfg \| grep -Fx 'target_feature="crt-static"'/)
 	assert.doesNotMatch(recipe, /target-feature=\+crt-static/)
+})
+
+test('HTTP workload recipe is hash-locked, version-checked, and clears inherited image metadata', () => {
+	const recipe = fs.readFileSync(
+		path.resolve(__dirname, '..', 'containers', 'http-fuzz', 'Containerfile'),
+		'utf8'
+	)
+
+	assert.match(recipe, /--require-hashes/)
+	assert.match(recipe, /--invalidation-mode checked-hash/)
+	assert.match(recipe, /4\\\.24\\\.3/)
+	assert.match(recipe, /FROM scratch\nCOPY --from=runtime \/ \/\n$/)
+	assert.doesNotMatch(recipe.slice(recipe.lastIndexOf('FROM scratch')), /^ENV /m)
+	assert.equal(
+		fs.readFileSync(
+			path.resolve(
+				__dirname,
+				'..',
+				'containers',
+				'http-fuzz',
+				'Containerfile.dockerignore'
+			),
+			'utf8'
+		),
+		'**\n!src/\n!src/http/\n!src/http/schemathesis/\n!src/http/schemathesis/requirements.txt\n'
+	)
 })
 
 test('probe build has one bounded solve with canonical OCI and optional Docker import outputs', () => {
@@ -117,7 +150,57 @@ test('probe build has one bounded solve with canonical OCI and optional Docker i
 	)
 })
 
-test('probe build owns one pinned disposable BuildKit builder', () => {
+test('HTTP workload build reuses the bounded image transaction with an exact Python input', () => {
+	const pythonDigest = 'd'.repeat(64)
+	const options = parseHttpArguments([
+		'--runtime', '/usr/bin/docker',
+		'--socket', '/run/docker.sock',
+		'--python-image', `python@sha256:${pythonDigest}`,
+		'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
+		'--platform', 'linux/amd64',
+		'--network', 'allow',
+		'--out', '/tmp/codeatlas-http.oci.tar'
+	])
+	const arguments_ = createHttpBuildArguments({
+		...options,
+		clientRoot: '/tmp/client',
+		metadata: '/tmp/http.metadata.json',
+		loadOut: '/tmp/codeatlas-http.docker.tar',
+		sourceDateEpoch: '1700000000',
+		builder: 'codeatlas-images-1'
+	})
+
+	assert.ok(arguments_.includes(`PYTHON_IMAGE=python@sha256:${pythonDigest}`))
+	assert.ok(arguments_.includes('default'))
+	assert.ok(arguments_.at(-1).endsWith('/codeatlas'))
+	assert.equal(arguments_.filter(argument => argument === '--output').length, 2)
+	assert.throws(
+		() => parseHttpArguments([
+			'--runtime', '/usr/bin/docker',
+			'--socket', '/run/docker.sock',
+			'--python-image', 'python:3.10',
+			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
+			'--platform', 'linux/amd64',
+			'--network', 'allow',
+			'--out', '/tmp/http.tar'
+		]),
+		/exact repository@sha256/
+	)
+	assert.throws(
+		() => parseHttpArguments([
+			'--runtime', '/usr/bin/docker',
+			'--socket', '/run/docker.sock',
+			'--python-image', `python@sha256:${pythonDigest}`,
+			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
+			'--platform', 'linux/amd64',
+			'--network', 'deny',
+			'--out', '/tmp/http.tar'
+		]),
+		/exactly allow/
+	)
+})
+
+test('container image build owns one pinned disposable BuildKit builder', () => {
 	const image = `moby/buildkit@sha256:${buildkitDigest}`
 	assert.deepEqual(createBuilderArguments('codeatlas-probe-1', image), [
 		'buildx',
@@ -162,6 +245,12 @@ test('probe build artifacts have finite nonzero byte ceilings', () => {
 			() => validateBuildArtifacts(archive, metadata, loadArchive),
 			/Docker import archive must contain 1 through 67108864 bytes/
 		)
+		fs.truncateSync(loadArchive, 65 * 1024 * 1024)
+		assert.deepEqual(validateHttpBuildArtifacts(archive, metadata, loadArchive), {
+			archiveBytes: 7,
+			loadArchiveBytes: 65 * 1024 * 1024,
+			metadataBytes: 2
+		})
 	} finally {
 		fs.rmSync(root, { force: true, recursive: true })
 	}
