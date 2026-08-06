@@ -492,7 +492,7 @@ with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
 Remaining-scope audit (2026-08-05): 105 open CodeAtlas implementation checks
-remain across Phases 9 through 21, including Phase 16A and the deferred Phase
+remain across Phases 9A through 21, including Phase 16A and the deferred Phase
 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
 criteria, but they do not own a second rolling task list.
@@ -519,10 +519,11 @@ evidence through the canonical concept policy without claiming semantic
 equivalence. Subject-parity release hardening is complete: the public matrix,
 self-audit, domain fixture dogfood, one-owner consolidation searches, and
 generated-state audit all pass.
-The current host cannot grant a live OCI isolation capability, so execution
+The reproducible CodeAtlas-owned isolation probe is locally complete. The
+current host cannot grant a live OCI isolation capability, so execution
 remains plan-only here and Phase 9 retains the hard continuation gate. On
 implementation progress rather than proposal-design progress, the complete
-program is approximately 64 percent done. That estimate is weighted by the
+program is approximately 65 percent done. That estimate is weighted by the
 accepted implementation phases, not by raw checkbox count. One hundred percent
 means every remaining tracker item is either verified and checked here or
 removed through an accepted scope change; a child status line alone is not
@@ -761,7 +762,27 @@ read-only and never edits their repository.
   CodeAtlas dogfood, and commit the CodeAtlas-only wiring without modifying
   HQA, TypeMill, or `agentspeak-contracts`.
 
-### Phase 9: Pass the live OCI isolation continuation gate
+### Phase 9A: Own the reproducible isolation probe
+
+Active child: execution kernel Phase 4A. This locally verifiable work precedes
+the external runtime input and remains incapable of granting execution by
+itself.
+
+- [x] Make one strict report model validate the host evaluator, real probe, and
+  deterministic fake runtime without a second schema or evaluator.
+- [x] Implement bounded probe modes for filesystem, environment, mount,
+  network, process, CPU, RSS, descriptor, output, and cancellation evidence.
+- [x] Run every intentional write attack against an external disposable
+  sentinel workspace, never the analyzed checkout.
+- [x] Add a digest-producing OCI recipe and build task whose targets, context,
+  archives, and runtime state are required to live outside `/workspace`.
+- [x] Prove strict input rejection, deterministic bytes, truthful negative
+  evidence without isolation, and no capability grant from source or build
+  success alone.
+- [x] Run focused checks, CodeAtlas self-dogfood, one-owner searches, external
+  state audit, synchronize the child checkpoint, and commit Phase 9A.
+
+### Phase 9B: Resolve a capable OCI runner
 
 Active child: execution kernel Phase 4. This task preempts Phases 5 through 8
 as soon as an eligible runner is available.
@@ -778,6 +799,13 @@ remains plan-only; daemon initialization alone is not isolation evidence.
 - [ ] Resolve an exact rootful, rootless, or nested OCI runner with a local
   socket, digest-pinned probe image, external writable state, and no need to
   expose its control socket inside the child.
+
+### Phase 9C: Pass the live OCI isolation continuation gate
+
+Active child: execution kernel Phase 4. The runtime and image resolved in Phase
+9B are inputs, not evidence; only the target-observed matrix can close this
+gate.
+
 - [ ] Run target-observed mount, absolute-path, traversal, symlink, scratch,
   home, environment, network, subprocess, CPU, RSS, PID, descriptor, output,
   interruption, cancellation, and cleanup conformance cases.
@@ -1258,6 +1286,13 @@ read-only and will not reconstruct or vendor it.
 - 2026-08-05: all locally verifiable OCI work passes focused/full checks and
   target-observed fake-runtime dogfood; the host remains plan-only and the
   live OCI test is retained as Phase 9's hard gate.
+- 2026-08-05: Phase 9A adds the CodeAtlas-owned strict isolation probe and
+  digest-producing OCI recipe. The host evaluator, real probe, and fake runtime
+  consume one report model; write attacks use an external disposable sentinel
+  workspace; 18 Node tests, 415 root unit tests, four probe tests, both Clippy
+  gates, zero-gate self-dogfood over 324 files, and package assembly pass. The
+  current host still cannot build or run the live OCI matrix, so Phase 9B is
+  the next continuation gate.
 - 2026-08-05: semantic-sibling Phase 1 passes strict config/model/schema/CLI
   checks and static self-dogfood; lexicon v5 is the sole published schema and
   shared-contract evidence cannot become corroboration.
@@ -1367,7 +1402,7 @@ bounded CodeAtlas dogfood pass with zero gates.
 
 ## Program stage 4: Execution kernel and HTTP migration
 
-Status: [~] Accepted; execution Phases 1-3 and local Phase 4 complete, live isolation waits at Phase 9
+Status: [~] Accepted; execution Phases 1-3, local Phase 4, and the owned probe are complete; live isolation waits at Phase 9B
 
 Projected LOC after measured Phase 3: +11,760-13,310 / -878-1,408
 

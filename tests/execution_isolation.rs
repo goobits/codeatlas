@@ -1,6 +1,7 @@
 mod support;
 
 use self::support::TestDirectory;
+use codeatlas_isolation_conformance::WORKSPACE_MOUNT;
 use serde_json::{json, Value};
 use std::fs;
 use std::net::TcpListener;
@@ -195,6 +196,7 @@ impl IsolationFixture {
         )
         .expect("fake runtime state JSON");
         assert_eq!(state["exists"], false);
+        assert_eq!(state["sentinel_verified"], true);
     }
 }
 
@@ -287,6 +289,16 @@ fn target_observed_container_contract_grants_only_proven_capabilities() {
             || argument.contains("CODEATLAS_TEST_AMBIENT_SECRET")
             || argument.contains("must-not-enter-sandbox")
     }));
+    let workspace_destination = format!("dst={WORKSPACE_MOUNT}");
+    let workspace_mount = child_visible
+        .windows(2)
+        .find(|pair| pair[0] == "--mount" && pair[1].contains(&workspace_destination))
+        .map(|pair| &pair[1])
+        .expect("disposable workspace mount");
+    let workspace_path = fixture.workspace.to_string_lossy();
+    let state_path = fixture.state.to_string_lossy();
+    assert!(!workspace_mount.contains(workspace_path.as_ref()));
+    assert!(workspace_mount.contains(state_path.as_ref()));
     assert!(fixture.runtime_socket.local_addr().is_ok());
 }
 

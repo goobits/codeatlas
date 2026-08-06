@@ -297,13 +297,33 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn repository_self_config_covers_maintained_rust_and_javascript() {
+    fn repository_self_config_models_the_root_and_probe_as_distinct_projects() {
         let config = serde_json::from_str::<CodeAtlasConfig>(include_str!("../../codeatlas.json"))
             .expect("repository CodeAtlas config should remain valid and strict");
 
         assert_eq!(config.root, Some(std::path::PathBuf::from(".")));
-        assert_eq!(config.languages, ["rs", "ts"]);
-        assert_eq!(config.entrypoints, ["src/main.rs"]);
+        assert!(config.languages.is_empty());
+        assert!(config.entrypoints.is_empty());
+        assert_eq!(config.projects.len(), 2);
+        let codeatlas = &config.projects[0];
+        assert_eq!(codeatlas.id.as_deref(), Some("codeatlas"));
+        assert_eq!(codeatlas.root, std::path::PathBuf::from("."));
+        assert_eq!(codeatlas.languages, ["rs", "ts"]);
+        assert_eq!(
+            codeatlas.contexts["application"].entrypoints,
+            ["src/main.rs"]
+        );
+        let probe = &config.projects[1];
+        assert_eq!(probe.id.as_deref(), Some("isolation-conformance"));
+        assert_eq!(
+            probe.root,
+            std::path::PathBuf::from("crates/isolation-conformance")
+        );
+        assert_eq!(probe.languages, ["rs"]);
+        assert_eq!(
+            probe.contexts["probe"].entrypoints,
+            ["src/lib.rs", "src/main.rs"]
+        );
         assert!(config.include_private);
         assert!(config.include_types);
         assert!(!config.package_exports);

@@ -1,0 +1,16 @@
+[package]
+name = "codeatlas-isolation-conformance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "isolation-conformance"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "=1.0.100"
+serde = { version = "=1.0.196", features = ["derive"] }
+serde_json = "=1.0.143"

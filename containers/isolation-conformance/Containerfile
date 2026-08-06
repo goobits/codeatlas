@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1.7
+
+ARG BUILD_IMAGE
+FROM ${BUILD_IMAGE} AS build
+
+ARG SOURCE_DATE_EPOCH
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} \
+    CARGO_TARGET_DIR=/build/target \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+    CARGO_PROFILE_RELEASE_LTO=true \
+    CARGO_PROFILE_RELEASE_PANIC=abort \
+    RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols --remap-path-prefix=/source=."
+WORKDIR /source
+
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+RUN test -n "${SOURCE_DATE_EPOCH}" \
+    && rustc -vV | grep -Eq '^host: .*-unknown-linux-musl$' \
+    && cargo build --locked --release --bin isolation-conformance \
+    && mkdir -p /out/codeatlas/bin \
+    && cp /build/target/release/isolation-conformance \
+        /out/codeatlas/bin/isolation-conformance \
+    && chmod 0555 /out/codeatlas/bin/isolation-conformance
+
+FROM scratch
+COPY --from=build --chmod=0555 \
+    /out/codeatlas/bin/isolation-conformance \
+    /codeatlas/bin/isolation-conformance
+ENTRYPOINT ["/codeatlas/bin/isolation-conformance"]
+CMD ["verify"]

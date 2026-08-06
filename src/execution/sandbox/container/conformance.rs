@@ -1,10 +1,12 @@
-use super::command::{
-    ContainerLaunchSpec, CONFORMANCE_SCHEMA_VERSION, SCRATCH_MOUNT, TEMP_MOUNT, WORKSPACE_MOUNT,
-};
+use super::command::ContainerLaunchSpec;
 use crate::execution::artifact::digest_value;
 use crate::execution::model::{ExecutionCapability, ResourceEvidence};
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use codeatlas_isolation_conformance::{
+    IsolationConformanceReport, ObservedLimits, CONFORMANCE_SCHEMA_VERSION, SCRATCH_MOUNT,
+    TEMP_MOUNT, WORKSPACE_MOUNT,
+};
+use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -204,55 +206,6 @@ fn validate_mounts(mounts: &[InspectedMount], spec: &ContainerLaunchSpec) -> Res
     Ok(())
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct IsolationConformanceReport {
-    schema_version: String,
-    nonce: String,
-    checks: IsolationChecks,
-    limits: ObservedLimits,
-    usage: ObservedUsage,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct IsolationChecks {
-    checkout_write_blocked: bool,
-    runtime_write_blocked: bool,
-    scratch_write_succeeded: bool,
-    scratch_traversal_blocked: bool,
-    scratch_symlink_escape_blocked: bool,
-    home_write_confined: bool,
-    temp_write_confined: bool,
-    external_network_blocked: bool,
-    unplanned_process_blocked: bool,
-    ambient_environment_absent: bool,
-    control_socket_absent: bool,
-    unexpected_mount_absent: bool,
-    cpu_limit_enforced: bool,
-    rss_limit_enforced: bool,
-    process_limit_enforced: bool,
-    descriptor_limit_enforced: bool,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct ObservedLimits {
-    cpu_time_ms: u64,
-    rss_bytes: u64,
-    processes: u64,
-    open_files: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct ObservedUsage {
-    cpu_time_ms: u64,
-    peak_rss_bytes: u64,
-    peak_processes: u64,
-    peak_open_files: u64,
-}
-
 pub(super) struct ConformanceOutcome {
     pub capabilities: Vec<ExecutionCapability>,
     pub reasons: Vec<String>,
@@ -438,7 +391,7 @@ fn validate_sha256_identifier(label: &str, value: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{evaluate_conformance, ExecutionCapability};
+    use super::{evaluate_conformance, ExecutionCapability, CONFORMANCE_SCHEMA_VERSION};
     use crate::execution::model::sample_execution_limits;
     use crate::execution::sandbox::container::command::ContainerLaunchSpec;
     use serde_json::json;
@@ -466,7 +419,7 @@ mod tests {
         )
         .expect("launch spec");
         let report = json!({
-            "schema_version": "codeatlas.oci-isolation-conformance/v1",
+            "schema_version": CONFORMANCE_SCHEMA_VERSION,
             "nonce": "nonce",
             "checks": {
                 "checkout_write_blocked": true,

@@ -4,17 +4,17 @@ const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
 const { spawnSync } = require('node:child_process')
-const { requireExternalCargoTarget } = require('./storage.js')
+const { requireExternalCargoTarget, writePrivateFile } = require('./storage.js')
 
 const rootDir = path.resolve(__dirname, '..')
 const maxOutputBytes = 32 * 1024 * 1024
 const inspectedCallable = {
 	query: 'src/commands/output.rs#write_text_or_print',
 	nodeId:
-		'symbol/file~1default~1src~01commands~01output.rs/rs:src~1commands~1output.rs:fn#write_text_or_print',
-	digest: 'd25b14c4fd4762161498b6bdd2e692c975fab299c04e631a234815eff3ecbafc',
+		'symbol/file~1codeatlas~1src~01commands~01output.rs/rs:src~1commands~1output.rs:fn#write_text_or_print',
+	digest: '3624d781f1dbf4d5ec324c65966d118aa1e95b82cb24127ed3190fca6517dc8c',
 	effectSource:
-		'symbol/file~1default~1src~01filesystem.rs/rs:src~1filesystem.rs:fn#replace_file'
+		'symbol/file~1codeatlas~1src~01filesystem.rs/rs:src~1filesystem.rs:fn#replace_file'
 }
 const semanticSiblingSetIds = [
 	'http_source_detectors',
@@ -258,11 +258,6 @@ const validateRepositoryLexicon = (report) => {
 	return failures
 }
 
-const writePrivate = (destination, content) => {
-	fs.writeFileSync(destination, content, { mode: 0o600 })
-	fs.chmodSync(destination, 0o600)
-}
-
 const run = (command, args, options = {}) => {
 	const result = spawnSync(command, args, {
 		cwd: rootDir,
@@ -284,8 +279,8 @@ try {
 	const build = run('cargo', ['build', '--quiet', '--locked', '--bin', 'codeatlas'], {
 		label: 'CodeAtlas self-audit build'
 	})
-	writePrivate(path.join(auditDir, 'build.stdout.log'), build.stdout)
-	writePrivate(path.join(auditDir, 'build.stderr.log'), build.stderr)
+	writePrivateFile(path.join(auditDir, 'build.stdout.log'), build.stdout)
+	writePrivateFile(path.join(auditDir, 'build.stderr.log'), build.stderr)
 	if (build.status !== 0) {
 		throw new Error(`CodeAtlas self-audit build failed with exit ${build.status ?? 1}`)
 	}
@@ -345,8 +340,8 @@ try {
 		})
 		const stdoutBytes = Buffer.byteLength(result.stdout)
 		const stderrBytes = Buffer.byteLength(result.stderr)
-		writePrivate(path.join(auditDir, `${descriptor.id}.json`), result.stdout)
-		writePrivate(path.join(auditDir, `${descriptor.id}.stderr.log`), result.stderr)
+		writePrivateFile(path.join(auditDir, `${descriptor.id}.json`), result.stdout)
+		writePrivateFile(path.join(auditDir, `${descriptor.id}.stderr.log`), result.stderr)
 
 		let report
 		try {
@@ -385,7 +380,7 @@ try {
 		console.log(`${descriptor.id}: ${JSON.stringify(summary)}`)
 	}
 
-	writePrivate(
+	writePrivateFile(
 		path.join(auditDir, 'summary.json'),
 		`${JSON.stringify({ schemaVersion: 1, reports: summaries }, null, 2)}\n`
 	)

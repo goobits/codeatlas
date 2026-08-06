@@ -1033,9 +1033,123 @@ Locally verified implementation checkpoint, 2026-08-05:
   path against a digest-pinned probe image on a capable rootful, rootless, or
   nested runtime before Phase 5 execution is enabled.
 
-This local implementation slice is +2,503 / -127 source and test lines before
-this checkpoint text. Together with the earlier fail-closed Phase 4 slice, the
-measured Phase 4 implementation is +3,678 / -298; the extra surface is the
+#### Phase 4A: CodeAtlas-owned isolation probe
+
+Status: [x] Complete
+
+The live gate must not depend on an opaque operator-supplied payload. CodeAtlas
+owns one focused internal crate containing the deterministic Linux probe binary
+and strict report model, plus a
+digest-producing OCI image recipe. The host evaluator, real probe, and fake
+runtime fixture are validated by that one report owner; a second schema or
+independent evaluator is not acceptable.
+
+The probe has a deliberately private surface. Its exact modes cover ordinary
+confinement plus destructive CPU, memory, process, descriptor, output, and
+cancellation cases needed by the live matrix. Building it writes the Cargo
+target, OCI context/archive, and runtime cache only beneath caller-selected
+external roots. The recipe requires digest-pinned build/runtime images and
+prints the produced OCI manifest digest; it never publishes or contacts a
+registry implicitly.
+
+Filesystem conformance never attacks the analyzed checkout. The kernel creates
+a disposable sentinel workspace under its external execution root, mounts that
+fixture through the same read-only mount contract, and lets the probe attempt
+absolute, traversal, and symlink writes there. Only after target-side evidence
+and host-side inspection agree may the backend grant `read_only_checkout` for a
+later workload. Probe source, a successful build, runtime metadata, and the
+fake-runtime fixture grant no capability by themselves.
+
+Execution checklist:
+
+- [x] Extract one strict shared conformance-report owner and make the host
+  evaluator, probe binary, and fake-runtime fixture validate against it.
+- [x] Implement bounded deterministic probe modes for filesystem, environment,
+  mount, network, process, resource, output, and cancellation observations.
+- [x] Replace real-checkout write attacks with an external disposable sentinel
+  workspace while preserving the exact inspected mount contract.
+- [x] Add a pinned, network-explicit OCI recipe and external-only build task
+  that emits the image manifest digest without publishing it.
+- [x] Prove strict inputs, deterministic report bytes, truthful negative
+  results on an unenforced host, and zero checkout-local generated state.
+- [x] Run focused checks, bounded self-dogfood, one-owner searches, and commit
+  this locally verifiable slice before requesting a capable runtime.
+
+Verified checkpoint, 2026-08-05:
+
+- `codeatlas-isolation-conformance` is the sole strict report and wire-constant
+  owner. The host evaluator imports that model, the private Linux probe emits
+  it, and the deterministic fake runtime validates the same nonce, mount, and
+  sentinel evidence; the replaced evaluator-local report types are deleted.
+- Focused probe modules own filesystem/mount, environment, network/process,
+  resource, verification, and destructive workload concerns separately. Exact
+  modes cover verification plus CPU, RSS, output, cancellation, and attempted
+  unplanned-child execution without creating a second executor.
+- The kernel creates a private disposable sentinel workspace beneath external
+  execution state and mounts that read-only for absolute, traversal, and
+  symlink attacks. Integration evidence proves the analyzed fixture checkout
+  is never the attack mount.
+- The OCI recipe requires a locally present digest-pinned musl build image and
+  produces a static scratch image. The build task requires a clean commit,
+  exact local runtime/socket, explicit network mode, external Cargo/output/log
+  and runtime-data roots, finite elapsed/output capture, private logs, and a
+  manifest digest; it never pulls, pushes, or overwrites implicitly. The actual
+  OCI archive and digest
+  remain Phase 9B inputs because this host has no capable runner.
+- `tasks/storage.js` now owns symlink-aware external-path validation and private
+  task-file writes. The duplicate self-audit writer was removed, and focused
+  tests prove direct and symlinked checkout paths are rejected.
+- CodeAtlas self-analysis exposed a false cross-crate graph caused by treating
+  the standalone probe as the root crate. `codeatlas.json` now models the root
+  and probe as two explicit projects; the strict config test pins that boundary.
+  Repeated dogfood covers 324 files, 3,382 symbols, 2,872 callables, 16 test
+  contexts, six scripts, 344 non-gating findings, and zero gates, duplicate
+  scripts, or semantic-sibling review candidates.
+- The broad repository gate passes 18 Node tests, 415 root unit tests with two
+  intentional ignores, all non-live integration suites, four probe tests,
+  both warning-denying Clippy runs, schema/spec drift, formatting, self-audit,
+  and a 413-file package assembly. One-owner and generated-state searches are
+  clean; all task state remains beneath `/tmp/codeatlas-xdo-cache.hTn1Nk`.
+
+Actual LOC: +1,521 / -97.
+
+```text
++ crates/isolation-conformance/Cargo.toml
++ crates/isolation-conformance/Cargo.lock
++ crates/isolation-conformance/src/lib.rs
++ crates/isolation-conformance/src/main.rs
++ crates/isolation-conformance/src/boundary.rs
++ crates/isolation-conformance/src/environment.rs
++ crates/isolation-conformance/src/filesystem.rs
++ crates/isolation-conformance/src/resource.rs
++ crates/isolation-conformance/src/verify.rs
++ crates/isolation-conformance/src/workload.rs
++ crates/isolation-conformance/tests/cli.rs
++ containers/isolation-conformance/Containerfile
++ tasks/build-isolation-probe.js
++ tests/isolation-probe-build.test.js
+~ Cargo.toml
+~ Cargo.lock
+~ codeatlas.json
+~ package.json
+~ src/config/mod.rs
+~ src/execution/sandbox/container.rs
+~ src/execution/sandbox/container/command.rs
+~ src/execution/sandbox/container/conformance.rs
+~ tasks/check-package.js
+~ tasks/check-self.js
+~ tasks/storage.js
+~ tests/execution_isolation.rs
+~ tests/fixtures/execution_isolation/fake_runtime.py
+~ tests/storage.test.js
+~ README.md
+~ docs/concepts/lexicon.md
+```
+
+This local implementation slice is +1,521 / -97 source, configuration,
+documentation, task, and test lines before this checkpoint text. Together with
+the earlier fail-closed Phase 4 slice, the measured Phase 4 implementation is
++2,696 / -268; the extra surface is the
 strict daemon/target conformance and failure-path suite, not a second executor.
 
 Original estimate: +1,200-1,900 / -50-150. The measured difference is

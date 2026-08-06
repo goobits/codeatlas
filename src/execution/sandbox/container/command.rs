@@ -1,5 +1,9 @@
 use crate::execution::model::ExecutionLimits;
 use anyhow::{Context, Result};
+use codeatlas_isolation_conformance::{
+    CONFORMANCE_SCHEMA_VERSION, SCRATCH_MOUNT, TEMP_MOUNT, VERIFY_MODE, WORKSPACE_MOUNT,
+    WORKSPACE_SENTINEL_NAME,
+};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -7,14 +11,9 @@ use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 
-pub(super) const CONFORMANCE_SCHEMA_VERSION: &str = "codeatlas.oci-isolation-conformance/v1";
 pub(super) const PROBE_ENTRYPOINT: &str = "/codeatlas/bin/isolation-conformance";
-pub(super) const PROBE_MODE_ARGUMENT: &str = "verify";
-pub(super) const WORKSPACE_MOUNT: &str = "/codeatlas/workspace";
-pub(super) const SCRATCH_MOUNT: &str = "/codeatlas/scratch";
-pub(super) const TEMP_MOUNT: &str = "/tmp";
-
 const MINIMUM_CONTAINER_MEMORY_BYTES: u64 = 6 * 1024 * 1024;
+const CONFORMANCE_PROCESS_LIMIT: u64 = 1;
 
 #[derive(Clone, Debug)]
 pub(super) struct ContainerLaunchSpec {
@@ -86,7 +85,7 @@ impl ContainerLaunchSpec {
             ),
             (
                 "CODEATLAS_LIMIT_PROCESSES".to_string(),
-                limits.max_processes.to_string(),
+                CONFORMANCE_PROCESS_LIMIT.to_string(),
             ),
             (
                 "CODEATLAS_LIMIT_RSS_BYTES".to_string(),
@@ -97,7 +96,12 @@ impl ContainerLaunchSpec {
                 "CODEATLAS_WORKSPACE".to_string(),
                 WORKSPACE_MOUNT.to_string(),
             ),
+            (
+                "CODEATLAS_WORKSPACE_SENTINEL".to_string(),
+                WORKSPACE_SENTINEL_NAME.to_string(),
+            ),
             ("HOME".to_string(), format!("{SCRATCH_MOUNT}/home")),
+            ("HOSTNAME".to_string(), "codeatlas-probe".to_string()),
             ("PATH".to_string(), "/usr/bin:/bin".to_string()),
             ("TMPDIR".to_string(), TEMP_MOUNT.to_string()),
             (
@@ -118,10 +122,10 @@ impl ContainerLaunchSpec {
             temp_root,
             environment,
             entrypoint: PROBE_ENTRYPOINT.to_string(),
-            arguments: vec![PROBE_MODE_ARGUMENT.to_string()],
+            arguments: vec![VERIFY_MODE.to_string()],
             cpu_time_limit_ms,
             rss_limit_bytes: limits.max_rss_bytes,
-            process_limit: limits.max_processes,
+            process_limit: CONFORMANCE_PROCESS_LIMIT,
             open_file_limit: limits.max_open_files,
         })
     }

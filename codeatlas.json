@@ -1,7 +1,31 @@
 {
   "root": ".",
-  "languages": ["rs", "ts"],
-  "entrypoints": ["src/main.rs"],
+  "projects": [
+    {
+      "id": "codeatlas",
+      "root": ".",
+      "languages": ["rs", "ts"],
+      "contexts": {
+        "application": {
+          "role": "production",
+          "scope": "runtime",
+          "entrypoints": ["src/main.rs"]
+        }
+      }
+    },
+    {
+      "id": "isolation-conformance",
+      "root": "crates/isolation-conformance",
+      "languages": ["rs"],
+      "contexts": {
+        "probe": {
+          "role": "production",
+          "scope": "runtime",
+          "entrypoints": ["src/lib.rs", "src/main.rs"]
+        }
+      }
+    }
+  ],
   "include_private": true,
   "include_types": true,
   "package_exports": false,

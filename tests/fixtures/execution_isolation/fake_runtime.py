@@ -69,6 +69,25 @@ def parse_ulimit(value: str) -> dict:
 
 def create_container(arguments: list[str]) -> None:
     environment = values_after(arguments, "--env")
+    environment_map = dict(variable.split("=", 1) for variable in environment)
+    mounts = [parse_mount(value) for value in values_after(arguments, "--mount")]
+    workspace_destination = environment_map.get("CODEATLAS_WORKSPACE")
+    workspaces = [
+        mount for mount in mounts if mount["Destination"] == workspace_destination
+    ]
+    if len(workspaces) != 1:
+        fail("missing unique disposable conformance workspace")
+    sentinel_name = environment_map.get("CODEATLAS_WORKSPACE_SENTINEL")
+    if not sentinel_name:
+        fail("missing disposable conformance workspace sentinel name")
+    sentinel = Path(workspaces[0]["Source"]) / sentinel_name
+    sentinel_verified = (
+        sentinel.is_file()
+        and sentinel.read_text(encoding="utf-8")
+        == environment_map.get("CODEATLAS_CONFORMANCE_NONCE")
+    )
+    if not sentinel_verified:
+        fail("disposable conformance workspace sentinel is invalid")
     image = arguments[-2]
     mode_argument = arguments[-1]
     inspection = {
@@ -97,7 +116,7 @@ def create_container(arguments: list[str]) -> None:
             "LogConfig": {"Type": value_after(arguments, "--log-driver")},
             "OomKillDisable": False,
         },
-        "Mounts": [parse_mount(value) for value in values_after(arguments, "--mount")],
+        "Mounts": mounts,
     }
     save_state(
         {
@@ -105,6 +124,7 @@ def create_container(arguments: list[str]) -> None:
             "id": "c" * 64,
             "name": value_after(arguments, "--name"),
             "inspection": inspection,
+            "sentinel_verified": sentinel_verified,
         }
     )
     print("c" * 64)

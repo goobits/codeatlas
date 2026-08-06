@@ -12,11 +12,14 @@ use crate::execution::artifact::digest_bytes;
 use crate::execution::budget::CLEANUP_RESERVE_FRACTION;
 use crate::execution::lease::{ExecutionLease, LeaseRegistry};
 use crate::execution::model::{ExecutionCapability, ExecutionPlan, ResourceEvidence, ToolIdentity};
-use crate::execution::private_fs::create_private_directory;
+use crate::execution::private_fs::{
+    create_private_directory, prepare_private_disjoint_directory, write_private_file,
+};
 use crate::execution::sandbox::BoundedCommandOutput;
 use crate::execution::scheduler::ExecutionContext;
 use crate::external_tool::{fingerprint_bytes, fingerprint_file, resolve_exact_executable};
 use anyhow::{Context, Result};
+use codeatlas_isolation_conformance::WORKSPACE_SENTINEL_NAME;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -234,6 +237,15 @@ async fn run_container_conformance(
     validate_step_output("image inspection", &image)?;
     let image = validate_image_inspection(&image.stdout, probe_image)?;
 
+    let nonce = conformance_nonce(plan, runtime)?;
+    let conformance_workspace = prepare_private_disjoint_directory(
+        &scratch_root.join("conformance-workspace"),
+        workspace_root,
+    )?;
+    write_private_file(
+        &conformance_workspace.join(WORKSPACE_SENTINEL_NAME),
+        nonce.as_bytes(),
+    )?;
     let writable_root = scratch_root.join("workload");
     for directory in [
         writable_root.clone(),
@@ -244,13 +256,12 @@ async fn run_container_conformance(
         create_private_directory(&directory)?;
     }
     let name = container_name(plan);
-    let nonce = conformance_nonce(plan, runtime)?;
     let spec = ContainerLaunchSpec::new_probe(
         name.clone(),
         probe_image.to_string(),
         nonce.clone(),
         rootless,
-        workspace_root,
+        &conformance_workspace,
         &writable_root,
         &plan.body.limits,
     )?;

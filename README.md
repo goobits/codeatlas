@@ -786,6 +786,35 @@ and cleanup control before the backend can grant a capability. A machine with
 no usable local runtime, including a development container without its host
 socket, remains plan-only.
 
+The probe source and strict report model live in the focused
+`codeatlas-isolation-conformance` crate. Its OCI recipe builds a static binary
+into a scratch image. From a clean committed checkout, create an OCI archive
+and manifest digest with all state outside the repository:
+
+```bash
+export CARGO_TARGET_DIR=/tmp/codeatlas-cargo-target
+pnpm probe:build -- \
+  --runtime /usr/bin/docker \
+  --socket /var/run/docker.sock \
+  --build-image docker.io/library/rust@sha256:<exact-musl-image-digest> \
+  --platform linux/amd64 \
+  --network allow \
+  --out /tmp/codeatlas-isolation-probe.oci.tar
+```
+
+`--network allow` permits the builder stage to fetch locked dependencies; it
+does not constrain network destinations. `deny` is the offline form and works
+only when the pinned build image already contains those dependencies. The task
+never pulls or publishes implicitly. It refuses dirty source,
+checkout-local output, or a container runtime whose reported data root overlaps
+the checkout. Runtime commands have finite elapsed/output ceilings, it keeps
+private build logs beside the archive, and it prints the OCI manifest digest
+plus the resolved runtime data root. Importing or
+publishing that archive under an exact repository digest is a separate operator
+step. Neither the archive nor its digest grants execution: the live nonce-bound
+matrix must still pass, and its intentional write attacks use an external
+disposable sentinel workspace rather than analyzed source.
+
 The `hqa-inventory` format projects the same bounded source and OpenAPI union
 into HQA application-inventory v1. Endpoint and OpenAPI-only operations are
 probe-only; source pages remain explorable. Dynamic `{parameter}` paths use a

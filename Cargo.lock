@@ -380,6 +380,7 @@ dependencies = [
  "bytes",
  "cargo_metadata",
  "clap",
+ "codeatlas-isolation-conformance",
  "colored",
  "ctrlc",
  "globset",
@@ -415,6 +416,15 @@ dependencies = [
  "toml",
  "url",
  "walkdir",
+]
+
+[[package]]
+name = "codeatlas-isolation-conformance"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
