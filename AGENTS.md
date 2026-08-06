@@ -183,6 +183,16 @@ failure boundary in the active proposal. After compaction, query that state
 once and resume it; do not redispatch work or reload full logs to reconstruct
 history.
 
+Optimize context and local machine time continuously, not only at remote
+checkpoints. Before reading or running something, prefer an already verified
+artifact when its revision and contract still match; otherwise read only the
+active proposal slice and run the narrowest check that can answer the current
+question. Do not rebuild unchanged dependencies, repeat a passed gate, or load
+complete logs when a recorded status, digest, count, and short failure tail are
+sufficient. Before compaction, keep the active tracker synchronized with the
+latest verified checkpoint and exact next action so restart work is lookup,
+not reconstruction.
+
 ## Execution safety
 
 All target calls and managed processes use the shared execution kernel. The
