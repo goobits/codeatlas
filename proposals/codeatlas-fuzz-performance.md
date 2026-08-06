@@ -494,8 +494,8 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-06): 103 open CodeAtlas implementation checks
-remain across Phases 9B through 21, including Phase 16A and the deferred Phase
+Remaining-scope audit (2026-08-06): 97 open CodeAtlas implementation checks
+remain across Phases 10 through 21, including Phase 16A and the deferred Phase
 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
 criteria, but they do not own a second rolling task list.
@@ -504,9 +504,9 @@ For restart context, read this introduction, the current verdict, the order
 rules, and only the first incomplete phase plus its active child. Completed
 foundations and the verification log are audit history and do not need to be
 reloaded unless a claim is under review. The immediate plan-only-host queue
-through Phase 16 is complete. Phase 9 is now the next continuation gate; after
-it passes, continue numerically through the execution track, Phase 16A,
-performance, cost search, and final signoff.
+through Phase 16 and the live Phase 9 isolation gate are complete. Phase 10 is
+the next implementation phase; then continue numerically through the execution
+track, Phase 16A, performance, cost search, and final signoff.
 
 ### Current verdict
 
@@ -522,22 +522,18 @@ evidence through the canonical concept policy without claiming semantic
 equivalence. Subject-parity release hardening is complete: the public matrix,
 self-audit, domain fixture dogfood, one-owner consolidation searches, and
 generated-state audit all pass.
-The reproducible CodeAtlas-owned isolation probe is locally complete. A
-manual-only GitHub-hosted runner, bounded orchestration task, destructive
-matrix, exact-image path, and bounded Cargo cache are in place without
-retaining the failed nested-VM path. Hosted run `31081198694` resolved the real
-rootful Docker boundary, imported and published the probe, launched the
-baseline container, and verified cleanup. Its baseline stopped at an
-over-broad resource-usage validator before the destructive matrix. Run
-`31083063180` narrowed the remaining sample to a legal cgroup PID high-water
-condition and successfully saved the first useful compatible Cargo generation.
-No live OCI isolation capability was granted, execution remains plan-only, and
-Phase 9 retains the hard continuation gate. The
+The reproducible CodeAtlas-owned isolation probe and live rootful OCI gate are
+complete. GitHub run `31084275665` executed exact commit `6d1e4f0`; the
+target-observed baseline and destructive matrix granted exactly the seven
+planned filesystem, network, process, resource, and cleanup capabilities.
+Rootless and nested states remain unclaimed rather than extrapolated. The
+receipt remains intentionally `blocked` only because HTTP workload execution
+stays disconnected until Phase 10 migrates it through the proven kernel. The
 source-impact producer design is accepted and reuses the existing source
 graph, callable effects, source index, bounded projection, and completeness
 vocabulary. Its implementation remains gated without making HQA graph
 alignment a CodeAtlas dependency. On implementation progress rather than
-proposal-design progress, the complete program is approximately 65 percent
+proposal-design progress, the complete program is approximately 67 percent
 done. That estimate is weighted by the
 accepted implementation phases, not by raw checkbox count. One hundred percent
 means every remaining tracker item is either verified and checked here or
@@ -641,7 +637,7 @@ Active child: structured callable evidence Phase 3.
 ### Phase 4: Complete the locally verifiable OCI implementation
 
 Active child: [`codeatlas-execution-kernel-http-fuzz.md`](codeatlas-execution-kernel-http-fuzz.md)
-Phase 4. This phase remains incomplete until Phase 9's live proof passes.
+Phase 4. The accepted Phase 9 live proof closes this locally implemented phase.
 
 - [x] Implement one OCI sandbox command owner with exact runtime fingerprint,
   digest-pinned image, cleared client environment, and no ambient context or
@@ -864,20 +860,33 @@ Active child: execution kernel Phase 4. The runtime and image resolved in Phase
 9B are inputs, not evidence; only the target-observed matrix can close this
 gate.
 
-- [ ] Run target-observed mount, absolute-path, traversal, symlink, scratch,
+- [x] Run target-observed mount, absolute-path, traversal, symlink, scratch,
   home, environment, network, subprocess, CPU, RSS, PID, descriptor, output,
   interruption, cancellation, and cleanup conformance cases.
-- [ ] Verify every advertised capability comes from successful target-side
+- [x] Verify every advertised capability comes from successful target-side
   evidence and that each failed or missing probe blocks before the first call.
-- [ ] Verify rootless and nested behavior explicitly for every state the
+- [x] Verify rootless and nested behavior explicitly for every state the
   backend claims rather than extrapolating from one host mode.
-- [ ] Record the runtime, client, server, image, kernel, cgroup, capability,
+- [x] Record the runtime, client, server, image, kernel, cgroup, capability,
   fixture, result, uploaded-artifact, and cache-result evidence needed to
   reproduce the matrix.
-- [ ] Fix any backend or fixture defect and rerun the narrow failed case before
+- [x] Fix any backend or fixture defect and rerun the narrow failed case before
   rerunning the complete conformance matrix.
-- [ ] Run full execution checks, CodeAtlas dogfood, and the generated-state
+- [x] Run full execution checks, CodeAtlas dogfood, and the generated-state
   audit, then mark and commit execution Phase 4 complete.
+
+Accepted checkpoint, 2026-08-06: GitHub run `31084275665` executed commit
+`6d1e4f0` once on rootful, non-nested Docker 28.0.4 / Linux
+6.17.0-1020-azure. The baseline and destructive matrix passed, all owned
+cleanup verified, and the target granted exactly `read_only_checkout`,
+`read_only_runtime`, `scratch_filesystem`, `network_allowlist`,
+`process_allowlist`, `resource_limits`, and `cleanup_verification`. Artifact
+`8960813530` has digest
+`sha256:c7a5abfd1b0935df16927bca3f18560a42224f9535281622c46f4d95cf2bd53f`;
+the compatible Cargo cache restored 3,095,277,545 bytes and saved a useful
+5,009,304,839-byte generation. The child proposal owns the complete receipt,
+runtime, image, cache, and attempt history. No rootless or nested claim was
+made.
 
 ### Phase 10: Migrate HTTP fully onto the kernel
 
@@ -1338,10 +1347,10 @@ read-only and will not reconstruct or vendor it.
   complete Rust, Python, JavaScript, and TypeScript contracts with propagated
   effect evidence and conformance coverage; every consumer now uses that model
   and the retired display-signature heuristic is deleted.
-- [x] Implemented the complete local OCI command/runtime/conformance boundary,
-  shared cancellation, resource evidence, and fallback cleanup path. The
-  capable-host live proof remains the explicit Phase 9 gate, with one manual
-  hosted runner now prepared as its only continuation path.
+- [x] Implemented the complete OCI command/runtime/conformance boundary,
+  shared cancellation, resource evidence, and fallback cleanup path, then
+  passed the target-observed rootful hosted matrix with all seven advertised
+  capabilities and verified cleanup.
 
 ### Verification log
 
@@ -1414,6 +1423,12 @@ read-only and will not reconstruct or vendor it.
   vendored schema. Bounded self-dogfood reports 308 files, 3,206 scan symbols,
   337 advisory code findings, and zero gates. Its warm exact-target inspection
   latency is retained as an unclassified Phase 19 performance lead.
+- 2026-08-06: hosted run `31084275665` executes exact commit `6d1e4f0` and
+  closes Phase 9. The baseline and destructive matrix pass, exact target-side
+  evidence grants seven capabilities, every owned lease verifies cleanup, the
+  uploaded artifact digest is recorded above, and the compatible Cargo cache
+  restores and saves useful bounded state. HTTP workload execution remains
+  disconnected until Phase 10 rather than bypassing the accepted migration.
 
 ## Existing-first check
 
@@ -1477,8 +1492,8 @@ bounded CodeAtlas dogfood pass with zero gates.
 
 ## Program stage 4: Execution kernel and HTTP migration
 
-Status: [~] Accepted; execution Phases 1-3, local Phase 4, the owned probe, and
-the hosted runner path are complete; the target-observed run waits at Phase 9B
+Status: [~] Accepted; execution Phases 1-4 and the owned live OCI proof are
+complete; HTTP migration and release hardening continue in Phase 10
 
 Projected LOC after measured Phase 3: +11,760-13,310 / -878-1,408
 

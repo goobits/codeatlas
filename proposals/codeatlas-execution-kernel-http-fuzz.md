@@ -909,7 +909,7 @@ exhaustion is `partial`.
 
 ## Phase 4: Verified isolation backend and capability matrix
 
-Status: [~] Rootful runtime resolved; waiting for corrected Phase 9C live proof
+Status: [x] Complete
 
 Execution checklist:
 
@@ -1082,12 +1082,10 @@ Hosted gate preparation checkpoint, 2026-08-05:
   integrations, the probe suite, and both warning-denying Clippy surfaces pass
   with generated state directed outside the checkout. The two live tests
   compile and remain ignored locally by design.
-- The rootful runtime input is now resolved by the hosted attempts below. The
-  remaining continuation input is one locally verified resource/cache
-  correction followed by the narrow baseline and destructive matrix on that
-  same workflow. Runtime, socket, and image remain inputs until the complete
-  target-observed artifact passes; this checkpoint grants no capability and
-  Phase 5 remains blocked.
+- The rootful runtime input and complete target-observed matrix are resolved by
+  the hosted attempts below. Phase 4 grants only the seven capabilities in the
+  accepted artifact; HTTP workload execution remains deliberately disconnected
+  until Phase 5 migrates the adapter through the proven kernel.
 
 First hosted attempt, 2026-08-06:
 
@@ -1188,6 +1186,46 @@ Third hosted attempt, 2026-08-06:
   contexts, seven scripts, and no duplicate scripts. The reduced implementation
   removes the four-field usage validator instead of adding per-resource
   exceptions.
+
+Fourth hosted attempt and accepted live proof, 2026-08-06:
+
+- GitHub run `31084275665` executed exact commit `6d1e4f0` once on the
+  `ubuntu-24.04` hosted image. Docker Engine 28.0.4, Linux
+  6.17.0-1020-azure, a cgroup-v2 digest, runtime version/info digests, and
+  rootful/non-nested state are recorded in the accepted evidence; no rootless
+  or nested capability is extrapolated.
+- The baseline passed in 3.22 seconds and the destructive CPU, RSS, output, and
+  cancellation matrix passed in 4.97 seconds. Target-side evidence granted
+  exactly `read_only_checkout`, `read_only_runtime`, `scratch_filesystem`,
+  `network_allowlist`, `process_allowlist`, `resource_limits`, and
+  `cleanup_verification`. Container, registry, builder, import archive, image,
+  tag, and scratch cleanup all verified with no owned residue.
+- Receipt
+  `receipt_9b381d56752e58ffc4ead8190ae8981ab71e24f30f5bfb596a22473d5594962a`
+  records Docker environment digest
+  `sha256:e9019e05081c59e30f4e2f6b7a494cd95fe22a5a1336fdc0a79734ec52f9f9c0`,
+  29 ms CPU, 7,106,560 peak RSS bytes, six peak cgroup tasks, 32 peak open
+  files, and verified leases. Its `blocked` outcome is the intended Phase 4
+  result: isolation is proven, while HTTP workload execution remains
+  disconnected until Phase 5.
+- The 306,176-byte canonical OCI archive has digest
+  `sha256:17d17ac135cfdbf89e0defbf614b9fa6c75e5c15710ae578dc1712b281e3972e`.
+  BuildKit emitted manifest
+  `sha256:ab9be7a7268a7179f2dc09752924ad8f690449c4683fe6a9daf54f3f9cdb9e59`;
+  Docker honestly normalized publication to
+  `sha256:b2491d5990bd4cd7e7e21b91011d75c8226f45038f6683f261f486205f8d364a`
+  rather than fabricating digest equality.
+- Artifact `8960813530` is 320,568 bytes with verified digest
+  `sha256:c7a5abfd1b0935df16927bca3f18560a42224f9535281622c46f4d95cf2bd53f`.
+  The receipt file digest is
+  `sha256:52abdbbc0a186028ab1f84bce701fdf3a475a60854d047724ee2c69e1b5e2f3a`.
+  One local copy and one job log live under
+  `/tmp/codeatlas-gha-phase9.GAkQVR/artifacts/github-run-31084275665` and
+  `/tmp/codeatlas-gha-phase9.GAkQVR/logs`.
+- The compatible cache restored 3,095,277,545 uncompressed bytes from run 3 in
+  about nine seconds. The completed matrix produced a useful 5,009,304,839-byte
+  generation under the 6 GB ceiling and saved it successfully as a
+  1,202,284,016-byte cache. OCI image construction remained uncached.
 
 #### Phase 4A: CodeAtlas-owned isolation probe
 
