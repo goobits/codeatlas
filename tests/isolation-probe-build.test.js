@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
 const {
@@ -9,6 +10,16 @@ const {
 } = require('../tasks/build-isolation-probe.js')
 
 const digest = 'a'.repeat(64)
+
+test('probe recipe verifies the musl static default without breaking procedural macros', () => {
+	const recipe = fs.readFileSync(
+		path.resolve(__dirname, '..', 'containers', 'isolation-conformance', 'Containerfile'),
+		'utf8'
+	)
+
+	assert.match(recipe, /rustc --print cfg \| grep -Fx 'target_feature="crt-static"'/)
+	assert.doesNotMatch(recipe, /target-feature=\+crt-static/)
+})
 
 test('probe build has one explicit bounded network and OCI output contract', () => {
 	const options = parseArguments([

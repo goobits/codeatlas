@@ -9,7 +9,7 @@ ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} \
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
     CARGO_PROFILE_RELEASE_LTO=true \
     CARGO_PROFILE_RELEASE_PANIC=abort \
-    RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols --remap-path-prefix=/source=."
+    RUSTFLAGS="-C strip=symbols --remap-path-prefix=/source=."
 WORKDIR /source
 
 COPY Cargo.toml Cargo.lock ./
@@ -17,6 +17,7 @@ COPY src ./src
 
 RUN test -n "${SOURCE_DATE_EPOCH}" \
     && rustc -vV | grep -Eq '^host: .*-unknown-linux-musl$' \
+    && rustc --print cfg | grep -Fx 'target_feature="crt-static"' \
     && cargo build --locked --release --bin isolation-conformance \
     && mkdir -p /out/codeatlas/bin \
     && cp /build/target/release/isolation-conformance \
