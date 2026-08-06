@@ -43,6 +43,7 @@ const parseArguments = arguments_ => {
 		'--runtime',
 		'--socket',
 		'--build-image',
+		'--buildkit-image',
 		'--registry-image',
 		'--platform',
 		'--network',
@@ -66,6 +67,10 @@ const parseArguments = arguments_ => {
 		runtime: values.get('--runtime'),
 		socket: values.get('--socket'),
 		buildImage: requireDigestImage(values.get('--build-image'), '--build-image'),
+		buildkitImage: requireDigestImage(
+			values.get('--buildkit-image'),
+			'--buildkit-image'
+		),
 		registryImage: requireDigestImage(values.get('--registry-image'), '--registry-image'),
 		platform,
 		network,
@@ -128,14 +133,19 @@ const parseRegistryAddress = output => {
 	return `127.0.0.1:${port}`
 }
 
-const selectPublishedReference = (output, repository, expectedDigest) => {
+const selectPublishedReference = (output, repository) => {
 	const digests = JSON.parse(output)
 	if (!Array.isArray(digests)) throw new Error('Published probe image omitted repository digests')
-	const expected = `${repository}@${expectedDigest}`
-	if (!digests.includes(expected)) {
-		throw new Error('Published probe digest differs from the built OCI manifest')
+	const prefix = `${repository}@`
+	const candidates = digests.filter(value =>
+		typeof value === 'string' &&
+		value.startsWith(prefix) &&
+		digestPattern.test(value.slice(prefix.length))
+	)
+	if (candidates.length !== 1) {
+		throw new Error('Published probe image did not expose one exact repository digest')
 	}
-	return expected
+	return candidates[0]
 }
 
 const waitForRegistry = async (
@@ -296,6 +306,7 @@ const checkIsolationLive = async options => {
 		}
 		for (const [label, image] of [
 			['build-image-pull', options.buildImage],
+			['buildkit-image-pull', options.buildkitImage],
 			['registry-image-pull', options.registryImage]
 		]) {
 			runRuntime(
@@ -310,6 +321,7 @@ const checkIsolationLive = async options => {
 			runtime: options.runtime,
 			socket: options.socket,
 			buildImage: options.buildImage,
+			buildkitImage: options.buildkitImage,
 			platform: options.platform,
 			network: options.network,
 			out: archive
@@ -409,8 +421,7 @@ const checkIsolationLive = async options => {
 				logRoot,
 				'probe-image-inspect'
 			).stdout,
-			repository,
-			build.image_digest
+			repository
 		)
 		const testEnvironment = {
 			...process.env,
@@ -462,6 +473,20 @@ const checkIsolationLive = async options => {
 			throw new Error('Live baseline did not persist its canonical execution receipt')
 		}
 		const receiptValue = JSON.parse(fs.readFileSync(receipt, 'utf8'))
+		if (
+			typeof receiptValue.id !== 'string' ||
+			!/^receipt_[0-9a-f]{64}$/.test(receiptValue.id) ||
+			!Array.isArray(receiptValue.runtime?.capabilities) ||
+			typeof receiptValue.runtime.rootless !== 'boolean' ||
+			typeof receiptValue.runtime.nested !== 'boolean' ||
+			!Array.isArray(receiptValue.cleanup) ||
+			receiptValue.cleanup.length === 0 ||
+			!receiptValue.cleanup.every(
+				entry => entry.released === true && entry.verified === true
+			)
+		) {
+			throw new Error('Live baseline receipt omitted required isolation evidence')
+		}
 		const runtimeEvidence = inspectRuntimeEvidence(options, clientRoot, logRoot)
 		const cgroup = fs.existsSync('/proc/self/cgroup')
 			? fs.readFileSync('/proc/self/cgroup')
@@ -469,21 +494,27 @@ const checkIsolationLive = async options => {
 		summary = {
 			source_commit: build.source_commit,
 			platform: build.platform,
+			buildkit_image: build.buildkit_image,
+			buildkit_cleanup_verified: build.builder_cleanup_verified,
 			kernel_release: os.release(),
 			cgroup_digest: `sha256:${crypto.createHash('sha256').update(cgroup).digest('hex')}`,
 			...runtimeEvidence,
 			probe_image: publishedReference,
-			probe_image_digest: build.image_digest,
+			probe_build_manifest_digest: build.image_digest,
+			probe_published_manifest_digest: publishedReference.split('@')[1],
+			probe_manifest_preserved:
+				publishedReference.split('@')[1] === build.image_digest,
+			probe_loaded_image_id: loadedImage,
+			probe_archive_bytes: build.archive_bytes,
+			probe_metadata_bytes: build.metadata_bytes,
 			probe_archive_digest: digestFile(archive),
 			probe_metadata_digest: digestFile(build.metadata),
 			receipt_id: receiptValue.id,
 			receipt_digest: digestFile(receipt),
-			capabilities: receiptValue.runtime?.capabilities ?? [],
-			rootless: receiptValue.runtime?.rootless,
-			nested: receiptValue.runtime?.nested,
-			cleanup_verified: receiptValue.cleanup?.every(
-				entry => entry.released === true && entry.verified === true
-			)
+			capabilities: receiptValue.runtime.capabilities,
+			rootless: receiptValue.runtime.rootless,
+			nested: receiptValue.runtime.nested,
+			cleanup_verified: true
 		}
 		writePrivateFile(
 			path.join(outDir, 'live-oci-evidence.json'),

@@ -909,7 +909,7 @@ exhaustion is `partial`.
 
 ## Phase 4: Verified isolation backend and capability matrix
 
-Status: [~] Local implementation verified; waiting for the Phase 9 live OCI proof
+Status: [~] Hosted live gate prepared; waiting for the Phase 9 target-observed run
 
 Execution checklist:
 
@@ -1032,6 +1032,47 @@ Locally verified implementation checkpoint, 2026-08-05:
   ignored with an exact operator-input contract. Phase 9 must run that same
   path against a digest-pinned probe image on a capable rootful, rootless, or
   nested runtime before Phase 5 execution is enabled.
+
+Hosted gate preparation checkpoint, 2026-08-05:
+
+- The task-owned nested QEMU runner was shut down cleanly and its two exact
+  external state roots were removed. It is not retained as a fallback or a
+  second backend path.
+- `tasks/check-isolation-live.js` now owns one bounded transaction around the
+  existing build task, a read-only unprivileged loopback registry, exact OCI
+  import/publication coordinates, the baseline integration case, the
+  destructive CPU/RSS/output/cancellation matrix, receipt export, evidence
+  digests, and verified residue cleanup. It accepts selectors only; no
+  arbitrary command can enter the runner.
+- Built OCI manifest, loaded image ID, and published manifest are distinct
+  evidence coordinates. The hosted proof records whether Docker preserved the
+  manifest digest but does not fail or fabricate equality when a daemon
+  normalizes media types during load/push.
+- The destructive matrix invokes `ContainerLaunchSpec`, `RuntimeClient`, the
+  shared scheduler and cancellation ledger, `run_container_case`, and the
+  existing lease registry. It does not create a test-only container executor.
+  Probe modes and readiness markers have one typed owner in
+  `codeatlas-isolation-conformance`.
+- `.github/workflows/live-oci-isolation.yml` provides a manual-only,
+  default-branch-only `ubuntu-24.04` runner with read-only repository
+  permission, a finite job timeout, immutable official-action pins, exact
+  digest-pinned Rust-musl, BuildKit, and registry images, and no
+  caller-controlled command or secret
+  input. The Docker socket remains host-side and is never forwarded to a child.
+- One GitHub Actions Cargo cache is keyed by OS, architecture, the exact
+  `rustc -Vv` digest, both lockfiles, and both manifests. Its uncompressed
+  payload is capped at 6 GB and its hit/miss, restored bytes, save outcome, and
+  saved payload bytes are reported. There is no restore prefix across a
+  different identity. The probe image retains `--no-cache`, so cache reuse
+  cannot substitute for rebuilding the exact committed isolation payload.
+- Focused Node contracts, the container-owner tests, five non-live isolation
+  integrations, the probe suite, and both warning-denying Clippy surfaces pass
+  with generated state directed outside the checkout. The two live tests
+  compile and remain ignored locally by design.
+- The remaining continuation input is one manual run from a revision where the
+  workflow exists on GitHub. A hosted runtime, socket, and image are inputs
+  until their target-observed artifact passes; this checkpoint grants no
+  capability and Phase 5 remains blocked.
 
 #### Phase 4A: CodeAtlas-owned isolation probe
 
@@ -1167,7 +1208,11 @@ first target call; plan-only behavior remains portable.
 + src/execution/private_fs.rs
 + src/execution/sandbox/mod.rs
 + src/execution/sandbox/container.rs
++ .github/workflows/live-oci-isolation.yml
++ tasks/check-isolation-live.js
++ tasks/container-runtime.js
 + tests/execution_isolation.rs
++ tests/isolation-live.test.js
 + tests/fixtures/execution_isolation/
 ~ Cargo.toml
 ~ Cargo.lock

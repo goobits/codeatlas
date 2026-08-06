@@ -1,0 +1,207 @@
+name: Live OCI isolation gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeatlas-live-oci-isolation
+  cancel-in-progress: false
+
+jobs:
+  live-oci-isolation:
+    name: Target-observed isolation
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_HOME: /tmp/codeatlas-cargo-home
+      CARGO_TARGET_DIR: /tmp/codeatlas-cargo-target
+      RUSTUP_TOOLCHAIN: 1.97.1
+      XDG_CACHE_HOME: /tmp/codeatlas-xdg-cache
+      TMPDIR: /tmp/codeatlas-tmp
+      CODEATLAS_LIVE_OUTPUT: /tmp/codeatlas-live-${{ github.run_id }}-${{ github.run_attempt }}
+      CODEATLAS_CACHE_LIMIT_BYTES: 6000000000
+      # rust:1.97.1-alpine3.23
+      BUILD_IMAGE: rust@sha256:c4a364ddbf684fe038e6fa6a4f25b30c8dc85247423e0e660676ece0d17be4a2
+      # moby/buildkit:buildx-stable-1
+      BUILDKIT_IMAGE: moby/buildkit@sha256:2f5adac4ecd194d9f8c10b7b5d7bceb5186853db1b26e5abd3a657af0b7e26ec
+      # registry:3.0.0
+      REGISTRY_IMAGE: registry@sha256:6c5666b861f3505b116bb9aa9b25175e71210414bd010d92035ff64018f9457e
+
+    steps:
+      - name: Check out the exact commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the exact Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.22.2
+
+      - name: Prepare external state and Rust identity
+        id: rust-identity
+        shell: bash
+        env:
+          CACHE_OS: ${{ runner.os }}
+          CACHE_ARCH: ${{ runner.arch }}
+        run: |
+          set -euo pipefail
+          mkdir -p \
+            "$CARGO_HOME" \
+            "$CARGO_TARGET_DIR" \
+            "$XDG_CACHE_HOME" \
+            "$TMPDIR"
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --no-self-update
+          rustc -Vv > "$RUNNER_TEMP/codeatlas-rustc-vv.txt"
+          rust_fingerprint="$(sha256sum "$RUNNER_TEMP/codeatlas-rustc-vv.txt" | cut -d' ' -f1)"
+          dependency_fingerprint="$(
+            sha256sum \
+              Cargo.toml \
+              Cargo.lock \
+              crates/isolation-conformance/Cargo.toml \
+              crates/isolation-conformance/Cargo.lock \
+              | sha256sum \
+              | cut -d' ' -f1
+          )"
+          cache_key="codeatlas-cargo-v1-${CACHE_OS}-${CACHE_ARCH}-${rust_fingerprint}-${dependency_fingerprint}"
+          printf 'rust_fingerprint=%s\n' "$rust_fingerprint" >> "$GITHUB_OUTPUT"
+          printf 'dependency_fingerprint=%s\n' "$dependency_fingerprint" >> "$GITHUB_OUTPUT"
+          printf 'cache_key=%s\n' "$cache_key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore exact Cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
+            ${{ env.CARGO_TARGET_DIR }}
+          key: ${{ steps.rust-identity.outputs.cache_key }}
+
+      - name: Verify restored cache ceiling
+        id: restored-cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_bytes=0
+          for cache_path in "$CARGO_HOME/registry" "$CARGO_HOME/git" "$CARGO_TARGET_DIR"; do
+            if [[ -e "$cache_path" ]]; then
+              path_bytes="$(du -sb "$cache_path" | cut -f1)"
+              cache_bytes=$((cache_bytes + path_bytes))
+            fi
+          done
+          if (( cache_bytes > CODEATLAS_CACHE_LIMIT_BYTES )); then
+            printf 'Restored Cargo cache is %s bytes; limit is %s bytes\n' \
+              "$cache_bytes" "$CODEATLAS_CACHE_LIMIT_BYTES" >&2
+            exit 1
+          fi
+          printf 'bytes=%s\n' "$cache_bytes" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve the hosted OCI boundary
+        id: oci-runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_path="$(realpath "$(command -v docker)")"
+          test -x "$runtime_path"
+          test -S /var/run/docker.sock
+          docker --host unix:///var/run/docker.sock version
+          docker --host unix:///var/run/docker.sock buildx version
+          printf 'path=%s\n' "$runtime_path" >> "$GITHUB_OUTPUT"
+
+      - name: Run the target-observed live matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tasks/check-isolation-live.js \
+            --runtime "${{ steps.oci-runtime.outputs.path }}" \
+            --socket /var/run/docker.sock \
+            --build-image "$BUILD_IMAGE" \
+            --buildkit-image "$BUILDKIT_IMAGE" \
+            --registry-image "$REGISTRY_IMAGE" \
+            --platform linux/amd64 \
+            --network allow \
+            --out-dir "$CODEATLAS_LIVE_OUTPUT"
+
+      - name: Measure bounded Cargo cache payload
+        if: always()
+        id: final-cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_bytes=0
+          cache_eligible=true
+          for cache_path in "$CARGO_HOME/registry" "$CARGO_HOME/git" "$CARGO_TARGET_DIR"; do
+            if [[ -e "$cache_path" ]]; then
+              path_bytes="$(du -sb "$cache_path" | cut -f1)"
+              cache_bytes=$((cache_bytes + path_bytes))
+            fi
+          done
+          if (( cache_bytes > CODEATLAS_CACHE_LIMIT_BYTES )); then
+            cache_eligible=false
+            printf '::warning::Cargo cache candidate is %s bytes; %s-byte cache save skipped\n' \
+              "$cache_bytes" "$CODEATLAS_CACHE_LIMIT_BYTES"
+          fi
+          printf 'bytes=%s\n' "$cache_bytes" >> "$GITHUB_OUTPUT"
+          printf 'eligible=%s\n' "$cache_eligible" >> "$GITHUB_OUTPUT"
+
+      - name: Save exact Cargo cache
+        id: cargo-cache-save
+        if: success() && steps.cargo-cache.outputs.cache-hit != 'true' && steps.final-cache.outputs.eligible == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
+            ${{ env.CARGO_TARGET_DIR }}
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
+      - name: Upload bounded isolation evidence
+        if: always()
+        id: isolation-artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codeatlas-live-oci-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.CODEATLAS_LIVE_OUTPUT }}/live-oci-evidence.json
+            ${{ env.CODEATLAS_LIVE_OUTPUT }}/execution-receipt.json
+            ${{ env.CODEATLAS_LIVE_OUTPUT }}/isolation-probe.oci.tar
+            ${{ env.CODEATLAS_LIVE_OUTPUT }}/isolation-probe.oci.tar.metadata.json
+            ${{ env.CODEATLAS_LIVE_OUTPUT }}/isolation-probe.oci.tar.logs
+            ${{ env.CODEATLAS_LIVE_OUTPUT }}/logs
+          if-no-files-found: warn
+          include-hidden-files: false
+          retention-days: 14
+          compression-level: 6
+
+      - name: Record cache and evidence metrics
+        if: always()
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.cargo-cache.outputs.cache-hit }}
+          RESTORED_BYTES: ${{ steps.restored-cache.outputs.bytes }}
+          FINAL_BYTES: ${{ steps.final-cache.outputs.bytes }}
+          CACHE_ELIGIBLE: ${{ steps.final-cache.outputs.eligible }}
+          SAVE_OUTCOME: ${{ steps.cargo-cache-save.outcome }}
+          ARTIFACT_DIGEST: ${{ steps.isolation-artifact.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          saved_bytes=0
+          if [[ "${SAVE_OUTCOME:-skipped}" == "success" ]]; then
+            saved_bytes="${FINAL_BYTES:-0}"
+          fi
+          {
+            printf '## Live OCI isolation evidence\n\n'
+            printf -- '- Cargo cache exact hit: `%s`\n' "${CACHE_HIT:-false}"
+            printf -- '- Cargo cache restored bytes: `%s`\n' "${RESTORED_BYTES:-0}"
+            printf -- '- Cargo cache final uncompressed bytes: `%s`\n' "${FINAL_BYTES:-0}"
+            printf -- '- Cargo cache within save ceiling: `%s`\n' "${CACHE_ELIGIBLE:-false}"
+            printf -- '- Cargo cache save outcome: `%s`\n' "${SAVE_OUTCOME:-skipped}"
+            printf -- '- Cargo cache saved uncompressed payload bytes: `%s`\n' "$saved_bytes"
+            printf -- '- Cache eviction detail: `not exposed; an absent exact key is a miss`\n'
+            printf -- '- Isolation artifact digest: `%s`\n' "${ARTIFACT_DIGEST:-unavailable}"
+          } >> "$GITHUB_STEP_SUMMARY"

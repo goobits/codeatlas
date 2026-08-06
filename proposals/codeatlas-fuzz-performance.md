@@ -522,9 +522,12 @@ evidence through the canonical concept policy without claiming semantic
 equivalence. Subject-parity release hardening is complete: the public matrix,
 self-audit, domain fixture dogfood, one-owner consolidation searches, and
 generated-state audit all pass.
-The reproducible CodeAtlas-owned isolation probe is locally complete. The
-current host has not yet granted a live OCI isolation capability, so execution
-remains plan-only here and Phase 9 retains the hard continuation gate. The
+The reproducible CodeAtlas-owned isolation probe is locally complete. A
+manual-only GitHub-hosted runner, bounded orchestration task, destructive
+matrix, exact-image path, and exact Cargo cache are now prepared without
+retaining the failed nested-VM path. Neither the current host nor an unrun
+workflow has granted a live OCI isolation capability, so execution remains
+plan-only and Phase 9 retains the hard continuation gate. The
 source-impact producer design is accepted and reuses the existing source
 graph, callable effects, source index, bounded projection, and completeness
 vocabulary. Its implementation remains gated without making HQA graph
@@ -794,18 +797,32 @@ itself.
 Active child: execution kernel Phase 4. This task preempts Phases 5 through 8
 as soon as an eligible runner is available.
 
-Blocked input: a capable local OCI runner, local control socket, and
-digest-pinned probe image. The current host has no outer runtime socket. Sudo
+Execution input: the manual `Live OCI isolation gate` workflow on GitHub's
+fresh `ubuntu-24.04` runner. The current host has no outer runtime socket. Sudo
 can start a VFS-backed nested Docker API, but the outer container's capability
 bounding set omits `CAP_SYS_ADMIN`, `CAP_NET_ADMIN`, and `CAP_SYS_RESOURCE`;
 cgroup v2 is read-only and user, mount, and network namespace creation is
-denied. The nested daemon therefore fails its first image-layer registration
-with `unshare: operation not permitted` and cannot launch a target. This host
-remains plan-only; daemon initialization alone is not isolation evidence.
+denied. The nested daemon fails its first image-layer registration with
+`unshare: operation not permitted` and cannot launch a target. Its task-owned
+QEMU replacement was removed rather than retained as a slow second backend.
+This host remains plan-only; daemon or workflow availability alone is not
+isolation evidence.
 
-- [ ] Resolve an exact rootful, rootless, or nested OCI runner with a local
-  socket, digest-pinned probe image, external writable state, and no need to
-  expose its control socket inside the child.
+- [x] Add one manual-only, default-branch-only, least-privilege hosted workflow
+  with a finite timeout, immutable action pins, exact digest-pinned build,
+  BuildKit, and registry images, external writable state, and no child-visible
+  control socket.
+- [x] Add one bounded orchestration task that builds the committed probe,
+  publishes it only through a temporary loopback registry, invokes the real
+  baseline and destructive cases, exports exact evidence, and verifies
+  cleanup on every outcome.
+- [x] Add one exact Cargo cache owner keyed by runner OS/architecture, the
+  `rustc -Vv` digest, both lockfiles, and both manifests; enforce a 6 GB
+  uncompressed ceiling and report restore/save metrics. Keep OCI image
+  building uncached.
+- [ ] Start that committed workflow on GitHub and resolve the actual exact
+  rootful, rootless, or nested runtime, local socket, digest-pinned probe
+  image, external writable state, and runtime metadata from the run itself.
 
 ### Phase 9C: Pass the live OCI isolation continuation gate
 
@@ -821,7 +838,8 @@ gate.
 - [ ] Verify rootless and nested behavior explicitly for every state the
   backend claims rather than extrapolating from one host mode.
 - [ ] Record the runtime, client, server, image, kernel, cgroup, capability,
-  fixture, and result digests needed to reproduce the matrix.
+  fixture, result, uploaded-artifact, and cache-result evidence needed to
+  reproduce the matrix.
 - [ ] Fix any backend or fixture defect and rerun the narrow failed case before
   rerunning the complete conformance matrix.
 - [ ] Run full execution checks, CodeAtlas dogfood, and the generated-state
@@ -1065,11 +1083,13 @@ Its schemas remain externally owned. CodeAtlas may write its proposal before
 those gates close, but it does not implement or locally reconstruct an
 unpublished family contract.
 
-Blocked inputs for implementation: the live Phase 9 proof plus the accepted
-external source-impact schema. The current hints and source-target schemas are
-already usable. Graph alignment remains a separate HQA continuation gate and
-does not block this producer. Proposal work may start earlier, but it grants no
-runtime or schema authority.
+Blocked inputs for implementation: the live Phase 9 proof plus producer
+acceptance of the external source-impact draft published at
+`agentspeak-contracts` commit `7706a37`. The current hints and source-target
+schemas are already usable. Graph alignment remains a separate HQA
+continuation gate and does not block this producer. Proposal and field-level
+contract review may start earlier, but neither grants runtime or schema
+authority.
 
 - [x] Write and accept one CodeAtlas-only source-impact proposal with explicit
   LOC, language/framework capability, schema, safety, and continuation gates.
@@ -1095,9 +1115,11 @@ runtime or schema authority.
 - [ ] Label every source-impact result as a hypothesis, invalidation hint, or
   retest hint. Never claim that a source change proves a runtime behavior
   change; HQA owns runtime confirmation.
-- [ ] Once the contract owner publishes accepted source-impact, graph-alignment,
-  and hints schemas, bind them by sibling reference, validate full embedded
-  source-target blocks, enforce unique `(kind, key)` hints, and vendor no copy.
+- [ ] Review the exact `agentspeak.source-impact/v1` draft as the producer,
+  return acceptance or field-level objections to its owner, and—once the
+  relevant source-impact and hints schemas are accepted—bind them by sibling
+  reference, validate full embedded source-target blocks, enforce unique
+  `(kind, key)` hints, and vendor no copy. Graph alignment remains HQA-owned.
 - [ ] Pass deterministic fixture, cross-language, framework, schema, sibling,
   boundedness, and CodeAtlas self-dogfood checks, then commit the proposal's
   independently reviewable phases.
@@ -1284,7 +1306,8 @@ read-only and will not reconstruct or vendor it.
   and the retired display-signature heuristic is deleted.
 - [x] Implemented the complete local OCI command/runtime/conformance boundary,
   shared cancellation, resource evidence, and fallback cleanup path. The
-  capable-host live proof remains the explicit Phase 9 gate.
+  capable-host live proof remains the explicit Phase 9 gate, with one manual
+  hosted runner now prepared as its only continuation path.
 
 ### Verification log
 
@@ -1304,6 +1327,13 @@ read-only and will not reconstruct or vendor it.
   gates, zero-gate self-dogfood over 324 files, and package assembly pass. The
   current host still cannot build or run the live OCI matrix, so Phase 9B is
   the next continuation gate.
+- 2026-08-05: commit `5622c87` adds one reusable Docker task boundary and one
+  live runner transaction that exercises the baseline plus destructive
+  CPU/RSS/output/cancellation modes through the existing container executor
+  and lease registry. Focused Node, container, integration, probe, and Clippy
+  checks pass. The manual hosted workflow adds exact image/action pins and one
+  bounded exact-identity Cargo cache; its unrun source remains input, not
+  capability evidence.
 - 2026-08-05: semantic-sibling Phase 1 passes strict config/model/schema/CLI
   checks and static self-dogfood; lexicon v5 is the sole published schema and
   shared-contract evidence cannot become corroboration.
@@ -1413,7 +1443,8 @@ bounded CodeAtlas dogfood pass with zero gates.
 
 ## Program stage 4: Execution kernel and HTTP migration
 
-Status: [~] Accepted; execution Phases 1-3, local Phase 4, and the owned probe are complete; live isolation waits at Phase 9B
+Status: [~] Accepted; execution Phases 1-3, local Phase 4, the owned probe, and
+the hosted runner path are complete; the target-observed run waits at Phase 9B
 
 Projected LOC after measured Phase 3: +11,760-13,310 / -878-1,408
 

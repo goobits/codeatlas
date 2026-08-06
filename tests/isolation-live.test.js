@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
 const test = require('node:test')
 const {
 	createRegistryArguments,
@@ -12,12 +14,63 @@ const {
 
 const digest = 'a'.repeat(64)
 const registryDigest = 'b'.repeat(64)
+const buildkitDigest = 'c'.repeat(64)
+const workflow = fs.readFileSync(
+	path.resolve(__dirname, '..', '.github', 'workflows', 'live-oci-isolation.yml'),
+	'utf8'
+)
+
+test('hosted isolation is manual, finite, least-authority, and immutable', () => {
+	assert.match(workflow, /^on:\n  workflow_dispatch:\n/m)
+	assert.doesNotMatch(workflow, /^  (push|pull_request|pull_request_target|schedule):/m)
+	assert.match(workflow, /^permissions:\n  contents: read$/m)
+	assert.match(workflow, /if: github\.ref_name == github\.event\.repository\.default_branch/)
+	assert.match(workflow, /timeout-minutes: 90/)
+	assert.doesNotMatch(workflow, /\bsecrets\./)
+	assert.doesNotMatch(workflow, /--privileged|\/var\/run\/docker\.sock:/)
+	for (const pin of [
+		'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+		'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+		'actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+		'actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+		'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
+	]) {
+		assert.ok(workflow.includes(pin), `missing immutable action pin ${pin}`)
+	}
+	for (const imageVariable of ['BUILD_IMAGE', 'BUILDKIT_IMAGE', 'REGISTRY_IMAGE']) {
+		assert.match(
+			workflow,
+			new RegExp(`^      ${imageVariable}: [a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}$`, 'm')
+		)
+	}
+})
+
+test('hosted Cargo cache has one exact bounded identity and external owner', () => {
+	for (const identity of [
+		'runner.os',
+		'runner.arch',
+		'codeatlas-cargo-v1-${CACHE_OS}-${CACHE_ARCH}-${rust_fingerprint}-${dependency_fingerprint}',
+		'steps.rust-identity.outputs.cache_key',
+		'Cargo.toml',
+		'Cargo.lock',
+		'crates/isolation-conformance/Cargo.toml',
+		'crates/isolation-conformance/Cargo.lock'
+	]) {
+		assert.ok(workflow.includes(identity), `missing cache identity ${identity}`)
+	}
+	assert.match(workflow, /CARGO_TARGET_DIR: \/tmp\/codeatlas-cargo-target/)
+	assert.match(workflow, /CODEATLAS_CACHE_LIMIT_BYTES: 6000000000/)
+	assert.match(workflow, /steps\.final-cache\.outputs\.eligible == 'true'/)
+	assert.doesNotMatch(workflow, /restore-keys:/)
+	assert.doesNotMatch(workflow, /cache-from|cache-to/)
+})
 
 test('live isolation accepts one exact bounded runner contract', () => {
 	const options = parseArguments([
 		'--runtime', '/usr/bin/docker',
 		'--socket', '/var/run/docker.sock',
 		'--build-image', `docker.io/library/rust@sha256:${digest}`,
+		'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
 		'--registry-image', `docker.io/library/registry@sha256:${registryDigest}`,
 		'--platform', 'linux/amd64',
 		'--network', 'allow',
@@ -30,6 +83,7 @@ test('live isolation accepts one exact bounded runner contract', () => {
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/var/run/docker.sock',
 			'--build-image', 'rust:latest',
+			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
 			'--registry-image', `registry@sha256:${registryDigest}`,
 			'--platform', 'linux/amd64',
 			'--network', 'allow',
@@ -82,12 +136,12 @@ test('image import and publication preserve their distinct exact digests', () =>
 	const repository = '127.0.0.1:49153/codeatlas-isolation-probe'
 	const reference = `${repository}@${manifestDigest}`
 	assert.equal(
-		selectPublishedReference(JSON.stringify([reference]), repository, manifestDigest),
+		selectPublishedReference(JSON.stringify([reference]), repository),
 		reference
 	)
 	assert.throws(
-		() => selectPublishedReference(JSON.stringify([]), repository, manifestDigest),
-		/differs from the built OCI manifest/
+		() => selectPublishedReference(JSON.stringify([]), repository),
+		/one exact repository digest/
 	)
 })
 

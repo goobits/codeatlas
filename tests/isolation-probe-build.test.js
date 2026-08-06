@@ -1,15 +1,20 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 const {
 	createBuildArguments,
+	createBuilderArguments,
+	createBuilderRemovalArguments,
 	parseArguments,
-	resolveRuntimeDataRoot
+	resolveRuntimeDataRoot,
+	validateBuildArtifacts
 } = require('../tasks/build-isolation-probe.js')
 const { createRuntimeOptions } = require('../tasks/container-runtime.js')
 
 const digest = 'a'.repeat(64)
+const buildkitDigest = 'b'.repeat(64)
 
 test('probe recipe verifies the musl static default without breaking procedural macros', () => {
 	const recipe = fs.readFileSync(
@@ -29,6 +34,8 @@ test('probe build has one explicit bounded network and OCI output contract', () 
 		'/run/docker.sock',
 		'--build-image',
 		`docker.io/library/rust@sha256:${digest}`,
+		'--buildkit-image',
+		`moby/buildkit@sha256:${buildkitDigest}`,
 		'--platform',
 		'linux/arm64',
 		'--network',
@@ -40,7 +47,8 @@ test('probe build has one explicit bounded network and OCI output contract', () 
 		...options,
 		clientRoot: '/tmp/client',
 		metadata: '/tmp/probe.metadata.json',
-		sourceDateEpoch: '1700000000'
+		sourceDateEpoch: '1700000000',
+		builder: 'codeatlas-probe-1'
 	})
 
 	assert.deepEqual(arguments_.slice(0, 4), [
@@ -50,6 +58,7 @@ test('probe build has one explicit bounded network and OCI output contract', () 
 		'unix:///run/docker.sock'
 	])
 	assert.ok(arguments_.includes('none'))
+	assert.ok(arguments_.includes('codeatlas-probe-1'))
 	assert.ok(arguments_.includes('type=oci,dest=/tmp/codeatlas-probe.oci.tar,tar=true,rewrite-timestamp=true'))
 	assert.ok(!arguments_.includes('--push'))
 	const runtimeOptions = createRuntimeOptions('/tmp/client')
@@ -61,6 +70,7 @@ test('probe build has one explicit bounded network and OCI output contract', () 
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/run/docker.sock',
 			'--build-image', 'rust:latest',
+			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
 			'--platform', 'linux/arm64',
 			'--network', 'deny',
 			'--out', '/tmp/probe.tar'
@@ -72,6 +82,7 @@ test('probe build has one explicit bounded network and OCI output contract', () 
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/run/docker.sock',
 			'--build-image', `rust@sha256:${digest}`,
+			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
 			'--platform', 'linux/arm64',
 			'--network', 'maybe',
 			'--out', '/tmp/probe.tar'
@@ -83,6 +94,7 @@ test('probe build has one explicit bounded network and OCI output contract', () 
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/run/docker.sock',
 			'--build-image', `rust@sha256:${digest}`,
+			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
 			'--platform', 'linux/arm64',
 			'--network', 'deny',
 			'--out', '/tmp/probe.tar,push=true'
@@ -100,4 +112,45 @@ test('probe build has one explicit bounded network and OCI output contract', () 
 		),
 		/outside and disjoint/
 	)
+})
+
+test('probe build owns one pinned disposable BuildKit builder', () => {
+	const image = `moby/buildkit@sha256:${buildkitDigest}`
+	assert.deepEqual(createBuilderArguments('codeatlas-probe-1', image), [
+		'buildx',
+		'create',
+		'--name',
+		'codeatlas-probe-1',
+		'--driver',
+		'docker-container',
+		'--driver-opt',
+		`image=${image}`,
+		'--bootstrap'
+	])
+	assert.deepEqual(createBuilderRemovalArguments('codeatlas-probe-1'), [
+		'buildx',
+		'rm',
+		'codeatlas-probe-1'
+	])
+})
+
+test('probe build artifacts have finite nonzero byte ceilings', () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codeatlas-probe-artifacts-'))
+	const archive = path.join(root, 'probe.oci.tar')
+	const metadata = path.join(root, 'probe.metadata.json')
+	try {
+		fs.writeFileSync(archive, 'archive')
+		fs.writeFileSync(metadata, '{}')
+		assert.deepEqual(validateBuildArtifacts(archive, metadata), {
+			archiveBytes: 7,
+			metadataBytes: 2
+		})
+		fs.truncateSync(archive, 64 * 1024 * 1024 + 1)
+		assert.throws(
+			() => validateBuildArtifacts(archive, metadata),
+			/1 through 67108864 bytes/
+		)
+	} finally {
+		fs.rmSync(root, { force: true, recursive: true })
+	}
 })

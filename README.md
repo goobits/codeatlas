@@ -796,7 +796,8 @@ export CARGO_TARGET_DIR=/tmp/codeatlas-cargo-target
 pnpm probe:build \
   --runtime /usr/bin/docker \
   --socket /var/run/docker.sock \
-  --build-image docker.io/library/rust@sha256:<exact-musl-image-digest> \
+  --build-image rust@sha256:<exact-musl-image-digest> \
+  --buildkit-image moby/buildkit@sha256:<exact-buildkit-image-digest> \
   --platform linux/amd64 \
   --network allow \
   --out /tmp/codeatlas-isolation-probe.oci.tar
@@ -814,6 +815,27 @@ publishing that archive under an exact repository digest is a separate operator
 step. Neither the archive nor its digest grants execution: the live nonce-bound
 matrix must still pass, and its intentional write attacks use an external
 disposable sentinel workspace rather than analyzed source.
+
+The repository's `Live OCI isolation gate` GitHub Actions workflow owns the
+complete capable-runner path. It is manual-only and default-branch-only, uses a
+fresh `ubuntu-24.04` runner with read-only repository permission, builds from a
+clean exact commit through one digest-pinned disposable BuildKit builder,
+publishes the probe only to a bounded loopback registry, runs the baseline and
+destructive cases through the same container owner, verifies cleanup, and
+uploads the receipt, evidence summary, OCI metadata, and private diagnostic
+logs. It never mounts the Docker socket into a child or accepts a
+caller-supplied command.
+The evidence records the built OCI manifest, loaded image ID, and published
+manifest separately; Docker media-type normalization is visible rather than
+misreported as digest preservation.
+
+That workflow restores and saves one Cargo cache keyed by runner OS and
+architecture, the exact `rustc -Vv` digest, both Cargo lockfiles, and both
+manifests. The uncompressed payload is limited to 6 GB and reports hit/miss,
+restored bytes, save outcome, and saved payload bytes in the job summary.
+Probe-image building deliberately retains `--no-cache`: cached Rust
+dependencies and test outputs accelerate reruns, while the isolation image is
+rebuilt from the exact committed probe source for every live proof.
 
 The `hqa-inventory` format projects the same bounded source and OpenAPI union
 into HQA application-inventory v1. Endpoint and OpenAPI-only operations are
@@ -1122,8 +1144,10 @@ smoke is explicit because it requires a local service. HTTP execution remains
 blocked until the kernel enforcement and migrated smoke suite are available.
 `pnpm run self:check` writes its report below `CARGO_TARGET_DIR`.
 
-Verification is local. The repository does not use automatic hosted CI, and no
-hosted workflow should be dispatched as part of ordinary development.
+Ordinary verification is local. The repository has no automatic hosted CI.
+The manual `Live OCI isolation gate` is reserved for the explicit capable-host
+continuation proof and should not be dispatched as part of ordinary
+development.
 
 ## License
 
