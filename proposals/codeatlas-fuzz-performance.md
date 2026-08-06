@@ -921,6 +921,12 @@ runner while GitHub's official status API reports a major Actions outage. Keep
 that exact run alive and query it without redispatching; no paid runner time or
 target call has started.
 
+GitHub subsequently completed its unassigned job as cancelled with no failed
+step or job log. A user-authorized rerun returned HTTP 201 after zero-active-run
+confirmation and returned the same exact `d07b7ac` run record to queued at
+2026-08-06T21:29:08Z. Actions still reports a major outage; query that run and
+do not retry again while the external boundary remains.
+
 - [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
   effect evidence into the shared target classifier.
 - [ ] Route reviewed and eligible single-shot HTTP runs through the same

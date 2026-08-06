@@ -1619,8 +1619,15 @@ Second Phase 5 hosted attempt, 2026-08-06:
 - The run remains queued with no assigned runner or started step. GitHub's
   official status API reports Actions in `major_outage`, while this repository
   has no other active workflow. No paid runner time or target budget has begun.
-- Next exact action: retain and query run `31128060350`; do not cancel,
-  redispatch, or change code while the external Actions outage is the only
+- GitHub later completed the run as `failure` with its sole job `cancelled`, no
+  runner name, no failed step, and no job log (`404`). This is an
+  infrastructure cancellation, not CodeAtlas execution evidence.
+- The user-authorized retry found zero active equivalent and `POST .../rerun`
+  returned HTTP 201. The same run ID and exact `d07b7ac` revision returned to
+  `queued` at 2026-08-06T21:29:08Z with its conclusion cleared; GitHub still
+  reports the Actions major outage.
+- Next exact action: retain and query run `31128060350`; do not issue another
+  retry, dispatch, or code change while the external outage is the only
   boundary.
 
 LOC: +700-1,100 / -250-450
