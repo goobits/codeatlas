@@ -5,9 +5,15 @@ const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 const {
 	requireExternalCargoTarget,
-	requireExternalPath,
-	writePrivateFile
+	requireExternalPath
 } = require('./storage.js')
+const {
+	createRuntimeArguments,
+	digestPattern,
+	requireDigestImage,
+	runRuntime,
+	validateRuntime
+} = require('./container-runtime.js')
 
 const repositoryRoot = path.resolve(__dirname, '..')
 const probeRoot = path.join(repositoryRoot, 'crates', 'isolation-conformance')
@@ -17,25 +23,6 @@ const containerfile = path.join(
 	'isolation-conformance',
 	'Containerfile'
 )
-const digestPattern = /^sha256:[0-9a-f]{64}$/
-const imagePattern = /^[a-z0-9][a-z0-9._:/-]*@sha256:[0-9a-f]{64}$/
-const maxRuntimeOutputBytes = 16 * 1024 * 1024
-const maxRuntimeElapsedMs = 30 * 60 * 1000
-
-const createRuntimeOptions = clientRoot => ({
-	cwd: repositoryRoot,
-	env: {
-		DOCKER_CONFIG: clientRoot,
-		HOME: clientRoot,
-		PATH: '/usr/bin:/bin'
-	},
-	encoding: 'utf8',
-	stdio: ['ignore', 'pipe', 'pipe'],
-	maxBuffer: maxRuntimeOutputBytes,
-	timeout: maxRuntimeElapsedMs,
-	killSignal: 'SIGKILL'
-})
-
 const parseArguments = arguments_ => {
 	const values = new Map()
 	for (let index = 0; index < arguments_.length; index += 2) {
@@ -62,10 +49,7 @@ const parseArguments = arguments_ => {
 	if (!/^linux\/(amd64|arm64)$/.test(platform)) {
 		throw new Error('--platform must be exactly linux/amd64 or linux/arm64')
 	}
-	const buildImage = values.get('--build-image')
-	if (!imagePattern.test(buildImage)) {
-		throw new Error('--build-image must be an exact repository@sha256 reference')
-	}
+	const buildImage = requireDigestImage(values.get('--build-image'), '--build-image')
 	const out = values.get('--out')
 	if (/[,\n\r\0]/.test(out)) {
 		throw new Error('--out cannot contain OCI exporter separators or control characters')
@@ -89,11 +73,7 @@ const createBuildArguments = ({
 	out,
 	metadata,
 	sourceDateEpoch
-}) => [
-	'--config',
-	clientRoot,
-	'--host',
-	`unix://${socket}`,
+}) => createRuntimeArguments(clientRoot, socket, [
 	'buildx',
 	'build',
 	'--file',
@@ -115,7 +95,7 @@ const createBuildArguments = ({
 	'--output',
 	`type=oci,dest=${out},tar=true,rewrite-timestamp=true`,
 	probeRoot
-]
+])
 
 const runGit = arguments_ => {
 	const result = spawnSync('git', arguments_, {
@@ -140,47 +120,21 @@ const resolveSourceIdentity = () => {
 	return { commit, sourceDateEpoch }
 }
 
-const validateRuntime = (runtime, socket) => {
-	if (!path.isAbsolute(runtime) || !fs.statSync(runtime).isFile()) {
-		throw new Error('--runtime must identify an absolute executable file')
-	}
-	fs.accessSync(runtime, fs.constants.X_OK)
-	if (!path.isAbsolute(socket) || !fs.statSync(socket).isSocket()) {
-		throw new Error('--socket must identify an absolute local Unix socket')
-	}
-}
-
-const runRuntime = (runtime, arguments_, clientRoot, logRoot, label) => {
-	const result = spawnSync(runtime, arguments_, createRuntimeOptions(clientRoot))
-	writePrivateFile(path.join(logRoot, `${label}.stdout.log`), result.stdout ?? '')
-	writePrivateFile(path.join(logRoot, `${label}.stderr.log`), result.stderr ?? '')
-	if (result.error) throw result.error
-	if (result.signal) throw new Error(`${label} terminated by ${result.signal}`)
-	if (result.status !== 0) {
-		throw new Error(`${label} failed: ${(result.stderr ?? '').trim().slice(-4096)}`)
-	}
-	return result.stdout
-}
-
 const verifyPinnedBuildImage = (options, clientRoot, logRoot) => {
-	const output = runRuntime(
+	const result = runRuntime(
 		options.runtime,
-		[
-			'--config',
-			clientRoot,
-			'--host',
-			`unix://${options.socket}`,
+		createRuntimeArguments(clientRoot, options.socket, [
 			'image',
 			'inspect',
 			'--format',
 			'{{json .RepoDigests}}',
 			options.buildImage
-		],
+		]),
 		clientRoot,
 		logRoot,
 		'build-image-inspect'
 	)
-	const digests = JSON.parse(output)
+	const digests = JSON.parse(result.stdout)
 	if (!Array.isArray(digests) || !digests.includes(options.buildImage)) {
 		throw new Error('Local build image does not expose the configured repository digest')
 	}
@@ -199,19 +153,15 @@ const verifyRuntimeStorage = (options, clientRoot, logRoot) =>
 		repositoryRoot,
 		runRuntime(
 			options.runtime,
-			[
-				'--config',
-				clientRoot,
-				'--host',
-				`unix://${options.socket}`,
+			createRuntimeArguments(clientRoot, options.socket, [
 				'info',
 				'--format',
 				'{{json .DockerRootDir}}'
-			],
+			]),
 			clientRoot,
 			logRoot,
 			'runtime-storage-inspect'
-		)
+		).stdout
 	)
 
 const buildProbe = options => {
@@ -250,18 +200,16 @@ const buildProbe = options => {
 		if (!digestPattern.test(imageDigest)) {
 			throw new Error('Probe image builder did not return an exact OCI manifest digest')
 		}
-		process.stdout.write(
-			`${JSON.stringify({
-				source_commit: source.commit,
-				image_digest: imageDigest,
-				platform: options.platform,
-				network: options.network,
-				runtime_data_root: runtimeDataRoot,
-				archive: out,
-				metadata,
-				logs: logRoot
-			})}\n`
-		)
+		return {
+			source_commit: source.commit,
+			image_digest: imageDigest,
+			platform: options.platform,
+			network: options.network,
+			runtime_data_root: runtimeDataRoot,
+			archive: out,
+			metadata,
+			logs: logRoot
+		}
 	} catch (error) {
 		for (const candidate of [out, metadata]) {
 			if (fs.existsSync(candidate)) fs.rmSync(candidate, { force: true })
@@ -274,7 +222,7 @@ const buildProbe = options => {
 
 if (require.main === module) {
 	try {
-		buildProbe(parseArguments(process.argv.slice(2)))
+		process.stdout.write(`${JSON.stringify(buildProbe(parseArguments(process.argv.slice(2))))}\n`)
 	} catch (error) {
 		process.stderr.write(`${error.message}\n`)
 		process.exitCode = 1
@@ -282,8 +230,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+	buildProbe,
 	createBuildArguments,
-	createRuntimeOptions,
 	parseArguments,
 	resolveRuntimeDataRoot
 }

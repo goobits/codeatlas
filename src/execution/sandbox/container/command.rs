@@ -1,7 +1,7 @@
 use crate::execution::model::ExecutionLimits;
 use anyhow::{Context, Result};
 use codeatlas_isolation_conformance::{
-    CONFORMANCE_SCHEMA_VERSION, SCRATCH_MOUNT, TEMP_MOUNT, VERIFY_MODE, WORKSPACE_MOUNT,
+    ProbeMode, CONFORMANCE_SCHEMA_VERSION, SCRATCH_MOUNT, TEMP_MOUNT, WORKSPACE_MOUNT,
     WORKSPACE_SENTINEL_NAME,
 };
 use std::collections::BTreeMap;
@@ -14,6 +14,25 @@ use std::os::unix::fs::MetadataExt;
 pub(super) const PROBE_ENTRYPOINT: &str = "/codeatlas/bin/isolation-conformance";
 const MINIMUM_CONTAINER_MEMORY_BYTES: u64 = 6 * 1024 * 1024;
 const CONFORMANCE_PROCESS_LIMIT: u64 = 1;
+
+#[derive(Clone, Debug)]
+pub(super) struct ProbeLaunch {
+    name: String,
+    image: String,
+    nonce: String,
+    mode: ProbeMode,
+}
+
+impl ProbeLaunch {
+    pub(super) fn new(name: String, image: String, nonce: String, mode: ProbeMode) -> Self {
+        Self {
+            name,
+            image,
+            nonce,
+            mode,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct ContainerLaunchSpec {
@@ -34,9 +53,7 @@ pub(super) struct ContainerLaunchSpec {
 
 impl ContainerLaunchSpec {
     pub(super) fn new_probe(
-        name: String,
-        image: String,
-        nonce: String,
+        launch: ProbeLaunch,
         rootless: bool,
         workspace_root: &Path,
         scratch_root: &Path,
@@ -69,6 +86,12 @@ impl ContainerLaunchSpec {
             .context("Container temporary mount is not UTF-8")?;
         let user = resolve_container_user(rootless, scratch_root)?;
         let cpu_time_limit_ms = cpu_seconds * 1_000;
+        let ProbeLaunch {
+            name,
+            image,
+            nonce,
+            mode,
+        } = launch;
         let mut environment = BTreeMap::from([
             ("CODEATLAS_CONFORMANCE_NONCE".to_string(), nonce),
             (
@@ -122,7 +145,7 @@ impl ContainerLaunchSpec {
             temp_root,
             environment,
             entrypoint: PROBE_ENTRYPOINT.to_string(),
-            arguments: vec![VERIFY_MODE.to_string()],
+            arguments: vec![mode.as_str().to_string()],
             cpu_time_limit_ms,
             rss_limit_bytes: limits.max_rss_bytes,
             process_limit: CONFORMANCE_PROCESS_LIMIT,
@@ -272,7 +295,7 @@ fn resolve_container_user(_rootless: bool, _scratch_root: &Path) -> Result<Strin
 
 #[cfg(test)]
 mod tests {
-    use super::{ContainerLaunchSpec, PROBE_ENTRYPOINT, WORKSPACE_MOUNT};
+    use super::{ContainerLaunchSpec, ProbeLaunch, PROBE_ENTRYPOINT, WORKSPACE_MOUNT};
     use crate::execution::model::sample_execution_limits;
     use std::ffi::OsStr;
 
@@ -288,9 +311,12 @@ mod tests {
         std::fs::create_dir_all(&workspace).expect("workspace fixture");
         std::fs::create_dir_all(scratch.join("tmp")).expect("scratch fixture");
         let spec = ContainerLaunchSpec::new_probe(
-            "codeatlas-probe-test".to_string(),
-            format!("probe@sha256:{}", "a".repeat(64)),
-            "nonce".to_string(),
+            ProbeLaunch::new(
+                "codeatlas-probe-test".to_string(),
+                format!("probe@sha256:{}", "a".repeat(64)),
+                "nonce".to_string(),
+                codeatlas_isolation_conformance::ProbeMode::Verify,
+            ),
             true,
             &workspace,
             &scratch,

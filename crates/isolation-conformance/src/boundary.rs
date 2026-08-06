@@ -1,4 +1,4 @@
-use codeatlas_isolation_conformance::CHILD_MODE;
+use codeatlas_isolation_conformance::ProbeMode;
 use std::ffi::OsStr;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::process::Command;
@@ -29,7 +29,10 @@ pub(crate) fn verify_process_denial() -> bool {
     let Ok(executable) = std::env::current_exe() else {
         return false;
     };
-    match Command::new(executable).arg(CHILD_MODE).status() {
+    match Command::new(executable)
+        .arg(ProbeMode::UnplannedChild.as_str())
+        .status()
+    {
         Ok(_) => false,
         Err(error) => matches!(error.raw_os_error(), Some(1 | 11)),
     }

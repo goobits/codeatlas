@@ -7,12 +7,52 @@ pub const WORKSPACE_MOUNT: &str = "/codeatlas/workspace";
 pub const SCRATCH_MOUNT: &str = "/codeatlas/scratch";
 pub const TEMP_MOUNT: &str = "/tmp";
 pub const WORKSPACE_SENTINEL_NAME: &str = ".codeatlas-isolation-sentinel";
-pub const VERIFY_MODE: &str = "verify";
-pub const CPU_EXHAUSTION_MODE: &str = "exhaust-cpu";
-pub const RSS_EXHAUSTION_MODE: &str = "exhaust-rss";
-pub const OUTPUT_EXHAUSTION_MODE: &str = "exhaust-output";
-pub const CANCELLATION_MODE: &str = "await-cancellation";
-pub const CHILD_MODE: &str = "unplanned-child";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProbeMode {
+    Verify,
+    ExhaustCpu,
+    ExhaustRss,
+    ExhaustOutput,
+    AwaitCancellation,
+    UnplannedChild,
+}
+
+impl ProbeMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Verify => "verify",
+            Self::ExhaustCpu => "exhaust-cpu",
+            Self::ExhaustRss => "exhaust-rss",
+            Self::ExhaustOutput => "exhaust-output",
+            Self::AwaitCancellation => "await-cancellation",
+            Self::UnplannedChild => "unplanned-child",
+        }
+    }
+
+    pub fn from_name(value: &str) -> Option<Self> {
+        [
+            Self::Verify,
+            Self::ExhaustCpu,
+            Self::ExhaustRss,
+            Self::ExhaustOutput,
+            Self::AwaitCancellation,
+            Self::UnplannedChild,
+        ]
+        .into_iter()
+        .find(|mode| mode.as_str() == value)
+    }
+
+    pub const fn ready_marker(self) -> Option<&'static str> {
+        match self {
+            Self::ExhaustCpu => Some(".codeatlas-exhaust-cpu-ready"),
+            Self::ExhaustRss => Some(".codeatlas-exhaust-rss-ready"),
+            Self::ExhaustOutput => Some(".codeatlas-exhaust-output-ready"),
+            Self::AwaitCancellation => Some(".codeatlas-await-cancellation-ready"),
+            Self::Verify | Self::UnplannedChild => None,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]

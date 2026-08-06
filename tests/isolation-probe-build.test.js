@@ -4,10 +4,10 @@ const path = require('node:path')
 const test = require('node:test')
 const {
 	createBuildArguments,
-	createRuntimeOptions,
 	parseArguments,
 	resolveRuntimeDataRoot
 } = require('../tasks/build-isolation-probe.js')
+const { createRuntimeOptions } = require('../tasks/container-runtime.js')
 
 const digest = 'a'.repeat(64)
 

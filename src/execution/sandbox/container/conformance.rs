@@ -419,7 +419,8 @@ mod tests {
         evaluate_conformance, ExecutionCapability, RequiredNullableVec, CONFORMANCE_SCHEMA_VERSION,
     };
     use crate::execution::model::sample_execution_limits;
-    use crate::execution::sandbox::container::command::ContainerLaunchSpec;
+    use crate::execution::sandbox::container::command::{ContainerLaunchSpec, ProbeLaunch};
+    use codeatlas_isolation_conformance::ProbeMode;
     use serde_json::json;
 
     #[test]
@@ -450,9 +451,12 @@ mod tests {
         let mut limits = sample_execution_limits();
         limits.max_rss_bytes = 64 * 1024 * 1024;
         let spec = ContainerLaunchSpec::new_probe(
-            "codeatlas-probe-test".to_string(),
-            format!("probe@sha256:{}", "a".repeat(64)),
-            "nonce".to_string(),
+            ProbeLaunch::new(
+                "codeatlas-probe-test".to_string(),
+                format!("probe@sha256:{}", "a".repeat(64)),
+                "nonce".to_string(),
+                ProbeMode::Verify,
+            ),
             true,
             &workspace,
             &scratch,

@@ -8,10 +8,7 @@ mod verify;
 mod workload;
 
 use anyhow::{Context, Result};
-use codeatlas_isolation_conformance::{
-    IsolationConformanceReport, CANCELLATION_MODE, CHILD_MODE, CPU_EXHAUSTION_MODE,
-    OUTPUT_EXHAUSTION_MODE, RSS_EXHAUSTION_MODE, VERIFY_MODE,
-};
+use codeatlas_isolation_conformance::{IsolationConformanceReport, ProbeMode};
 use std::io::{self, Write};
 
 fn main() {
@@ -33,14 +30,17 @@ fn run_probe() -> Result<()> {
     if arguments.next().is_some() {
         anyhow::bail!("Isolation conformance probe accepts exactly one mode");
     }
-    match mode.to_str() {
-        Some(VERIFY_MODE) => write_report(&verify::verify_isolation()?),
-        Some(CPU_EXHAUSTION_MODE) => workload::exhaust_cpu(),
-        Some(RSS_EXHAUSTION_MODE) => workload::exhaust_rss(),
-        Some(OUTPUT_EXHAUSTION_MODE) => workload::exhaust_output(),
-        Some(CANCELLATION_MODE) => workload::await_cancellation(),
-        Some(CHILD_MODE) => Ok(()),
-        _ => anyhow::bail!("Unknown isolation conformance probe mode"),
+    let mode = mode
+        .to_str()
+        .and_then(ProbeMode::from_name)
+        .context("Unknown isolation conformance probe mode")?;
+    match mode {
+        ProbeMode::Verify => write_report(&verify::verify_isolation()?),
+        ProbeMode::ExhaustCpu => workload::exhaust_cpu(),
+        ProbeMode::ExhaustRss => workload::exhaust_rss(),
+        ProbeMode::ExhaustOutput => workload::exhaust_output(),
+        ProbeMode::AwaitCancellation => workload::await_cancellation(),
+        ProbeMode::UnplannedChild => Ok(()),
     }
 }
 

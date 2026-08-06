@@ -3,7 +3,7 @@ mod conformance;
 mod metadata;
 mod runtime;
 
-use self::command::{string_arguments, ContainerLaunchSpec};
+use self::command::{string_arguments, ContainerLaunchSpec, ProbeLaunch};
 use self::conformance::{
     evaluate_conformance, validate_container_inspection, validate_image_inspection,
 };
@@ -21,7 +21,7 @@ use crate::execution::sandbox::BoundedCommandOutput;
 use crate::execution::scheduler::ExecutionContext;
 use crate::external_tool::{fingerprint_bytes, fingerprint_file, resolve_exact_executable};
 use anyhow::{Context, Result};
-use codeatlas_isolation_conformance::WORKSPACE_SENTINEL_NAME;
+use codeatlas_isolation_conformance::{ProbeMode, WORKSPACE_SENTINEL_NAME};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -237,16 +237,61 @@ async fn run_container_conformance(
     }
     let name = container_name(plan);
     let spec = ContainerLaunchSpec::new_probe(
-        name.clone(),
-        probe_image.to_string(),
-        nonce.clone(),
+        ProbeLaunch::new(
+            name.clone(),
+            probe_image.to_string(),
+            nonce.clone(),
+            ProbeMode::Verify,
+        ),
         rootless,
         &conformance_workspace,
         &writable_root,
         &plan.body.limits,
     )?;
+
+    let started = run_container_case(
+        client,
+        context,
+        &spec,
+        leases,
+        output_bytes,
+        normal_output_ceiling,
+        plan.body.limits.max_output_bytes,
+        CONFORMANCE_STEP_TIMEOUT,
+    )
+    .await?;
+    validate_step_output("target-observed isolation", &started)?;
+    let mut outcome = evaluate_conformance(
+        &started.stdout,
+        &nonce,
+        &spec,
+        &runtime.digest,
+        &image.id,
+        rootless,
+        nested,
+    )?;
+    outcome
+        .capabilities
+        .push(ExecutionCapability::CleanupVerification);
+    outcome.capabilities.sort();
+    outcome.capabilities.dedup();
+    Ok(outcome)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_container_case(
+    client: &RuntimeClient,
+    context: &ExecutionContext,
+    spec: &ContainerLaunchSpec,
+    leases: &mut LeaseRegistry,
+    output_bytes: &mut u64,
+    normal_output_ceiling: u64,
+    max_output_bytes: u64,
+    step_timeout: Duration,
+) -> Result<BoundedCommandOutput> {
+    let name = spec.name.as_str();
     let fallback_client = client.clone();
-    let fallback_name = name.clone();
+    let fallback_name = spec.name.clone();
     let fallback_deadline = std::time::Instant::now()
         .checked_add(context.budget().run_time_remaining())
         .context("Container cleanup deadline exceeds this host")?;
@@ -272,47 +317,34 @@ async fn run_container_conformance(
         let inspected = run_probe_step(
             client,
             context,
-            string_arguments(["container", "inspect", "--format", "{{json .}}", &name]),
+            string_arguments(["container", "inspect", "--format", "{{json .}}", name]),
             RUNTIME_CONTROL_TIMEOUT,
             normal_output_ceiling,
             output_bytes,
         )
         .await?;
         validate_step_output("container configuration", &inspected)?;
-        validate_container_inspection(&inspected.stdout, &spec)?;
+        validate_container_inspection(&inspected.stdout, spec)?;
 
         let started = run_probe_step(
             client,
             context,
-            string_arguments(["container", "start", "--attach", &name]),
-            CONFORMANCE_STEP_TIMEOUT,
+            string_arguments(["container", "start", "--attach", name]),
+            step_timeout,
             normal_output_ceiling,
             output_bytes,
         )
         .await?;
-        validate_step_output("target-observed isolation", &started)?;
-        evaluate_conformance(
-            &started.stdout,
-            &nonce,
-            &spec,
-            &runtime.digest,
-            &image.id,
-            rootless,
-            nested,
-        )
+        Ok(started)
     }
     .await;
 
     let cleanup_deadline = Instant::now()
         .checked_add(context.budget().run_time_remaining())
         .context("Container cleanup deadline exceeds this host")?;
-    let cleanup_allowance = plan
-        .body
-        .limits
-        .max_output_bytes
-        .saturating_sub(*output_bytes);
+    let cleanup_allowance = max_output_bytes.saturating_sub(*output_bytes);
     let cleanup = client
-        .cleanup_container(&name, cleanup_deadline, cleanup_allowance)
+        .cleanup_container(name, cleanup_deadline, cleanup_allowance)
         .await;
     let cleanup = match cleanup {
         Ok(cleanup) if cleanup.verified => cleanup,
@@ -339,13 +371,7 @@ async fn run_container_conformance(
                 .unwrap_or("cleanup verification failed")
         );
     }
-    let mut outcome = observed?;
-    outcome
-        .capabilities
-        .push(ExecutionCapability::CleanupVerification);
-    outcome.capabilities.sort();
-    outcome.capabilities.dedup();
-    Ok(outcome)
+    observed
 }
 
 fn recover_failed_cleanup(
@@ -578,5 +604,239 @@ mod tests {
 
         drop(listener);
         std::fs::remove_dir_all(root).expect("remove runtime fixture");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod live_tests {
+    use super::{
+        normal_output_ceiling, resolve_local_socket, run_container_case, run_probe_step,
+        validate_image_inspection, validate_step_output, ContainerLaunchSpec, ProbeLaunch,
+        RuntimeClient, RuntimeInfo, RUNTIME_CONTROL_TIMEOUT, RUNTIME_INFO_FORMAT,
+    };
+    use crate::execution::lease::LeaseRegistry;
+    use crate::execution::model::{sample_execution_limits, ExecutionLimits};
+    use crate::execution::private_fs::create_private_directory;
+    use crate::execution::scheduler::ExecutionScheduler;
+    use crate::external_tool::resolve_exact_executable;
+    use codeatlas_isolation_conformance::{ProbeMode, WORKSPACE_SENTINEL_NAME};
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    struct LiveRoot(PathBuf);
+
+    impl LiveRoot {
+        fn create() -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "codeatlas-live-destructive-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("live-test clock")
+                    .as_nanos()
+            ));
+            let checkout = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .canonicalize()
+                .expect("CodeAtlas checkout");
+            let parent = root.parent().expect("live root parent");
+            let parent = parent.canonicalize().expect("live root parent identity");
+            assert!(!parent.starts_with(&checkout) && !checkout.starts_with(&parent));
+            create_private_directory(&root).expect("live destructive root");
+            Self(root)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for LiveRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires an operator-provided digest-pinned probe image and usable local OCI socket"]
+    fn live_oci_destructive_matrix() {
+        let executable = std::env::var_os("CODEATLAS_TEST_OCI_RUNTIME")
+            .map(PathBuf::from)
+            .expect("CODEATLAS_TEST_OCI_RUNTIME is required for the live isolation matrix");
+        let socket = std::env::var_os("CODEATLAS_TEST_OCI_SOCKET")
+            .map(PathBuf::from)
+            .expect("CODEATLAS_TEST_OCI_SOCKET is required for the live isolation matrix");
+        let image = std::env::var("CODEATLAS_TEST_OCI_PROBE_IMAGE")
+            .expect("CODEATLAS_TEST_OCI_PROBE_IMAGE is required for the live isolation matrix");
+        let executable =
+            resolve_exact_executable(Some(&executable), "docker", "Live container runtime")
+                .expect("exact live runtime");
+        let socket = resolve_local_socket(&socket).expect("exact live runtime socket");
+        let root = LiveRoot::create();
+        let client_root = root.path().join("runtime-client");
+        create_private_directory(&client_root).expect("live runtime client root");
+        let client = RuntimeClient::new(executable, socket, client_root);
+        let limits = live_limits();
+        let rootless = inspect_live_inputs(&client, &image, &limits);
+
+        for mode in [
+            ProbeMode::ExhaustCpu,
+            ProbeMode::ExhaustRss,
+            ProbeMode::ExhaustOutput,
+            ProbeMode::AwaitCancellation,
+        ] {
+            run_destructive_case(&client, &image, rootless, root.path(), &limits, mode);
+        }
+    }
+
+    fn inspect_live_inputs(client: &RuntimeClient, image: &str, limits: &ExecutionLimits) -> bool {
+        let scheduler = ExecutionScheduler::new(limits, 0).expect("live metadata scheduler");
+        scheduler
+            .run(|context| async move {
+                let mut output_bytes = 0_u64;
+                let output_ceiling = normal_output_ceiling(limits.max_output_bytes)?;
+                let image_output = run_probe_step(
+                    client,
+                    &context,
+                    super::string_arguments(["image", "inspect", "--format", "{{json .}}", image]),
+                    RUNTIME_CONTROL_TIMEOUT,
+                    output_ceiling,
+                    &mut output_bytes,
+                )
+                .await?;
+                validate_step_output("live image inspection", &image_output)?;
+                validate_image_inspection(&image_output.stdout, image)?;
+                let info = run_probe_step(
+                    client,
+                    &context,
+                    super::string_arguments(["info", "--format", RUNTIME_INFO_FORMAT]),
+                    RUNTIME_CONTROL_TIMEOUT,
+                    output_ceiling,
+                    &mut output_bytes,
+                )
+                .await?;
+                validate_step_output("live runtime metadata", &info)?;
+                Ok(RuntimeInfo::from_output(&info.stdout)?.is_rootless())
+            })
+            .expect("live runtime and image evidence")
+    }
+
+    fn run_destructive_case(
+        client: &RuntimeClient,
+        image: &str,
+        rootless: bool,
+        root: &Path,
+        limits: &ExecutionLimits,
+        mode: ProbeMode,
+    ) {
+        let case_root = root.join(mode.as_str());
+        let workspace = case_root.join("workspace");
+        let scratch = case_root.join("scratch");
+        for directory in [
+            workspace.clone(),
+            scratch.clone(),
+            scratch.join("tmp"),
+            scratch.join("home"),
+            scratch.join("cache"),
+        ] {
+            create_private_directory(&directory).expect("live case directory");
+        }
+        let nonce = format!("{:064x}", mode as u8 + 1);
+        std::fs::write(workspace.join(WORKSPACE_SENTINEL_NAME), &nonce)
+            .expect("live workspace sentinel");
+        let spec = ContainerLaunchSpec::new_probe(
+            ProbeLaunch::new(
+                format!("codeatlas-live-{}-{}", mode.as_str(), std::process::id()),
+                image.to_string(),
+                nonce,
+                mode,
+            ),
+            rootless,
+            &workspace,
+            &scratch,
+            limits,
+        )
+        .expect("live destructive launch spec");
+        let marker = scratch.join(mode.ready_marker().expect("destructive marker"));
+        let scheduler = ExecutionScheduler::new(limits, 0).expect("live case scheduler");
+        let cancellation = (mode == ProbeMode::AwaitCancellation).then(|| {
+            let budget = Arc::clone(scheduler.context().budget());
+            let marker = marker.clone();
+            std::thread::spawn(move || {
+                let deadline = Instant::now() + Duration::from_secs(30);
+                while !marker.is_file() && Instant::now() < deadline {
+                    std::thread::yield_now();
+                }
+                if marker.is_file() {
+                    budget.cancel();
+                    true
+                } else {
+                    false
+                }
+            })
+        });
+        let mut leases = LeaseRegistry::default();
+        let mut output_bytes = 0_u64;
+        let case_output_ceiling =
+            normal_output_ceiling(limits.max_output_bytes).expect("live output ceiling");
+        let max_output_bytes = limits.max_output_bytes;
+        let leases_ref = &mut leases;
+        let output_bytes_ref = &mut output_bytes;
+        let output = scheduler
+            .run(|context| async move {
+                run_container_case(
+                    client,
+                    &context,
+                    &spec,
+                    leases_ref,
+                    output_bytes_ref,
+                    case_output_ceiling,
+                    max_output_bytes,
+                    Duration::from_secs(30),
+                )
+                .await
+            })
+            .expect("live destructive container case");
+        if let Some(cancellation) = cancellation {
+            assert!(cancellation.join().expect("cancellation observer"));
+        }
+        assert_eq!(
+            std::fs::read_to_string(&marker).expect("target readiness marker"),
+            mode.as_str()
+        );
+        let cleanup = leases.release_all();
+        assert_eq!(cleanup.len(), 1);
+        assert!(cleanup[0].released && cleanup[0].verified);
+        match mode {
+            ProbeMode::ExhaustCpu | ProbeMode::ExhaustRss => {
+                assert!(!output.status.success());
+                assert!(!output.timed_out && !output.output_exhausted && !output.cancelled);
+            }
+            ProbeMode::ExhaustOutput => {
+                assert!(output.output_exhausted);
+                assert!(!output.timed_out && !output.cancelled);
+            }
+            ProbeMode::AwaitCancellation => {
+                assert!(output.cancelled);
+                assert!(!output.timed_out && !output.output_exhausted);
+            }
+            ProbeMode::Verify | ProbeMode::UnplannedChild => {
+                panic!("non-destructive mode entered the destructive matrix")
+            }
+        }
+    }
+
+    fn live_limits() -> ExecutionLimits {
+        let mut limits = sample_execution_limits();
+        limits.max_calls = 5;
+        limits.calls_per_second = 5;
+        limits.run_timeout_ms = 120_000;
+        limits.max_cpu_time_ms = 2_000;
+        limits.max_rss_bytes = 64 * 1024 * 1024;
+        limits.max_processes = 2;
+        limits.max_open_files = 32;
+        limits.max_output_bytes = 128 * 1024;
+        limits.max_artifact_bytes = 1024 * 1024;
+        limits
     }
 }

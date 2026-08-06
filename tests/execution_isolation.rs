@@ -3,13 +3,16 @@ mod support;
 use self::support::TestDirectory;
 use codeatlas_isolation_conformance::WORKSPACE_MOUNT;
 use serde_json::{json, Value};
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::{Error, ErrorKind, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
@@ -18,6 +21,41 @@ use std::os::unix::net::UnixListener;
 const PROBE_IMAGE: &str =
     "fixture/codeatlas-probe@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 static NEXT_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(unix)]
+fn write_live_receipt(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if !path.is_absolute() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "live receipt path must be absolute",
+        ));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "live receipt path has no parent"))?
+        .canonicalize()?;
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).canonicalize()?;
+    if parent.starts_with(&checkout) || checkout.starts_with(&parent) {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "live receipt path must be disjoint from the CodeAtlas checkout",
+        ));
+    }
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    if file.metadata()?.permissions().mode() & 0o777 != 0o600 {
+        return Err(Error::new(
+            ErrorKind::PermissionDenied,
+            "live receipt file is not owner-only",
+        ));
+    }
+    Ok(())
+}
 
 fn run_codeatlas(root: &Path, state: &Path, args: &[&str]) -> Output {
     codeatlas_command(root, state)
@@ -186,6 +224,10 @@ impl IsolationFixture {
             String::from_utf8_lossy(&output.stderr)
         );
         assert_no_target_call(&self.target);
+        if let Some(path) = std::env::var_os("CODEATLAS_TEST_OCI_RECEIPT_OUT") {
+            write_live_receipt(Path::new(&path), &output.stdout)
+                .expect("persist private external live receipt");
+        }
         serde_json::from_slice(&output.stdout).expect("execution receipt JSON")
     }
 
@@ -205,6 +247,40 @@ impl Drop for IsolationFixture {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.runtime_socket_path);
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn live_receipt_export_is_private_external_and_immutable() {
+    let directory = TestDirectory::create("codeatlas-live-receipt");
+    let receipt = directory.path().join("receipt.json");
+    write_live_receipt(&receipt, b"{\"outcome\":\"blocked\"}\n")
+        .expect("write external receipt evidence");
+    assert_eq!(
+        fs::read(&receipt).expect("read receipt evidence"),
+        b"{\"outcome\":\"blocked\"}\n"
+    );
+    assert_eq!(
+        fs::metadata(&receipt)
+            .expect("receipt metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    assert_eq!(
+        write_live_receipt(&receipt, b"replacement")
+            .expect_err("receipt evidence must not be overwritten")
+            .kind(),
+        ErrorKind::AlreadyExists
+    );
+    let checkout_receipt = Path::new(env!("CARGO_MANIFEST_DIR")).join("receipt.json");
+    assert_eq!(
+        write_live_receipt(&checkout_receipt, b"forbidden")
+            .expect_err("receipt evidence must stay outside the checkout")
+            .kind(),
+        ErrorKind::InvalidInput
+    );
 }
 
 #[cfg(unix)]
