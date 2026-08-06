@@ -145,6 +145,18 @@ test('image import and publication preserve their distinct exact digests', () =>
 	)
 })
 
+test('live orchestration keeps the OCI artifact and uses one Docker import projection', () => {
+	const source = fs.readFileSync(
+		path.resolve(__dirname, '..', 'tasks', 'check-isolation-live.js'),
+		'utf8'
+	)
+	assert.match(source, /isolation-probe\.oci\.tar/)
+	assert.match(source, /isolation-probe\.docker\.tar/)
+	assert.match(source, /loadOut: loadArchive/)
+	assert.match(source, /probe_import_archive_cleanup_verified/)
+	assert.doesNotMatch(source, /'image',\s*'load',[\s\S]{0,100}\barchive\b/)
+})
+
 test('registry readiness is bounded and requires an HTTP 200 response', async () => {
 	let calls = 0
 	await waitForRegistry(

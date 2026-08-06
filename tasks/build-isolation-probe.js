@@ -25,6 +25,13 @@ const containerfile = path.join(
 )
 const maxArchiveBytes = 64 * 1024 * 1024
 const maxMetadataBytes = 1024 * 1024
+const validateExporterPath = (value, label) => {
+	if (typeof value !== 'string' || /[,\n\r\0]/.test(value)) {
+		throw new Error(`${label} cannot contain exporter separators or control characters`)
+	}
+	return value
+}
+
 const parseArguments = arguments_ => {
 	const values = new Map()
 	for (let index = 0; index < arguments_.length; index += 2) {
@@ -64,10 +71,7 @@ const parseArguments = arguments_ => {
 		values.get('--buildkit-image'),
 		'--buildkit-image'
 	)
-	const out = values.get('--out')
-	if (/[,\n\r\0]/.test(out)) {
-		throw new Error('--out cannot contain OCI exporter separators or control characters')
-	}
+	const out = validateExporterPath(values.get('--out'), '--out')
 	return {
 		runtime: values.get('--runtime'),
 		socket: values.get('--socket'),
@@ -87,6 +91,7 @@ const createBuildArguments = ({
 	network,
 	out,
 	metadata,
+	loadOut,
 	sourceDateEpoch,
 	builder
 }) => createRuntimeArguments(clientRoot, socket, [
@@ -112,6 +117,7 @@ const createBuildArguments = ({
 	metadata,
 	'--output',
 	`type=oci,dest=${out},tar=true,rewrite-timestamp=true`,
+	...(loadOut === undefined ? [] : ['--output', `type=docker,dest=${loadOut}`]),
 	probeRoot
 ])
 
@@ -231,7 +237,7 @@ const verifyRuntimeStorage = (options, clientRoot, logRoot) =>
 		).stdout
 	)
 
-const validateBuildArtifacts = (archive, metadata) => {
+const validateBuildArtifacts = (archive, metadata, loadArchive) => {
 	const archiveBytes = fs.statSync(archive).size
 	const metadataBytes = fs.statSync(metadata).size
 	if (archiveBytes === 0 || archiveBytes > maxArchiveBytes) {
@@ -240,15 +246,44 @@ const validateBuildArtifacts = (archive, metadata) => {
 	if (metadataBytes === 0 || metadataBytes > maxMetadataBytes) {
 		throw new Error(`Probe build metadata must contain 1 through ${maxMetadataBytes} bytes`)
 	}
-	return { archiveBytes, metadataBytes }
+	const sizes = { archiveBytes, metadataBytes }
+	if (loadArchive !== undefined) {
+		const loadArchiveBytes = fs.statSync(loadArchive).size
+		if (loadArchiveBytes === 0 || loadArchiveBytes > maxArchiveBytes) {
+			throw new Error(
+				`Probe Docker import archive must contain 1 through ${maxArchiveBytes} bytes`
+			)
+		}
+		sizes.loadArchiveBytes = loadArchiveBytes
+	}
+	return sizes
 }
 
 const buildProbe = options => {
 	requireExternalCargoTarget(repositoryRoot)
-	const out = requireExternalPath(repositoryRoot, options.out, '--out')
+	const out = requireExternalPath(
+		repositoryRoot,
+		validateExporterPath(options.out, '--out'),
+		'--out'
+	)
+	const loadOut = options.loadOut === undefined
+		? undefined
+		: requireExternalPath(
+			repositoryRoot,
+			validateExporterPath(options.loadOut, 'Docker import output'),
+			'Docker import output'
+		)
+	if (loadOut === out) {
+		throw new Error('Canonical OCI and Docker import outputs must be distinct')
+	}
 	const metadata = `${out}.metadata.json`
 	const logRoot = `${out}.logs`
-	if (fs.existsSync(out) || fs.existsSync(metadata) || fs.existsSync(logRoot)) {
+	if (
+		fs.existsSync(out) ||
+		fs.existsSync(metadata) ||
+		fs.existsSync(logRoot) ||
+		(loadOut !== undefined && fs.existsSync(loadOut))
+	) {
 		throw new Error('Probe build refuses to overwrite an existing archive, metadata, or log path')
 	}
 	validateRuntime(options.runtime, options.socket)
@@ -287,6 +322,7 @@ const buildProbe = options => {
 				...options,
 				out,
 				metadata,
+				loadOut,
 				clientRoot: temporaryRoot,
 				sourceDateEpoch: source.sourceDateEpoch,
 				builder
@@ -295,7 +331,7 @@ const buildProbe = options => {
 			logRoot,
 			'oci-build'
 		)
-		const artifactSizes = validateBuildArtifacts(out, metadata)
+		const artifactSizes = validateBuildArtifacts(out, metadata, loadOut)
 		const buildMetadata = JSON.parse(fs.readFileSync(metadata, 'utf8'))
 		const imageDigest = buildMetadata['containerimage.digest']
 		if (!digestPattern.test(imageDigest)) {
@@ -309,6 +345,8 @@ const buildProbe = options => {
 			network: options.network,
 			runtime_data_root: runtimeDataRoot,
 			archive_bytes: artifactSizes.archiveBytes,
+			load_archive: loadOut,
+			load_archive_bytes: artifactSizes.loadArchiveBytes,
 			metadata_bytes: artifactSizes.metadataBytes,
 			archive: out,
 			metadata,
@@ -331,7 +369,8 @@ const buildProbe = options => {
 		}
 	}
 	if (failure || cleanupFailure) {
-		for (const candidate of [out, metadata]) {
+		for (const candidate of [out, metadata, loadOut]) {
+			if (candidate === undefined) continue
 			if (fs.existsSync(candidate)) fs.rmSync(candidate, { force: true })
 		}
 		if (failure && cleanupFailure) {

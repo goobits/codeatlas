@@ -287,11 +287,15 @@ const checkIsolationLive = async options => {
 	}
 	const registryName = `codeatlas-live-registry-${process.pid}`
 	const archive = path.join(outDir, 'isolation-probe.oci.tar')
+	const loadArchive = path.join(outDir, 'isolation-probe.docker.tar')
 	const receipt = path.join(outDir, receiptFilename)
 	let registryCreated = false
 	let loadedImage
 	let localTag
 	let publishedReference
+	let loadArchiveDigest
+	let loadArchiveBytes
+	let loadArchiveCleanupVerified = false
 	let failure
 	let summary
 	try {
@@ -324,8 +328,11 @@ const checkIsolationLive = async options => {
 			buildkitImage: options.buildkitImage,
 			platform: options.platform,
 			network: options.network,
-			out: archive
+			out: archive,
+			loadOut: loadArchive
 		})
+		loadArchiveDigest = digestFile(loadArchive)
+		loadArchiveBytes = build.load_archive_bytes
 		const registry = runRuntime(
 			options.runtime,
 			createRuntimeArguments(
@@ -363,7 +370,7 @@ const checkIsolationLive = async options => {
 					'image',
 					'load',
 					'--input',
-					archive
+					loadArchive
 				]),
 				clientRoot,
 				logRoot,
@@ -386,6 +393,11 @@ const checkIsolationLive = async options => {
 			).stdout,
 			loadedImage
 		)
+		fs.rmSync(loadArchive)
+		if (fs.existsSync(loadArchive)) {
+			throw new Error('Docker import archive cleanup could not be verified')
+		}
+		loadArchiveCleanupVerified = true
 		const repository = `${address}/codeatlas-isolation-probe`
 		localTag = `${repository}:${build.source_commit.slice(0, 12)}`
 		runRuntime(
@@ -506,6 +518,9 @@ const checkIsolationLive = async options => {
 				publishedReference.split('@')[1] === build.image_digest,
 			probe_loaded_image_id: loadedImage,
 			probe_archive_bytes: build.archive_bytes,
+			probe_import_archive_bytes: loadArchiveBytes,
+			probe_import_archive_digest: loadArchiveDigest,
+			probe_import_archive_cleanup_verified: loadArchiveCleanupVerified,
 			probe_metadata_bytes: build.metadata_bytes,
 			probe_archive_digest: digestFile(archive),
 			probe_metadata_digest: digestFile(build.metadata),

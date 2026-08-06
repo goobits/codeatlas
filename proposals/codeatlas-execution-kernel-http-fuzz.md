@@ -1048,6 +1048,12 @@ Hosted gate preparation checkpoint, 2026-08-05:
   evidence coordinates. The hosted proof records whether Docker preserved the
   manifest digest but does not fail or fabricate equality when a daemon
   normalizes media types during load/push.
+- One BuildKit solve emits the canonical OCI-layout archive plus an optional,
+  bounded Docker-import projection for runtimes whose `image load` does not
+  consume OCI layout. The projection is not a second build or canonical
+  artifact: its digest and byte count are recorded, it is removed and verified
+  immediately after import, and it is retained in failed-run evidence only
+  when import itself did not complete.
 - The destructive matrix invokes `ContainerLaunchSpec`, `RuntimeClient`, the
   shared scheduler and cancellation ledger, `run_container_case`, and the
   existing lease registry. It does not create a test-only container executor.
@@ -1076,6 +1082,24 @@ Hosted gate preparation checkpoint, 2026-08-05:
   workflow exists on GitHub. A hosted runtime, socket, and image are inputs
   until their target-observed artifact passes; this checkpoint grants no
   capability and Phase 5 remains blocked.
+
+First hosted attempt, 2026-08-06:
+
+- GitHub run `31080343512` used exact commit `00690aa`, Docker Engine 28.0.4,
+  Buildx 0.35.0, the planned local socket, and the three digest-pinned images.
+  Workflow setup, runtime discovery, bounded cache handling, cleanup, and
+  evidence upload passed.
+- The pinned BuildKit solve produced a valid 306,176-byte OCI-layout archive
+  with manifest digest
+  `sha256:2362a3d0f88392e712416e48942b3480a9d57236d3b61f6f12b9f3569734c0ab`.
+  Docker rejected that layout at `image load` before any conformance case ran.
+  The uploaded artifact digest is
+  `sha256:b60c3e8e0b956823588b42c51e7924d5d980ff138c06f62257b85d1a8913537e`;
+  it proves the failure boundary and successful registry/builder cleanup but
+  grants no isolation capability.
+- The narrow correction keeps the OCI artifact canonical and adds one Docker
+  import projection to the same uncached solve. Focused local tests and
+  workflow lint pass; the corrected hosted rerun remains required.
 
 #### Phase 4A: CodeAtlas-owned isolation probe
 

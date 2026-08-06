@@ -177,6 +177,7 @@ jobs:
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/live-oci-evidence.json
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/execution-receipt.json
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/isolation-probe.oci.tar
+            ${{ env.CODEATLAS_LIVE_OUTPUT }}/isolation-probe.docker.tar
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/isolation-probe.oci.tar.metadata.json
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/isolation-probe.oci.tar.logs
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/logs

@@ -808,6 +808,14 @@ QEMU replacement was removed rather than retained as a slow second backend.
 This host remains plan-only; daemon or workflow availability alone is not
 isolation evidence.
 
+Hosted attempt `31080343512` reached the exact Docker 28.0.4 / Buildx 0.35.0
+boundary, built and uploaded the canonical OCI artifact, then failed before the
+first conformance case because Docker `image load` did not accept the OCI-layout
+tar. Cleanup and the bounded failed-run Cargo cache save passed. The one-owner
+fix adds a Docker import projection to the same BuildKit solve while retaining
+the OCI archive as canonical evidence; its focused local checks pass and one
+corrected hosted rerun is pending. No capability was granted.
+
 - [x] Add one manual-only, default-branch-only, least-privilege hosted workflow
   with a finite timeout, immutable action pins, exact digest-pinned build,
   BuildKit, and registry images, external writable state, and no child-visible
