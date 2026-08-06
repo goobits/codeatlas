@@ -14,7 +14,7 @@ shared execution safety contract and domain-owned generators, harnesses, and
 oracles.
 
 This is not one all-or-nothing implementation proposal. It is a program index
-for eleven independently reviewable proposals:
+for twelve independently reviewable proposals:
 
 1. [`codeatlas-evidence-lifecycle-cli.md`](codeatlas-evidence-lifecycle-cli.md)
    hard-cuts the public CLI into a consistent evidence lifecycle.
@@ -44,6 +44,9 @@ for eleven independently reviewable proposals:
 11. [`codeatlas-cost-guided-search.md`](codeatlas-cost-guided-search.md) is the
    separately gated bridge from accepted domain generators to explicit
    performance cost objectives.
+12. [`codeatlas-source-impact.md`](codeatlas-source-impact.md) projects HQA
+   retest hypotheses from the existing source graph and callable-effect model
+   without creating target identity, graph edges, or a second analyzer.
 
 The user authorized the full phased program. Code fuzzing, PostgreSQL fuzzing,
 subject parity, profiler integration, and cost-guided search still retain their
@@ -491,8 +494,8 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-05): 105 open CodeAtlas implementation checks
-remain across Phases 9A through 21, including Phase 16A and the deferred Phase
+Remaining-scope audit (2026-08-05): 104 open CodeAtlas implementation checks
+remain across Phases 9B through 21, including Phase 16A and the deferred Phase
 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
 criteria, but they do not own a second rolling task list.
@@ -520,10 +523,14 @@ equivalence. Subject-parity release hardening is complete: the public matrix,
 self-audit, domain fixture dogfood, one-owner consolidation searches, and
 generated-state audit all pass.
 The reproducible CodeAtlas-owned isolation probe is locally complete. The
-current host cannot grant a live OCI isolation capability, so execution
-remains plan-only here and Phase 9 retains the hard continuation gate. On
-implementation progress rather than proposal-design progress, the complete
-program is approximately 65 percent done. That estimate is weighted by the
+current host has not yet granted a live OCI isolation capability, so execution
+remains plan-only here and Phase 9 retains the hard continuation gate. The
+source-impact producer design is accepted and reuses the existing source
+graph, callable effects, source index, bounded projection, and completeness
+vocabulary. Its implementation remains gated without making HQA graph
+alignment a CodeAtlas dependency. On implementation progress rather than
+proposal-design progress, the complete program is approximately 65 percent
+done. That estimate is weighted by the
 accepted implementation phases, not by raw checkbox count. One hundred percent
 means every remaining tracker item is either verified and checked here or
 removed through an accepted scope change; a child status line alone is not
@@ -1051,19 +1058,23 @@ Active child: subject evidence parity Phases 5 and 6.
 
 ### Phase 16A: Add the gated source-impact projection for HQA
 
+Active child: [`codeatlas-source-impact.md`](codeatlas-source-impact.md).
+
 This follow-on starts only after Phase 8A and the live Phase 9 isolation proof.
 Its schemas remain externally owned. CodeAtlas may write its proposal before
 those gates close, but it does not implement or locally reconstruct an
 unpublished family contract.
 
-Blocked inputs for implementation: the live Phase 9 proof plus accepted
-external source-impact, graph-alignment, and hints schemas. Proposal work may
-start earlier, but it grants no runtime or schema authority.
+Blocked inputs for implementation: the live Phase 9 proof plus the accepted
+external source-impact schema. The current hints and source-target schemas are
+already usable. Graph alignment remains a separate HQA continuation gate and
+does not block this producer. Proposal work may start earlier, but it grants no
+runtime or schema authority.
 
-- [ ] Write and accept one CodeAtlas-only source-impact proposal with explicit
+- [x] Write and accept one CodeAtlas-only source-impact proposal with explicit
   LOC, language/framework capability, schema, safety, and continuation gates.
-  Treat `agentspeak.graph-alignment/v1` as a separate external dependency, not
-  an implied CodeAtlas implementation.
+  Treat `agentspeak.graph-alignment/v1` as a separate HQA dependency, not a
+  CodeAtlas continuation gate or implied implementation.
 - [ ] Define one typed `(surface hint, action) -> entry symbols` binding edge so
   shared handlers and action-specific bindings remain explicit. A symbol or
   source target alone is not the interaction identity.
@@ -1520,12 +1531,28 @@ results are never mislabeled as correctness failures.
 ~ proposals/codeatlas-cost-guided-search.md
 ```
 
+## Program stage 12: HQA source-impact projection
+
+Status: [~] Accepted design; implementation waits for Phase 9 and the external
+source-impact contract
+
+LOC: +2,550-3,850 / -350-800
+
+Verify: One bounded source-graph projection emits deterministic hints and
+source-impact hypotheses with explicit framework completeness, full external
+schema convergence, no HQA target IDs or runtime edges, and no parallel parser,
+effect walker, cache, graph, or command family.
+
+```text
+~ proposals/codeatlas-source-impact.md
+```
+
 The full program is intentionally net higher because it adds a verified
 sandbox, three execution domains, four language adapters, a typed database
 client, and a performance evidence product. Each child has a final hardening
 phase that removes replaced owners and refuses compatibility residue.
 
-Total authored LOC: +25,975-34,805 / -4,451-7,941
+Total authored LOC: +28,525-38,655 / -4,801-8,741
 
 Generated current-schema JSON at the Phase 11A checkpoint: 15,805 LOC across
 30 registered files
