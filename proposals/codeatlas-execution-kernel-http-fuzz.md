@@ -1148,6 +1148,47 @@ Second hosted attempt, 2026-08-06:
   duplicate scripts. All complete logs, reports, Cargo state, and audit output
   remain beneath `/tmp/codeatlas-gha-phase9.GAkQVR`.
 
+Third hosted attempt, 2026-08-06:
+
+- GitHub run `31083063180` was dispatched once from exact commit `69ae2cd` at
+  2026-08-06T07:59:37Z after the API confirmed no active or completed run for
+  that revision. Setup, runtime resolution, one-solve import/publication, real
+  baseline launch, and verified cleanup passed again.
+- The exact diagnostic identified `pids.peak = 7` with `pids.max = 1`. This did
+  not prove seven escaped children: the target's exact process limit and
+  unplanned-child denial both passed. The Linux cgroup contract counts kernel
+  tasks and permits organizational attachment above `pids.max`; only new
+  `fork`/`clone` work is guaranteed to fail at the boundary. Treating a
+  historical high-water sample as a second enforcement oracle was therefore
+  invalid for process evidence too.
+- The follow-up consolidation makes every CPU, RSS, PID, and descriptor usage
+  sample receipt evidence only. Exact target-observed limits, target-side
+  denial/exhaustion checks, and the destructive live matrix remain the sole
+  capability oracle. This removes the duplicate interpretation rather than
+  accumulating resource-specific exceptions.
+- The baseline emitted blocked receipt
+  `receipt_54ba8f9811d92f48bdb31f6da6fb62094be3086e00e2a472472f3e197825caa2`;
+  all capabilities remained withheld. Uploaded artifact `8960411261` is
+  320,247 bytes with digest
+  `sha256:09b167731f4c9e8a6e210c35e4bf430bece1bddbbe5c101daa4dd07234e3d267`.
+  Its task-local artifact and one retrieved job log live under
+  `/tmp/codeatlas-gha-phase9.GAkQVR/artifacts/github-run-31083063180` and
+  `/tmp/codeatlas-gha-phase9.GAkQVR/logs`.
+- The v2 cache miss finished with a useful 3,095,277,545-byte uncompressed
+  generation and saved it successfully as a 702,923,486-byte GitHub cache.
+  Future revisions with the same OS, architecture, Rust, manifests, and
+  lockfiles can restore that generation through the exact compatibility
+  prefix. No capability was granted and no fourth run is authorized until the
+  follow-up passes every local check.
+- The follow-up local gate passes two focused evaluator contracts, five
+  non-live isolation integrations, 418 root unit tests plus all non-live
+  integrations, warning-denying Clippy, and formatting. Self-dogfood covers
+  327 files, 3,437 symbols, 2,919 callable contracts, 353 non-gating
+  advisories, three semantic-sibling sets with zero review candidates, 16 test
+  contexts, seven scripts, and no duplicate scripts. The reduced implementation
+  removes the four-field usage validator instead of adding per-resource
+  exceptions.
+
 #### Phase 4A: CodeAtlas-owned isolation probe
 
 Status: [x] Complete

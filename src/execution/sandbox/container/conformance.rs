@@ -3,8 +3,8 @@ use crate::execution::artifact::digest_value;
 use crate::execution::model::{ExecutionCapability, ResourceEvidence};
 use anyhow::{Context, Result};
 use codeatlas_isolation_conformance::{
-    IsolationConformanceReport, ObservedLimits, ObservedUsage, CONFORMANCE_SCHEMA_VERSION,
-    SCRATCH_MOUNT, TEMP_MOUNT, WORKSPACE_MOUNT,
+    IsolationConformanceReport, ObservedLimits, CONFORMANCE_SCHEMA_VERSION, SCRATCH_MOUNT,
+    TEMP_MOUNT, WORKSPACE_MOUNT,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -258,7 +258,12 @@ pub(super) fn evaluate_conformance(
     if report.limits != expected_limits {
         anyhow::bail!("Isolation probe observed different resource ceilings than the plan");
     }
-    validate_reported_usage(&report.limits, &report.usage)?;
+
+    // High-water samples remain receipt evidence, not a second enforcement
+    // oracle. cgroup v2 permits transient memory.max overage and organizational
+    // attachment above pids.max; cpu.stat is aggregate while RLIMIT_CPU is
+    // per-process; descriptor exhaustion is already target-proved below. Exact
+    // observed limits plus the target-side checks own capability evidence.
 
     let checks = &report.checks;
     let mut capabilities = BTreeSet::new();
@@ -360,27 +365,6 @@ pub(super) fn evaluate_conformance(
     })
 }
 
-fn validate_reported_usage(limits: &ObservedLimits, usage: &ObservedUsage) -> Result<()> {
-    validate_usage_ceiling("CPU-time usage", usage.cpu_time_ms, limits.cpu_time_ms)?;
-    validate_usage_ceiling("process peak", usage.peak_processes, limits.processes)?;
-    validate_usage_ceiling("open-file peak", usage.peak_open_files, limits.open_files)?;
-
-    // cgroup v2 explicitly permits memory.max to be exceeded temporarily, and
-    // memory.peak records that transient high-water mark. Exact memory.max
-    // equality plus the destructive RSS case prove enforcement; the peak stays
-    // receipt evidence rather than becoming a contradictory second oracle.
-    Ok(())
-}
-
-fn validate_usage_ceiling(label: &str, observed: u64, limit: Option<u64>) -> Result<()> {
-    if let Some(limit) = limit.filter(|limit| observed > *limit) {
-        anyhow::bail!(
-            "Isolation probe reported {label} {observed} above the observed resource ceiling {limit}"
-        );
-    }
-    Ok(())
-}
-
 fn add_capability<const N: usize>(
     capabilities: &mut BTreeSet<ExecutionCapability>,
     reasons: &mut Vec<String>,
@@ -419,12 +403,11 @@ fn validate_sha256_identifier(label: &str, value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        evaluate_conformance, validate_reported_usage, ExecutionCapability, RequiredNullableVec,
-        CONFORMANCE_SCHEMA_VERSION,
+        evaluate_conformance, ExecutionCapability, RequiredNullableVec, CONFORMANCE_SCHEMA_VERSION,
     };
     use crate::execution::model::sample_execution_limits;
     use crate::execution::sandbox::container::command::{ContainerLaunchSpec, ProbeLaunch};
-    use codeatlas_isolation_conformance::{ObservedLimits, ObservedUsage, ProbeMode};
+    use codeatlas_isolation_conformance::ProbeMode;
     use serde_json::json;
 
     #[test]
@@ -443,72 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn transient_memory_peak_remains_evidence_without_negating_the_hard_limit() {
-        let limits = ObservedLimits {
-            cpu_time_ms: Some(2_000),
-            rss_bytes: Some(64 * 1024 * 1024),
-            processes: Some(1),
-            open_files: Some(32),
-        };
-        let usage = ObservedUsage {
-            cpu_time_ms: 1,
-            peak_rss_bytes: limits.rss_bytes.expect("RSS limit") + 4_096,
-            peak_processes: 1,
-            peak_open_files: 4,
-        };
-
-        validate_reported_usage(&limits, &usage).expect("cgroup memory peak is diagnostic");
-    }
-
-    #[test]
-    fn non_memory_usage_overages_name_the_observed_and_allowed_values() {
-        let limits = ObservedLimits {
-            cpu_time_ms: Some(2_000),
-            rss_bytes: Some(64 * 1024 * 1024),
-            processes: Some(1),
-            open_files: Some(32),
-        };
-        let cases = [
-            (
-                ObservedUsage {
-                    cpu_time_ms: 2_001,
-                    peak_rss_bytes: 1,
-                    peak_processes: 1,
-                    peak_open_files: 4,
-                },
-                "CPU-time usage 2001 above the observed resource ceiling 2000",
-            ),
-            (
-                ObservedUsage {
-                    cpu_time_ms: 1,
-                    peak_rss_bytes: 1,
-                    peak_processes: 2,
-                    peak_open_files: 4,
-                },
-                "process peak 2 above the observed resource ceiling 1",
-            ),
-            (
-                ObservedUsage {
-                    cpu_time_ms: 1,
-                    peak_rss_bytes: 1,
-                    peak_processes: 1,
-                    peak_open_files: 33,
-                },
-                "open-file peak 33 above the observed resource ceiling 32",
-            ),
-        ];
-
-        for (usage, message) in cases {
-            let error = validate_reported_usage(&limits, &usage).expect_err("usage must fail");
-            assert_eq!(
-                error.to_string(),
-                format!("Isolation probe reported {message}")
-            );
-        }
-    }
-
-    #[test]
-    fn every_failed_target_observation_withholds_its_capability_and_blocks() {
+    fn target_checks_own_capabilities_while_high_water_samples_remain_evidence() {
         let root = std::env::temp_dir().join(format!(
             "codeatlas-conformance-report-{}",
             std::process::id()
@@ -647,6 +565,43 @@ mod tests {
             }
             assert!(!outcome.reasons.is_empty(), "{check} must block");
         }
+
+        let mut high_water = report.clone();
+        high_water["usage"] = json!({
+            "cpu_time_ms": spec.cpu_time_limit_ms + 1,
+            "peak_rss_bytes": spec.rss_limit_bytes + 4_096,
+            "peak_processes": spec.process_limit + 6,
+            "peak_open_files": spec.open_file_limit + 1
+        });
+        let outcome = evaluate_conformance(
+            &serde_json::to_vec(&high_water).expect("high-water report JSON"),
+            "nonce",
+            &spec,
+            &format!("sha256:{}", "b".repeat(64)),
+            &format!("sha256:{}", "c".repeat(64)),
+            true,
+            false,
+        )
+        .expect("high-water samples remain evidence");
+        assert!(outcome
+            .capabilities
+            .contains(&ExecutionCapability::ResourceLimits));
+        assert_eq!(
+            outcome.resources.cpu_time_ms,
+            Some(spec.cpu_time_limit_ms + 1)
+        );
+        assert_eq!(
+            outcome.resources.peak_rss_bytes,
+            Some(spec.rss_limit_bytes + 4_096)
+        );
+        assert_eq!(
+            outcome.resources.peak_processes,
+            Some(spec.process_limit + 6)
+        );
+        assert_eq!(
+            outcome.resources.peak_open_files,
+            Some(spec.open_file_limit + 1)
+        );
 
         let mut ambient = report;
         ambient["checks"]["ambient_environment_absent"] = json!(false);

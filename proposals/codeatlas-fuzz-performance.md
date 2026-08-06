@@ -528,9 +528,11 @@ matrix, exact-image path, and bounded Cargo cache are in place without
 retaining the failed nested-VM path. Hosted run `31081198694` resolved the real
 rootful Docker boundary, imported and published the probe, launched the
 baseline container, and verified cleanup. Its baseline stopped at an
-over-broad resource-usage validator before the destructive matrix, so no live
-OCI isolation capability was granted, execution remains plan-only, and Phase 9
-retains the hard continuation gate. The
+over-broad resource-usage validator before the destructive matrix. Run
+`31083063180` narrowed the remaining sample to a legal cgroup PID high-water
+condition and successfully saved the first useful compatible Cargo generation.
+No live OCI isolation capability was granted, execution remains plan-only, and
+Phase 9 retains the hard continuation gate. The
 source-impact producer design is accepted and reuses the existing source
 graph, callable effects, source index, bounded projection, and completeness
 vocabulary. Its implementation remains gated without making HQA graph
@@ -819,7 +821,13 @@ publication, real baseline launch, canonical blocked receipt, and verified
 container/scratch cleanup. The baseline stopped at a combined resource-usage
 check before the destructive matrix. Audit removed only the invalid cgroup-v2
 `memory.peak <= memory.max` oracle, retained exact limit and destructive RSS
-proofs, and made every remaining usage overage diagnostic exact. No capability
+proofs, and made every remaining usage overage diagnostic exact. Run
+`31083063180` then identified `pids.peak = 7` with exact `pids.max = 1` while
+the target-side unplanned-child denial passed. The kernel contract permits
+organizational attachment above a PID limit and counts kernel tasks, so the
+high-water metric is not a fork/clone enforcement oracle. The follow-up keeps
+all usage samples as receipt evidence and makes exact observed limits plus the
+target-side denial/exhaustion matrix the one capability owner. No capability
 was granted.
 
 The second run also exposed an economy defect: a 214-byte immutable v1 cache
@@ -828,7 +836,10 @@ compile from being saved. The v2 cache uses one complete OS/architecture/Rust/
 dependency compatibility prefix plus an immutable source-revision generation,
 restores only within that exact class, and refuses to save until the compiled
 isolation test proves useful state exists. This prevents empty-cache poisoning
-without creating another cache owner.
+without creating another cache owner. The third run proved the policy by saving
+a useful 3,095,277,545-byte uncompressed generation (702,923,486 compressed)
+after the baseline failure; the next revision can restore it through the exact
+compatibility prefix.
 
 - [x] Add one manual-only, default-branch-only, least-privilege hosted workflow
   with a finite timeout, immutable action pins, exact digest-pinned build,
