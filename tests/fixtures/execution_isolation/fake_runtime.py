@@ -68,6 +68,8 @@ def parse_ulimit(value: str) -> dict:
 
 
 def create_container(arguments: list[str]) -> None:
+    if "--pid" in arguments:
+        fail("private PID isolation must use the OCI runtime default")
     environment = values_after(arguments, "--env")
     environment_map = dict(variable.split("=", 1) for variable in environment)
     mounts = [parse_mount(value) for value in values_after(arguments, "--mount")]
@@ -103,7 +105,7 @@ def create_container(arguments: list[str]) -> None:
             "ReadonlyRootfs": "--read-only" in arguments,
             "Privileged": False,
             "NetworkMode": value_after(arguments, "--network"),
-            "PidMode": value_after(arguments, "--pid"),
+            "PidMode": "",
             "IpcMode": value_after(arguments, "--ipc"),
             "CapAdd": [],
             "CapDrop": values_after(arguments, "--cap-drop"),
@@ -217,10 +219,29 @@ def main() -> None:
         fail("invalid runtime preamble")
     command = arguments[4:]
     if command[0] == "version":
-        print("29.0\t1.50\tlinux\tamd64")
+        print(
+            json.dumps(
+                {
+                    "version": "29.0",
+                    "api_version": "1.50",
+                    "os": "linux",
+                    "arch": "amd64",
+                },
+                separators=(",", ":"),
+            )
+        )
         return
     if command[0] == "info":
-        print('["name=seccomp","name=rootless"]\t2\toverlay2')
+        print(
+            json.dumps(
+                {
+                    "security_options": ["name=seccomp", "name=rootless"],
+                    "cgroup_version": "2",
+                    "driver": "overlay2",
+                },
+                separators=(",", ":"),
+            )
+        )
         return
     if command[:2] == ["image", "inspect"]:
         image = command[-1]

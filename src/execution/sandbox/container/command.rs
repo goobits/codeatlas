@@ -143,8 +143,6 @@ impl ContainerLaunchSpec {
             "--read-only",
             "--network",
             "none",
-            "--pid",
-            "private",
             "--ipc",
             "none",
             "--cap-drop",
@@ -315,6 +313,7 @@ mod tests {
             argument.to_string_lossy().contains("docker.sock")
                 || argument.to_string_lossy().contains("podman.sock")
         }));
+        assert!(!first.iter().any(|argument| argument == OsStr::new("--pid")));
         std::fs::remove_dir_all(root).expect("remove launch fixture");
     }
 

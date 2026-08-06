@@ -13,10 +13,14 @@ pub(crate) fn observe_limits() -> Result<ObservedLimits> {
     let cgroup = resolve_cgroup_v2()?;
     Ok(ObservedLimits {
         cpu_time_ms: cpu_seconds
-            .checked_mul(1_000)
-            .context("Observed CPU-time limit overflows milliseconds")?,
-        rss_bytes: read_u64(cgroup.join("memory.max"))?,
-        processes: read_u64(cgroup.join("pids.max"))?,
+            .map(|seconds| {
+                seconds
+                    .checked_mul(1_000)
+                    .context("Observed CPU-time limit overflows milliseconds")
+            })
+            .transpose()?,
+        rss_bytes: read_limit(cgroup.join("memory.max"))?,
+        processes: read_limit(cgroup.join("pids.max"))?,
         open_files,
     })
 }
@@ -31,9 +35,9 @@ pub(crate) fn observe_usage() -> Result<ObservedUsage> {
         .context("Cgroup CPU usage is unavailable")?
         .parse::<u64>()
         .context("Cgroup CPU usage is malformed")?;
-    let peak_rss_bytes = read_u64(cgroup.join("memory.peak"))?;
-    let peak_processes =
-        read_u64(cgroup.join("pids.peak")).or_else(|_| read_u64(cgroup.join("pids.current")))?;
+    let peak_rss_bytes = read_metric(cgroup.join("memory.peak"))?;
+    let peak_processes = read_metric(cgroup.join("pids.peak"))
+        .or_else(|_| read_metric(cgroup.join("pids.current")))?;
     let peak_open_files = std::fs::read_dir("/proc/self/fd")
         .context("Could not inspect open descriptors")?
         .count()
@@ -61,7 +65,7 @@ pub(crate) fn observe_descriptor_exhaustion(limit: u64) -> Option<u64> {
     None
 }
 
-fn parse_process_limit(contents: &str, label: &str) -> Result<u64> {
+fn parse_process_limit(contents: &str, label: &str) -> Result<Option<u64>> {
     let line = contents
         .lines()
         .find(|line| line.starts_with(label))
@@ -70,9 +74,9 @@ fn parse_process_limit(contents: &str, label: &str) -> Result<u64> {
     if fields.len() < 3 {
         anyhow::bail!("Process limit {label} is malformed");
     }
-    fields[fields.len() - 3]
-        .parse::<u64>()
-        .with_context(|| format!("Process limit {label} is not finite"))
+    parse_limit_value(fields[fields.len() - 3], || {
+        format!("Process limit {label} is malformed")
+    })
 }
 
 fn resolve_cgroup_v2() -> Result<PathBuf> {
@@ -93,13 +97,28 @@ fn resolve_cgroup_v2() -> Result<PathBuf> {
     }
 }
 
-fn read_u64(path: PathBuf) -> Result<u64> {
+fn read_limit(path: PathBuf) -> Result<Option<u64>> {
     let value = std::fs::read_to_string(&path)
-        .with_context(|| format!("Could not read finite resource limit {}", path.display()))?;
+        .with_context(|| format!("Could not read resource limit {}", path.display()))?;
+    parse_limit_value(value.trim(), || {
+        format!("Resource limit {} is malformed", path.display())
+    })
+}
+
+fn parse_limit_value(value: &str, malformed: impl FnOnce() -> String) -> Result<Option<u64>> {
+    if value == "unlimited" || value == "max" {
+        return Ok(None);
+    }
+    value.parse::<u64>().map(Some).with_context(malformed)
+}
+
+fn read_metric(path: PathBuf) -> Result<u64> {
+    let value = std::fs::read_to_string(&path)
+        .with_context(|| format!("Could not read resource metric {}", path.display()))?;
     value
         .trim()
         .parse::<u64>()
-        .with_context(|| format!("Resource limit {} is not finite", path.display()))
+        .with_context(|| format!("Resource metric {} is malformed", path.display()))
 }
 
 #[cfg(test)]
@@ -107,17 +126,25 @@ mod tests {
     use super::parse_process_limit;
 
     #[test]
-    fn process_limits_must_be_finite() {
+    fn process_limits_preserve_unlimited_without_accepting_malformed_values() {
         assert_eq!(
             parse_process_limit(
                 "Max open files            32                   32                   files\n",
                 "Max open files"
             )
             .expect("finite limit"),
-            32
+            Some(32)
+        );
+        assert_eq!(
+            parse_process_limit(
+                "Max cpu time              unlimited            unlimited            seconds\n",
+                "Max cpu time"
+            )
+            .expect("unlimited ceiling"),
+            None
         );
         assert!(parse_process_limit(
-            "Max cpu time              unlimited            unlimited            seconds\n",
+            "Max cpu time              surprise             surprise             seconds\n",
             "Max cpu time"
         )
         .is_err());

@@ -65,7 +65,7 @@ struct InspectedHostConfig {
     network_mode: String,
     pid_mode: String,
     ipc_mode: String,
-    cap_add: Vec<String>,
+    cap_add: RequiredNullableVec<String>,
     cap_drop: Vec<String>,
     devices: Vec<serde_json::Value>,
     security_opt: Vec<String>,
@@ -75,6 +75,22 @@ struct InspectedHostConfig {
     ulimits: Vec<InspectedUlimit>,
     log_config: InspectedLogConfig,
     oom_kill_disable: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum RequiredNullableVec<T> {
+    Values(Vec<T>),
+    Null,
+}
+
+impl<T> RequiredNullableVec<T> {
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Values(values) => values.is_empty(),
+            Self::Null => true,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -234,22 +250,30 @@ pub(super) fn evaluate_conformance(
         anyhow::bail!("Isolation probe response does not match this execution nonce");
     }
     let expected_limits = ObservedLimits {
-        cpu_time_ms: spec.cpu_time_limit_ms,
-        rss_bytes: spec.rss_limit_bytes,
-        processes: spec.process_limit,
-        open_files: spec.open_file_limit,
+        cpu_time_ms: Some(spec.cpu_time_limit_ms),
+        rss_bytes: Some(spec.rss_limit_bytes),
+        processes: Some(spec.process_limit),
+        open_files: Some(spec.open_file_limit),
     };
-    if report.limits.cpu_time_ms != expected_limits.cpu_time_ms
-        || report.limits.rss_bytes != expected_limits.rss_bytes
-        || report.limits.processes != expected_limits.processes
-        || report.limits.open_files != expected_limits.open_files
-    {
+    if report.limits != expected_limits {
         anyhow::bail!("Isolation probe observed different resource ceilings than the plan");
     }
-    if report.usage.cpu_time_ms > report.limits.cpu_time_ms
-        || report.usage.peak_rss_bytes > report.limits.rss_bytes
-        || report.usage.peak_processes > report.limits.processes
-        || report.usage.peak_open_files > report.limits.open_files
+    if report
+        .limits
+        .cpu_time_ms
+        .is_some_and(|limit| report.usage.cpu_time_ms > limit)
+        || report
+            .limits
+            .rss_bytes
+            .is_some_and(|limit| report.usage.peak_rss_bytes > limit)
+        || report
+            .limits
+            .processes
+            .is_some_and(|limit| report.usage.peak_processes > limit)
+        || report
+            .limits
+            .open_files
+            .is_some_and(|limit| report.usage.peak_open_files > limit)
     {
         anyhow::bail!("Isolation probe usage exceeded a reported resource ceiling");
     }
@@ -391,10 +415,27 @@ fn validate_sha256_identifier(label: &str, value: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{evaluate_conformance, ExecutionCapability, CONFORMANCE_SCHEMA_VERSION};
+    use super::{
+        evaluate_conformance, ExecutionCapability, RequiredNullableVec, CONFORMANCE_SCHEMA_VERSION,
+    };
     use crate::execution::model::sample_execution_limits;
     use crate::execution::sandbox::container::command::ContainerLaunchSpec;
     use serde_json::json;
+
+    #[test]
+    fn required_nullable_runtime_list_accepts_null_but_not_an_absent_field() {
+        #[derive(serde::Deserialize)]
+        struct Fixture {
+            values: RequiredNullableVec<String>,
+        }
+
+        let null = serde_json::from_str::<Fixture>(r#"{"values":null}"#).expect("Docker null list");
+        assert!(null.values.is_empty());
+        let empty =
+            serde_json::from_str::<Fixture>(r#"{"values":[]}"#).expect("fake runtime empty list");
+        assert!(empty.values.is_empty());
+        assert!(serde_json::from_str::<Fixture>("{}").is_err());
+    }
 
     #[test]
     fn every_failed_target_observation_withholds_its_capability_and_blocks() {

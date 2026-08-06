@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use codeatlas_isolation_conformance::{
-    ObservedLimits, CONFORMANCE_SCHEMA_VERSION, SCRATCH_MOUNT, TEMP_MOUNT, WORKSPACE_MOUNT,
-    WORKSPACE_SENTINEL_NAME,
+    CONFORMANCE_SCHEMA_VERSION, SCRATCH_MOUNT, TEMP_MOUNT, WORKSPACE_MOUNT, WORKSPACE_SENTINEL_NAME,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
@@ -30,8 +29,15 @@ pub(crate) struct ProbeEnvironment {
     pub scratch: PathBuf,
     pub home: PathBuf,
     pub temporary: PathBuf,
-    pub limits: ObservedLimits,
+    pub limits: PlannedLimits,
     pub is_exact: bool,
+}
+
+pub(crate) struct PlannedLimits {
+    pub cpu_time_ms: u64,
+    pub rss_bytes: u64,
+    pub processes: u64,
+    pub open_files: u64,
 }
 
 impl ProbeEnvironment {
@@ -71,7 +77,7 @@ impl ProbeEnvironment {
         {
             anyhow::bail!("Probe hostname or executable path differs from the exact allowlist");
         }
-        let limits = ObservedLimits {
+        let limits = PlannedLimits {
             cpu_time_ms: required_positive_u64(&variables, "CODEATLAS_LIMIT_CPU_TIME_MS")?,
             rss_bytes: required_positive_u64(&variables, "CODEATLAS_LIMIT_RSS_BYTES")?,
             processes: required_positive_u64(&variables, "CODEATLAS_LIMIT_PROCESSES")?,

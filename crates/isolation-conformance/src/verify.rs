@@ -50,10 +50,11 @@ pub(crate) fn verify_isolation() -> Result<IsolationConformanceReport> {
         ambient_environment_absent: environment.is_exact,
         control_socket_absent: verify_control_socket_absence(),
         unexpected_mount_absent: mount_view.has_only_expected_codeatlas_mounts,
-        cpu_limit_enforced: observed_limits.cpu_time_ms == environment.limits.cpu_time_ms,
-        rss_limit_enforced: observed_limits.rss_bytes == environment.limits.rss_bytes,
-        process_limit_enforced: observed_limits.processes == environment.limits.processes,
-        descriptor_limit_enforced: observed_limits.open_files == environment.limits.open_files
+        cpu_limit_enforced: observed_limits.cpu_time_ms == Some(environment.limits.cpu_time_ms),
+        rss_limit_enforced: observed_limits.rss_bytes == Some(environment.limits.rss_bytes),
+        process_limit_enforced: observed_limits.processes == Some(environment.limits.processes),
+        descriptor_limit_enforced: observed_limits.open_files
+            == Some(environment.limits.open_files)
             && descriptor_peak.is_some(),
     };
     let mut usage = observe_usage()?;

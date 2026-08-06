@@ -48,10 +48,14 @@ pub struct IsolationChecks {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservedLimits {
-    pub cpu_time_ms: u64,
-    pub rss_bytes: u64,
-    pub processes: u64,
-    pub open_files: u64,
+    /// `None` means the target observed an unlimited ceiling.
+    pub cpu_time_ms: Option<u64>,
+    /// `None` means the target observed an unlimited ceiling.
+    pub rss_bytes: Option<u64>,
+    /// `None` means the target observed an unlimited ceiling.
+    pub processes: Option<u64>,
+    /// `None` means the target observed an unlimited ceiling.
+    pub open_files: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -94,10 +98,10 @@ mod tests {
                 descriptor_limit_enforced: true,
             },
             limits: ObservedLimits {
-                cpu_time_ms: 1_000,
-                rss_bytes: 64 * 1024 * 1024,
-                processes: 1,
-                open_files: 32,
+                cpu_time_ms: Some(1_000),
+                rss_bytes: Some(64 * 1024 * 1024),
+                processes: Some(1),
+                open_files: Some(32),
             },
             usage: ObservedUsage {
                 cpu_time_ms: 1,

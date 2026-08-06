@@ -446,6 +446,7 @@ fn live_oci_backend_passes_target_observed_conformance() {
     config["execution"]["isolation"]["container"]["socket"] =
         Value::String(PathBuf::from(socket).to_string_lossy().into_owned());
     config["execution"]["isolation"]["container"]["probe_image"] = Value::String(image);
+    config["execution"]["limits"]["run_timeout_ms"] = json!(120_000);
     fs::write(
         &config_path,
         serde_json::to_vec_pretty(&config).expect("live config JSON bytes"),
@@ -455,7 +456,8 @@ fn live_oci_backend_passes_target_observed_conformance() {
     let receipt = fixture.execute(&plan);
     assert_eq!(
         receipt["runtime"]["capabilities"].as_array().map(Vec::len),
-        Some(7)
+        Some(7),
+        "unexpected live isolation receipt: {receipt}"
     );
     assert!(receipt["cleanup"]
         .as_array()

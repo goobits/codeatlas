@@ -1,11 +1,13 @@
 mod command;
 mod conformance;
+mod metadata;
 mod runtime;
 
 use self::command::{string_arguments, ContainerLaunchSpec};
 use self::conformance::{
     evaluate_conformance, validate_container_inspection, validate_image_inspection,
 };
+use self::metadata::{RuntimeInfo, RuntimeVersion, RUNTIME_INFO_FORMAT, RUNTIME_VERSION_FORMAT};
 use self::runtime::RuntimeClient;
 use crate::config::ExecutionContainerIsolationConfig;
 use crate::execution::artifact::digest_bytes;
@@ -25,7 +27,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
 
-const RUNTIME_METADATA_TIMEOUT: Duration = Duration::from_secs(5);
+const RUNTIME_CONTROL_TIMEOUT: Duration = Duration::from_secs(30);
 const CONFORMANCE_STEP_TIMEOUT: Duration = Duration::from_secs(30);
 const RUNTIME_PROBE_OUTPUT_BYTES: u64 = 1024 * 1024;
 const MAX_CLEANUP_OUTPUT_BYTES: u64 = 4 * 1024;
@@ -88,58 +90,36 @@ pub(crate) async fn probe_container_runtime(
     let version = run_probe_step(
         &client,
         context,
-        string_arguments([
-            "version",
-            "--format",
-            "{{.Server.Version}}\t{{.Server.APIVersion}}\t{{.Server.Os}}\t{{.Server.Arch}}",
-        ]),
-        RUNTIME_METADATA_TIMEOUT,
+        string_arguments(["version", "--format", RUNTIME_VERSION_FORMAT]),
+        RUNTIME_CONTROL_TIMEOUT,
         normal_output_ceiling,
         &mut output_bytes,
     )
     .await?;
     validate_step_output("version", &version)?;
-    let version_text = std::str::from_utf8(&version.stdout)
-        .context("Container runtime version output is not UTF-8")?
-        .trim();
-    let fields = version_text.split('\t').collect::<Vec<_>>();
-    if fields.len() != 4 || fields.iter().any(|value| value.is_empty()) {
-        return Ok(ContainerProbe::blocked(
-            "Container runtime returned an incomplete server identity",
-        ));
-    }
+    let version = RuntimeVersion::from_output(&version.stdout)?;
 
     let info = run_probe_step(
         &client,
         context,
-        string_arguments([
-            "info",
-            "--format",
-            "{{json .SecurityOptions}}\t{{.CgroupVersion}}\t{{.Driver}}",
-        ]),
-        RUNTIME_METADATA_TIMEOUT,
+        string_arguments(["info", "--format", RUNTIME_INFO_FORMAT]),
+        RUNTIME_CONTROL_TIMEOUT,
         normal_output_ceiling,
         &mut output_bytes,
     )
     .await?;
     validate_step_output("isolation metadata", &info)?;
-    let info_text = std::str::from_utf8(&info.stdout)
-        .context("Container runtime metadata is not UTF-8")?
-        .trim();
-    let info_fields = info_text.splitn(3, '\t').collect::<Vec<_>>();
-    if info_fields.len() != 3 || info_fields.iter().any(|value| value.is_empty()) {
-        return Ok(ContainerProbe::blocked(
-            "Container runtime returned incomplete isolation metadata",
-        ));
-    }
-    let rootless = info_fields[0].contains("rootless");
+    let info = RuntimeInfo::from_output(&info.stdout)?;
+    let rootless = info.is_rootless();
     let nested = is_nested_environment();
+    let version_identity = version.canonical_json()?;
+    let info_identity = info.canonical_json()?;
     let identity = fingerprint_bytes(
         "oci-container-runtime",
-        fields[0],
+        &version.version,
         format!(
             "cli={}\nserver={}\ninfo={}",
-            cli.digest, version_text, info_text
+            cli.digest, version_identity, info_identity
         )
         .as_bytes(),
     )?;
@@ -229,7 +209,7 @@ async fn run_container_conformance(
         client,
         context,
         string_arguments(["image", "inspect", "--format", "{{json .}}", probe_image]),
-        RUNTIME_METADATA_TIMEOUT,
+        RUNTIME_CONTROL_TIMEOUT,
         normal_output_ceiling,
         output_bytes,
     )
@@ -281,7 +261,7 @@ async fn run_container_conformance(
             client,
             context,
             spec.create_arguments()?,
-            RUNTIME_METADATA_TIMEOUT,
+            RUNTIME_CONTROL_TIMEOUT,
             normal_output_ceiling,
             output_bytes,
         )
@@ -293,7 +273,7 @@ async fn run_container_conformance(
             client,
             context,
             string_arguments(["container", "inspect", "--format", "{{json .}}", &name]),
-            RUNTIME_METADATA_TIMEOUT,
+            RUNTIME_CONTROL_TIMEOUT,
             normal_output_ceiling,
             output_bytes,
         )
@@ -562,7 +542,7 @@ mod tests {
         let executable = root.join("runtime");
         std::fs::write(
             &executable,
-            b"#!/bin/sh\ncase \"$5\" in\n  version) printf '29.0\\t1.50\\tlinux\\tamd64\\n' ;;\n  info) printf '[\"name=seccomp\"]\\t2\\toverlay2\\n' ;;\n  *) exit 2 ;;\nesac\n",
+            b"#!/bin/sh\ncase \"$5\" in\n  version) printf '%s\\n' '{\"version\":\"29.0\",\"api_version\":\"1.50\",\"os\":\"linux\",\"arch\":\"amd64\"}' ;;\n  info) printf '%s\\n' '{\"security_options\":[\"name=seccomp\"],\"cgroup_version\":\"2\",\"driver\":\"overlay2\"}' ;;\n  *) exit 2 ;;\nesac\n",
         )
         .expect("runtime fixture executable");
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700))
