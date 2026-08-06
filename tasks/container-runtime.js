@@ -38,6 +38,13 @@ const requireDigestImage = (value, label) => {
 	return value
 }
 
+const requireRuntimeLogLabel = label => {
+	if (typeof label !== 'string' || !logLabelPattern.test(label)) {
+		throw new Error('Runtime log label is invalid')
+	}
+	return label
+}
+
 const validateRuntime = (runtime, socket) => {
 	if (!path.isAbsolute(runtime) || !fs.statSync(runtime).isFile()) {
 		throw new Error('Container runtime must identify an absolute executable file')
@@ -56,7 +63,7 @@ const runRuntime = (
 	label,
 	allowedStatuses = [0]
 ) => {
-	if (!logLabelPattern.test(label)) throw new Error('Runtime log label is invalid')
+	requireRuntimeLogLabel(label)
 	const result = spawnSync(runtime, arguments_, createRuntimeOptions(clientRoot))
 	writePrivateFile(path.join(logRoot, `${label}.stdout.log`), result.stdout ?? '')
 	writePrivateFile(path.join(logRoot, `${label}.stderr.log`), result.stderr ?? '')
@@ -73,6 +80,7 @@ module.exports = {
 	createRuntimeOptions,
 	digestPattern,
 	requireDigestImage,
+	requireRuntimeLogLabel,
 	runRuntime,
 	validateRuntime
 }

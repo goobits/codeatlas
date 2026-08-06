@@ -74,7 +74,7 @@ const probeSpecification = ({ buildImage, out, loadOut }) => ({
 	containerfile,
 	context: probeRoot,
 	buildArguments: { BUILD_IMAGE: buildImage },
-	pinnedImages: [{ image: buildImage, label: 'build image' }],
+	pinnedImages: [{ image: buildImage, label: 'build-image' }],
 	maxArchiveBytes,
 	out,
 	loadOut

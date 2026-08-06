@@ -904,13 +904,16 @@ made.
 Active child: execution kernel Phases 5 and 6.
 
 Continuation checkpoint, 2026-08-06: the complete locally green migration is
-committed as `a7d4fa4`; the full local gate and consolidation audit pass. The
-public remote remains at `6d1e4f0`, no Phase 10 hosted run exists, and this
-container no longer has the previously supplied GitHub App private key or any
-other write credential. No paid run was dispatched. Resume by reattaching the
-`goobits-build-dispatcher` key outside the checkout, pushing the exact clean
-candidate, and running the existing live OCI workflow once; do not bypass the
-target-observed managed HTTP gate or start Phase 11 first.
+implementation commit `a7d4fa4`, dispatched at checkpoint revision `349214c`;
+the full local gate and consolidation audit pass. The reattached GitHub App key
+was moved to private external state, authenticated a clean seven-commit
+fast-forward, and found no equivalent run before dispatch. Live OCI run
+`31128013309` then failed before image build or any target call because two
+human-readable image labels violated the existing runtime kebab-label contract.
+The correction now derives both labels through that one validator and passes
+the focused seven-case image-build test plus all 31 Node tests. Commit/push the
+narrow fix and dispatch once for its new revision; do not start Phase 11 until
+the target-observed managed HTTP evidence passes.
 
 - [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
   effect evidence into the shared target classifier.

@@ -11,7 +11,8 @@ const {
 const {
 	createBuilderArguments,
 	createBuilderRemovalArguments,
-	resolveRuntimeDataRoot
+	resolveRuntimeDataRoot,
+	validateSpecification
 } = require('../tasks/build-container-image.js')
 const {
 	createBuildArguments: createHttpBuildArguments,
@@ -56,6 +57,34 @@ test('HTTP workload recipe is hash-locked, version-checked, and clears inherited
 			'utf8'
 		),
 		'**\n!src/\n!src/http/\n!src/http/schemathesis/\n!src/http/schemathesis/requirements.txt\n'
+	)
+})
+
+test('container image specifications use the runtime log-label contract', () => {
+	const buildImage = `docker.io/library/rust@sha256:${digest}`
+	const specification = validateSpecification({
+		name: 'Probe',
+		slug: 'isolation-probe',
+		containerfile: path.resolve(
+			__dirname,
+			'..',
+			'containers',
+			'isolation-conformance',
+			'Containerfile'
+		),
+		context: path.resolve(__dirname, '..', 'crates', 'isolation-conformance'),
+		buildArguments: { BUILD_IMAGE: buildImage },
+		pinnedImages: [{ image: buildImage, label: 'build-image' }],
+		maxArchiveBytes: 1024,
+		out: '/tmp/probe.oci.tar'
+	})
+	assert.equal(specification.pinnedImages[0].label, 'isolation-probe-build-image')
+	assert.throws(
+		() => validateSpecification({
+			...specification,
+			pinnedImages: [{ image: buildImage, label: 'build image' }]
+		}),
+		/Runtime log label is invalid/
 	)
 })
 

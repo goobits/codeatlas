@@ -1574,19 +1574,41 @@ Locally verified migration checkpoint, 2026-08-06:
 
 Remote continuation checkpoint, 2026-08-06:
 
-- The locally green Phase 5 candidate is clean commit `a7d4fa4`. Its push-bound
-  nine-commit range contains no private key, token, credential file, generated
-  binary, large blob, or unexpected mode change.
-- The public GitHub API reports `origin/main` at `6d1e4f0` and no active or
-  completed live-isolation run after accepted Phase 4 run `31084275665`. No
-  Phase 5 workflow was dispatched, so no paid runner time was consumed.
-- This container has no `gh` client, SSH credential, Git credential helper, or
-  surviving GitHub App private key/token. App ID `4343570` is known but cannot
-  authenticate by itself. The exact continuation input is a reattached private
-  key for the already-authorized `goobits-build-dispatcher` App, stored outside
-  the checkout; once present, mint one short-lived installation token, push the
-  clean candidate, refuse an equivalent run, and dispatch the existing workflow
-  once.
+- The locally green Phase 5 implementation is commit `a7d4fa4`; checkpoint-only
+  documentation produces exact dispatched revision `349214c`. Its push-bound
+  range contains no private key, token, credential file, generated binary,
+  large blob, or unexpected mode change.
+- The reattached `goobits-build-dispatcher` key was moved immediately from the
+  checkout to a mode-0600 external task directory. App ID `4343570` minted one
+  short-lived installation token with the expected contents/actions/workflows
+  permissions; no secret entered Git, command output, or a child workload.
+- The authenticated fetch proved a clean seven-commit fast-forward from
+  `6d1e4f0` to `349214c`. Duplicate detection found zero active or completed run
+  for that revision, the existing workflow dispatch returned HTTP 204, and
+  GitHub run `31128013309` entered `in_progress` at 2026-08-06T21:00:46Z.
+- Next exact action: query run `31128013309` without redispatching. On success,
+  retrieve and validate its bounded evidence artifact; on failure, retrieve
+  only the failed job/step and short log tail before changing code.
+
+First Phase 5 hosted attempt, 2026-08-06:
+
+- GitHub run `31128013309` executed exact revision `349214c` on Docker 28.0.4
+  and restored the useful 5,009,304,839-byte compatible Cargo cache. It failed
+  in the live-matrix step before either image build, sandbox launch, or target
+  call with the exact diagnostic `Runtime log label is invalid`.
+- The 4,762-byte failure artifact is `8974870774` with digest
+  `sha256:d8e5de33ec301a6f25792654bccddab5f470413ce3a15cd80fd17c22a13864db`.
+  Builder, registry, and workload work had not begun, so the run consumed no
+  target budget and created no target residue.
+- The generic builder derived runtime log labels from two human-readable image
+  labels containing spaces. The correction reuses the one existing
+  `requireRuntimeLogLabel` owner, makes both domain recipe labels canonical
+  lowercase kebab values, and adds a pure specification regression that rejects
+  the invalid form locally. No second sanitizer or compatibility spelling is
+  retained.
+- The focused seven-case image-build test and complete 31-case Node suite pass.
+  Next exact action: commit and push the narrow correction, confirm no run for
+  that new revision, and dispatch the existing workflow once.
 
 LOC: +700-1,100 / -250-450
 

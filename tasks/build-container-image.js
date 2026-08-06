@@ -6,6 +6,7 @@ const {
 	createRuntimeArguments,
 	digestPattern,
 	requireDigestImage,
+	requireRuntimeLogLabel,
 	runRuntime,
 	validateRuntime
 } = require('./container-runtime.js')
@@ -89,7 +90,7 @@ const validateSpecification = specification => {
 	}
 	const pinnedImages = specification.pinnedImages.map(({ image, label }) => ({
 		image: requireDigestImage(image, `${specification.name} ${label}`),
-		label: `${specification.slug}-${label}`
+		label: requireRuntimeLogLabel(`${specification.slug}-${label}`)
 	}))
 	return {
 		...specification,
@@ -430,5 +431,6 @@ module.exports = {
 	createBuilderRemovalArguments,
 	resolveRuntimeDataRoot,
 	validateBuildArtifacts,
-	validateExporterPath
+	validateExporterPath,
+	validateSpecification
 }

@@ -69,7 +69,7 @@ const httpWorkloadSpecification = ({ pythonImage, out, loadOut }) => ({
 	containerfile,
 	context,
 	buildArguments: { PYTHON_IMAGE: pythonImage },
-	pinnedImages: [{ image: pythonImage, label: 'Python image' }],
+	pinnedImages: [{ image: pythonImage, label: 'python-image' }],
 	maxArchiveBytes,
 	out,
 	loadOut
