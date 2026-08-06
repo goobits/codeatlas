@@ -818,8 +818,9 @@ isolation evidence.
   cleanup on every outcome.
 - [x] Add one exact Cargo cache owner keyed by runner OS/architecture, the
   `rustc -Vv` digest, both lockfiles, and both manifests; enforce a 6 GB
-  uncompressed ceiling and report restore/save metrics. Keep OCI image
-  building uncached.
+  uncompressed ceiling and report restore/save metrics. Preserve a bounded
+  miss after a non-cancelled conformance failure so exact reruns reuse Cargo
+  work; keep OCI image building uncached.
 - [ ] Start that committed workflow on GitHub and resolve the actual exact
   rootful, rootless, or nested runtime, local socket, digest-pinned probe
   image, external writable state, and runtime metadata from the run itself.

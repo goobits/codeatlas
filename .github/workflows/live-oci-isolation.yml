@@ -151,7 +151,14 @@ jobs:
 
       - name: Save exact Cargo cache
         id: cargo-cache-save
-        if: success() && steps.cargo-cache.outputs.cache-hit != 'true' && steps.final-cache.outputs.eligible == 'true'
+        if: >-
+          always() &&
+          !cancelled() &&
+          steps.rust-identity.outputs.cache_key != '' &&
+          steps.cargo-cache.outcome == 'success' &&
+          steps.cargo-cache.outputs.cache-hit != 'true' &&
+          steps.final-cache.outcome == 'success' &&
+          steps.final-cache.outputs.eligible == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |

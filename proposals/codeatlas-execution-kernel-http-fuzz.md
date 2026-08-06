@@ -1062,9 +1062,12 @@ Hosted gate preparation checkpoint, 2026-08-05:
 - One GitHub Actions Cargo cache is keyed by OS, architecture, the exact
   `rustc -Vv` digest, both lockfiles, and both manifests. Its uncompressed
   payload is capped at 6 GB and its hit/miss, restored bytes, save outcome, and
-  saved payload bytes are reported. There is no restore prefix across a
-  different identity. The probe image retains `--no-cache`, so cache reuse
-  cannot substitute for rebuilding the exact committed isolation payload.
+  saved payload bytes are reported. A non-cancelled conformance failure may
+  save a successfully restored, bounded miss so the exact rerun does not
+  rebuild Cargo dependencies; cancelled or incomplete cache setup cannot save.
+  There is no restore prefix across a different identity. The probe image
+  retains `--no-cache`, so cache reuse cannot substitute for rebuilding the
+  exact committed isolation payload.
 - Focused Node contracts, the container-owner tests, five non-live isolation
   integrations, the probe suite, and both warning-denying Clippy surfaces pass
   with generated state directed outside the checkout. The two live tests
