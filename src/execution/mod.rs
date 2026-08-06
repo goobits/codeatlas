@@ -34,8 +34,8 @@ pub(crate) use artifact::{ArtifactRef, ArtifactStore};
 pub(crate) use model::{
     ArtifactLink, ArtifactPayload, AuthorizationMode, EvidenceDigests, ExecutionCapability,
     ExecutionEffect, ExecutionLimits, ExecutionPlan, ExecutionPlanBody, ExecutionSubject,
-    ManagedCommandEvidence, NetworkDestination, PlannedTarget, SecretReference, ToolIdentity,
-    WritableScratchRoot,
+    ManagedCommandEvidence, ManagedImageEvidence, NetworkDestination, PlannedTarget,
+    SecretReference, ToolIdentity, WritableScratchRoot,
 };
 #[cfg(test)]
 pub(crate) use model::{

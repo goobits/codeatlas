@@ -14,7 +14,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-const PLAN_DOMAIN: &str = "atlas.codeatlas.dev/execution-plan/v1";
+const PLAN_DOMAIN: &str = "atlas.codeatlas.dev/execution-plan/v2";
 const RECEIPT_DOMAIN: &str = "atlas.codeatlas.dev/execution-receipt/v1";
 const MAX_JCS_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -471,6 +471,14 @@ fn validate_execution_plan_body(body: &ExecutionPlanBody) -> Result<()> {
     {
         anyhow::bail!("Execution plan managed command owners must be unique");
     }
+    validate_sorted_unique("managed images", &body.managed_images)?;
+    if body
+        .managed_images
+        .windows(2)
+        .any(|pair| pair[0].owner == pair[1].owner)
+    {
+        anyhow::bail!("Execution plan managed image owners must be unique");
+    }
     let expected_calls =
         validate_call_counts("Execution plan expected calls", &body.expected_calls)?;
     if expected_calls > body.limits.max_calls {
@@ -500,6 +508,19 @@ fn validate_execution_plan_body(body: &ExecutionPlanBody) -> Result<()> {
     for command in &body.managed_commands {
         validate_nonblank("managed command owner", &command.owner)?;
         validate_digest(&command.digest)?;
+    }
+    for image in &body.managed_images {
+        validate_nonblank("managed image owner", &image.owner)?;
+        let expected = image
+            .reference
+            .split_once("@sha256:")
+            .filter(|(repository, digest)| !repository.is_empty() && digest.len() == 64)
+            .map(|(_, digest)| format!("sha256:{digest}"))
+            .context("Managed image reference must use repository@sha256:<digest>")?;
+        validate_digest(&image.manifest_digest)?;
+        if image.manifest_digest != expected {
+            anyhow::bail!("Managed image manifest digest must match its exact reference");
+        }
     }
     for secret in &body.target.secret_references {
         validate_nonblank("secret reference name", &secret.name)?;

@@ -46,12 +46,13 @@ pub(crate) enum ResolvedHttpOpenApiSource {
 pub(crate) struct ResolvedHttpFuzzTarget {
     pub id: String,
     pub contract: String,
+    pub workload_image: Option<String>,
     pub base_url: Url,
     pub openapi_url: Url,
     pub environment: BTreeMap<String, String>,
     pub secret_environment: BTreeMap<String, String>,
     pub headers: Vec<ResolvedHttpFuzzHeader>,
-    pub report_root: Option<PathBuf>,
+    pub preauthorized: bool,
     pub server: Option<ResolvedHttpFuzzServer>,
     pub request_adapter: Option<ResolvedHttpFuzzCommand>,
     pub operation_selection: ResolvedHttpFuzzOperationSelection,
@@ -536,23 +537,16 @@ impl ProjectConfig {
             .as_ref()
             .map(|command| self.resolve_http_fuzz_command(&target.id, "request adapter", command))
             .transpose()?;
-        let report_root = target.report_dir.as_ref().map(|path| {
-            if path.is_absolute() {
-                path.clone()
-            } else {
-                self.config_dir.join(path)
-            }
-        });
-
         Ok(ResolvedHttpFuzzTarget {
             id: target.id.clone(),
             contract: target.contract.clone(),
+            workload_image: self.config.http.fuzz.image.clone(),
             base_url,
             openapi_url,
             environment: target.environment.clone(),
             secret_environment: target.secret_environment.clone(),
             headers,
-            report_root,
+            preauthorized: target.preauthorized,
             server,
             request_adapter,
             operation_selection,

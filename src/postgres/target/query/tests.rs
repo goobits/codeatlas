@@ -199,7 +199,7 @@ fn checked_dml_is_eligible_but_kernel_authorization_remains_reviewed_only() {
         is_local: true,
         is_disposable: true,
         environment: TargetEnvironmentClass::Disposable,
-        effects: EffectCorroboration::Effectful,
+        effects: EffectCorroboration::Uncontained,
         is_preauthorized: true,
     });
     assert_eq!(

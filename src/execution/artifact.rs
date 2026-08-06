@@ -83,6 +83,7 @@ pub(crate) fn sample_plan() -> ExecutionPlan {
         "required_capabilities": ["cleanup_verification", "network_allowlist"],
         "destinations": [{"scheme": "http", "host": "127.0.0.1", "port": 8080}],
         "managed_commands": [],
+        "managed_images": [],
         "expected_calls": [],
         "writable_scratch_roots": [{
             "logical_name": "execution_scratch",
@@ -120,7 +121,9 @@ pub(crate) fn sample_plan() -> ExecutionPlan {
 #[cfg(test)]
 mod tests {
     use super::{digest_value, sample_plan, ArtifactRef, ArtifactStore};
-    use crate::execution::model::{ArtifactLink, ExecutionPlan, ManagedCommandEvidence};
+    use crate::execution::model::{
+        ArtifactLink, ExecutionPlan, ManagedCommandEvidence, ManagedImageEvidence,
+    };
     use serde_json::json;
 
     #[test]
@@ -146,7 +149,7 @@ mod tests {
         let plan = sample_plan();
         assert_eq!(
             plan.id,
-            "plan_acd56385b3cb19b6498051f28c60e4f90b3c7236b0d2daea21543d16177fcf2c"
+            "plan_bcc4125edebc92b104807e3f3cd823c019f544dec28c8d66671106bc188f9856"
         );
         let mut changed = plan.body.clone();
         changed.operation = "fuzz-changed".to_string();
@@ -184,6 +187,25 @@ mod tests {
                 digest: format!("sha256:{}", "2".repeat(64)),
             },
         ];
+        assert!(ExecutionPlan::new(duplicate_owners).is_err());
+    }
+
+    #[test]
+    fn managed_image_evidence_is_digest_pinned_and_has_one_owner() {
+        let image = ManagedImageEvidence {
+            owner: "workload".to_string(),
+            reference: format!("example.invalid/workload@sha256:{}", "a".repeat(64)),
+            manifest_digest: format!("sha256:{}", "a".repeat(64)),
+        };
+        let mut mismatched = sample_plan().body;
+        mismatched.managed_images = vec![ManagedImageEvidence {
+            manifest_digest: format!("sha256:{}", "b".repeat(64)),
+            ..image.clone()
+        }];
+        assert!(ExecutionPlan::new(mismatched).is_err());
+
+        let mut duplicate_owners = sample_plan().body;
+        duplicate_owners.managed_images = vec![image.clone(), image];
         assert!(ExecutionPlan::new(duplicate_owners).is_err());
     }
 

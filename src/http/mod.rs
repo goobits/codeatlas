@@ -61,7 +61,9 @@ pub(crate) use model::{
     HTTP_FUZZ_SCHEMA_VERSION, HTTP_SCHEMA_VERSION,
 };
 pub(crate) use planning::{build_fuzz_execution_plan, rebuild_fuzz_execution_plan};
-pub(crate) use schemathesis::{fingerprint_engine, Contract as FuzzContract};
+pub(crate) use schemathesis::{
+    fingerprint_engine, resolve_engine_executable, Contract as FuzzContract,
+};
 pub(crate) use target::{
     ResolvedHttpFuzzOperationSelection, ResolvedHttpFuzzTarget, ResolvedHttpOpenApiSource,
 };
@@ -363,12 +365,7 @@ pub(crate) fn validate_fuzz_workload(workload: &HttpFuzzWorkload) -> Result<()> 
     if workload.engine != "schemathesis" {
         anyhow::bail!("Unsupported HTTP fuzz engine {:?}", workload.engine);
     }
-    if !matches!(workload.engine_source.as_str(), "managed" | "explicit") {
-        anyhow::bail!(
-            "Unsupported HTTP fuzz engine source {:?}",
-            workload.engine_source
-        );
-    }
+    schemathesis::validate_engine_executable(&workload.engine_executable)?;
     if let Some(seed) = &workload.seed {
         let parsed = seed
             .parse::<u128>()

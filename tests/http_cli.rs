@@ -513,7 +513,6 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
                             "name": "X-CodeAtlas-Static",
                             "value": "fixture-static-token"
                         }],
-                        "report_dir": "reports",
                         "server": {
                             "command": &python,
                             "args": &server_args,
@@ -540,7 +539,6 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
                                 "value": "true"
                             }
                         ],
-                        "report_dir": "source-reports",
                         "server": {
                             "command": &python,
                             "args": &server_args,
@@ -562,7 +560,6 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
                                 "value": "accept"
                             }
                         ],
-                        "report_dir": "unsafe-source-reports",
                         "server": {
                             "command": &python,
                             "args": &server_args,
@@ -593,7 +590,6 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
                                 "value": "true"
                             }
                         ],
-                        "report_dir": "denied-source-reports",
                         "server": {
                             "command": &python,
                             "args": &server_args,
@@ -615,7 +611,6 @@ fn managed_schemathesis_smoke_covers_hooks_adapter_and_cleanup() {
                                 "value": "true"
                             }
                         ],
-                        "report_dir": "server-error-reports",
                         "server": {
                             "command": &python,
                             "args": &server_args,

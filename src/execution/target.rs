@@ -24,7 +24,7 @@ pub(crate) enum TargetEnvironmentClass {
 pub(crate) enum EffectCorroboration {
     None,
     Contained,
-    Effectful,
+    Uncontained,
     Unknown,
 }
 
@@ -86,8 +86,12 @@ pub(crate) fn classify_target(evidence: &TargetEvidence) -> TargetDecision {
     if evidence.environment != TargetEnvironmentClass::Disposable {
         reasons.push("target environment is not classified as disposable".to_string());
     }
-    if evidence.effects != EffectCorroboration::None {
-        reasons.push("target effects are not corroborated as absent".to_string());
+    if !matches!(
+        evidence.effects,
+        EffectCorroboration::None | EffectCorroboration::Contained
+    ) {
+        reasons
+            .push("target effects are not corroborated as absent or sandbox-contained".to_string());
     }
     let disposition = if reasons.is_empty() {
         TargetDisposition::PreauthorizedIsolated
@@ -119,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_and_effectful_targets_never_receive_single_shot_authorization() {
+    fn remote_and_uncontained_effects_never_receive_single_shot_authorization() {
         let mut remote = eligible();
         remote.is_local = false;
         assert_eq!(
@@ -128,10 +132,17 @@ mod tests {
         );
 
         let mut effectful = eligible();
-        effectful.effects = EffectCorroboration::Effectful;
+        effectful.effects = EffectCorroboration::Uncontained;
         assert_eq!(
             classify_target(&effectful).disposition,
             TargetDisposition::ReviewedPlanRequired
+        );
+
+        let mut contained = eligible();
+        contained.effects = EffectCorroboration::Contained;
+        assert_eq!(
+            classify_target(&contained).disposition,
+            TargetDisposition::PreauthorizedIsolated
         );
 
         let mut production = eligible();

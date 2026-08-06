@@ -140,7 +140,9 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
             },
             "http": {
                 "contracts": [{"id": "fixture", "openapi": "openapi.json"}],
-                "fuzz": {"targets": [{
+                "fuzz": {
+                    "image": "ghcr.io/goobits/codeatlas-http-fuzz@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "targets": [{
                     "id": "local",
                     "contract": "fixture",
                     "base_url": format!("http://{address}"),
@@ -157,7 +159,8 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
                         "command": "fixture-adapter",
                         "args": ["--mode", "safe"]
                     }
-                }]}
+                    }]
+                }
             }
         }))
         .expect("CodeAtlas config JSON"),
@@ -246,19 +249,31 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
     );
     assert_no_target_call(&listener);
     let plan: Value = serde_json::from_slice(&planned.stdout).expect("execution plan JSON");
-    validate_schema(&plan, "codeatlas-execution-plan-v1.schema.json");
+    validate_schema(&plan, "codeatlas-execution-plan-v2.schema.json");
     validate_schema(
         &plan["workload"]["body"],
-        "codeatlas-http-fuzz-workload-v2.schema.json",
+        "codeatlas-http-fuzz-workload-v3.schema.json",
     );
-    assert_eq!(plan["schema_version"], "codeatlas.execution-plan/v1");
+    assert_eq!(plan["schema_version"], "codeatlas.execution-plan/v2");
     assert_eq!(plan["limits"]["max_calls"], 5);
     assert_eq!(plan["workload"]["body"]["limits"]["max_cases"], 3);
+    assert_eq!(
+        plan["workload"]["body"]["engine_executable"],
+        "/usr/local/bin/schemathesis"
+    );
     assert_eq!(
         plan["workload"]["body"]["excluded_operations"],
         json!(["POST /admin"])
     );
     assert_eq!(plan["expected_calls"], json!([]));
+    assert_eq!(
+        plan["managed_images"],
+        json!([{
+            "owner": "http_fuzz_workload",
+            "reference": "ghcr.io/goobits/codeatlas-http-fuzz@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "manifest_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }])
+    );
     assert_eq!(
         plan["writable_scratch_roots"],
         json!([{
@@ -346,7 +361,7 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
     );
     assert_no_target_call(&listener);
     let replay_plan: Value = serde_json::from_slice(&replayed.stdout).expect("replay plan JSON");
-    validate_schema(&replay_plan, "codeatlas-execution-plan-v1.schema.json");
+    validate_schema(&replay_plan, "codeatlas-execution-plan-v2.schema.json");
     assert_ne!(replay_plan["id"], plan["id"]);
     assert_eq!(replay_plan["links"].as_array().map(Vec::len), Some(2));
 

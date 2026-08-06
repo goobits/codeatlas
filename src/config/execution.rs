@@ -135,7 +135,7 @@ impl ExecutionContainerIsolationConfig {
             anyhow::bail!("execution.isolation.container.socket must be an absolute path");
         }
         if let Some(image) = &self.probe_image {
-            validate_digest_pinned_image(image)?;
+            validate_digest_pinned_image("execution.isolation.container.probe_image", image)?;
         }
         Ok(())
     }
@@ -182,11 +182,9 @@ pub(super) fn validate_positive_safe_integer(name: &str, value: u64) -> Result<(
     Ok(())
 }
 
-fn validate_digest_pinned_image(image: &str) -> Result<()> {
+pub(crate) fn validate_digest_pinned_image(name: &str, image: &str) -> Result<()> {
     let Some((repository, digest)) = image.split_once("@sha256:") else {
-        anyhow::bail!(
-            "execution.isolation.container.probe_image must use repository@sha256:<digest>"
-        );
+        anyhow::bail!("{name} must use repository@sha256:<digest>");
     };
     if repository.is_empty()
         || digest.len() != 64
@@ -194,9 +192,7 @@ fn validate_digest_pinned_image(image: &str) -> Result<()> {
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
-        anyhow::bail!(
-            "execution.isolation.container.probe_image must contain one lowercase SHA-256 digest"
-        );
+        anyhow::bail!("{name} must contain one lowercase SHA-256 digest");
     }
     Ok(())
 }

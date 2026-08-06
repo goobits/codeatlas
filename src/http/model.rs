@@ -6,7 +6,7 @@ pub(crate) const HTTP_BASELINE_API_VERSION: &str = "codeatlas.http-baseline/v1";
 pub(crate) const HTTP_BASELINE_SCHEMA_VERSION: u32 = 1;
 pub(crate) const HTTP_FUZZ_API_VERSION: &str = "codeatlas.http-fuzz/v2";
 pub(crate) const HTTP_FUZZ_SCHEMA_VERSION: u32 = 2;
-pub(crate) const HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION: &str = "codeatlas.http-fuzz-workload/v2";
+pub(crate) const HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION: &str = "codeatlas.http-fuzz-workload/v3";
 
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -22,7 +22,7 @@ pub(crate) struct HttpFuzzWorkload {
     pub operation: Option<String>,
     pub excluded_operations: Vec<String>,
     pub engine: String,
-    pub engine_source: String,
+    pub engine_executable: String,
     pub limits: crate::fuzz::FuzzLimits,
 }
 

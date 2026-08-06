@@ -90,9 +90,18 @@ pub(crate) struct RunOptions<'a> {
 }
 
 pub(crate) fn fingerprint_engine(
-    override_path: Option<&Path>,
+    executable: &str,
+    workload_image: Option<&str>,
 ) -> Result<crate::external_tool::ExternalToolFingerprint> {
-    toolchain::fingerprint_schemathesis(override_path)
+    toolchain::fingerprint_schemathesis(executable, workload_image)
+}
+
+pub(crate) fn resolve_engine_executable(override_path: Option<&str>) -> Result<String> {
+    toolchain::container_executable(override_path)
+}
+
+pub(crate) fn validate_engine_executable(executable: &str) -> Result<()> {
+    toolchain::validate_container_executable(executable)
 }
 
 pub(crate) fn run(
@@ -634,10 +643,7 @@ fn prepare_report_dir(
     profile: &str,
     operation: Option<&HttpFuzzOperation>,
 ) -> Result<PathBuf> {
-    let root = target
-        .report_root
-        .clone()
-        .unwrap_or_else(|| cache_base().join("codeatlas").join("reports").join("http"));
+    let root = cache_base().join("codeatlas").join("reports").join("http");
     let mut report_dir = root.join(&target.id).join(profile);
     if let Some(operation) = operation {
         report_dir = report_dir.join(operation_report_component(operation));

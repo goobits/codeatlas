@@ -281,6 +281,7 @@ impl CodeAtlasConfig {
     fn validate_values(&self) -> Result<()> {
         self.execution.validate_values()?;
         self.fuzz.validate_values()?;
+        self.http.validate_values()?;
         if self.fuzz.limits.case_timeout_ms > self.execution.limits.run_timeout_ms {
             anyhow::bail!(
                 "fuzz.limits.case_timeout_ms may not exceed execution.limits.run_timeout_ms"

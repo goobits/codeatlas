@@ -25,12 +25,13 @@ fn target_with_operations(operations: &[&str]) -> ResolvedHttpFuzzTarget {
     ResolvedHttpFuzzTarget {
         id: "api".to_string(),
         contract: "public-api".to_string(),
+        workload_image: None,
         base_url: url::Url::parse("http://127.0.0.1:3443").expect("base URL"),
         openapi_url: url::Url::parse("http://127.0.0.1:3443/openapi.json").expect("OpenAPI URL"),
         environment: BTreeMap::new(),
         secret_environment: BTreeMap::new(),
         headers: Vec::new(),
-        report_root: None,
+        preauthorized: false,
         server: None,
         request_adapter: None,
         operation_selection: ResolvedHttpFuzzOperationSelection::Explicit(

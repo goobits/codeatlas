@@ -81,10 +81,12 @@ The plan/execute adoption concern is real, but the answer is not an unguarded
 direct path. The kernel permits one-shot execution only for a checked-in,
 preauthorized target that runtime evidence proves is fully local and disposable.
 The command still persists a plan before the first call and invokes the exact
-same plan executor. Remote, effectful, unknown, or incompletely isolated targets
-never become single-shot. Remote/effectful/unknown targets require an explicitly
+same plan executor. Remote, uncontained-effect, unknown, or incompletely
+isolated targets never become single-shot. Those targets require an explicitly
 reviewed plan ID and may still block; incompletely isolated targets block
-unconditionally because review cannot supply a capability.
+unconditionally because review cannot supply a capability. Corroborated
+sandbox-contained mutation is not a second exception path; it remains typed
+effect evidence owned by the target classifier.
 
 The sandbox consequence is also capability-based rather than a blanket macOS
 ban. Planning works everywhere. Local execution works only where a verified
@@ -313,8 +315,8 @@ codeatlas fuzz <subject> --target <id>
 codeatlas fuzz <subject> --plan plan_ABC --execute
 ```
 
-Required for remote, effectful, exceptional, or incompletely preauthorized
-targets.
+Required for remote, uncontained-effect, exceptional, or incompletely
+preauthorized targets.
 
 ### Preauthorized isolated
 
@@ -329,8 +331,9 @@ call and records the authorization mode. This is convenience over the same
 path, not a compatibility executor.
 
 The kernel target classifier owns this decision. Remote, production,
-unknown-effect, policy-exception, and mutating/effectful workloads—including
-PostgreSQL DML—never qualify for single-shot execution.
+unknown-effect, policy-exception, and uncontained-effect workloads never
+qualify for single-shot execution. PostgreSQL DML retains its stricter
+reviewed-plan rule even when its effects are sandbox-contained.
 
 ## Determinism and honesty
 

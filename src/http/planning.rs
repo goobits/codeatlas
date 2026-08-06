@@ -10,8 +10,8 @@ use crate::execution::{
     classify_target, collect_workspace_evidence, resolve_isolation_policy, ArtifactLink,
     ArtifactPayload, EffectCorroboration, EvidenceDigests, ExecutionCapability, ExecutionEffect,
     ExecutionLimits, ExecutionPlan, ExecutionPlanBody, ExecutionSubject, ManagedCommandEvidence,
-    NetworkDestination, PlannedTarget, SecretReference, TargetEnvironmentClass, TargetEvidence,
-    ToolIdentity, WritableScratchRoot,
+    ManagedImageEvidence, NetworkDestination, PlannedTarget, SecretReference,
+    TargetEnvironmentClass, TargetEvidence, ToolIdentity, WritableScratchRoot,
 };
 use crate::external_tool::ExternalToolFingerprint;
 use crate::fuzz::validate_fuzz_execution_limits;
@@ -36,7 +36,6 @@ struct SeedEvidence<'a> {
 pub(crate) fn rebuild_fuzz_execution_plan(
     project: &ProjectConfig,
     plan: &ExecutionPlan,
-    schemathesis: Option<&Path>,
 ) -> Result<ExecutionPlan> {
     if plan.body.subject != ExecutionSubject::Http || plan.body.operation != "fuzz" {
         anyhow::bail!("Expected an HTTP fuzz execution plan");
@@ -49,7 +48,6 @@ pub(crate) fn rebuild_fuzz_execution_plan(
         project,
         workload,
         plan.body.limits.clone(),
-        schemathesis,
         plan.body.links.clone(),
     )
 }
@@ -58,11 +56,9 @@ pub(crate) fn build_fuzz_execution_plan(
     project: &ProjectConfig,
     mut workload: HttpFuzzWorkload,
     execution_limits: ExecutionLimits,
-    schemathesis: Option<&Path>,
     mut links: Vec<ArtifactLink>,
 ) -> Result<ExecutionPlan> {
     validate_fuzz_workload(&workload)?;
-    validate_engine_source(&workload.engine_source, schemathesis)?;
     validate_fuzz_execution_limits(&workload.limits, &execution_limits)?;
     let mut configured_exclusions = project.config.fuzz.exclude.http.clone();
     configured_exclusions.sort();
@@ -98,7 +94,10 @@ pub(crate) fn build_fuzz_execution_plan(
     let target_digest = digest_target(&target)?;
     let contract_digest = digest_contract(&contract)?;
     let tool = codeatlas_identity()?;
-    let engine = tool_identity(fingerprint_engine(schemathesis)?);
+    let engine = tool_identity(fingerprint_engine(
+        &workload.engine_executable,
+        target.workload_image.as_deref(),
+    )?);
     let authorization = classify_http_target(&target);
     let isolation = resolve_isolation_policy(
         project.config.execution.isolation.backend,
@@ -135,8 +134,12 @@ pub(crate) fn build_fuzz_execution_plan(
     let mut effects = BTreeSet::from([
         ExecutionEffect::FilesystemScratch,
         ExecutionEffect::NetworkTargetCall,
-        ExecutionEffect::Unknown,
     ]);
+    if target.server.is_some() {
+        effects.insert(ExecutionEffect::TargetMutation);
+    } else {
+        effects.insert(ExecutionEffect::Unknown);
+    }
     if target.server.is_some() || target.request_adapter.is_some() {
         effects.insert(ExecutionEffect::ManagedProcess);
     }
@@ -153,6 +156,7 @@ pub(crate) fn build_fuzz_execution_plan(
         capabilities.insert(ExecutionCapability::TlsInterception);
     }
     let managed_commands = managed_command_evidence(&project.root, &target, &engine)?;
+    let managed_images = managed_image_evidence(&target)?;
     let secret_references = secret_references(&target, &destination);
     links.sort();
     links.dedup();
@@ -180,6 +184,7 @@ pub(crate) fn build_fuzz_execution_plan(
         required_capabilities: capabilities.into_iter().collect(),
         destinations: vec![destination],
         managed_commands,
+        managed_images,
         expected_calls: Vec::new(),
         writable_scratch_roots: vec![WritableScratchRoot {
             logical_name: "execution_scratch".to_string(),
@@ -249,6 +254,7 @@ fn digest_target(target: &ResolvedHttpFuzzTarget) -> Result<String> {
         &json!({
             "id": target.id,
             "contract": target.contract,
+            "workload_image": target.workload_image,
             "base_url": target.base_url.as_str(),
             "openapi_url": target.openapi_url.as_str(),
             "environment": target.environment,
@@ -262,6 +268,7 @@ fn digest_target(target: &ResolvedHttpFuzzTarget) -> Result<String> {
             },
             "suppressed_health_checks": suppressed_health_checks,
             "suppress_warnings": target.suppress_warnings,
+            "preauthorized": target.preauthorized,
             "managed_server": target.server.is_some(),
             "request_adapter": target.request_adapter.is_some(),
         }),
@@ -318,8 +325,12 @@ fn classify_http_target(target: &ResolvedHttpFuzzTarget) -> crate::execution::Ta
         } else {
             TargetEnvironmentClass::Unknown
         },
-        effects: EffectCorroboration::Unknown,
-        is_preauthorized: false,
+        effects: if is_disposable {
+            EffectCorroboration::Contained
+        } else {
+            EffectCorroboration::Unknown
+        },
+        is_preauthorized: target.preauthorized,
     })
 }
 
@@ -378,6 +389,20 @@ fn managed_command_evidence(
     Ok(commands)
 }
 
+fn managed_image_evidence(target: &ResolvedHttpFuzzTarget) -> Result<Vec<ManagedImageEvidence>> {
+    let Some(reference) = target.workload_image.as_deref() else {
+        return Ok(Vec::new());
+    };
+    let (_, digest) = reference
+        .split_once("@sha256:")
+        .context("HTTP fuzz workload image must be digest-pinned")?;
+    Ok(vec![ManagedImageEvidence {
+        owner: "http_fuzz_workload".to_string(),
+        reference: reference.to_string(),
+        manifest_digest: format!("sha256:{digest}"),
+    }])
+}
+
 fn managed_command(
     workspace_root: &Path,
     owner: &str,
@@ -432,19 +457,6 @@ fn secret_references(
         }
     }
     references.into_iter().collect()
-}
-
-fn validate_engine_source(source: &str, schemathesis: Option<&Path>) -> Result<()> {
-    match (source, schemathesis) {
-        ("managed", None) | ("explicit", Some(_)) => Ok(()),
-        ("managed", Some(_)) => {
-            anyhow::bail!("Managed-engine plan may not be executed with --schemathesis")
-        }
-        ("explicit", None) => {
-            anyhow::bail!("Explicit-engine plan requires the same --schemathesis file")
-        }
-        _ => anyhow::bail!("Unsupported HTTP fuzz engine source {source:?}"),
-    }
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use super::target::TargetDecision;
 use serde::{Deserialize, Serialize};
 
-pub(crate) const EXECUTION_PLAN_SCHEMA_VERSION: &str = "codeatlas.execution-plan/v1";
+pub(crate) const EXECUTION_PLAN_SCHEMA_VERSION: &str = "codeatlas.execution-plan/v2";
 pub(crate) const EXECUTION_RECEIPT_SCHEMA_VERSION: &str = "codeatlas.execution-receipt/v1";
 
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -50,6 +50,7 @@ pub(crate) struct ExecutionPlanBody {
     pub required_capabilities: Vec<ExecutionCapability>,
     pub destinations: Vec<NetworkDestination>,
     pub managed_commands: Vec<ManagedCommandEvidence>,
+    pub managed_images: Vec<ManagedImageEvidence>,
     pub expected_calls: Vec<CallCount>,
     pub writable_scratch_roots: Vec<WritableScratchRoot>,
     pub limits: ExecutionLimits,
@@ -240,6 +241,16 @@ pub(crate) struct NetworkDestination {
 pub(crate) struct ManagedCommandEvidence {
     pub owner: String,
     pub digest: String,
+}
+
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ManagedImageEvidence {
+    pub owner: String,
+    pub reference: String,
+    pub manifest_digest: String,
 }
 
 #[derive(

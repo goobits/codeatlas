@@ -22,7 +22,7 @@ pub(crate) struct HttpOptions<'a> {
     pub profile: HttpFuzzProfile,
     pub seed: Option<u128>,
     pub operation: Option<&'a str>,
-    pub schemathesis: Option<&'a Path>,
+    pub schemathesis: Option<&'a str>,
     pub limits: &'a FuzzLimitArgs,
     pub config_path: Option<&'a Path>,
 }
@@ -35,7 +35,7 @@ fn run_http_inner(options: &HttpOptions<'_>) -> Result<i32> {
     validate_mode(options)?;
     let project = load_project(options.path, options.config_path)?;
     if let Some(reference) = options.plan {
-        return execute_reviewed_plan(&project, reference, options.schemathesis);
+        return execute_reviewed_plan(&project, reference);
     }
     if let Some(reference) = options.replay {
         return plan_replay(&project, reference, options);
@@ -48,7 +48,8 @@ fn validate_mode(options: &HttpOptions<'_>) -> Result<()> {
         && (!options.limits.is_empty()
             || options.seed.is_some()
             || options.operation.is_some()
-            || options.profile != HttpFuzzProfile::Standard)
+            || options.profile != HttpFuzzProfile::Standard
+            || options.schemathesis.is_some())
     {
         anyhow::bail!(
             "Reviewed plan execution uses the exact saved workload and limits; remove target-planning options"
@@ -57,7 +58,8 @@ fn validate_mode(options: &HttpOptions<'_>) -> Result<()> {
     if options.replay.is_some()
         && (options.seed.is_some()
             || options.operation.is_some()
-            || options.profile != HttpFuzzProfile::Standard)
+            || options.profile != HttpFuzzProfile::Standard
+            || options.schemathesis.is_some())
     {
         anyhow::bail!(
             "Replay derives strategy from the reproducer; only limit tightening is allowed"
@@ -94,21 +96,10 @@ fn plan_target(project: &ProjectConfig, options: &HttpOptions<'_>) -> Result<i32
         operation: options.operation.map(str::to_string),
         excluded_operations,
         engine: "schemathesis".to_string(),
-        engine_source: if options.schemathesis.is_some() {
-            "explicit"
-        } else {
-            "managed"
-        }
-        .to_string(),
+        engine_executable: http::resolve_engine_executable(options.schemathesis)?,
         limits: fuzz_limits,
     };
-    let plan = http::build_fuzz_execution_plan(
-        project,
-        workload,
-        execution_limits,
-        options.schemathesis,
-        Vec::new(),
-    )?;
+    let plan = http::build_fuzz_execution_plan(project, workload, execution_limits, Vec::new())?;
     let store = ArtifactStore::new(&project.root, plan.body.limits.max_artifact_bytes)?;
     store.persist(&plan)?;
 
@@ -135,17 +126,13 @@ fn plan_target(project: &ProjectConfig, options: &HttpOptions<'_>) -> Result<i32
     Ok(2)
 }
 
-fn execute_reviewed_plan(
-    project: &ProjectConfig,
-    reference: &str,
-    schemathesis: Option<&Path>,
-) -> Result<i32> {
+fn execute_reviewed_plan(project: &ProjectConfig, reference: &str) -> Result<i32> {
     let store = ArtifactStore::new(
         &project.root,
         project.config.execution.limits.max_artifact_bytes,
     )?;
     let plan: ExecutionPlan = store.load(&ArtifactRef::parse(reference)?)?;
-    let current = http::rebuild_fuzz_execution_plan(project, &plan, schemathesis)?;
+    let current = http::rebuild_fuzz_execution_plan(project, &plan)?;
     verify_current_evidence(&plan, &current.body.evidence)?;
     if current.id != plan.id {
         anyhow::bail!(
@@ -181,7 +168,7 @@ fn plan_replay(project: &ProjectConfig, reference: &str, options: &HttpOptions<'
     {
         anyhow::bail!("Reproducer does not match its parent execution plan");
     }
-    let current_parent = http::rebuild_fuzz_execution_plan(project, &parent, options.schemathesis)?;
+    let current_parent = http::rebuild_fuzz_execution_plan(project, &parent)?;
     verify_current_evidence(&parent, &current_parent.body.evidence)?;
     if current_parent.id != parent.id {
         anyhow::bail!("Reproducer parent plan no longer has the same canonical identity");
@@ -221,13 +208,7 @@ fn plan_replay(project: &ProjectConfig, reference: &str, options: &HttpOptions<'
             content_digest: reproducer.content_digest.clone(),
         },
     ];
-    let plan = http::build_fuzz_execution_plan(
-        project,
-        workload,
-        execution_limits,
-        options.schemathesis,
-        links,
-    )?;
+    let plan = http::build_fuzz_execution_plan(project, workload, execution_limits, links)?;
     store.persist(&plan)?;
     output::write_or_print(&plan, None, "Replay execution plan")?;
     Ok(0)

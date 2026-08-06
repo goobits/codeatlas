@@ -319,7 +319,7 @@ fn is_valid_annotation_key(value: &str) -> bool {
 const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
     PublishedSchema::new_artifact(
         EXECUTION_PLAN_SCHEMA_VERSION,
-        "codeatlas-execution-plan-v1.schema.json",
+        "codeatlas-execution-plan-v2.schema.json",
         "execution",
         generate_schema::<ExecutionPlan>,
     ),
@@ -343,7 +343,7 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
     ),
     PublishedSchema::new_artifact(
         HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION,
-        "codeatlas-http-fuzz-workload-v2.schema.json",
+        "codeatlas-http-fuzz-workload-v3.schema.json",
         "http",
         generate_schema::<HttpFuzzWorkload>,
     ),
@@ -734,9 +734,9 @@ mod tests {
     #[test]
     fn prospective_artifacts_require_one_namespaced_schema_identity() {
         let schema = PublishedSchema::new_artifact(
-            "codeatlas.execution-plan/v1",
-            "codeatlas-execution-plan-v1.schema.json",
-            "execution",
+            "codeatlas.test-artifact/v1",
+            "codeatlas-test-artifact-v1.schema.json",
+            "test",
             generate_schema::<ProspectiveArtifact>,
         );
         assert_registered_identity(&schema);

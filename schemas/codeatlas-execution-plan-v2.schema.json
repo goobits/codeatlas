@@ -252,6 +252,26 @@
       ],
       "type": "object"
     },
+    "ManagedImageEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "manifest_digest": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "owner",
+        "reference",
+        "manifest_digest"
+      ],
+      "type": "object"
+    },
     "NetworkDestination": {
       "additionalProperties": false,
       "properties": {
@@ -398,7 +418,7 @@
       "type": "object"
     }
   },
-  "$id": "codeatlas.execution-plan/v1",
+  "$id": "codeatlas.execution-plan/v2",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -456,6 +476,12 @@
       },
       "type": "array"
     },
+    "managed_images": {
+      "items": {
+        "$ref": "#/$defs/ManagedImageEvidence"
+      },
+      "type": "array"
+    },
     "operation": {
       "type": "string"
     },
@@ -466,7 +492,7 @@
       "type": "array"
     },
     "schema_version": {
-      "const": "codeatlas.execution-plan/v1",
+      "const": "codeatlas.execution-plan/v2",
       "type": "string"
     },
     "subject": {
@@ -504,6 +530,7 @@
     "required_capabilities",
     "destinations",
     "managed_commands",
+    "managed_images",
     "expected_calls",
     "writable_scratch_roots",
     "limits",

@@ -186,9 +186,11 @@ only their identity, addressing, linkage, privacy, retention, and size rules.
 
 ### Canonical execution-plan ID
 
-The first execution artifact locks the byte contract for the namespace. An
-`ExecutionPlan` uses the namespaced schema string
-`codeatlas.execution-plan/v1`. Its identity is derived as follows:
+The first execution artifact locks the byte contract for the namespace. The
+current `ExecutionPlan` uses the namespaced schema string
+`codeatlas.execution-plan/v2`. Version 2 adds canonical managed-image evidence;
+the pre-v1 implementation hard-cuts from the earlier prospective v1 contract
+without retaining a compatibility reader. Its identity is derived as follows:
 
 1. Build the typed plan identity body containing the schema/subject/operation,
    exact target and evidence digests, workload, effects, required capabilities,
@@ -204,7 +206,7 @@ The first execution artifact locks the byte contract for the namespace. An
 4. Hash these exact bytes:
 
    ```text
-   atlas.codeatlas.dev/execution-plan/v1\n<RFC-8785-plan-bytes>
+   atlas.codeatlas.dev/execution-plan/v2\n<RFC-8785-plan-bytes>
    ```
 
 5. Serialize the digest as `sha256:<64 lowercase hex>` and the canonical ID as
@@ -357,9 +359,10 @@ submit typed evidence for locality, disposability, environment class,
 destinations, effects, cleanup, and required capabilities. The classifier
 returns the exact block/review/preauthorization reason. A reviewed plan grants
 authorization only; it cannot waive a missing sandbox capability. Remote,
-production, unknown-effect, policy-exception, and mutating/effectful workloads
+production, unknown-effect, policy-exception, and uncontained-effect workloads
 never qualify for single-shot execution even when their backing service is
-disposable.
+disposable. Sandbox-contained mutation is eligible only when every other
+preauthorization condition is corroborated.
 
 ## Budget enforcement
 
@@ -532,7 +535,8 @@ Blocked targets are:
 - Managed commands without required sandbox capabilities.
 - Runs whose managed process or disposable state cannot be cleaned up.
 
-Remote and effectful targets never qualify for single-shot preauthorization.
+Remote targets and targets with uncontained effects never qualify for
+single-shot preauthorization.
 
 ## Dogfooding and validation
 
@@ -1446,9 +1450,15 @@ typed HTTP report is persisted through the shared content-addressed artifact
 store and linked from the receipt. Nothing writes into the analyzed checkout,
 and no HTTP-private report directory becomes a second artifact owner.
 
+Because managed-image evidence is a new canonical plan-identity member, Phase
+5 bumps the execution plan and domain separator to v2 and deletes the
+prospective v1 schema. Rewriting the v1 bytes or retaining a fallback reader
+would violate the artifact identity contract and create pre-release legacy
+cruft.
+
 Execution checklist:
 
-- [ ] Add strict workload-image and preauthorization configuration, shared
+- [x] Add strict workload-image and preauthorization configuration, shared
   managed-image plan evidence, schema drift coverage, and zero-call planning
   tests; retire host-path Schemathesis semantics and `report_dir`.
 - [ ] Add one network-none workload launch contract plus strict private
@@ -1469,6 +1479,32 @@ Execution checklist:
 - [ ] Run focused checks, the full required suite, CodeAtlas self-dogfood,
   one-owner searches, and the checkout-state audit; synchronize the tracker
   and commit Phase 5 before beginning Phase 6.
+
+Contract checkpoint, 2026-08-06:
+
+- Execution plans hard-cut to `codeatlas.execution-plan/v2` with domain
+  separator `atlas.codeatlas.dev/execution-plan/v2`; the exact empty-image
+  vector is
+  `plan_bcc4125edebc92b104807e3f3cd823c019f544dec28c8d66671106bc188f9856`.
+  The prospective v1 schema is deleted rather than accepted with changed
+  identity bytes.
+- HTTP workloads hard-cut to `codeatlas.http-fuzz-workload/v3` and carry one
+  normalized absolute executable path inside the exact digest-pinned workload
+  image. `--schemathesis` is no longer interpreted or fingerprinted as a host
+  path. Planning remains zero-call without an image, while execution will
+  block at the shared workload boundary added next.
+- `http.fuzz.image` and target-local `preauthorized` are strict configuration;
+  `report_dir` is removed. Managed-image evidence has one kernel model and
+  exact owner/reference/manifest validation. Target effects distinguish
+  absent, sandbox-contained, uncontained, and unknown evidence; ordinary
+  contained mutation does not grow a second policy directive.
+- Schema generation/drift validation, 421 binary unit tests, and the zero-call
+  target/replay integration test pass from the external Cargo root. The old
+  disconnected host runtime remains only as deletion input for the fourth
+  checklist item; it is not reachable from the plan contract.
+- Next exact action: add the one kernel-owned network-none workload launch and
+  strict private harness protocol by extending the verified container client,
+  scheduler, redactor, and lease owners—without adding an HTTP-private runner.
 
 LOC: +700-1,100 / -250-450
 

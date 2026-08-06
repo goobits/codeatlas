@@ -1,3 +1,4 @@
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -8,6 +9,15 @@ pub(crate) struct HttpConfig {
     pub contracts: Vec<HttpContractConfig>,
     #[serde(skip_serializing_if = "HttpFuzzConfig::is_empty")]
     pub fuzz: HttpFuzzConfig,
+}
+
+impl HttpConfig {
+    pub(crate) fn validate_values(&self) -> Result<()> {
+        if let Some(image) = &self.fuzz.image {
+            super::execution::validate_digest_pinned_image("http.fuzz.image", image)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -63,12 +73,14 @@ pub(crate) enum HttpOpenApiProviderConfig {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct HttpFuzzConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
     pub targets: Vec<HttpFuzzTargetConfig>,
 }
 
 impl HttpFuzzConfig {
     fn is_empty(&self) -> bool {
-        self.targets.is_empty()
+        self.image.is_none() && self.targets.is_empty()
     }
 }
 
@@ -82,7 +94,7 @@ pub(crate) struct HttpFuzzTargetConfig {
     pub environment: BTreeMap<String, String>,
     pub secret_environment: BTreeMap<String, String>,
     pub headers: Vec<HttpFuzzHeaderConfig>,
-    pub report_dir: Option<PathBuf>,
+    pub preauthorized: bool,
     pub server: Option<HttpFuzzServerConfig>,
     pub request_adapter: Option<HttpFuzzCommandConfig>,
     pub operations: HttpFuzzOperationSelectionConfig,
@@ -102,7 +114,7 @@ impl Default for HttpFuzzTargetConfig {
             environment: BTreeMap::new(),
             secret_environment: BTreeMap::new(),
             headers: Vec::new(),
-            report_dir: None,
+            preauthorized: false,
             server: None,
             request_adapter: None,
             operations: HttpFuzzOperationSelectionConfig::default(),
@@ -204,10 +216,12 @@ mod tests {
                         "source_exclude_operations": ["POST /health"]
                     }],
                     "fuzz": {
+                        "image": "ghcr.io/goobits/codeatlas-http-fuzz@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                         "targets": [{
                             "id": "public-local",
                             "contract": "public-api",
                             "base_url": "http://127.0.0.1:3443",
+                            "preauthorized": true,
                             "environment": {
                                 "MODE": "test"
                             },
@@ -253,6 +267,7 @@ mod tests {
             }"#,
         )
         .expect("HTTP fuzz config");
+        config.http.validate_values().expect("HTTP fuzz values");
 
         let target = &config.http.fuzz.targets[0];
         let contract = &config.http.contracts[0];
@@ -260,6 +275,11 @@ mod tests {
         assert_eq!(contract.source_exclude_operations, ["POST /health"]);
         assert_eq!(target.id, "public-local");
         assert_eq!(target.contract, "public-api");
+        assert!(target.preauthorized);
+        assert_eq!(
+            config.http.fuzz.image.as_deref(),
+            Some("ghcr.io/goobits/codeatlas-http-fuzz@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
         assert_eq!(target.openapi_path, "/openapi.json");
         assert_eq!(
             target.headers[0].value_env.as_deref(),
@@ -323,5 +343,18 @@ mod tests {
             Some(0)
         );
         assert!(target.suppress_warnings);
+    }
+
+    #[test]
+    fn workload_image_is_optional_for_planning_but_exact_when_configured() {
+        let omitted =
+            serde_json::from_str::<CodeAtlasConfig>("{}").expect("planning-only configuration");
+        omitted.http.validate_values().expect("omitted image");
+
+        let invalid = serde_json::from_str::<CodeAtlasConfig>(
+            r#"{"http":{"fuzz":{"image":"ghcr.io/goobits/codeatlas-http-fuzz:latest"}}}"#,
+        )
+        .expect("strict configuration shape");
+        assert!(invalid.http.validate_values().is_err());
     }
 }

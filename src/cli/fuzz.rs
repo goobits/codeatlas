@@ -1,7 +1,7 @@
 use super::execution::FuzzLimitArgs;
 use crate::commands;
 use clap::{Subcommand, ValueEnum};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub(crate) enum HttpFuzzProfile {
@@ -55,9 +55,9 @@ pub(super) enum FuzzSubject {
         seed: Option<u128>,
         #[arg(long)]
         operation: Option<String>,
-        /// Exact Schemathesis executable to fingerprint; no tool is run while planning
+        /// Absolute Schemathesis executable path inside the configured workload image
         #[arg(long)]
-        schemathesis: Option<PathBuf>,
+        schemathesis: Option<String>,
         #[command(flatten)]
         limits: FuzzLimitArgs,
     },

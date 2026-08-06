@@ -33,7 +33,7 @@
       "type": "object"
     }
   },
-  "$id": "codeatlas.http-fuzz-workload/v2",
+  "$id": "codeatlas.http-fuzz-workload/v3",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -43,7 +43,7 @@
     "engine": {
       "type": "string"
     },
-    "engine_source": {
+    "engine_executable": {
       "type": "string"
     },
     "excluded_operations": {
@@ -65,7 +65,7 @@
       "type": "string"
     },
     "schema_version": {
-      "const": "codeatlas.http-fuzz-workload/v2",
+      "const": "codeatlas.http-fuzz-workload/v3",
       "type": "string"
     },
     "seed": {
@@ -89,7 +89,7 @@
     "stateful",
     "excluded_operations",
     "engine",
-    "engine_source",
+    "engine_executable",
     "limits"
   ],
   "title": "HttpFuzzWorkload",

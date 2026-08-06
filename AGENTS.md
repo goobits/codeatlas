@@ -226,9 +226,11 @@ The required lifecycle is:
 
 Single-shot execution is merely plan persistence plus the same executor in one
 process. It is eligible only when the kernel corroborates a checked-in target
-as preauthorized, fully local, disposable, isolated, and non-effectful. Remote,
-production, unknown, mutating, or policy-exception targets require a reviewed
-plan and may still be blocked.
+as preauthorized, fully local, disposable, isolated, and free of uncontained
+effects. Remote, production, unknown, uncontained-effect, or policy-exception
+targets require a reviewed plan and may still be blocked. Sandbox-contained
+mutation remains typed effect evidence; PostgreSQL DML retains its stricter
+reviewed-plan rule.
 
 Do not use environment redirection as a sandbox, trust a generator as the sole
 call counter, fall back to host execution, forward a container-control socket
