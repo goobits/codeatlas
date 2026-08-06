@@ -1610,6 +1610,19 @@ First Phase 5 hosted attempt, 2026-08-06:
   Next exact action: commit and push the narrow correction, confirm no run for
   that new revision, and dispatch the existing workflow once.
 
+Second Phase 5 hosted attempt, 2026-08-06:
+
+- The narrow correction is clean commit `d07b7ac` and a verified one-commit
+  fast-forward from the first attempt. Duplicate detection found zero run for
+  that revision before the existing workflow dispatched once as GitHub run
+  `31128060350`.
+- The run remains queued with no assigned runner or started step. GitHub's
+  official status API reports Actions in `major_outage`, while this repository
+  has no other active workflow. No paid runner time or target budget has begun.
+- Next exact action: retain and query run `31128060350`; do not cancel,
+  redispatch, or change code while the external Actions outage is the only
+  boundary.
+
 LOC: +700-1,100 / -250-450
 
 Verify: Existing positive, negative, boundary, unsupported-method, and stateful

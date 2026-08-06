@@ -915,6 +915,12 @@ the focused seven-case image-build test plus all 31 Node tests. Commit/push the
 narrow fix and dispatch once for its new revision; do not start Phase 11 until
 the target-observed managed HTTP evidence passes.
 
+The correction is now commit `d07b7ac`; exact run `31128060350` was dispatched
+once after zero-duplicate confirmation. It remains queued without an assigned
+runner while GitHub's official status API reports a major Actions outage. Keep
+that exact run alive and query it without redispatching; no paid runner time or
+target call has started.
+
 - [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
   effect evidence into the shared target classifier.
 - [ ] Route reviewed and eligible single-shot HTTP runs through the same
