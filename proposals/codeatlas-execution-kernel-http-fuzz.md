@@ -909,7 +909,7 @@ exhaustion is `partial`.
 
 ## Phase 4: Verified isolation backend and capability matrix
 
-Status: [~] Hosted live gate prepared; waiting for the Phase 9 target-observed run
+Status: [~] Rootful runtime resolved; waiting for corrected Phase 9C live proof
 
 Execution checklist:
 
@@ -1065,23 +1065,29 @@ Hosted gate preparation checkpoint, 2026-08-05:
   digest-pinned Rust-musl, BuildKit, and registry images, and no
   caller-controlled command or secret
   input. The Docker socket remains host-side and is never forwarded to a child.
-- One GitHub Actions Cargo cache is keyed by OS, architecture, the exact
-  `rustc -Vv` digest, both lockfiles, and both manifests. Its uncompressed
-  payload is capped at 6 GB and its hit/miss, restored bytes, save outcome, and
-  saved payload bytes are reported. A non-cancelled conformance failure may
-  save a successfully restored, bounded miss so the exact rerun does not
-  rebuild Cargo dependencies; cancelled or incomplete cache setup cannot save.
-  There is no restore prefix across a different identity. The probe image
-  retains `--no-cache`, so cache reuse cannot substitute for rebuilding the
+- One GitHub Actions Cargo cache has an exact compatibility prefix over OS,
+  architecture, the `rustc -Vv` digest, both lockfiles, and both manifests,
+  with the source revision as its immutable generation. A restore prefix may
+  select only the newest generation under that complete compatibility
+  identity; there is no cross-toolchain or cross-dependency restore. A
+  generation is saveable only after the compiled isolation-test executable
+  proves that expensive Cargo work exists, preventing an early empty entry
+  from blocking a later useful save for the same compatibility class.
+  Uncompressed state is capped at 6 GB, and the primary/matched generation,
+  exact hit, restored/final/saved bytes, usefulness, and save outcome are
+  reported. Cancelled or incomplete cache setup cannot save. The probe image
+  retains `--no-cache`, so Cargo reuse cannot substitute for rebuilding the
   exact committed isolation payload.
 - Focused Node contracts, the container-owner tests, five non-live isolation
   integrations, the probe suite, and both warning-denying Clippy surfaces pass
   with generated state directed outside the checkout. The two live tests
   compile and remain ignored locally by design.
-- The remaining continuation input is one manual run from a revision where the
-  workflow exists on GitHub. A hosted runtime, socket, and image are inputs
-  until their target-observed artifact passes; this checkpoint grants no
-  capability and Phase 5 remains blocked.
+- The rootful runtime input is now resolved by the hosted attempts below. The
+  remaining continuation input is one locally verified resource/cache
+  correction followed by the narrow baseline and destructive matrix on that
+  same workflow. Runtime, socket, and image remain inputs until the complete
+  target-observed artifact passes; this checkpoint grants no capability and
+  Phase 5 remains blocked.
 
 First hosted attempt, 2026-08-06:
 
@@ -1099,7 +1105,48 @@ First hosted attempt, 2026-08-06:
   grants no isolation capability.
 - The narrow correction keeps the OCI artifact canonical and adds one Docker
   import projection to the same uncached solve. Focused local tests and
-  workflow lint pass; the corrected hosted rerun remains required.
+  workflow lint passed; the second attempt below exercised that correction.
+
+Second hosted attempt, 2026-08-06:
+
+- GitHub run `31081198694` used exact commit `b542923`, Docker Engine 28.0.4,
+  Buildx 0.35.0, the planned local socket, and the three digest-pinned images.
+  The one-solve Docker projection imported successfully, the probe was tagged
+  and published through the temporary loopback registry, and the exact
+  published digest passed inspection. This resolves the Phase 9B rootful
+  runtime input without granting an isolation capability.
+- The real baseline container launched and emitted blocked receipt
+  `receipt_c675b070b5ceddc71874646f4e37c72f36d80a0626acf6aba3252c001b98d86b`.
+  Both the container and scratch leases released and verified. Its strict
+  evaluator stopped before the destructive matrix at one combined
+  CPU/RSS/process/descriptor usage check, so all seven capabilities remained
+  withheld and Phase 9C remains open.
+- Audit found that the combined diagnostic hid the exact failing sample and
+  that its `memory.peak <= memory.max` branch contradicts cgroup v2: the hard
+  limit may be exceeded temporarily while `memory.peak` records that high-water
+  mark. The correction retains exact `memory.max` equality and the destructive
+  RSS proof, treats the peak as receipt evidence, and gives CPU, process, and
+  descriptor overages exact observed/allowed diagnostics.
+- The run restored a 214-byte immutable v1 cache entry, then spent 3 minutes 50
+  seconds compiling 3,095,767,592 bytes of useful bounded Cargo state. The
+  exact hit prevented that state from being saved. The v2 generation contract
+  above makes source revision immutable beneath one complete compatibility
+  prefix and refuses to save until the compiled isolation test exists, so an
+  early empty generation cannot poison later work.
+- Uploaded artifact `8959641326` is 320,226 bytes with digest
+  `sha256:1703c210b13b7805662a79d8592762f01ce780c06650a3ab9f1756e7af96e857`.
+  The task-local copy is under
+  `/tmp/codeatlas-gha-phase9.GAkQVR/artifacts/github-run-31081198694`; it
+  contains the canonical OCI archive, receipt, and bounded logs. No capability
+  was granted.
+- The local correction gate passes four focused evaluator contracts, five
+  non-live isolation integrations, 420 root unit tests plus all non-live
+  integrations, warning-denying Clippy, formatting, 14 hosted-task contracts,
+  and workflow lint. Self-dogfood covers 327 files, 3,441 symbols, 2,923
+  callable contracts, 353 non-gating advisories, three semantic-sibling sets
+  with zero review candidates, 16 test contexts, seven scripts, and no
+  duplicate scripts. All complete logs, reports, Cargo state, and audit output
+  remain beneath `/tmp/codeatlas-gha-phase9.GAkQVR`.
 
 #### Phase 4A: CodeAtlas-owned isolation probe
 

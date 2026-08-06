@@ -3,8 +3,8 @@ use crate::execution::artifact::digest_value;
 use crate::execution::model::{ExecutionCapability, ResourceEvidence};
 use anyhow::{Context, Result};
 use codeatlas_isolation_conformance::{
-    IsolationConformanceReport, ObservedLimits, CONFORMANCE_SCHEMA_VERSION, SCRATCH_MOUNT,
-    TEMP_MOUNT, WORKSPACE_MOUNT,
+    IsolationConformanceReport, ObservedLimits, ObservedUsage, CONFORMANCE_SCHEMA_VERSION,
+    SCRATCH_MOUNT, TEMP_MOUNT, WORKSPACE_MOUNT,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -258,25 +258,7 @@ pub(super) fn evaluate_conformance(
     if report.limits != expected_limits {
         anyhow::bail!("Isolation probe observed different resource ceilings than the plan");
     }
-    if report
-        .limits
-        .cpu_time_ms
-        .is_some_and(|limit| report.usage.cpu_time_ms > limit)
-        || report
-            .limits
-            .rss_bytes
-            .is_some_and(|limit| report.usage.peak_rss_bytes > limit)
-        || report
-            .limits
-            .processes
-            .is_some_and(|limit| report.usage.peak_processes > limit)
-        || report
-            .limits
-            .open_files
-            .is_some_and(|limit| report.usage.peak_open_files > limit)
-    {
-        anyhow::bail!("Isolation probe usage exceeded a reported resource ceiling");
-    }
+    validate_reported_usage(&report.limits, &report.usage)?;
 
     let checks = &report.checks;
     let mut capabilities = BTreeSet::new();
@@ -378,6 +360,27 @@ pub(super) fn evaluate_conformance(
     })
 }
 
+fn validate_reported_usage(limits: &ObservedLimits, usage: &ObservedUsage) -> Result<()> {
+    validate_usage_ceiling("CPU-time usage", usage.cpu_time_ms, limits.cpu_time_ms)?;
+    validate_usage_ceiling("process peak", usage.peak_processes, limits.processes)?;
+    validate_usage_ceiling("open-file peak", usage.peak_open_files, limits.open_files)?;
+
+    // cgroup v2 explicitly permits memory.max to be exceeded temporarily, and
+    // memory.peak records that transient high-water mark. Exact memory.max
+    // equality plus the destructive RSS case prove enforcement; the peak stays
+    // receipt evidence rather than becoming a contradictory second oracle.
+    Ok(())
+}
+
+fn validate_usage_ceiling(label: &str, observed: u64, limit: Option<u64>) -> Result<()> {
+    if let Some(limit) = limit.filter(|limit| observed > *limit) {
+        anyhow::bail!(
+            "Isolation probe reported {label} {observed} above the observed resource ceiling {limit}"
+        );
+    }
+    Ok(())
+}
+
 fn add_capability<const N: usize>(
     capabilities: &mut BTreeSet<ExecutionCapability>,
     reasons: &mut Vec<String>,
@@ -416,11 +419,12 @@ fn validate_sha256_identifier(label: &str, value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        evaluate_conformance, ExecutionCapability, RequiredNullableVec, CONFORMANCE_SCHEMA_VERSION,
+        evaluate_conformance, validate_reported_usage, ExecutionCapability, RequiredNullableVec,
+        CONFORMANCE_SCHEMA_VERSION,
     };
     use crate::execution::model::sample_execution_limits;
     use crate::execution::sandbox::container::command::{ContainerLaunchSpec, ProbeLaunch};
-    use codeatlas_isolation_conformance::ProbeMode;
+    use codeatlas_isolation_conformance::{ObservedLimits, ObservedUsage, ProbeMode};
     use serde_json::json;
 
     #[test]
@@ -436,6 +440,71 @@ mod tests {
             serde_json::from_str::<Fixture>(r#"{"values":[]}"#).expect("fake runtime empty list");
         assert!(empty.values.is_empty());
         assert!(serde_json::from_str::<Fixture>("{}").is_err());
+    }
+
+    #[test]
+    fn transient_memory_peak_remains_evidence_without_negating_the_hard_limit() {
+        let limits = ObservedLimits {
+            cpu_time_ms: Some(2_000),
+            rss_bytes: Some(64 * 1024 * 1024),
+            processes: Some(1),
+            open_files: Some(32),
+        };
+        let usage = ObservedUsage {
+            cpu_time_ms: 1,
+            peak_rss_bytes: limits.rss_bytes.expect("RSS limit") + 4_096,
+            peak_processes: 1,
+            peak_open_files: 4,
+        };
+
+        validate_reported_usage(&limits, &usage).expect("cgroup memory peak is diagnostic");
+    }
+
+    #[test]
+    fn non_memory_usage_overages_name_the_observed_and_allowed_values() {
+        let limits = ObservedLimits {
+            cpu_time_ms: Some(2_000),
+            rss_bytes: Some(64 * 1024 * 1024),
+            processes: Some(1),
+            open_files: Some(32),
+        };
+        let cases = [
+            (
+                ObservedUsage {
+                    cpu_time_ms: 2_001,
+                    peak_rss_bytes: 1,
+                    peak_processes: 1,
+                    peak_open_files: 4,
+                },
+                "CPU-time usage 2001 above the observed resource ceiling 2000",
+            ),
+            (
+                ObservedUsage {
+                    cpu_time_ms: 1,
+                    peak_rss_bytes: 1,
+                    peak_processes: 2,
+                    peak_open_files: 4,
+                },
+                "process peak 2 above the observed resource ceiling 1",
+            ),
+            (
+                ObservedUsage {
+                    cpu_time_ms: 1,
+                    peak_rss_bytes: 1,
+                    peak_processes: 1,
+                    peak_open_files: 33,
+                },
+                "open-file peak 33 above the observed resource ceiling 32",
+            ),
+        ];
+
+        for (usage, message) in cases {
+            let error = validate_reported_usage(&limits, &usage).expect_err("usage must fail");
+            assert_eq!(
+                error.to_string(),
+                format!("Isolation probe reported {message}")
+            );
+        }
     }
 
     #[test]

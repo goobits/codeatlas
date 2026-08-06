@@ -45,23 +45,34 @@ test('hosted isolation is manual, finite, least-authority, and immutable', () =>
 	}
 })
 
-test('hosted Cargo cache has one exact bounded identity and external owner', () => {
+test('hosted Cargo cache has bounded compatible generations and an external owner', () => {
 	for (const identity of [
 		'runner.os',
 		'runner.arch',
-		'codeatlas-cargo-v1-${CACHE_OS}-${CACHE_ARCH}-${rust_fingerprint}-${dependency_fingerprint}',
+		'github.sha',
+		'codeatlas-cargo-v2-${CACHE_OS}-${CACHE_ARCH}-${rust_fingerprint}-${dependency_fingerprint}-',
+		'cache_key="${compatibility_prefix}${SOURCE_REVISION}"',
 		'steps.rust-identity.outputs.cache_key',
+		'steps.rust-identity.outputs.compatibility_prefix',
+		'steps.cargo-cache.outputs.cache-matched-key',
 		'Cargo.toml',
 		'Cargo.lock',
 		'crates/isolation-conformance/Cargo.toml',
-		'crates/isolation-conformance/Cargo.lock'
+		'crates/isolation-conformance/Cargo.lock',
+		"-name 'execution_isolation-*'"
 	]) {
 		assert.ok(workflow.includes(identity), `missing cache identity ${identity}`)
 	}
 	assert.match(workflow, /CARGO_TARGET_DIR: \/tmp\/codeatlas-cargo-target/)
 	assert.match(workflow, /CODEATLAS_CACHE_LIMIT_BYTES: 6000000000/)
 	assert.match(workflow, /steps\.final-cache\.outputs\.eligible == 'true'/)
-	assert.doesNotMatch(workflow, /restore-keys:/)
+	assert.match(workflow, /steps\.final-cache\.outputs\.useful == 'true'/)
+	assert.match(
+		workflow,
+		/restore-keys: \|\n\s+\$\{\{ steps\.rust-identity\.outputs\.compatibility_prefix \}\}/
+	)
+	assert.equal(workflow.match(/restore-keys:/g)?.length, 1)
+	assert.doesNotMatch(workflow, /codeatlas-cargo-v1-/)
 	assert.doesNotMatch(workflow, /cache-from|cache-to/)
 })
 

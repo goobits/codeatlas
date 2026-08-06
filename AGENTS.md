@@ -171,6 +171,18 @@ and surface the command status, elapsed time, relevant counts or digests, and a
 short failure tail. Concision must not hide whether a required check ran, what
 it covered, or why it failed.
 
+Treat paid remote runners and long-lived machine time as finite budgets. Finish
+every locally knowable check before dispatch, refuse an equivalent active or
+completed run, and rerun the narrowest externally required boundary before a
+full matrix when that can establish the fix. A cache must preserve useful work,
+not merely report a hit: prevent an early empty immutable entry from blocking a
+later populated generation, and retain exact compatibility and byte evidence.
+At every remote checkpoint record the service/run ID, exact revision, last
+completed stage, cache identity/result, artifact digest/path, and concise
+failure boundary in the active proposal. After compaction, query that state
+once and resume it; do not redispatch work or reload full logs to reconstruct
+history.
+
 ## Execution safety
 
 All target calls and managed processes use the shared execution kernel. The

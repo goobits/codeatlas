@@ -486,7 +486,7 @@ metric-feedback and threshold-preserving shrink capabilities.
 
 ## Canonical v1 completion tracker
 
-Tracker date: 2026-08-05
+Tracker date: 2026-08-06
 
 This is the one cross-program ordering and progress tracker. Child proposals
 remain the normative owners for behavior, acceptance evidence, and file
@@ -494,7 +494,7 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-05): 104 open CodeAtlas implementation checks
+Remaining-scope audit (2026-08-06): 103 open CodeAtlas implementation checks
 remain across Phases 9B through 21, including Phase 16A and the deferred Phase
 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
@@ -524,10 +524,13 @@ self-audit, domain fixture dogfood, one-owner consolidation searches, and
 generated-state audit all pass.
 The reproducible CodeAtlas-owned isolation probe is locally complete. A
 manual-only GitHub-hosted runner, bounded orchestration task, destructive
-matrix, exact-image path, and exact Cargo cache are now prepared without
-retaining the failed nested-VM path. Neither the current host nor an unrun
-workflow has granted a live OCI isolation capability, so execution remains
-plan-only and Phase 9 retains the hard continuation gate. The
+matrix, exact-image path, and bounded Cargo cache are in place without
+retaining the failed nested-VM path. Hosted run `31081198694` resolved the real
+rootful Docker boundary, imported and published the probe, launched the
+baseline container, and verified cleanup. Its baseline stopped at an
+over-broad resource-usage validator before the destructive matrix, so no live
+OCI isolation capability was granted, execution remains plan-only, and Phase 9
+retains the hard continuation gate. The
 source-impact producer design is accepted and reuses the existing source
 graph, callable effects, source index, bounded projection, and completeness
 vocabulary. Its implementation remains gated without making HQA graph
@@ -808,13 +811,24 @@ QEMU replacement was removed rather than retained as a slow second backend.
 This host remains plan-only; daemon or workflow availability alone is not
 isolation evidence.
 
-Hosted attempt `31080343512` reached the exact Docker 28.0.4 / Buildx 0.35.0
-boundary, built and uploaded the canonical OCI artifact, then failed before the
-first conformance case because Docker `image load` did not accept the OCI-layout
-tar. Cleanup and the bounded failed-run Cargo cache save passed. The one-owner
-fix adds a Docker import projection to the same BuildKit solve while retaining
-the OCI archive as canonical evidence; its focused local checks pass and one
-corrected hosted rerun is pending. No capability was granted.
+Hosted attempt `31080343512` reached Docker 28.0.4 / Buildx 0.35.0, built and
+uploaded the canonical OCI artifact, then failed before the first conformance
+case because Docker `image load` did not accept the OCI-layout tar. Run
+`31081198694` proved the one-solve Docker import projection, exact loopback
+publication, real baseline launch, canonical blocked receipt, and verified
+container/scratch cleanup. The baseline stopped at a combined resource-usage
+check before the destructive matrix. Audit removed only the invalid cgroup-v2
+`memory.peak <= memory.max` oracle, retained exact limit and destructive RSS
+proofs, and made every remaining usage overage diagnostic exact. No capability
+was granted.
+
+The second run also exposed an economy defect: a 214-byte immutable v1 cache
+hit prevented the useful 3,095,767,592-byte Cargo target produced by its 3m50s
+compile from being saved. The v2 cache uses one complete OS/architecture/Rust/
+dependency compatibility prefix plus an immutable source-revision generation,
+restores only within that exact class, and refuses to save until the compiled
+isolation test proves useful state exists. This prevents empty-cache poisoning
+without creating another cache owner.
 
 - [x] Add one manual-only, default-branch-only, least-privilege hosted workflow
   with a finite timeout, immutable action pins, exact digest-pinned build,
@@ -824,12 +838,12 @@ corrected hosted rerun is pending. No capability was granted.
   publishes it only through a temporary loopback registry, invokes the real
   baseline and destructive cases, exports exact evidence, and verifies
   cleanup on every outcome.
-- [x] Add one exact Cargo cache owner keyed by runner OS/architecture, the
-  `rustc -Vv` digest, both lockfiles, and both manifests; enforce a 6 GB
-  uncompressed ceiling and report restore/save metrics. Preserve a bounded
-  miss after a non-cancelled conformance failure so exact reruns reuse Cargo
-  work; keep OCI image building uncached.
-- [ ] Start that committed workflow on GitHub and resolve the actual exact
+- [x] Add one Cargo cache owner whose compatibility prefix contains runner
+  OS/architecture, the `rustc -Vv` digest, both lockfiles, and both manifests,
+  and whose immutable generation contains the source revision; require a
+  compiled isolation-test marker, enforce a 6 GB uncompressed ceiling, report
+  restore/save metrics, and keep OCI image building uncached.
+- [x] Start that committed workflow on GitHub and resolve the actual exact
   rootful, rootless, or nested runtime, local socket, digest-pinned probe
   image, external writable state, and runtime metadata from the run itself.
 

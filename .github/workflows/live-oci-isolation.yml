@@ -48,6 +48,7 @@ jobs:
         env:
           CACHE_OS: ${{ runner.os }}
           CACHE_ARCH: ${{ runner.arch }}
+          SOURCE_REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
           mkdir -p \
@@ -67,12 +68,14 @@ jobs:
               | sha256sum \
               | cut -d' ' -f1
           )"
-          cache_key="codeatlas-cargo-v1-${CACHE_OS}-${CACHE_ARCH}-${rust_fingerprint}-${dependency_fingerprint}"
+          compatibility_prefix="codeatlas-cargo-v2-${CACHE_OS}-${CACHE_ARCH}-${rust_fingerprint}-${dependency_fingerprint}-"
+          cache_key="${compatibility_prefix}${SOURCE_REVISION}"
           printf 'rust_fingerprint=%s\n' "$rust_fingerprint" >> "$GITHUB_OUTPUT"
           printf 'dependency_fingerprint=%s\n' "$dependency_fingerprint" >> "$GITHUB_OUTPUT"
+          printf 'compatibility_prefix=%s\n' "$compatibility_prefix" >> "$GITHUB_OUTPUT"
           printf 'cache_key=%s\n' "$cache_key" >> "$GITHUB_OUTPUT"
 
-      - name: Restore exact Cargo cache
+      - name: Restore compatible Cargo cache generation
         id: cargo-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -81,6 +84,8 @@ jobs:
             ${{ env.CARGO_HOME }}/git
             ${{ env.CARGO_TARGET_DIR }}
           key: ${{ steps.rust-identity.outputs.cache_key }}
+          restore-keys: |
+            ${{ steps.rust-identity.outputs.compatibility_prefix }}
 
       - name: Verify restored cache ceiling
         id: restored-cache
@@ -135,6 +140,7 @@ jobs:
           set -euo pipefail
           cache_bytes=0
           cache_eligible=true
+          cache_useful=false
           for cache_path in "$CARGO_HOME/registry" "$CARGO_HOME/git" "$CARGO_TARGET_DIR"; do
             if [[ -e "$cache_path" ]]; then
               path_bytes="$(du -sb "$cache_path" | cut -f1)"
@@ -146,10 +152,26 @@ jobs:
             printf '::warning::Cargo cache candidate is %s bytes; %s-byte cache save skipped\n' \
               "$cache_bytes" "$CODEATLAS_CACHE_LIMIT_BYTES"
           fi
+          compiled_test="$(
+            find "$CARGO_TARGET_DIR/debug/deps" \
+              -maxdepth 1 \
+              -type f \
+              -name 'execution_isolation-*' \
+              -perm -u+x \
+              -print \
+              -quit \
+              2>/dev/null || true
+          )"
+          if [[ -n "$compiled_test" ]]; then
+            cache_useful=true
+          else
+            printf '::warning::Cargo cache candidate has no compiled isolation test; cache save skipped\n'
+          fi
           printf 'bytes=%s\n' "$cache_bytes" >> "$GITHUB_OUTPUT"
           printf 'eligible=%s\n' "$cache_eligible" >> "$GITHUB_OUTPUT"
+          printf 'useful=%s\n' "$cache_useful" >> "$GITHUB_OUTPUT"
 
-      - name: Save exact Cargo cache
+      - name: Save useful Cargo cache generation
         id: cargo-cache-save
         if: >-
           always() &&
@@ -158,7 +180,8 @@ jobs:
           steps.cargo-cache.outcome == 'success' &&
           steps.cargo-cache.outputs.cache-hit != 'true' &&
           steps.final-cache.outcome == 'success' &&
-          steps.final-cache.outputs.eligible == 'true'
+          steps.final-cache.outputs.eligible == 'true' &&
+          steps.final-cache.outputs.useful == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -190,10 +213,13 @@ jobs:
         if: always()
         shell: bash
         env:
+          CACHE_PRIMARY_KEY: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+          CACHE_MATCHED_KEY: ${{ steps.cargo-cache.outputs.cache-matched-key }}
           CACHE_HIT: ${{ steps.cargo-cache.outputs.cache-hit }}
           RESTORED_BYTES: ${{ steps.restored-cache.outputs.bytes }}
           FINAL_BYTES: ${{ steps.final-cache.outputs.bytes }}
           CACHE_ELIGIBLE: ${{ steps.final-cache.outputs.eligible }}
+          CACHE_USEFUL: ${{ steps.final-cache.outputs.useful }}
           SAVE_OUTCOME: ${{ steps.cargo-cache-save.outcome }}
           ARTIFACT_DIGEST: ${{ steps.isolation-artifact.outputs.artifact-digest }}
         run: |
@@ -204,10 +230,13 @@ jobs:
           fi
           {
             printf '## Live OCI isolation evidence\n\n'
+            printf -- '- Cargo cache generation key: `%s`\n' "${CACHE_PRIMARY_KEY:-unavailable}"
+            printf -- '- Cargo cache matched generation: `%s`\n' "${CACHE_MATCHED_KEY:-none}"
             printf -- '- Cargo cache exact hit: `%s`\n' "${CACHE_HIT:-false}"
             printf -- '- Cargo cache restored bytes: `%s`\n' "${RESTORED_BYTES:-0}"
             printf -- '- Cargo cache final uncompressed bytes: `%s`\n' "${FINAL_BYTES:-0}"
             printf -- '- Cargo cache within save ceiling: `%s`\n' "${CACHE_ELIGIBLE:-false}"
+            printf -- '- Cargo cache contains compiled isolation test: `%s`\n' "${CACHE_USEFUL:-false}"
             printf -- '- Cargo cache save outcome: `%s`\n' "${SAVE_OUTCOME:-skipped}"
             printf -- '- Cargo cache saved uncompressed payload bytes: `%s`\n' "$saved_bytes"
             printf -- '- Cache eviction detail: `not exposed; an absent exact key is a miss`\n'
