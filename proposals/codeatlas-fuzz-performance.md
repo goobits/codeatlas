@@ -903,6 +903,15 @@ made.
 
 Active child: execution kernel Phases 5 and 6.
 
+Continuation checkpoint, 2026-08-06: the complete locally green migration is
+committed as `a7d4fa4`; the full local gate and consolidation audit pass. The
+public remote remains at `6d1e4f0`, no Phase 10 hosted run exists, and this
+container no longer has the previously supplied GitHub App private key or any
+other write credential. No paid run was dispatched. Resume by reattaching the
+`goobits-build-dispatcher` key outside the checkout, pushing the exact clean
+candidate, and running the existing live OCI workflow once; do not bypass the
+target-observed managed HTTP gate or start Phase 11 first.
+
 - [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
   effect evidence into the shared target classifier.
 - [ ] Route reviewed and eligible single-shot HTTP runs through the same

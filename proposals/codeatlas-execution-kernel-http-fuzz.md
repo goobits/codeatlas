@@ -1572,6 +1572,22 @@ Locally verified migration checkpoint, 2026-08-06:
   target-observed managed HTTP standard/stateful evidence and cleanup artifact
   pass on that capable runner.
 
+Remote continuation checkpoint, 2026-08-06:
+
+- The locally green Phase 5 candidate is clean commit `a7d4fa4`. Its push-bound
+  nine-commit range contains no private key, token, credential file, generated
+  binary, large blob, or unexpected mode change.
+- The public GitHub API reports `origin/main` at `6d1e4f0` and no active or
+  completed live-isolation run after accepted Phase 4 run `31084275665`. No
+  Phase 5 workflow was dispatched, so no paid runner time was consumed.
+- This container has no `gh` client, SSH credential, Git credential helper, or
+  surviving GitHub App private key/token. App ID `4343570` is known but cannot
+  authenticate by itself. The exact continuation input is a reattached private
+  key for the already-authorized `goobits-build-dispatcher` App, stored outside
+  the checkout; once present, mint one short-lived installation token, push the
+  clean candidate, refuse an equivalent run, and dispatch the existing workflow
+  once.
+
 LOC: +700-1,100 / -250-450
 
 Verify: Existing positive, negative, boundary, unsupported-method, and stateful
