@@ -1391,7 +1391,84 @@ execution safety until one backend passes the suite on its advertised hosts.
 
 ## Phase 5: Complete HTTP migration
 
-Status: [ ] Not started
+Status: [~] In progress
+
+Starting checkpoint, 2026-08-06:
+
+- Phase 4 is closed by accepted hosted run `31084275665`; exact commit
+  `6d1e4f0` grants the seven rootful OCI capabilities while keeping the HTTP
+  workload deliberately disconnected.
+- The Phase 5 implementation starts from clean commit `1500b64`. Generated
+  state and complete command logs remain under
+  `/tmp/codeatlas-gha-phase9.GAkQVR`; previously passed Phase 4 checks and the
+  paid hosted matrix will not be repeated unless this phase changes their
+  owning contract.
+- The migration must replace the disconnected runner path and host-direct
+  `OwnedHttpServer`/Schemathesis process path with one kernel-owned workload
+  lifecycle. It may not treat successful conformance as permission to launch
+  an unisolated host process or create a second proxy, budget, lease, or
+  artifact owner.
+
+Phase 5 closes one previously implicit transport decision before enabling a
+call. HTTP configuration owns one optional exact digest-pinned
+`http.fuzz.image`. Planning remains zero-call when it is absent, but execution
+blocks before isolation setup; no host-process fallback exists. When present,
+the plan carries the image as shared managed-image evidence. The image contains
+the exact Schemathesis runtime and any managed-target runtime the checked-in
+commands need. A managed target that needs extra dependencies derives its image
+from the standard HTTP workload recipe and pins the resulting manifest digest.
+
+`--schemathesis` selects an absolute executable path inside that image. It does
+not authorize or fingerprint a host executable. Runtime version evidence must
+match the planned engine identity before the first target call. This is a
+pre-v1 hard cut: the retired host toolchain and direct process route are
+deleted, not retained behind an alias.
+
+The workload container retains `--network none`. A kernel-owned private Unix
+socket under the leased scratch root carries raw TLS bytes between an
+in-container loopback relay and the existing TLS-terminating enforcing proxy.
+For a managed target, the same container starts the exact prepare/server
+commands and exposes the server to that proxy through a second private Unix
+socket. The container cannot reach a Docker network, host gateway, target, or
+internet destination directly; the runtime control socket never enters it.
+This transport is a new adapter for the existing proxy and scheduler, not a
+second call counter or executor.
+
+`http.fuzz.targets[].preauthorized` is subtractive authorization evidence, not
+a bypass. Only a local managed server whose effects are contained in the same
+verified disposable sandbox may become `preauthorized_isolated`; remote,
+production, unknown, or uncontained effects still require review or block.
+Ordinary contained mutation therefore remains target-classification evidence,
+not a second annotation or safety directive.
+
+`report_dir` is retired. Scratch reports are sanitized and bounded, then the
+typed HTTP report is persisted through the shared content-addressed artifact
+store and linked from the receipt. Nothing writes into the analyzed checkout,
+and no HTTP-private report directory becomes a second artifact owner.
+
+Execution checklist:
+
+- [ ] Add strict workload-image and preauthorization configuration, shared
+  managed-image plan evidence, schema drift coverage, and zero-call planning
+  tests; retire host-path Schemathesis semantics and `report_dir`.
+- [ ] Add one network-none workload launch contract plus strict private
+  in-container harness protocol; reuse the verified container client,
+  scheduler, resource limits, redactor, and lease registry.
+- [ ] Extend the enforcing proxy with one Unix-listener transport and add the
+  managed-server reverse bridge without duplicating request policy or call
+  accounting.
+- [ ] Split Schemathesis into deterministic scratch preparation and result
+  collection, run its engine and managed commands only through the workload
+  container, and delete the direct host runtime/toolchain path.
+- [ ] Persist one typed execution report, link it to the exact plan and
+  receipt, and prove bounded secret-free output plus non-passing incomplete
+  cleanup and budget outcomes.
+- [ ] Connect reviewed and eligible single-shot CLI paths to the same runner;
+  prove stale evidence, remote/production policy, target-side call ceilings,
+  cancellation, and cleanup behavior with fake-runtime and live fixtures.
+- [ ] Run focused checks, the full required suite, CodeAtlas self-dogfood,
+  one-owner searches, and the checkout-state audit; synchronize the tracker
+  and commit Phase 5 before beginning Phase 6.
 
 LOC: +700-1,100 / -250-450
 
