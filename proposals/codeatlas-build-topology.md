@@ -23,6 +23,9 @@ small explicit workspace only where a cohesive boundary and measured edit-loop
 benefit agree. The accepted targets are:
 
 - `codeatlas-domain`: language-neutral evidence and resolved analysis inputs.
+- `codeatlas-source`: path normalization, source selection, package evidence,
+  and the narrow fact-provider contract shared by the application cache and
+  language adapters.
 - `codeatlas-languages`: Rust, Python, JavaScript/TypeScript, and Svelte syntax,
   callable, and source-graph adapters.
 - `codeatlas-external-tool`: exact executable and fingerprint primitives shared
@@ -61,6 +64,18 @@ behind facades: HTTP/PostgreSQL documentation imports the evidence-document
 model from `outputs`, while `outputs` imports HTTP/PostgreSQL report models.
 Only the evidence-document model and validation move to domain; rendering and
 code-reference presentation helpers stay in `outputs`.
+
+The clean Phase 3 dependency audit corrected one earlier assumption: language
+adapters also consume the existing path, source-discovery, source-policy,
+package-evidence, fuzz-directive, source-index, and effect-propagation owners.
+Those dependencies cannot point back into the application crate. One
+dependency-light `codeatlas-source` member therefore moves the first four
+owners without duplicating them. The root source index implements one generic
+fact-provider contract from that crate; root analysis wraps language graph
+construction and retains effect propagation. The pure adjacent-directive
+parser moves beside its existing domain evidence instead of creating a second
+grammar. No catch-all host interface, callback bag, or second source walker is
+introduced.
 
 PostgreSQL's ECMAScript SQL collector legitimately uses SWC directly for its
 domain-specific visitor. Phase 3 does not move that visitor into languages or
@@ -214,24 +229,34 @@ domain module or compatibility re-export and no HTTP/PostgreSQL dependency on
 context, Rust-option, and test-subject values. Existing resolved consumers move
 to those values in the same phase, with no alias or re-export of retired names.
 
-## Phase 3: Extract all language adapters as one parity crate
+## Phase 3: Extract shared source primitives and all language adapters
 
-Status: [ ] Not started
+Status: [~] In progress
 
-LOC: +17,000-17,600 / -16,650-17,150
+LOC: +20,300-21,300 / -19,700-20,700
 
-Verify: `cargo test -p codeatlas-languages`; the Rust/Python/JavaScript/
-TypeScript conformance tables; scan, source graph, callable, effect, fuzzability,
-and resolution fixtures; schema drift; and the neutral resolution-conformance
-gate pass. Root dependency search removes parser crates not used outside the
-new member and documents the retained PostgreSQL SWC consumer.
+Verify: `cargo test -p codeatlas-source` and
+`cargo test -p codeatlas-languages`; the Rust/Python/JavaScript/TypeScript
+conformance tables; scan, source graph, callable, effect, fuzzability, and
+resolution fixtures; schema drift; and the neutral resolution-conformance gate
+pass. Root dependency search removes parser crates not used outside the new
+member and documents the retained PostgreSQL SWC consumer. Import searches
+prove that source selection, package evidence, fact caching, fuzz directives,
+and effect propagation each retain one owner.
 
 ```text
 ~ Cargo.toml
 ~ Cargo.lock
++ crates/source/Cargo.toml
++ crates/source/src/lib.rs
+> crates/source/src/paths.rs
+> crates/source/src/source_discovery.rs
+> crates/source/src/source_policy.rs
+> crates/source/src/package/**
 + crates/languages/Cargo.toml
 + crates/languages/src/lib.rs
 > crates/languages/src/**
+~ crates/domain/src/**
 ~ src/analysis/**
 ~ src/source_index/**
 ~ src/testing/**
@@ -239,11 +264,22 @@ new member and documents the retained PostgreSQL SWC consumer.
 ~ src/postgres/source/ecmascript/resolver.rs
 ~ src/main.rs
 ~ codeatlas.json
+- src/paths.rs
+- src/source_discovery/**
+- src/source_policy.rs
+- src/package/**
+- src/fuzz/directive.rs
 - src/languages/**
 ```
 
 All four code languages remain one shipped parity set. No language is deleted
 or split into a second crate merely to improve one benchmark.
+
+Stable Mill 0.8.18 was probed from clean commit `c646af3` before this batch. Its
+zero-mutation preview returned `target_not_supported`: stable Rust
+cross-directory moves require unchanged module filenames or language-server
+file-rename support. It persisted no plan, and the complete source-tree digest
+remained unchanged, so the accepted ordinary-edit fallback owns this hard cut.
 
 ## Phase 4: Re-measure before touching the execution boundary
 
@@ -357,8 +393,8 @@ If the final performance budget fails, the phase removes or revises the
 specific extraction that caused it rather than waiving the budget or retaining
 a compatibility layer.
 
-Total LOC: +29,670-31,860 / -28,450-30,370 physical move/edit lines; expected
-net authored surface +700-1,300 lines for manifests, explicit boundary inputs,
+Total LOC: +32,970-35,560 / -31,500-33,920 physical move/edit lines; expected
+net authored surface +850-1,550 lines for manifests, explicit boundary inputs,
 and conformance coverage
 
 ## Layman's wins
