@@ -990,20 +990,48 @@ proxy contracts and 13 non-live isolation cases pass. Finish the local gate,
 commit and push the one-owner fix, then issue one duplicate-checked hosted run;
 do not begin Phase 11 until both managed HTTP profiles pass there.
 
-- [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
+The correction is clean commit `e9bdb71`. Exact GitHub run `31145328464`
+passed the target-observed live matrix: stateful coverage reached both selected
+links, standard coverage exercised all three operations with zero server/check
+failures, and passed receipt
+`receipt_302d1788f81031b100add7d5409d145cfe6ddcd79f3f38558553832f7facc4df`
+consumed 179 of 256 permits at peak logical concurrency one. It links report
+`report_226e912a52858b7a24c197f52bc74a99ab3d3c70299bdef5b71221336b387012`,
+records all eight required capabilities including TLS interception, and proves
+every cleanup lease released and verified. Artifact `8981330764` is 68,432,294
+bytes with verified digest
+`sha256:6b2924e4b8ca6acf7581104406dfbe88e9d4fc3bb60792bd4ecf9bb6691d3548`;
+execution and registry after-state logs are empty. The live gate is closed;
+the post-fix closure evidence follows below.
+
+Phase 5 closure is locally green after the live proof: 11 proxy contracts, 13
+non-live isolation cases, 31 Node tests, 426 root unit tests plus every non-live
+integration, probe/spec/schema drift, formatting, warning-denying Clippy, and
+the bounded self-audit pass. The package guard rejected one task-created Python
+bytecode cache; deleting that exact generated directory, restoring the external
+Python cache root, and rerunning only the failed boundary produced the accepted
+416-file package. Dogfood covers 331 files, 3,517 symbols, 2,969 callables, 278
+non-gating findings, 4,203 lexicon symbols, three sibling sets with zero review
+candidates, 16 test contexts, seven scripts, and no duplicate scripts. Exact
+inspection resolves the new proxy limit owner into a bounded 80-node/452-edge
+slice with all omissions explicit. One-owner and generated-state searches are
+clean. Execution-kernel Phase 5 is complete; Phase 6 consolidation remains the
+last Phase 10 item.
+
+- [x] Feed HTTP target, destination, authentication, readiness, stateful, and
   effect evidence into the shared target classifier.
-- [ ] Route reviewed and eligible single-shot HTTP runs through the same
+- [x] Route reviewed and eligible single-shot HTTP runs through the same
   persisted plan, sandbox, scheduler, permit ledger, TLS-terminating proxy,
   redactor, lease registry, and receipt path.
-- [ ] Preserve positive, negative, boundary, unsupported-method, stateful, and
+- [x] Preserve positive, negative, boundary, unsupported-method, stateful, and
   exact OpenAPI operation behavior while enforcing finite calls and rates.
-- [ ] Prove changed evidence refusal, managed/remote/production blocks,
+- [x] Prove changed evidence refusal, managed/remote/production blocks,
   cancellation, incomplete cleanup, and budget exhaustion from the target
   side.
-- [ ] Delete HTTP-private plan, budget, artifact, private-filesystem, direct
+- [x] Delete HTTP-private plan, budget, artifact, private-filesystem, direct
   executor, `max_examples`, and unsafe fallback owners rather than wrapping
   them.
-- [ ] Synchronize public help, config, schemas, README, lexicon, tests, and
+- [x] Synchronize public help, config, schemas, README, lexicon, tests, and
   self-audit commands with the one kernel path.
 - [ ] Run focused HTTP/execution checks, the full required suite, dogfood, and
   the checkout-state audit, then commit Phases 5 and 6 separately.

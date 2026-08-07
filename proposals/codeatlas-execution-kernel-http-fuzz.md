@@ -1397,7 +1397,7 @@ execution safety until one backend passes the suite on its advertised hosts.
 
 ## Phase 5: Complete HTTP migration
 
-Status: [~] In progress
+Status: [x] Complete
 
 Starting checkpoint, 2026-08-06:
 
@@ -1486,10 +1486,10 @@ Execution checklist:
 - [x] Persist one typed execution report, link it to the exact plan and
   receipt, and prove bounded secret-free output plus non-passing incomplete
   cleanup and budget outcomes.
-- [ ] Connect reviewed and eligible single-shot CLI paths to the same runner;
+- [x] Connect reviewed and eligible single-shot CLI paths to the same runner;
   prove stale evidence, remote/production policy, target-side call ceilings,
   cancellation, and cleanup behavior with fake-runtime and live fixtures.
-- [ ] Run focused checks, the full required suite, CodeAtlas self-dogfood,
+- [x] Run focused checks, the full required suite, CodeAtlas self-dogfood,
   one-owner searches, and the checkout-state audit; synchronize the tracker
   and commit Phase 5 before beginning Phase 6.
 
@@ -1765,6 +1765,70 @@ Seventh Phase 5 hosted attempt, 2026-08-07:
   action: complete formatting, Clippy, diff, ownership, and residue checks;
   commit and push this one-owner correction; then issue one duplicate-checked
   hosted run before accepting the live HTTP gate.
+
+Eighth Phase 5 hosted attempt and accepted HTTP proof, 2026-08-07:
+
+- The one-owner correction is clean commit `e9bdb71`. Push audit proved one
+  exact fast-forward over `1b840fc`, three text files, no secret, key, generated
+  artifact, large binary, or unrelated path, and zero existing workflow runs
+  for the revision before the existing workflow was dispatched once.
+- GitHub run `31145328464` executed exact revision `e9bdb71` on hosted runner
+  `GitHub Actions 1000019522` and passed the target-observed live matrix. The
+  stateful profile covered both selected OpenAPI links with at least one
+  scenario; the standard profile exercised all three operations, including
+  `POST /widgets/{id}`, with positive and negative outcomes and zero server or
+  check failures.
+- Passed receipt
+  `receipt_302d1788f81031b100add7d5409d145cfe6ddcd79f3f38558553832f7facc4df`
+  consumed 179 of 256 permits, recorded peak logical concurrency one, and
+  links report
+  `report_226e912a52858b7a24c197f52bc74a99ab3d3c70299bdef5b71221336b387012`.
+  It grants exactly the seven accepted OCI capabilities plus
+  `tls_interception`; all container, proxy, and scratch leases released and
+  verified.
+- Artifact `8981330764` is 68,432,294 bytes with verified digest
+  `sha256:6b2924e4b8ca6acf7581104406dfbe88e9d4fc3bb60792bd4ecf9bb6691d3548`.
+  Its execution and registry after-state logs are empty, its ZIP integrity
+  passes, and its exact receipt and live-evidence digests agree. The initial
+  interrupted local download was rejected on digest mismatch and deleted
+  after the verified archive was retained under the external task root.
+- Phase 5's live continuation gate is now closed. The closure checkpoint below
+  records the post-fix full repository gate, bounded CodeAtlas dogfood,
+  one-owner and checkout-state audits required before Phase 6 consolidation.
+
+Post-fix Phase 5 closure checkpoint, 2026-08-07:
+
+- All 11 enforcing-proxy contracts and all 13 non-live isolation cases pass;
+  the sole live case remains ignored locally and is closed by accepted hosted
+  run `31145328464`. Formatting and warning-denying Clippy pass with the
+  external Cargo target.
+- The broad repository gate passes 31 Node tests, 426 root unit tests with
+  three intentional live/interop ignores, every non-live integration suite,
+  four probe tests, architecture/schema drift, formatting, Clippy, and the
+  complete self-audit. Its final packaging step first rejected one
+  task-created Python bytecode cache, proving the package guard; after that
+  exact generated directory was deleted and `PYTHONPYCACHEPREFIX` was restored
+  to the external task root, the 416-file package passes without repeating the
+  already-green stages.
+- Refreshed dogfood covers 331 files, 3,517 scan symbols, 2,969 callable
+  contracts, 278 non-gating code findings, 4,203 lexicon symbols, three sibling
+  comparison sets with zero review candidates, 16 test contexts, seven
+  scripts, and zero duplicate scripts. Exact inspection resolves
+  `resolve_proxy_connection_limit` into one target, 80 nodes, and 452 edges;
+  115 nodes, 408 edges, and 15 conservative boundaries are explicitly omitted
+  by the requested cap.
+- One-owner searches find no HTTP-private filesystem owner, host-direct runtime
+  process, toolchain, public `report_dir`, accepted public `max_examples`, or
+  second budget/artifact/executor. Remaining `--max-examples` occurrences are
+  the required Schemathesis adapter spelling and its public-rejection test;
+  `report_dir` is container scratch and its test fixture, not configuration or
+  persistence ownership. `PreparedHttpFuzzPlan` carries the canonical shared
+  `ExecutionPlan` plus domain adapter input and is not a second plan model.
+- Git status contains only the two checkpoint documents. Diff, secret,
+  process, cache, and generated-state audits pass; the task-required
+  `node_modules` exists only in the `/tmp` isolated worktree and is ignored,
+  while Cargo, Python, pnpm, reports, images, and complete logs remain in the
+  external task root. Phase 5 is complete.
 
 LOC: +700-1,100 / -250-450
 
