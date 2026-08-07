@@ -271,7 +271,7 @@ impl SymbolCollector<'_> {
                     (None, Some(other)) => existing.callable = Some(other),
                     (_, None) => {}
                 }
-                crate::fuzz::directive::merge_policy(&mut existing.fuzz_policy, node.fuzz_policy);
+                codeatlas_domain::merge_fuzz_policy(&mut existing.fuzz_policy, node.fuzz_policy);
                 self.graph.record_boundary(
                     &self.project.id,
                     Some(id.clone()),

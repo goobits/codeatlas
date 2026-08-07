@@ -328,7 +328,7 @@ fn python_fuzz_policy(
         .source_location(expression.range.start(), source)
         .row
         .get();
-    crate::fuzz::directive::parse_directive_lines(
+    codeatlas_domain::parse_fuzz_directive_lines(
         documentation
             .lines()
             .enumerate()

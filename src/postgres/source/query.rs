@@ -297,7 +297,7 @@ fn leading_sql_evidence(source: &str) -> LeadingSqlEvidence {
         }
         break;
     }
-    let fuzz_policy = crate::fuzz::directive::parse_directive_lines(documentation.clone());
+    let fuzz_policy = codeatlas_domain::parse_fuzz_directive_lines(documentation.clone());
     let description = documentation
         .into_iter()
         .map(|(_, value)| value)
@@ -335,7 +335,7 @@ fn leading_sql_evidence(source: &str) -> LeadingSqlEvidence {
 fn is_fuzz_directive(value: &str) -> bool {
     value
         .trim()
-        .strip_prefix(crate::fuzz::directive::FUZZ_DIRECTIVE_MARKER)
+        .strip_prefix(codeatlas_domain::FUZZ_DIRECTIVE_MARKER)
         .is_some_and(|payload| {
             payload.is_empty() || payload.chars().next().is_some_and(char::is_whitespace)
         })

@@ -605,7 +605,7 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
 }
 
 fn fuzz_policy(attributes: &[Attribute]) -> Option<FuzzPolicyEvidence> {
-    crate::fuzz::directive::parse_directive_lines(attributes.iter().filter_map(|attribute| {
+    codeatlas_domain::parse_fuzz_directive_lines(attributes.iter().filter_map(|attribute| {
         if !attribute.path().is_ident("doc") {
             return None;
         }

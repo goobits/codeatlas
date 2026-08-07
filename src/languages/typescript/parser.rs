@@ -118,7 +118,7 @@ fn consolidate_overloads(symbols: &mut Vec<codeatlas_domain::Symbol>) {
                 (None, Some(other)) => existing.callable = Some(other),
                 (_, None) => {}
             }
-            crate::fuzz::directive::merge_policy(
+            codeatlas_domain::merge_fuzz_policy(
                 &mut existing.fuzz_policy,
                 symbol.fuzz_policy.take(),
             );

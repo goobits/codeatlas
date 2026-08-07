@@ -34,5 +34,5 @@ pub(super) fn fuzz_policy(source: &str, start_line: u32) -> Option<FuzzPolicyEvi
         line = line.trim().strip_prefix('*').unwrap_or(line.trim()).trim();
         documentation.push(((start + offset + 1) as u32, line.to_string()));
     }
-    crate::fuzz::directive::parse_directive_lines(documentation)
+    codeatlas_domain::parse_fuzz_directive_lines(documentation)
 }

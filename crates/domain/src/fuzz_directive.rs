@@ -1,11 +1,9 @@
-use codeatlas_domain::{
-    FuzzDenial, FuzzDirectiveIssue, FuzzDirectiveIssueKind, FuzzPolicyEvidence,
-};
+use crate::{FuzzDenial, FuzzDirectiveIssue, FuzzDirectiveIssueKind, FuzzPolicyEvidence};
 
-pub(crate) const FUZZ_DIRECTIVE_MARKER: &str = "@codeatlas-fuzz";
-pub(crate) const MAX_FUZZ_DIRECTIVE_REASON_BYTES: usize = 256;
+pub const FUZZ_DIRECTIVE_MARKER: &str = "@codeatlas-fuzz";
+const MAX_FUZZ_DIRECTIVE_REASON_BYTES: usize = 256;
 
-pub(crate) fn parse_directive_lines(
+pub fn parse_fuzz_directive_lines(
     lines: impl IntoIterator<Item = (u32, String)>,
 ) -> Option<FuzzPolicyEvidence> {
     let mut denials = Vec::new();
@@ -118,7 +116,7 @@ pub(crate) fn parse_directive_lines(
     Some(FuzzPolicyEvidence { denial, issues })
 }
 
-pub(crate) fn merge_policy(
+pub fn merge_fuzz_policy(
     current: &mut Option<FuzzPolicyEvidence>,
     incoming: Option<FuzzPolicyEvidence>,
 ) {
@@ -168,12 +166,12 @@ fn issue(line: u32, kind: FuzzDirectiveIssueKind, message: &str) -> FuzzDirectiv
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_policy, parse_directive_lines, MAX_FUZZ_DIRECTIVE_REASON_BYTES};
-    use codeatlas_domain::FuzzDirectiveIssueKind;
+    use super::{merge_fuzz_policy, parse_fuzz_directive_lines, MAX_FUZZ_DIRECTIVE_REASON_BYTES};
+    use crate::FuzzDirectiveIssueKind;
 
     #[test]
     fn deny_is_the_only_bounded_subtractive_directive() {
-        let policy = parse_directive_lines([
+        let policy = parse_fuzz_directive_lines([
             (
                 3,
                 "@codeatlas-fuzz deny: calls the real provider".to_string(),
@@ -208,7 +206,7 @@ mod tests {
 
     #[test]
     fn duplicate_and_conflicting_directives_fail_closed() {
-        let duplicate = parse_directive_lines([
+        let duplicate = parse_fuzz_directive_lines([
             (2, "@codeatlas-fuzz deny: real provider".to_string()),
             (3, "@codeatlas-fuzz deny: real provider".to_string()),
         ])
@@ -216,7 +214,7 @@ mod tests {
         assert!(duplicate.denial.is_some());
         assert_eq!(duplicate.issues[0].kind, FuzzDirectiveIssueKind::Duplicate);
 
-        let conflicting = parse_directive_lines([
+        let conflicting = parse_fuzz_directive_lines([
             (2, "@codeatlas-fuzz deny: real provider".to_string()),
             (3, "@codeatlas-fuzz deny: production credential".to_string()),
         ])
@@ -228,12 +226,12 @@ mod tests {
             .all(|issue| issue.kind == FuzzDirectiveIssueKind::Conflicting));
 
         let mut merged = Some(
-            parse_directive_lines([(1, "@codeatlas-fuzz allow: stale".to_string())])
+            parse_fuzz_directive_lines([(1, "@codeatlas-fuzz allow: stale".to_string())])
                 .expect("malformed overload policy"),
         );
-        merge_policy(
+        merge_fuzz_policy(
             &mut merged,
-            parse_directive_lines([(2, "@codeatlas-fuzz deny: real provider".to_string())]),
+            parse_fuzz_directive_lines([(2, "@codeatlas-fuzz deny: real provider".to_string())]),
         );
         let merged = merged.expect("merged overload policy");
         assert_eq!(
