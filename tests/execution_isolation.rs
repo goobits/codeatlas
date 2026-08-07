@@ -1088,7 +1088,7 @@ fn live_oci_backend_executes_managed_http_and_python_code_workloads() {
     config["execution"]["limits"]["max_calls"] = json!(256);
     config["execution"]["limits"]["calls_per_second"] = json!(50);
     config["execution"]["limits"]["max_output_bytes"] = json!(1_048_576);
-    config["fuzz"]["limits"]["max_cases"] = json!(12);
+    config["fuzz"]["limits"]["max_cases"] = json!(32);
     fs::write(
         &config_path,
         serde_json::to_vec_pretty(&config).expect("live config JSON bytes"),

@@ -563,7 +563,13 @@ target/project/language authority coordinates, and a pinned Hypothesis adapter
 pass focused checks. Import-time target code consumes a readiness permit; no
 arbitrary harness JSON can become a reproducer. The existing hosted matrix has
 been extended rather than duplicated; its exact target-observed run is the
-next incomplete gate, so no Phase 11 or Python checkbox is closed yet.
+next incomplete gate, so no Phase 11 or Python checkbox is closed yet. Hosted
+run `31162205411` on `c7e183f` reached that matrix after both managed HTTP
+profiles, then correctly stopped before a Python target call because the live
+fixture requested 32 cases above its shared configured ceiling of 12. The
+narrow correction is to set the fixture ceiling to 32 while retaining HTTP's
+12-case tightening override, then issue one duplicate-checked run for the new
+revision.
 
 ### Order and ownership rules
 

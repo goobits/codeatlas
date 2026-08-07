@@ -32,9 +32,9 @@ pub(crate) use model::{
 pub(crate) use model::{
     ExecutionReceipt, EXECUTION_PLAN_SCHEMA_VERSION, EXECUTION_RECEIPT_SCHEMA_VERSION,
 };
-pub(crate) use permit_protocol::CALL_PERMIT_SOCKET;
 #[cfg(test)]
 pub(crate) use permit_protocol::CALL_PERMIT_PROTOCOL_SCHEMA_VERSION;
+pub(crate) use permit_protocol::CALL_PERMIT_SOCKET;
 pub(crate) use policy::{
     collect_workspace_evidence, resolve_execution_limits, resolve_isolation_policy,
     ExecutionLimitOverrides,

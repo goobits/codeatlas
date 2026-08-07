@@ -509,6 +509,19 @@ readiness, generated-case, reduction, retry, replay, read-only-source, and
 cleanup proof. The phase remains open until that exact committed matrix passes;
 no receipt-only assertion closes the gate.
 
+Hosted checkpoint (2026-08-07): GitHub Actions run `31162205411` executed exact
+commit `c7e183f`. Both managed HTTP profiles reached their accepted assertions,
+then code planning correctly blocked before the Python target observed a call:
+the live fixture configured a shared `max_cases` ceiling of 12 while requesting
+32 cases for the callable adapter. The narrow correction raises the checked-in
+fixture ceiling to 32 while HTTP continues to tighten it to 12. The run restored
+5,187,296,341 cache bytes from the compatible generation ending in `1b840fcc`,
+saved a useful 5,640,060,261-byte generation under the exact `c7e183f` key, and
+uploaded artifact `8987634484` with SHA-256
+`022f1636ca55dba31aa3c1231680200e8e87b29e7ccdb0cb72c82092f0a1a56d`.
+The target-observed gate remains open pending one duplicate-checked run of the
+corrected revision.
+
 ## Phase 2: Rust, Python, JavaScript, and TypeScript adapters
 
 Status: [ ] In progress; Python is implemented locally and awaits the shared

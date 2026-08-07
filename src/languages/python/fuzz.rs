@@ -240,9 +240,7 @@ fn is_identifier(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        module_name, supports_type, HARNESS, HYPOTHESIS_VERSION, STRATEGY_SCHEMA_VERSION,
-    };
+    use super::{module_name, supports_type, HARNESS, HYPOTHESIS_VERSION, STRATEGY_SCHEMA_VERSION};
     use crate::domain::{SemanticType, StringEncoding};
 
     #[test]
