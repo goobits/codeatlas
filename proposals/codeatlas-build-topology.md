@@ -138,9 +138,14 @@ receipts live outside the checkout under
 
 ## Phase 2: Extract the dependency-light domain crate and remove report cycles
 
-Status: [ ] Not started
+Status: [~] In progress
 
 LOC: +1,950-2,250 / -1,750-2,050
+
+Scaffold checkpoint: the root workspace names `crates/domain` explicitly,
+continues to exclude the independently locked isolation probe, and packages the
+new crate. A focused topology test rejects a wildcard member and loss of the
+probe's nested workspace or lock before any source move is attempted.
 
 Verify: `cargo test -p codeatlas-domain`, root scan/check/inspect schema bytes,
 and HTTP/PostgreSQL docs fixtures are unchanged. Import search finds no root
@@ -150,6 +155,7 @@ domain module or compatibility re-export and no HTTP/PostgreSQL dependency on
 ```text
 ~ Cargo.toml
 ~ Cargo.lock
+~ package.json
 + crates/domain/Cargo.toml
 + crates/domain/src/lib.rs
 + crates/domain/src/reference.rs
@@ -167,6 +173,8 @@ domain module or compatibility re-export and no HTTP/PostgreSQL dependency on
 ~ src/outputs/markdown.rs
 ~ src/main.rs
 ~ codeatlas.json
+~ tasks/check-package.js
++ tests/build-topology.test.js
 - src/domain/mod.rs
 - src/domain/callable.rs
 - src/domain/evidence.rs

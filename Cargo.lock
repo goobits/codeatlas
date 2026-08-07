@@ -380,6 +380,7 @@ dependencies = [
  "bytes",
  "cargo_metadata",
  "clap",
+ "codeatlas-domain",
  "codeatlas-isolation-conformance",
  "colored",
  "ctrlc",
@@ -416,6 +417,15 @@ dependencies = [
  "toml",
  "url",
  "walkdir",
+]
+
+[[package]]
+name = "codeatlas-domain"
+version = "0.10.0"
+dependencies = [
+ "schemars",
+ "serde",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

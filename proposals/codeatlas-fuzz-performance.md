@@ -505,7 +505,7 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-07): 104 open CodeAtlas implementation checks
+Remaining-scope audit (2026-08-07): 103 open CodeAtlas implementation checks
 remain across Phase 10A and Phases 11 through 21, including Phase 16A and the
 deferred Phase 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
@@ -1048,7 +1048,7 @@ Active child:
 - [x] Record the controlled no-op, app-edit, parser-edit, and test-build
   baseline with wall time, peak RSS, compiled packages, artifact bytes, one
   external Cargo target, and fixed job count.
-- [ ] Keep `codeatlas-isolation-conformance` excluded, independently locked,
+- [x] Keep `codeatlas-isolation-conformance` excluded, independently locked,
   and digest-stable; add only explicit workspace members and reject a
   `crates/*` wildcard.
 - [ ] At each move/rename batch, start from clean committed HEAD, inspect stable
@@ -1613,6 +1613,10 @@ read-only and will not reconstruct or vendor it.
   checks vary by 4.0 percent; controlled app, parser, test-build, and offline
   clean-target lanes record wall time, peak RSS, compiled packages, and
   artifact bytes while mtime probes preserve exact source digests.
+- 2026-08-06: the Phase 10A domain scaffold adds one explicit workspace member
+  while preserving the standalone probe manifest and lock. The focused
+  topology test, locked offline workspace check, and 418-file package audit
+  pass before the TypeMill move preview.
 
 ## Existing-first check
 

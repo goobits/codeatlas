@@ -14,6 +14,8 @@ const requiredFiles = [
 	'bin/codeatlas.js',
 	'Cargo.lock',
 	'Cargo.toml',
+	'crates/domain/Cargo.toml',
+	'crates/domain/src/lib.rs',
 	'crates/isolation-conformance/Cargo.lock',
 	'crates/isolation-conformance/Cargo.toml',
 	'crates/isolation-conformance/src/lib.rs',
