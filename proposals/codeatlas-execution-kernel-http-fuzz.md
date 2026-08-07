@@ -1725,22 +1725,46 @@ Sixth Phase 5 hosted attempt, 2026-08-07:
   `receipt_cc76d8086d609051f3284e02b2c22e8ddff67478846040b006d1717fe51d19e9`
   is correctly `partial`; every container, proxy, and scratch lease released
   and verified.
-- The receipt's 128 peak open descriptors exactly reached the plan ceiling.
-  Inspection found that the managed-server proxy owns one fresh Unix upstream
-  connection per request but did not explicitly close HTTP/1.1 keep-alive, so
-  its two relay legs could outlive the bounded response. This is a shared
-  transport defect rather than Schemathesis generation behavior.
 - Artifact `8980589056` is 68,427,576 bytes with verified digest
   `sha256:99f2e509245b891f9e71de5d9347f7b3e029aa682bd3bb7232b443a36f91231f`;
   its execution and registry after-state logs are empty and all image/builder
   cleanup completed.
-- The existing proxy owner now sends `Connection: close` only on its
-  per-request managed Unix upstream. The focused conformance assertion failed
-  before this change and passes afterward; all 11 proxy contracts, all 13
-  non-live isolation cases, formatting, and warning-denying Clippy pass from
-  external build state. Next exact action: commit and push this transport fix,
-  confirm zero equivalent run for the new revision, and dispatch the existing
-  hosted gate once.
+- The initial open-descriptor inference was incorrect: the receipt's value of
+  128 is destructive isolation-probe evidence, not the workload's live
+  descriptor high-water mark. Requiring `Connection: close` on the managed
+  Unix upstream was therefore a hypothesis, not an established fix.
+
+Seventh Phase 5 hosted attempt, 2026-08-07:
+
+- Exact GitHub run `31144009982` used revision `1b840fc` with the upstream
+  close hypothesis. It failed at the same boundary after 70 calls and 110,067
+  milliseconds. Receipt
+  `receipt_a8f4f500fe0bdd36d267ced28c4b64b506d097c998e0d334b192d2b79a6a4573`
+  is correctly `partial`, and all cleanup again released and verified.
+- Artifact `8980887563` is 68,433,168 bytes with verified digest
+  `sha256:d923a24dd44f44a06925449b4ed3184ce8102e369fc7db3d0245acd65cad4ff3`.
+  The unchanged call count, timing, and output disprove the upstream-close
+  hypothesis, which is removed rather than retained as speculative transport
+  behavior.
+- The artifact's exact Schemathesis 4.24.3 command passes directly against the
+  disposable target, and the exact workload harness plus both raw Unix bridges
+  passes in 4.30 seconds with 46 generated cases and both declared links. The
+  remaining differing boundary is the TLS-terminating enforcing proxy.
+- The proxy used `max_concurrency` both for logical in-flight target calls and
+  for accepted downstream TLS connections. With the planned logical limit of
+  one, an idle persistent client connection held the sole transport slot and a
+  second engine connection could never be admitted. The shared proxy now keeps
+  `max_concurrency` exclusively as the call-permit limit and derives a finite
+  downstream connection ceiling from the existing open-file budget; no new
+  public limit or second limiter is added.
+- A target-observing regression keeps the first client connection open, proves
+  a second connection is admitted while logical call concurrency remains one,
+  and proves the next call is still rejected by the permit budget. It fails
+  before the correction and passes afterward; all 11 proxy contracts and all
+  13 non-live isolation cases pass from external build state. Next exact
+  action: complete formatting, Clippy, diff, ownership, and residue checks;
+  commit and push this one-owner correction; then issue one duplicate-checked
+  hosted run before accepting the live HTTP gate.
 
 LOC: +700-1,100 / -250-450
 

@@ -966,18 +966,29 @@ begin Phase 11 until both managed HTTP profiles pass there.
 
 Exact run `31143159462` at revision `3f4b0f9` reached the stateful target and
 consumed 70 calls, then ended correctly `partial` at 110,082 milliseconds with
-all cleanup verified. Its 128 peak open descriptors exactly hit the plan
-ceiling. The shared managed-server proxy opened one Unix upstream per request
-without explicitly closing HTTP/1.1 keep-alive; the two relay legs could
-therefore outlive a response. Artifact `8980589056` is 68,427,576 bytes with
+all cleanup verified. Artifact `8980589056` is 68,427,576 bytes with
 verified digest
 `sha256:99f2e509245b891f9e71de5d9347f7b3e029aa682bd3bb7232b443a36f91231f`
-and empty after-state logs. The proxy now requires `Connection: close` on that
-per-request upstream only. Its regression failed before the change, then all 11
-proxy contracts, 13 non-live isolation cases, formatting, and Clippy passed.
-Commit and push this transport-owner correction, then issue one
-duplicate-checked hosted run; do not begin Phase 11 until both managed HTTP
-profiles pass there.
+and empty after-state logs. Its 128-descriptor value is isolation-probe
+evidence, not the workload's live high-water sample; the resulting upstream
+`Connection: close` hypothesis was not established.
+
+Exact run `31144009982` at revision `1b840fc` retained that hypothesis and
+failed identically after 70 calls and 110,067 milliseconds. Receipt
+`receipt_a8f4f500fe0bdd36d267ced28c4b64b506d097c998e0d334b192d2b79a6a4573`
+and artifact `8980887563` with digest
+`sha256:d923a24dd44f44a06925449b4ed3184ce8102e369fc7db3d0245acd65cad4ff3`
+record verified cleanup. Exact local engine and complete harness-plus-bridge
+reproductions pass, isolating the enforcing proxy. Its accepted-connection
+semaphore incorrectly reused logical `max_concurrency`; at one logical call,
+an idle persistent connection prevented a second TLS connection from entering.
+The current correction removes the disproved close behavior, retains
+`max_concurrency` solely for call permits, and derives a finite transport
+connection ceiling from the existing open-file budget. A target-observing
+two-connection regression fails before and passes after the correction; all 11
+proxy contracts and 13 non-live isolation cases pass. Finish the local gate,
+commit and push the one-owner fix, then issue one duplicate-checked hosted run;
+do not begin Phase 11 until both managed HTTP profiles pass there.
 
 - [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
   effect evidence into the shared target classifier.

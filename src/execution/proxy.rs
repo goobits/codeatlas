@@ -46,6 +46,9 @@ use tokio::net::{UnixListener, UnixStream};
 
 pub(crate) const CALL_CATEGORY_HEADER: &str = "x-codeatlas-call-category";
 
+const PROXY_RESERVED_FILE_DESCRIPTORS: u64 = 4;
+const PROXY_MAX_DOWNSTREAM_CONNECTIONS: u64 = 64;
+
 type ProxyBody = Full<Bytes>;
 type UpstreamConnector = HttpsConnector<HttpConnector>;
 type UpstreamClient = Client<UpstreamConnector, ProxyBody>;
@@ -186,8 +189,7 @@ impl EnforcingProxy {
                 .map_err(|_| anyhow::anyhow!("max_concurrency exceeds HTTP/2 support"))?,
         });
         let acceptor = TlsAcceptor::from(tls.server);
-        let max_connections = usize::try_from(limits.max_concurrency)
-            .map_err(|_| anyhow::anyhow!("max_concurrency does not fit this host"))?;
+        let max_connections = resolve_proxy_connection_limit(limits)?;
         let (shutdown, receiver) = watch::channel(false);
         let task = tokio::spawn(serve_proxy(
             binding.listener,
@@ -420,13 +422,6 @@ impl ProxyUpstreamClient {
             } => {
                 use std::os::unix::fs::FileTypeExt;
 
-                let mut request = request;
-                // This transport owns one Unix connection per request. Force
-                // both relays to release it once the bounded response arrives.
-                request
-                    .headers_mut()
-                    .insert(CONNECTION, HeaderValue::from_static("close"));
-
                 let expected_peer_pid = expected_peer_pid.load(Ordering::Acquire);
                 if expected_peer_pid == 0 {
                     return Err(ForwardFailure::Rejected);
@@ -549,6 +544,19 @@ fn validate_proxy_start(
         anyhow::bail!("Proxy call timeout must be within the execution timeout");
     }
     Ok(())
+}
+
+fn resolve_proxy_connection_limit(limits: &ExecutionLimits) -> Result<usize> {
+    let available = limits
+        .max_open_files
+        .checked_sub(PROXY_RESERVED_FILE_DESCRIPTORS)
+        .context("max_open_files leaves no enforcing-proxy file reserve")?;
+    let connections = (available / 2).min(PROXY_MAX_DOWNSTREAM_CONNECTIONS);
+    if connections < limits.max_concurrency {
+        anyhow::bail!("max_concurrency exceeds enforcing-proxy connection capacity");
+    }
+    usize::try_from(connections)
+        .map_err(|_| anyhow::anyhow!("enforcing-proxy connection limit does not fit this host"))
 }
 
 #[cfg(unix)]
@@ -1015,7 +1023,6 @@ mod tests {
                                     stream,
                                     observed,
                                     observed_header,
-                                    Arc::new(AtomicBool::new(false)),
                                     call_notification,
                                     behavior,
                                 )
@@ -1026,7 +1033,6 @@ mod tests {
                                 stream,
                                 observed,
                                 observed_header,
-                                Arc::new(AtomicBool::new(false)),
                                 call_notification,
                                 behavior,
                             )
@@ -1061,7 +1067,6 @@ mod tests {
         stream: I,
         observed: Arc<AtomicU64>,
         observed_header: Arc<AtomicBool>,
-        observed_connection_close: Arc<AtomicBool>,
         call_notification: Arc<Notify>,
         behavior: TargetBehavior,
     ) where
@@ -1070,19 +1075,11 @@ mod tests {
         let service = service_fn(move |request: Request<Incoming>| {
             let observed = Arc::clone(&observed);
             let observed_header = Arc::clone(&observed_header);
-            let observed_connection_close = Arc::clone(&observed_connection_close);
             let call_notification = Arc::clone(&call_notification);
             async move {
                 observed.fetch_add(1, Ordering::SeqCst);
                 if request.headers().contains_key(CALL_CATEGORY_HEADER) {
                     observed_header.store(true, Ordering::SeqCst);
-                }
-                if request
-                    .headers()
-                    .get(hyper::header::CONNECTION)
-                    .is_some_and(|value| value.as_bytes() == b"close")
-                {
-                    observed_connection_close.store(true, Ordering::SeqCst);
                 }
                 call_notification.notify_one();
                 let response = match behavior {
@@ -1294,8 +1291,8 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn managed_server_socket_reuses_the_same_proxy_policy() {
-        const MANAGED_REQUESTS: u64 = 8;
+    fn managed_server_socket_separates_connection_and_call_limits() {
+        const MANAGED_REQUESTS: u64 = 2;
         let root = std::env::temp_dir().join(format!(
             "codeatlas-proxy-managed-{}-{}",
             std::process::id(),
@@ -1304,7 +1301,8 @@ mod tests {
         std::fs::create_dir(&root).expect("private managed-server fixture root");
         let client_socket = root.join("client.sock");
         let server_socket = root.join("server.sock");
-        let limits = limits(MANAGED_REQUESTS + 1, 1024);
+        let mut limits = limits(MANAGED_REQUESTS + 1, 1024);
+        limits.max_concurrency = 1;
         let scheduler = ExecutionScheduler::new(&limits, 0).expect("scheduler");
         let result = scheduler.run(|context| {
             let client_socket = client_socket.clone();
@@ -1314,8 +1312,6 @@ mod tests {
                 let listener = UnixListener::bind(server_address.path())?;
                 let calls = Arc::new(AtomicU64::new(0));
                 let observed = Arc::clone(&calls);
-                let saw_connection_close = Arc::new(AtomicBool::new(false));
-                let observed_connection_close = Arc::clone(&saw_connection_close);
                 let target = tokio::spawn(async move {
                     for _ in 0..MANAGED_REQUESTS {
                         let (stream, _) = listener.accept().await?;
@@ -1323,7 +1319,6 @@ mod tests {
                             stream,
                             Arc::clone(&observed),
                             Arc::new(AtomicBool::new(false)),
-                            Arc::clone(&observed_connection_close),
                             Arc::new(Notify::new()),
                             TargetBehavior::Success,
                         )
@@ -1353,21 +1348,41 @@ mod tests {
                 );
                 assert_eq!(calls.load(Ordering::SeqCst), 0);
                 proxy.corroborate_managed_server_peer(std::process::id())?;
-                for _ in 0..MANAGED_REQUESTS {
-                    assert_eq!(
-                        request_unix(&mut sender, proxy.endpoint()).await?,
-                        StatusCode::OK
-                    );
-                }
-                assert!(saw_connection_close.load(Ordering::SeqCst));
+                assert_eq!(
+                    request_unix(&mut sender, proxy.endpoint()).await?,
+                    StatusCode::OK
+                );
+                let second_connection = tokio::time::timeout(
+                    std::time::Duration::from_secs(1),
+                    unix_client(&client_socket, proxy.endpoint()),
+                )
+                .await;
+                let (mut second_sender, second_connection) = match second_connection {
+                    Ok(connection) => connection?,
+                    Err(_) => {
+                        drop(sender);
+                        proxy.shutdown().await?;
+                        let _ = connection.await;
+                        target.abort();
+                        let _ = target.await;
+                        std::fs::remove_file(&server_socket)?;
+                        anyhow::bail!("second managed proxy connection was not admitted");
+                    }
+                };
+                assert_eq!(
+                    request_unix(&mut second_sender, proxy.endpoint()).await?,
+                    StatusCode::OK
+                );
                 assert_eq!(
                     request_unix(&mut sender, proxy.endpoint()).await?,
                     StatusCode::TOO_MANY_REQUESTS
                 );
                 assert_eq!(calls.load(Ordering::SeqCst), MANAGED_REQUESTS);
                 drop(sender);
+                drop(second_sender);
                 proxy.shutdown().await?;
                 let _ = connection.await;
+                let _ = second_connection.await;
                 target.await.context("managed-server fixture task")??;
                 assert!(!client_socket.exists());
                 std::fs::remove_file(&server_socket)?;
