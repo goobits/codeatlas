@@ -952,6 +952,18 @@ root unit, and all non-live isolation checks pass. Commit and push this scoped
 correction, then issue one duplicate-checked hosted run; do not begin Phase 11
 until both stateful and standard evidence pass there.
 
+The bounded-depth correction is commit `02fe111`. Exact run `31142619886`
+built both images but made zero target calls: the live fixture's planning helper
+and its explicit stateful/standard cases supplied `--seed` twice, so Clap
+rejected the invocation before sandbox setup. Artifact `8980363790` is
+68,425,282 bytes with verified digest
+`sha256:042a5f8df5c1de9c7f3697f80ce56539e02f66caf39c6625e6f612f0077a5dbd`;
+its cleanup after-state is empty. The helper now contributes a default seed
+only for default plans and preserves an explicit caller seed exactly. The new
+regression plus all 13 non-live isolation cases pass. Commit and push this
+test-boundary correction, then issue one duplicate-checked hosted run; do not
+begin Phase 11 until both managed HTTP profiles pass there.
+
 - [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
   effect evidence into the shared target classifier.
 - [ ] Route reviewed and eligible single-shot HTTP runs through the same

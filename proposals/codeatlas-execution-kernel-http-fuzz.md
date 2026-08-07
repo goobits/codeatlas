@@ -1695,6 +1695,28 @@ Fourth Phase 5 hosted attempt, 2026-08-07:
   audit, commit and push it from the isolated worktree, confirm zero equivalent
   run for the new revision, then dispatch the existing hosted gate once.
 
+Fifth Phase 5 hosted attempt, 2026-08-07:
+
+- The bounded-depth correction is clean commit `02fe111`; exact GitHub run
+  `31142619886` restored the compatible Cargo cache and built both OCI images,
+  then stopped during zero-call planning. The live fixture's shared helper
+  injected seed 42 while both explicit workload cases supplied their own seed,
+  so Clap rejected the duplicate `--seed` before sandbox creation or any target
+  call.
+- Artifact `8980363790` is 68,425,282 bytes with verified digest
+  `sha256:042a5f8df5c1de9c7f3697f80ce56539e02f66caf39c6625e6f612f0077a5dbd`.
+  Its after-state logs contain no execution or registry container, and the
+  builder, registry, images, tags, and published digests were removed. The
+  failed run therefore grants no HTTP evidence but leaves no owned runtime
+  residue.
+- The fixture now keeps the default seed only in `plan()` and lets
+  `plan_with()` carry exactly the caller-selected arguments. A non-live
+  regression proves one explicit seed reaches the persisted workload unchanged.
+  Formatting and all 13 non-live isolation cases pass from external build state.
+  Next exact action: commit and push this test-boundary correction, confirm zero
+  equivalent run for the new revision, then dispatch the existing hosted gate
+  once.
+
 LOC: +700-1,100 / -250-450
 
 Verify: Existing positive, negative, boundary, unsupported-method, and stateful

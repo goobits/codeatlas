@@ -335,11 +335,11 @@ HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
     }
 
     fn plan(&self) -> Value {
-        self.plan_with(&[])
+        self.plan_with(&["--seed", "42"])
     }
 
     fn plan_with(&self, extra: &[&str]) -> Value {
-        let mut arguments = vec!["fuzz", "http", "--target", "local", "--seed", "42"];
+        let mut arguments = vec!["fuzz", "http", "--target", "local"];
         arguments.extend_from_slice(extra);
         let output = run_codeatlas(&self.workspace, &self.state, &arguments);
         assert!(
@@ -544,6 +544,15 @@ fn missing_workload_image_blocks_before_the_runtime_probe() {
             .is_some_and(|reason| reason.contains("no managed image"))));
     assert!(!fixture.runtime.with_extension("log").exists());
     assert_no_target_call(&fixture.target);
+}
+
+#[cfg(unix)]
+#[test]
+fn managed_http_planning_accepts_one_explicit_seed() {
+    let fixture = IsolationFixture::create("codeatlas-explicit-http-seed");
+    let plan = fixture.plan_with(&["--seed", "43"]);
+
+    assert_eq!(plan["workload"]["body"]["seed"], "43");
 }
 
 #[cfg(unix)]
