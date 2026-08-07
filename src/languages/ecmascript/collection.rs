@@ -1,5 +1,4 @@
 use super::{contexts, Module, ModuleKey, ProjectEvidence, EXTRACTOR};
-use crate::config::ResolvedAnalysisProject;
 use crate::languages::typescript::parser;
 use anyhow::Result;
 use codeatlas_domain::source_graph::{
@@ -7,6 +6,7 @@ use codeatlas_domain::source_graph::{
     SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceSymbol,
     SourceVisibility,
 };
+use codeatlas_domain::ResolvedAnalysisProject;
 use codeatlas_domain::Symbol;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;

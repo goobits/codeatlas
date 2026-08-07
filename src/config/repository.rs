@@ -1,9 +1,7 @@
-use super::analysis::{
-    finalize_project_boundaries, merge_analysis_settings, ResolvedAnalysisProject,
-    RustAnalysisConfig,
-};
+use super::analysis::{finalize_project_boundaries, merge_analysis_settings};
 use super::ProjectConfig;
 use anyhow::{Context, Result};
+use codeatlas_domain::{ResolvedAnalysisProject, RustAnalysisOptions};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -201,14 +199,14 @@ impl RepositoryScope {
                     Vec::new()
                 },
                 contexts: if root == &project.root {
-                    project.default_analysis_contexts()
+                    project.default_resolved_analysis_contexts()
                 } else {
                     BTreeMap::new()
                 },
                 assume_reachable: Vec::new(),
                 require_complete: false,
                 no_default_ignore: project.config.no_default_ignore,
-                rust: RustAnalysisConfig::default(),
+                rust: RustAnalysisOptions::default(),
                 workspace_member: true,
                 excluded_roots: Vec::new(),
             })

@@ -1,8 +1,8 @@
 use super::{exit_code, load_project, output};
-use crate::config::ResolvedAnalysisProject;
 use crate::{languages, outputs, testing};
 use anyhow::Result;
 use clap::ValueEnum;
+use codeatlas_domain::ResolvedAnalysisProject;
 use std::path::{Path, PathBuf};
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
@@ -143,7 +143,7 @@ fn load_graph(
     workspace: bool,
     config_path: Option<&Path>,
 ) -> Result<(
-    Vec<crate::config::ResolvedAnalysisProject>,
+    Vec<codeatlas_domain::ResolvedAnalysisProject>,
     codeatlas_domain::source_graph::SourceGraph,
     PathBuf,
 )> {
@@ -233,8 +233,8 @@ fn apply_exact_source_family(projects: &mut [ResolvedAnalysisProject], family: S
 #[cfg(test)]
 mod tests {
     use super::{apply_exact_source_family, source_family, status_gates, SourceFamily};
-    use crate::config::ResolvedAnalysisProject;
     use codeatlas_domain::source_graph::ProjectId;
+    use codeatlas_domain::ResolvedAnalysisProject;
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::Path;

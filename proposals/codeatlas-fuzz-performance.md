@@ -505,7 +505,7 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-07): 103 open CodeAtlas implementation checks
+Remaining-scope audit (2026-08-07): 98 open CodeAtlas implementation checks
 remain across Phase 10A and Phases 11 through 21, including Phase 16A and the
 deferred Phase 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
@@ -1051,20 +1051,20 @@ Active child:
 - [x] Keep `codeatlas-isolation-conformance` excluded, independently locked,
   and digest-stable; add only explicit workspace members and reject a
   `crates/*` wildcard.
-- [ ] At each move/rename batch, start from clean committed HEAD, inspect stable
+- [x] At each move/rename batch, start from clean committed HEAD, inspect stable
   Mill capability evidence, preview and review one exact plan, and apply only
   when the plan contains the complete final imports, visibility, manifests,
   and deletions. Otherwise use an ordinary reviewed edit without partial Mill
   output.
-- [ ] Extract `codeatlas-domain` with the existing language-neutral models and
+- [x] Extract `codeatlas-domain` with the existing language-neutral models and
   resolved analysis inputs; keep raw JSON config types and validation in the
   application config owner.
-- [ ] Split only the evidence-document model/validation from
+- [x] Split only the evidence-document model/validation from
   `outputs::reference` into domain so HTTP/PostgreSQL no longer depend on
   renderers; keep API-reference presentation helpers in `outputs`.
-- [ ] Remove the root domain module and every compatibility re-export, alias,
+- [x] Remove the root domain module and every compatibility re-export, alias,
   duplicate resolved type, and retired import in the same phase.
-- [ ] Pass domain tests, unchanged scan/inspect/schema bytes, HTTP/PostgreSQL
+- [x] Pass domain tests, unchanged scan/inspect/schema bytes, HTTP/PostgreSQL
   docs fixtures, self-dogfood, and boundary searches before committing.
 - [ ] Extract all Rust, Python, JavaScript/TypeScript, and Svelte adapters into
   one `codeatlas-languages` parity crate; do not delete or split a language.
@@ -1617,6 +1617,16 @@ read-only and will not reconstruct or vendor it.
   while preserving the standalone probe manifest and lock. The focused
   topology test, locked offline workspace check, and 418-file package audit
   pass before the TypeMill move preview.
+- 2026-08-06: Phase 10A Phase 2 extracts `codeatlas-domain` without a root
+  facade, moves resolved inputs behind one config conversion, and dissolves the
+  HTTP/PostgreSQL-to-outputs documentation cycle. Stable Mill 0.8.18 fails
+  closed before persisting a usable plan on unrelated Python package-policy
+  reconciliation, so no partial plan is applied. Six domain tests, 422 root
+  tests, 26 focused integration tests, 32 Node tests, 476 full-suite Rust tests,
+  all-target Clippy, package/spec gates, and seven zero-gate self-dogfood lanes
+  pass; the probe manifest and lock digests remain exact. Separate fresh caches
+  also produce byte-identical scan, check, and inspect artifacts across the
+  Phase 1 and extracted binaries.
 
 ## Existing-first check
 

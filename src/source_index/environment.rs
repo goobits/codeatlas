@@ -1,5 +1,5 @@
-use crate::config::ResolvedAnalysisProject;
 use anyhow::{Context, Result};
+use codeatlas_domain::ResolvedAnalysisProject;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_MAX_BYTES: u64 = 512 * 1024 * 1024;

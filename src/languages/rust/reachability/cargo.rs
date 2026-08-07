@@ -1,7 +1,7 @@
-use crate::config::ResolvedAnalysisProject;
 use anyhow::{Context, Result};
 use cargo_metadata::{CargoOpt, Metadata, MetadataCommand, Package, Target};
 use codeatlas_domain::source_graph::ContextRole;
+use codeatlas_domain::ResolvedAnalysisProject;
 use regex::Regex;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -221,8 +221,8 @@ fn target_module_base(root: &Path, modules_beside_root: bool) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::CargoLayout;
-    use crate::config::ResolvedAnalysisProject;
     use codeatlas_domain::source_graph::ProjectId;
+    use codeatlas_domain::ResolvedAnalysisProject;
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 

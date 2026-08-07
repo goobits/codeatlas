@@ -166,7 +166,7 @@ struct EvidenceDocsRequest<'a> {
 
 fn generate_evidence(
     request: EvidenceDocsRequest<'_>,
-    build: fn(&crate::config::RepositoryScope) -> Result<outputs::reference::EvidenceDocument>,
+    build: fn(&crate::config::RepositoryScope) -> Result<codeatlas_domain::EvidenceDocument>,
 ) -> Result<i32> {
     let project = load_project(request.path, request.config_path)?;
     let scope = crate::config::RepositoryScope::resolve(&project, request.workspace)?;

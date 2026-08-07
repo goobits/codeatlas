@@ -1,11 +1,11 @@
 use super::parser;
-use crate::config::ResolvedAnalysisProject;
 use anyhow::{Context, Result};
 use codeatlas_domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, ProjectId, SourceBinding, SourceEdge,
     SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
     SourceSymbol, SourceVisibility,
 };
+use codeatlas_domain::ResolvedAnalysisProject;
 use codeatlas_domain::{Symbol, SymbolKind, Visibility};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;

@@ -2,12 +2,12 @@ use super::{
     resolve_relative_module, Module, ModuleKey, PythonResolver, EXTRACTOR, PACKAGE_EXPORT_CONTEXT,
     PROJECT_ENTRYPOINT_CONTEXT, TEST_CONTEXT, TOOLING_CONTEXT,
 };
-use crate::config::ResolvedAnalysisProject;
 use anyhow::Result;
 use codeatlas_domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, NodeId,
     SourceContext, SourceEvidence, SourceGraph,
 };
+use codeatlas_domain::ResolvedAnalysisProject;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 

@@ -3,12 +3,12 @@
 //! File discovery, parsing, and module resolution remain language-owned. This
 //! module combines their facts, then applies portable project contexts.
 
-use crate::config::{AnalysisContextConfig, ResolvedAnalysisProject};
 use anyhow::{Context, Result};
 use codeatlas_domain::source_graph::{
     AnalysisCompleteness, ContextId, EdgeTarget, NodeId, SourceContext, SourceEdge, SourceEdgeKind,
     SourceEvidence, SourceGraph, SourceLanguage, SourceNode, SourceProject,
 };
+use codeatlas_domain::{AnalysisContext, ResolvedAnalysisProject};
 use globset::{GlobBuilder, GlobMatcher};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -288,7 +288,7 @@ fn add_contexts(graph: &mut SourceGraph, project: &ResolvedAnalysisProject) -> R
 fn compile_context_patterns(
     project: &ResolvedAnalysisProject,
     name: &str,
-    config: &AnalysisContextConfig,
+    config: &AnalysisContext,
 ) -> Result<Vec<GlobMatcher>> {
     compile_patterns(
         &config.entrypoints,

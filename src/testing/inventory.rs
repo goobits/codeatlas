@@ -3,9 +3,9 @@ use super::{
     TestContextInventory, TestRunner, TestScriptInventory, TestScriptLocation,
     TestingInventoryReport, TestingProjectInventory,
 };
-use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
 use anyhow::Result;
 use codeatlas_domain::source_graph::{AnalysisCompleteness, ContextRole, SourceGraph, SourceNode};
+use codeatlas_domain::{ResolvedAnalysisProject, TestSubject};
 use std::collections::BTreeMap;
 
 pub(crate) fn analyze(
@@ -60,17 +60,17 @@ pub(crate) fn analyze(
 fn resolve_subject(
     graph: &SourceGraph,
     context: &codeatlas_domain::source_graph::SourceContext,
-    subject: &TestSubjectConfig,
+    subject: &TestSubject,
 ) -> Result<DeclaredTestSubject> {
     match subject {
-        TestSubjectConfig::Project(project) => Ok(DeclaredTestSubject::Project {
+        TestSubject::Project(project) => Ok(DeclaredTestSubject::Project {
             project: project.clone(),
             resolved: graph
                 .projects
                 .keys()
                 .any(|candidate| candidate.0 == *project),
         }),
-        TestSubjectConfig::Source(pattern) => {
+        TestSubject::Source(pattern) => {
             let matcher = compile_subject(pattern, &context.id.0)?;
             let matched_paths = graph
                 .nodes

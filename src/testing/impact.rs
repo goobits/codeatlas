@@ -5,12 +5,12 @@ use super::{
     TestingImpactReport,
 };
 use crate::analysis::reachability::{project_confidence, render_diagnostics, Reachability};
-use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
 use anyhow::Result;
 use codeatlas_domain::source_graph::{
     ContextId, ContextRole, FindingConfidence, NodeId, ProjectId, SourceContext, SourceGraph,
     SourceNode,
 };
+use codeatlas_domain::{ResolvedAnalysisProject, TestSubject};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -199,12 +199,12 @@ fn select_declared(
     for context in test_contexts {
         for subject in configured_subjects(projects, context) {
             let (matches, kind, display) = match subject {
-                TestSubjectConfig::Project(project) => (
+                TestSubject::Project(project) => (
                     project == &changed_project.0,
                     TestImpactEvidenceKind::DeclaredProject,
                     format!("project:{project}"),
                 ),
-                TestSubjectConfig::Source(pattern) => (
+                TestSubject::Source(pattern) => (
                     context.project == *changed_project
                         && compile_subject(pattern, &context.id.0)?.is_match(changed_source),
                     TestImpactEvidenceKind::DeclaredSource,

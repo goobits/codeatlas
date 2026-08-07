@@ -8,9 +8,9 @@ mod store;
 #[cfg(test)]
 mod tests;
 
-use crate::config::ResolvedAnalysisProject;
 use anyhow::Result;
 use codeatlas_domain::source_graph::SourceGraph;
+use codeatlas_domain::ResolvedAnalysisProject;
 use metrics::{SourceIndexMeasurement, SourceIndexMetrics};
 use serde::{Deserialize, Serialize};
 use snapshot::{FileFingerprint, SourceSnapshot};

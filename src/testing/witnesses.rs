@@ -3,12 +3,12 @@ use super::{
     ObservedTestWitness, PublicApiTestWitness, TestWitnessStatus, TestingWitnessReport,
 };
 use crate::analysis::reachability::{render_diagnostics, symbol_confidence, Reachability};
-use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
 use anyhow::Result;
 use codeatlas_domain::source_graph::{
     ContextId, ContextRole, ContextScope, FindingConfidence, ProjectId, SourceContext, SourceGraph,
     SourceNode, SourceVisibility,
 };
+use codeatlas_domain::{ResolvedAnalysisProject, TestSubject};
 use globset::GlobMatcher;
 use std::collections::BTreeSet;
 
@@ -183,11 +183,11 @@ fn compile_declared_matchers(
     for context in contexts {
         for subject in configured_subjects(projects, context) {
             let (display, target) = match subject {
-                TestSubjectConfig::Project(project) => (
+                TestSubject::Project(project) => (
                     format!("project:{project}"),
                     DeclaredTarget::Project(ProjectId(project.clone())),
                 ),
-                TestSubjectConfig::Source(pattern) => (
+                TestSubject::Source(pattern) => (
                     format!("source:{pattern}"),
                     DeclaredTarget::Source(compile_subject(pattern, &context.id.0)?),
                 ),
@@ -203,9 +203,9 @@ fn compile_declared_matchers(
     Ok(matchers)
 }
 
-fn subject_display(subject: &TestSubjectConfig) -> String {
+fn subject_display(subject: &TestSubject) -> String {
     match subject {
-        TestSubjectConfig::Project(project) => format!("project:{project}"),
-        TestSubjectConfig::Source(pattern) => format!("source:{pattern}"),
+        TestSubject::Project(project) => format!("project:{project}"),
+        TestSubject::Source(pattern) => format!("source:{pattern}"),
     }
 }

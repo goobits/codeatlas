@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 fn fixture() -> (
     PathBuf,
-    Vec<crate::config::ResolvedAnalysisProject>,
+    Vec<codeatlas_domain::ResolvedAnalysisProject>,
     codeatlas_domain::source_graph::SourceGraph,
 ) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/testing");

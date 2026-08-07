@@ -10,15 +10,15 @@ pub(crate) use model::*;
 pub(crate) use witnesses::analyze as analyze_witnesses;
 pub(crate) use working_tree::paths as git_working_tree_paths;
 
-use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
 use anyhow::{Context, Result};
 use codeatlas_domain::source_graph::{NodeId, SourceContext, SourceGraph, SourceNode};
+use codeatlas_domain::{ResolvedAnalysisProject, TestSubject};
 use globset::{GlobBuilder, GlobMatcher};
 
 fn configured_subjects<'a>(
     projects: &'a [ResolvedAnalysisProject],
     context: &SourceContext,
-) -> &'a [TestSubjectConfig] {
+) -> &'a [TestSubject] {
     projects
         .iter()
         .find(|project| project.id == context.project)

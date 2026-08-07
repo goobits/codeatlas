@@ -138,7 +138,7 @@ receipts live outside the checkout under
 
 ## Phase 2: Extract the dependency-light domain crate and remove report cycles
 
-Status: [~] In progress
+Status: [x] Complete
 
 LOC: +1,950-2,250 / -1,750-2,050
 
@@ -153,6 +153,24 @@ without source mutation; the final preview reported `target_not_supported`
 because its workspace resource reconciliation reached an unrelated Python
 import root. No plan was applied. The accepted ordinary-edit fallback owns the
 move rather than retaining a partial TypeMill result or compatibility module.
+
+Acceptance evidence: `codeatlas-domain` owns the former domain models plus
+resolved analysis inputs and the evidence-document model/validation. Raw JSON
+types remain config-private and one conversion test proves that resolution
+preserves serialized evidence. HTTP and PostgreSQL no longer import outputs;
+outputs retains only rendering and code-reference presentation. Six domain
+tests, 422 root tests, 26 focused CLI/docs/repository tests, all-target Clippy,
+32 Node tests, 476 full-suite Rust tests, package assembly, schema/spec checks,
+and seven zero-gate self-dogfood lanes pass. The old module, imports, config
+re-exports, and compatibility paths are absent, while the standalone probe
+manifest and lock retain their exact digests.
+
+Fresh-cache comparison against the Phase 1 binary proves exact output identity:
+scan `252122dbfcff8efe1c60558e34e6662a3badf9e63f00668125dd49119dc738b1`,
+check `8de7fe56d8403b88fcd9754e0545f0bd773f0d07e5e2471019fdf01bc232abeb`,
+and inspect `c7ffc4dcc0016862d3d75642ded81b0ee88e4960fa26c2feff6da348c0b78266`
+match byte for byte. Complete artifacts are external under
+`/tmp/codeatlas-gha-phase9.GAkQVR/artifacts/topology-domain-fresh.uDEuXd`.
 
 Verify: `cargo test -p codeatlas-domain`, root scan/check/inspect schema bytes,
 and HTTP/PostgreSQL docs fixtures are unchanged. Import search finds no root

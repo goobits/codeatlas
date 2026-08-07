@@ -7,10 +7,10 @@ use super::static_schema::{
     StaticSchemaDiscovery, StaticSchemaObject, StaticSchemaObjectKind, StaticSchemaSourceKind,
 };
 use crate::config::{RepositoryMember, RepositoryScope};
-use crate::outputs::reference::{
+use anyhow::Result;
+use codeatlas_domain::{
     EvidenceDocument, EvidenceEntry, EvidenceFact, EvidenceGroup, EvidenceSection, EvidenceTable,
 };
-use anyhow::Result;
 use serde::Serialize;
 
 pub(crate) fn build(scope: &RepositoryScope) -> Result<EvidenceDocument> {

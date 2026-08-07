@@ -1,5 +1,5 @@
-use super::ResolvedAnalysisProject;
 use anyhow::{Context, Result};
+use codeatlas_domain::ResolvedAnalysisProject;
 use globset::GlobBuilder;
 
 pub(super) fn add_nested_project_boundaries(projects: &mut [ResolvedAnalysisProject]) {

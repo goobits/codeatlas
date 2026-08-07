@@ -1,8 +1,10 @@
 use super::{
-    validate_test_subjects, AnalysisContextConfig, AnalysisProjectConfig, TestSubjectConfig,
+    validate_test_subjects, AnalysisContextConfig, AnalysisProjectConfig, RustAnalysisConfig,
+    TestSubjectConfig,
 };
 use crate::config::CodeAtlasConfig;
 use codeatlas_domain::source_graph::{ContextRole, ContextScope};
+use codeatlas_domain::TestSubject;
 
 #[test]
 fn config_reads_arbitrary_named_reachability_contexts() {
@@ -75,4 +77,40 @@ fn test_subjects_are_bounded_to_test_contexts_and_valid_globs() {
         ..AnalysisContextConfig::default()
     };
     assert!(validate_test_subjects("web", "unit-tests", &invalid_source).is_err());
+}
+
+#[test]
+fn validated_analysis_inputs_resolve_once_without_changing_serialized_evidence() {
+    let context = AnalysisContextConfig {
+        role: ContextRole::Test,
+        scope: ContextScope::Runtime,
+        entrypoints: vec!["src/**/*.test.ts".to_string()],
+        subjects: vec![
+            TestSubjectConfig::Project("web".to_string()),
+            TestSubjectConfig::Source("src/brushes/**".to_string()),
+        ],
+    };
+    let expected_context = serde_json::to_value(&context).expect("raw context evidence");
+    let resolved_context = context.resolve();
+    assert_eq!(
+        serde_json::to_value(&resolved_context).expect("resolved context evidence"),
+        expected_context
+    );
+    assert_eq!(
+        resolved_context.subjects,
+        [
+            TestSubject::Project("web".to_string()),
+            TestSubject::Source("src/brushes/**".to_string())
+        ]
+    );
+
+    let rust = RustAnalysisConfig {
+        all_features: true,
+        features: vec!["server".to_string()],
+    };
+    let expected_rust = serde_json::to_value(&rust).expect("raw Rust evidence");
+    assert_eq!(
+        serde_json::to_value(rust.resolve()).expect("resolved Rust evidence"),
+        expected_rust
+    );
 }

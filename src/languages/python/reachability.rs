@@ -1,5 +1,4 @@
 use super::parser;
-use crate::config::ResolvedAnalysisProject;
 use crate::languages::reachability::{connect_named_symbol_edges, resolve_reference_sources};
 use anyhow::Result;
 use codeatlas_domain::source_graph::{
@@ -7,6 +6,7 @@ use codeatlas_domain::source_graph::{
     SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
     SourceSymbol,
 };
+use codeatlas_domain::ResolvedAnalysisProject;
 use codeatlas_domain::{Symbol, Visibility};
 use contexts::{
     add_package_exports, add_pyproject_entrypoints, add_script_context, add_test_context,

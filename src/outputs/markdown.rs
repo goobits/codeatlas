@@ -1,7 +1,7 @@
 use super::reference;
-use codeatlas_domain::{ScanReport, Symbol};
+use codeatlas_domain::{EvidenceDocument, ScanReport, Symbol};
 
-pub(crate) fn render_evidence(document: &reference::EvidenceDocument) -> anyhow::Result<String> {
+pub(crate) fn render_evidence(document: &EvidenceDocument) -> anyhow::Result<String> {
     document.validate()?;
     let mut output = String::new();
     output.push_str(&format!("# {}\n\n", escape_inline(&document.title)));
