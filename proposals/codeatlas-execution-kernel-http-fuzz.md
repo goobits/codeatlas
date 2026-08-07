@@ -1857,13 +1857,33 @@ use the same plan executor; shared redaction and lease cleanup pass.
 
 ## Phase 6: Consolidation, docs, and release hardening
 
-Status: [ ] Not started
+Status: [x] Complete
 
 LOC: +250-450 / -250-450
 
 Verify: Full required checks and self-dogfood pass; repository search finds no
 HTTP-private plan/budget/artifact owner, `max_examples` public alias, direct
 executor, unsafe fallback, stale docs, or generated checkout state.
+
+Closure checkpoint, 2026-08-07:
+
+- README execution examples now distinguish zero-call planning, reviewed
+  execution, and the checked-in preauthorized local/disposable one-shot form.
+  Stale claims that reports were future work or HTTP execution remained blocked
+  are removed; the manual capable-runtime gate is distinguished from ordinary
+  local verification.
+- Public help matches the documented `fuzz http` target/replay/plan/execute
+  grammar and shared finite limit flags. Focused plan and HTTP CLI suites pass,
+  and the packaged 416-file artifact includes the corrected README.
+- Hardening searches classify the only remaining `--max-examples` as the
+  Schemathesis adapter spelling plus its public-rejection test, and the only
+  `report_dir` as leased container scratch plus a test fixture. No host-direct
+  HTTP process, private filesystem, toolchain executor, compatibility provider,
+  duplicate plan/budget/artifact owner, stale public claim, or generated source
+  residue remains.
+- The complete Phase 5 full gate and self-dogfood remain applicable because
+  Phase 6 changed only documentation and its proposal manifest. Phase 6 and
+  the execution-kernel/HTTP proposal are complete.
 
 ```text
 ~ README.md
@@ -1873,7 +1893,7 @@ executor, unsafe fallback, stale docs, or generated checkout state.
 ~ proposals/codeatlas-execution-kernel-http-fuzz.md
 ~ package.json
 ~ tasks/check-self.js
-~ tests/execution_policy.rs
+~ tests/fuzz_plan.rs
 ~ tests/execution_isolation.rs
 ~ tests/http_cli.rs
 ```

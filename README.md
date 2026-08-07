@@ -772,17 +772,23 @@ codeatlas --root . fuzz http --target public-local --seed 42
 codeatlas --root . fuzz http --target public-local --profile stateful
 # After reviewing the emitted plan:
 codeatlas --root . fuzz http --plan plan_ABC --execute
+# For a checked-in preauthorized local disposable target only:
+codeatlas --root . fuzz http --target public-local --execute
 ```
 
-The target and `--replay` forms only gather current evidence and persist an
-immutable content-addressed plan under the external state root. `--plan ...
---execute` revalidates that exact plan before any target work. A missing
-required isolation capability produces a blocked zero-call receipt; review
-never waives it. Set `CODEATLAS_STATE_DIR` to choose the external private
-artifact base. Execution also requires the exact digest-pinned
-`http.fuzz.image`; managed server, preparation, adapter, and Schemathesis
-commands run inside that network-isolated workload image, never as host
-processes.
+Without `--execute`, the target and `--replay` forms only gather current
+evidence and persist an immutable content-addressed plan under the external
+state root. `--plan ... --execute` revalidates that exact plan before any target
+work. `--target ... --execute` uses the same persisted-plan executor and is
+eligible only when the kernel corroborates a checked-in target as
+preauthorized, local, disposable, and fully isolated. Remote, production,
+unknown-effect, and incompletely isolated targets require review or remain
+blocked. A missing isolation capability always produces a blocked zero-call
+receipt; review never waives it. Set `CODEATLAS_STATE_DIR` to choose the
+external private artifact base. Execution also requires the exact
+digest-pinned `http.fuzz.image`; managed server, preparation, adapter, and
+Schemathesis commands run inside that network-isolated workload image, never
+as host processes.
 
 The repository owns the standard Schemathesis workload recipe and its one
 hash-locked Python dependency set. From a clean commit, build its canonical OCI
@@ -883,9 +889,9 @@ status checks, and optional stateful traversal through OpenAPI Links.
 The target's operation list is the fuzz authority. `--operation` may narrow it
 for local diagnosis but cannot expand it or select a checked-in
 `fuzz.exclude.http` operation. Every plan contains its excluded-operation set,
-concrete seed, and finite limits. Plans and receipts exclude secret values;
-future run reports also exclude request and response bodies, sensitive headers,
-and URL query values.
+concrete seed, and finite limits. Plans, receipts, and run reports exclude
+secret values, request and response bodies, sensitive headers, and URL query
+values.
 
 HTTP configuration also supports:
 
@@ -1176,9 +1182,10 @@ pnpm run test:postgres-live
 ```
 
 `pnpm test` runs wrapper tests and the default Rust suite. The PostgreSQL live
-smoke is explicit because it requires a local service. HTTP execution remains
-blocked until the kernel enforcement and migrated smoke suite are available.
-`pnpm run self:check` writes its report below `CARGO_TARGET_DIR`.
+smoke is explicit because it requires a local service. The target-observed HTTP
+smoke belongs to the manual live OCI gate because it requires a capable
+container runtime; ordinary local checks do not dispatch it. `pnpm run
+self:check` writes its report below `CARGO_TARGET_DIR`.
 
 Ordinary verification is local. The repository has no automatic hosted CI.
 The manual `Live OCI isolation gate` is reserved for the explicit capable-host

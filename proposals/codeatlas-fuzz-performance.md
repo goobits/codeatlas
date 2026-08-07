@@ -497,7 +497,7 @@ metric-feedback and threshold-preserving shrink capabilities.
 
 ## Canonical v1 completion tracker
 
-Tracker date: 2026-08-06
+Tracker date: 2026-08-07
 
 This is the one cross-program ordering and progress tracker. Child proposals
 remain the normative owners for behavior, acceptance evidence, and file
@@ -505,9 +505,9 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-06): 97 open CodeAtlas implementation checks
-remain across Phases 10 through 21, including Phase 16A and the deferred Phase
-15 observation enrichment. Every incomplete child phase maps to exactly one
+Remaining-scope audit (2026-08-07): 105 open CodeAtlas implementation checks
+remain across Phase 10A and Phases 11 through 21, including Phase 16A and the
+deferred Phase 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
 criteria, but they do not own a second rolling task list.
 
@@ -515,9 +515,10 @@ For restart context, read this introduction, the current verdict, the order
 rules, and only the first incomplete phase plus its active child. Completed
 foundations and the verification log are audit history and do not need to be
 reloaded unless a claim is under review. The immediate plan-only-host queue
-through Phase 16 and the live Phase 9 isolation gate are complete. Phase 10 is
-the next implementation phase; then continue numerically through the execution
-track, Phase 16A, performance, cost search, and final signoff.
+through Phase 16, the live Phase 9 isolation gate, and Phase 10 HTTP migration
+are complete. Phase 10A's measured build-topology work is next; then continue
+numerically through the execution track, Phase 16A, performance, cost search,
+and final signoff.
 
 ### Current verdict
 
@@ -533,18 +534,20 @@ evidence through the canonical concept policy without claiming semantic
 equivalence. Subject-parity release hardening is complete: the public matrix,
 self-audit, domain fixture dogfood, one-owner consolidation searches, and
 generated-state audit all pass.
-The reproducible CodeAtlas-owned isolation probe and live rootful OCI gate are
-complete. GitHub run `31084275665` executed exact commit `6d1e4f0`; the
-target-observed baseline and destructive matrix granted exactly the seven
-planned filesystem, network, process, resource, and cleanup capabilities.
-Rootless and nested states remain unclaimed rather than extrapolated. The
-receipt remains intentionally `blocked` only because HTTP workload execution
-stays disconnected until Phase 10 migrates it through the proven kernel. The
-source-impact producer design is accepted and reuses the existing source
+The reproducible CodeAtlas-owned isolation probe, live rootful OCI gate, and
+complete HTTP migration are done. GitHub run `31145328464` executed exact
+commit `e9bdb71`; both managed HTTP profiles passed through the shared kernel,
+the receipt consumed 179 of 256 permits at peak logical concurrency one, all
+eight required capabilities including TLS interception were present, and every
+lease released and verified. Rootless and nested states remain unclaimed rather
+than extrapolated. The measured build-topology phase is now explicit because
+the remaining implementation would otherwise keep paying one 92,000-line Rust
+compilation unit; it preserves all evidence and isolation contracts rather than
+becoming feature work. The source-impact producer design is accepted and reuses the existing source
 graph, callable effects, source index, bounded projection, and completeness
 vocabulary. Its implementation remains gated without making HQA graph
 alignment a CodeAtlas dependency. On implementation progress rather than
-proposal-design progress, the complete program is approximately 67 percent
+proposal-design progress, the complete program is approximately 69 percent
 done. That estimate is weighted by the
 accepted implementation phases, not by raw checkbox count. One hundred percent
 means every remaining tracker item is either verified and checked here or
@@ -557,8 +560,9 @@ completion evidence.
 2. Shared contracts land before their second consumer. No child creates a
    private callable parser, corpus lattice, executor, artifact resolver,
    limiter, paginator, config editor, or metrics owner.
-3. The OCI proof is the execution critical path. A capable runner preempts the
-   independent static queue so the isolation gate closes as soon as possible.
+3. The measured build-topology phase follows the completed HTTP gate and
+   precedes new execution adapters. It may improve iteration cost but may not
+   alter product evidence or absorb the independently locked isolation probe.
 4. Missing isolation always means plan-only. Static work may continue, but no
    HTTP, callable, PostgreSQL, performance, profiler, or cost workload runs.
 5. PostgreSQL Phase 1 and subject-parity Phase 1 are static and may run before
@@ -1033,8 +1037,57 @@ last Phase 10 item.
   them.
 - [x] Synchronize public help, config, schemas, README, lexicon, tests, and
   self-audit commands with the one kernel path.
-- [ ] Run focused HTTP/execution checks, the full required suite, dogfood, and
+- [x] Run focused HTTP/execution checks, the full required suite, dogfood, and
   the checkout-state audit, then commit Phases 5 and 6 separately.
+
+### Phase 10A: Extract measured build boundaries with TypeMill where proven
+
+Active child:
+[`codeatlas-build-topology.md`](codeatlas-build-topology.md) Phases 1 through 7.
+
+- [ ] Record the controlled no-op, app-edit, parser-edit, and test-build
+  baseline with wall time, peak RSS, compiled packages, artifact bytes, one
+  external Cargo target, and fixed job count.
+- [ ] Keep `codeatlas-isolation-conformance` excluded, independently locked,
+  and digest-stable; add only explicit workspace members and reject a
+  `crates/*` wildcard.
+- [ ] At each move/rename batch, start from clean committed HEAD, inspect stable
+  Mill capability evidence, preview and review one exact plan, and apply only
+  when the plan contains the complete final imports, visibility, manifests,
+  and deletions. Otherwise use an ordinary reviewed edit without partial Mill
+  output.
+- [ ] Extract `codeatlas-domain` with the existing language-neutral models and
+  resolved analysis inputs; keep raw JSON config types and validation in the
+  application config owner.
+- [ ] Split only the evidence-document model/validation from
+  `outputs::reference` into domain so HTTP/PostgreSQL no longer depend on
+  renderers; keep API-reference presentation helpers in `outputs`.
+- [ ] Remove the root domain module and every compatibility re-export, alias,
+  duplicate resolved type, and retired import in the same phase.
+- [ ] Pass domain tests, unchanged scan/inspect/schema bytes, HTTP/PostgreSQL
+  docs fixtures, self-dogfood, and boundary searches before committing.
+- [ ] Extract all Rust, Python, JavaScript/TypeScript, and Svelte adapters into
+  one `codeatlas-languages` parity crate; do not delete or split a language.
+- [ ] Pass every language/callable/effect/source-graph/fuzzability fixture and
+  the neutral resolution-conformance gate through the new crate boundary.
+- [ ] Remove parser dependencies unused by the root while retaining and naming
+  PostgreSQL's legitimate domain-specific SWC visitor; do not invent a generic
+  AST facade merely to remove that dependency.
+- [ ] Re-run the exact Phase 1 lanes; require at least 20 percent app-edit wall
+  time or peak-RSS improvement, independent language tests, and less than 10
+  percent cold regression before touching execution topology.
+- [ ] Extract the shared exact-tool leaf and replace execution's raw config and
+  ambient state-root dependencies with one config-owned conversion into
+  resolved runtime inputs.
+- [ ] Extract `codeatlas-execution` as the sole plan/budget/artifact/sandbox/
+  proxy/workload/cleanup/receipt owner, with no root facade or second kernel.
+- [ ] Pass per-crate execution tests, every non-live and fake-runtime
+  conformance case, canonical artifact vectors, root HTTP integration, schema
+  drift, and the accepted live-proof identity.
+- [ ] Re-run controlled build budgets, full checks, package assembly, neutral
+  interop, complete CodeAtlas dogfood, one-owner searches, and generated-state
+  audits; remove any extraction that misses the final 30-percent wall-time or
+  25-percent RSS goal instead of waiving it.
 
 ### Phase 11: Build the shared corpus and callable fuzz foundation
 
@@ -1618,8 +1671,7 @@ bounded CodeAtlas dogfood pass with zero gates.
 
 ## Program stage 4: Execution kernel and HTTP migration
 
-Status: [~] Accepted; execution Phases 1-4 and the owned live OCI proof are
-complete; HTTP migration and release hardening continue in Phase 10
+Status: [x] Complete
 
 Projected LOC after measured Phase 3: +11,760-13,310 / -878-1,408
 
@@ -1629,6 +1681,23 @@ receipts, cleanup, reviewed execution, and eligible one-shot execution pass.
 
 ```text
 ~ proposals/codeatlas-execution-kernel-http-fuzz.md
+```
+
+## Program stage 4A: Measured build topology
+
+Status: [ ] Accepted; implementation follows the completed HTTP hardening gate
+
+Physical move/edit LOC: +29,670-31,860 / -28,450-30,370; expected net authored
+surface +700-1,300
+
+Verify: Controlled build lanes improve app-edit wall time by at least 30
+percent or peak RSS by at least 25 percent without more than 10 percent cold
+regression; domain, language, and execution boundaries pass independently; no
+facade, duplicate owner, wildcard workspace member, or probe lock/digest change
+remains.
+
+```text
++ proposals/codeatlas-build-topology.md
 ```
 
 ## Program stage 5: Structured callable evidence
