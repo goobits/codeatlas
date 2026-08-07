@@ -130,7 +130,7 @@ pub(super) fn analyze_collected(
 ) -> Result<HttpUsageReport> {
     let projects = scope.analysis_projects();
     let (graph, graph_digest, graph_diagnostics) =
-        match crate::languages::reachability::build_source_graph(projects) {
+        match crate::analysis::build_source_graph(projects) {
             Ok(graph) => {
                 let digest = crate::execution::artifact::digest_value(GRAPH_DIGEST_DOMAIN, &graph)?;
                 (Some(graph), Some(digest), Vec::new())

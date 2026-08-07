@@ -1,7 +1,7 @@
 use super::{add_file_edge, add_importer, FileEdges, Importers};
-use crate::languages::ecmascript::resolver;
-use crate::languages::typescript::parser;
 use codeatlas_domain::{Language, ScanReport, Symbol, Visibility};
+use codeatlas_languages::ecmascript::resolver;
+use codeatlas_languages::typescript::parser;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
@@ -202,7 +202,7 @@ pub(crate) fn collect_package_consumers(
             .extension()
             .is_some_and(|extension| extension == "svelte")
         {
-            crate::languages::parse_svelte_module_source(&importer, &source)
+            codeatlas_languages::parse_svelte_module_source(&importer, &source)
         } else {
             parser::parse_source(&source, &importer)
         };
@@ -339,7 +339,7 @@ fn collect_signature_dependencies(
         .iter()
         .filter(|symbol| symbol.language == Language::TypeScript)
     {
-        let references = crate::languages::typescript::referenced_identifiers(symbol);
+        let references = codeatlas_languages::typescript::referenced_identifiers(symbol);
         if let Some(candidates) = symbols_by_file.get(&symbol.file_path) {
             dependencies.extend(
                 candidates
@@ -360,7 +360,7 @@ fn collect_signature_dependencies(
             };
             for binding in &import.bindings {
                 let imported = if binding.namespace {
-                    crate::languages::typescript::referenced_namespace_members(
+                    codeatlas_languages::typescript::referenced_namespace_members(
                         symbol,
                         &binding.local,
                     )

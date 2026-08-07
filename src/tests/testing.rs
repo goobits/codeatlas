@@ -1,8 +1,8 @@
 use crate::config::{ProjectConfig, RepositoryScope};
+use crate::testing;
 use crate::testing::{
     ChangedPathResolution, DeclaredTestSubject, TestImpactEvidenceKind, TestWitnessStatus,
 };
-use crate::{languages, testing};
 use std::path::PathBuf;
 
 fn fixture() -> (
@@ -16,8 +16,8 @@ fn fixture() -> (
     let projects = RepositoryScope::resolve(&project, true)
         .expect("testing fixture scope")
         .into_analysis_projects();
-    let graph = languages::reachability::build_source_graph(&projects)
-        .expect("testing fixture source graph");
+    let graph =
+        crate::analysis::build_source_graph(&projects).expect("testing fixture source graph");
     (root, projects, graph)
 }
 

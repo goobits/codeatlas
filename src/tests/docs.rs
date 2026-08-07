@@ -1,6 +1,7 @@
 use crate::config::ProjectConfig;
-use crate::{analysis, commands, languages, outputs};
+use crate::{analysis, commands, outputs};
 use codeatlas_domain::ScanConfig;
+use codeatlas_languages as languages;
 use codeatlas_source::package;
 use std::fs;
 use std::path::PathBuf;

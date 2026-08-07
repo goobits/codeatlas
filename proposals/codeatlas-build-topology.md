@@ -231,7 +231,7 @@ to those values in the same phase, with no alias or re-export of retired names.
 
 ## Phase 3: Extract shared source primitives and all language adapters
 
-Status: [~] In progress
+Status: [x] Complete
 
 LOC: +20,300-21,300 / -19,700-20,700
 
@@ -289,6 +289,28 @@ workspace, topology, package, formatting, and warning-denying source Clippy
 checks also pass. Searches find no retired root module or duplicate source
 owner, schemas are unchanged, and the standalone probe manifest and lock keep
 their exact digests.
+
+Language checkpoint: all 56 adapter files now live only in
+`codeatlas-languages`. The root source index implements the sole generic
+fact-provider contract; the language crate collects syntax/resolution graph
+evidence, while root analysis alone adds propagated effects, validates, and
+caches the complete source graph. The pure fuzz directive parser has one
+domain owner. Thirty-six language tests, 354 root tests with three intentional
+ignores, eight domain tests, 30 source tests, the neutral resolution fixture
+against AgentSpeak Contracts `2d370e1`, 32 Node tests, all 14 Rust test
+binaries, all-target workspace Clippy, package assembly, and the specification
+guard pass.
+
+Fresh-cache scan, check, and inspect artifacts remain byte-identical to the
+Phase 1 binary with SHA-256 digests `252122dbfcff8efe1c60558e34e6662a3badf9e63f00668125dd49119dc738b1`,
+`8de7fe56d8403b88fcd9754e0545f0bd773f0d07e5e2471019fdf01bc232abeb`,
+and `c7ffc4dcc0016862d3d75642ded81b0ee88e4960fa26c2feff6da348c0b78266`.
+Self-dogfood initially found the stale semantic-sibling paths in
+`codeatlas.json`; after the adjacent config fix, all seven lanes pass over 334
+files and 3,527 symbols with no gates or sibling candidates. Complete new-side
+comparison and dogfood artifacts are external under
+`/tmp/codeatlas-gha-phase9.GAkQVR/artifacts/topology-languages-fresh.eyqHJs`
+and `/tmp/codeatlas-gha-phase9.GAkQVR/artifacts/topology-languages-dogfood`.
 
 ## Phase 4: Re-measure before touching the execution boundary
 

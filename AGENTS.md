@@ -70,8 +70,9 @@ published contract, never vendor or reconstruct a draft locally.
   call domain owners rather than reimplementing their rules.
 - `src/config` owns strict `codeatlas.json` parsing, defaults, resolution, and
   validation. Unknown fields fail; proposals do not create parallel config.
-- `src/domain` owns the language-neutral code-evidence primitives. Language
-  syntax and resolution stay in `src/languages`.
+- `crates/domain` owns the language-neutral code-evidence primitives.
+  `crates/languages` owns language syntax, callable extraction, resolution,
+  and source-graph adapters.
 - `crates/source` owns path normalization, bounded source discovery, source
   selection policy, package evidence, and the fact-provider contract.
   `src/source_index` owns immutable cached facts, graph identity, invalidation,

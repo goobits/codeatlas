@@ -1,6 +1,6 @@
-use crate::languages;
 use crate::{analysis, commands};
 use codeatlas_domain::ScanConfig;
+use codeatlas_languages as languages;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};

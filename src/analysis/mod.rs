@@ -1,4 +1,5 @@
-use codeatlas_domain::ScanReport;
+use codeatlas_domain::source_graph::SourceGraph;
+use codeatlas_domain::{ResolvedAnalysisProject, ScanReport};
 use std::path::Path;
 
 mod dependency_types;
@@ -8,6 +9,26 @@ mod imports;
 mod package_exports;
 pub(crate) mod reachability;
 mod unused_public;
+
+pub(crate) fn build_source_graph(
+    projects: &[ResolvedAnalysisProject],
+) -> anyhow::Result<SourceGraph> {
+    crate::source_index::build_graph(projects, |index| {
+        let mut graph = codeatlas_languages::reachability::collect_source_graph(projects, index)?;
+        effects::annotate_callable_effects(&mut graph)?;
+        graph
+            .validate()
+            .map_err(|diagnostics| {
+                diagnostics
+                    .into_iter()
+                    .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            })
+            .map_err(anyhow::Error::msg)?;
+        Ok(graph)
+    })
+}
 
 pub(crate) fn annotate_imports(
     report: &mut ScanReport,

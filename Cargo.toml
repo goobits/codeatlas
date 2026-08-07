@@ -7,7 +7,7 @@ license-file = "LICENSE"
 repository = "https://github.com/goobits/codeatlas"
 
 [workspace]
-members = ["crates/domain", "crates/source"]
+members = ["crates/domain", "crates/source", "crates/languages"]
 exclude = ["crates/isolation-conformance"]
 resolver = "2"
 
@@ -21,9 +21,9 @@ thiserror = "1.0"
 clap = { version = "4.4", features = ["derive"] }
 anyhow = "1.0"
 codeatlas-domain = { path = "crates/domain" }
+codeatlas-languages = { path = "crates/languages" }
 codeatlas-source = { path = "crates/source" }
 codeatlas-isolation-conformance = { path = "crates/isolation-conformance" }
-cargo_metadata = "0.18"
 ctrlc = "3.4"
 thiserror.workspace = true
 serde.workspace = true
@@ -34,7 +34,6 @@ jsonschema = { version = "0.48", default-features = false }
 walkdir = "2.4"
 ignore = "0.4"
 globset = "0.4"
-json5 = "0.4"
 regex = "1.10"
 colored = "2.0"
 pulldown-cmark = "0.13"
@@ -51,23 +50,13 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 tokio = { version = "1.47", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 
-# Rust Parsing
-syn = { version = "2.0", features = ["full", "visit", "extra-traits"] }
-quote = "1.0"
-proc-macro2 = { version = "1.0", features = ["span-locations"] }
-
-# Python Parsing
-rustpython-parser = { version = "0.3", features = ["location"] }
-rustpython-ast = { version = "0.3", features = ["visitor"] }
 toml = "0.8"
 
-# TypeScript/JS Parsing (via swc_core to ensure version alignment)
+# PostgreSQL's domain-specific ECMAScript SQL collector retains direct SWC use.
 swc_core = { version = "0.91.1", features = ["ecma_parser", "ecma_ast", "ecma_visit", "common", "common_tty"] }
 
 # Utilities
-pathdiff = "0.2"
 percent-encoding = "2.3"
-rayon = "1.10"
 schemars.workspace = true
 
 [dev-dependencies]

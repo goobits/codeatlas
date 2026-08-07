@@ -12,7 +12,7 @@ use std::path::Path;
 
 /// Supplies deterministic parsed-file facts without coupling language adapters
 /// to the application's cache implementation.
-pub trait SourceFactProvider {
+pub trait SourceFactProvider: Sync {
     fn parse_file<T, F>(
         &self,
         namespace: &str,

@@ -1,5 +1,5 @@
 use super::{exit_code, load_project, output};
-use crate::{languages, outputs, testing};
+use crate::{outputs, testing};
 use anyhow::Result;
 use clap::ValueEnum;
 use codeatlas_domain::ResolvedAnalysisProject;
@@ -71,7 +71,7 @@ fn impact(
         projects.retain(|project| project_supports_family(project, family));
         apply_exact_source_family(&mut projects, family);
     }
-    let graph = languages::reachability::build_source_graph(&projects)?;
+    let graph = crate::analysis::build_source_graph(&projects)?;
     let report = testing::analyze_impact(&graph, &projects, &repository_root, changed)?;
     let rendered = match format {
         TestingFormat::Text => outputs::testing::render_impact(&report),
@@ -148,7 +148,7 @@ fn load_graph(
     PathBuf,
 )> {
     let (projects, repository_root) = load_projects(path, workspace, config_path)?;
-    let graph = languages::reachability::build_source_graph(&projects)?;
+    let graph = crate::analysis::build_source_graph(&projects)?;
     Ok((projects, graph, repository_root))
 }
 

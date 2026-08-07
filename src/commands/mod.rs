@@ -12,10 +12,11 @@ pub(crate) mod postgres;
 pub(crate) mod testing;
 
 use crate::config::ProjectConfig;
-use crate::{analysis, languages, outputs};
+use crate::{analysis, outputs};
 use anyhow::Result;
 use clap::ValueEnum;
 use codeatlas_domain::{ScanConfig, ScanReport};
+use codeatlas_languages as languages;
 use codeatlas_source::package;
 use std::path::{Path, PathBuf};
 

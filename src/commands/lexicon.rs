@@ -106,7 +106,7 @@ fn run_inner(
     let semantic_sibling_analysis = if project.semantic_sibling_comparison_sets().is_empty() {
         lexicon::SemanticSiblingAnalysis::default()
     } else {
-        let graph = crate::languages::reachability::build_source_graph(scope.analysis_projects())?;
+        let graph = crate::analysis::build_source_graph(scope.analysis_projects())?;
         lexicon::analyze_semantic_siblings(
             &graph,
             project.semantic_sibling_comparison_sets(),

@@ -505,7 +505,7 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-07): 99 open CodeAtlas implementation checks
+Remaining-scope audit (2026-08-07): 96 open CodeAtlas implementation checks
 remain across Phase 10A and Phases 11 through 21, including Phase 16A and the
 deferred Phase 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
@@ -1070,11 +1070,11 @@ Active child:
   package-evidence owners into one dependency-light `codeatlas-source` member;
   give the root source index one narrow fact-provider contract rather than a
   callback bag or duplicate cache.
-- [ ] Extract all Rust, Python, JavaScript/TypeScript, and Svelte adapters into
+- [x] Extract all Rust, Python, JavaScript/TypeScript, and Svelte adapters into
   one `codeatlas-languages` parity crate; do not delete or split a language.
-- [ ] Pass every language/callable/effect/source-graph/fuzzability fixture and
+- [x] Pass every language/callable/effect/source-graph/fuzzability fixture and
   the neutral resolution-conformance gate through the new crate boundary.
-- [ ] Remove parser dependencies unused by the root while retaining and naming
+- [x] Remove parser dependencies unused by the root while retaining and naming
   PostgreSQL's legitimate domain-specific SWC visitor; do not invent a generic
   AST facade merely to remove that dependency.
 - [ ] Re-run the exact Phase 1 lanes; require at least 20 percent app-edit wall
@@ -1637,6 +1637,14 @@ read-only and will not reconstruct or vendor it.
   tests plus 392 root tests preserve the 422-test total; topology, package,
   formatting, and source Clippy checks pass with unchanged schemas and probe
   identities.
+- 2026-08-06: Phase 10A Phase 3 moves all 56 code-language adapter files into
+  `codeatlas-languages`, keeps one typed cache seam and distinct collect/build
+  graph stages, and removes every old root facade and unused parser dependency.
+  Thirty-six language tests, 354 root tests, the neutral resolution gate, 32
+  Node tests, 14 Rust test binaries, all-target Clippy, package/spec guards,
+  exact scan/check/inspect bytes, and seven self-dogfood lanes pass. Dogfood
+  caught and removed stale semantic-sibling config paths before acceptance;
+  PostgreSQL remains the root's only direct SWC consumer.
 
 ## Existing-first check
 

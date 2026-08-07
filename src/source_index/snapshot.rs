@@ -45,7 +45,7 @@ pub(super) fn create(projects: &[ResolvedAnalysisProject]) -> Result<SourceSnaps
         patterns.sort();
         patterns.dedup();
         let discovery =
-            crate::languages::reachability::discover_project_sources(project, &patterns);
+            codeatlas_source::source_discovery::discover_project_sources(project, &patterns);
         let mut digest = Sha256::new();
         digest.update(b"atlas.codeatlas.dev/source-index-project/v1\0");
         digest.update(serde_json::to_vec(project)?);

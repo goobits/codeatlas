@@ -21,7 +21,7 @@ pub(crate) fn annotate(
         .filter(|export| is_typescript_path(&export.source_path))
         .map(|export| export.source_path.clone())
         .collect::<Vec<_>>();
-    let mut typescript_ids = crate::languages::typescript::reachable_symbol_ids_by_entrypoint(
+    let mut typescript_ids = codeatlas_languages::typescript::reachable_symbol_ids_by_entrypoint(
         root_dir,
         &typescript_entrypoints,
         no_default_ignore,
@@ -104,8 +104,8 @@ fn reachable_ids(root_dir: &Path, entrypoint: &str, no_default_ignore: bool) -> 
         entrypoints: Some(vec![entrypoint.to_string()]),
         no_default_ignore,
     };
-    let scanners = crate::languages::get_scanners_auto(root_dir);
-    let report = crate::languages::scan_all(root_dir, &config, scanners);
+    let scanners = codeatlas_languages::get_scanners_auto(root_dir);
+    let report = codeatlas_languages::scan_all(root_dir, &config, scanners);
     let mut ids = HashSet::new();
     for symbol in &report.symbols {
         collect_ids(symbol, &mut ids);
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn declaration_consolidation_prefers_the_root_export_deterministically() {
         fn symbol(path: &str, export_path: &str) -> codeatlas_domain::Symbol {
-            let mut symbol = crate::languages::typescript::parser::parse_source(
+            let mut symbol = codeatlas_languages::typescript::parser::parse_source(
                 "export interface PublicApi { readonly ready: boolean }",
                 path,
             )

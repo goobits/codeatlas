@@ -1,5 +1,5 @@
-use crate::languages;
 use codeatlas_domain::ScanConfig;
+use codeatlas_languages as languages;
 use std::path::PathBuf;
 
 fn fixture_root(path: &str) -> PathBuf {
@@ -47,7 +47,7 @@ fn python_parser_projects_module_constants_and_class_properties_without_values()
     let root = fixture_root("py");
     let path = root.join("pkg/api.py");
     let source = std::fs::read_to_string(&path).expect("Python fixture");
-    let symbols = crate::languages::python::parser::parse_file(&path, &root, &source)
+    let symbols = codeatlas_languages::python::parser::parse_file(&path, &root, &source)
         .expect("Python symbols");
     let timeout = symbols
         .iter()

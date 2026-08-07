@@ -14,7 +14,6 @@ mod filesystem;
 mod fuzz;
 mod http;
 mod inspection;
-mod languages;
 mod lexicon;
 mod outputs;
 mod postgres;

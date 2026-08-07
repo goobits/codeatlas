@@ -1,6 +1,6 @@
 use super::{collector::ModuleCollector, ModuleFacts, SqlExpression, StaticSql};
-use crate::languages::ecmascript::resolver::resolve_relative_module;
 use anyhow::Result;
+use codeatlas_languages::ecmascript::resolver::resolve_relative_module;
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use swc_core::ecma::visit::VisitWith;
@@ -22,7 +22,7 @@ impl<'a> StaticSqlResolver<'a> {
         if !self.modules.contains_key(display) {
             let path = self.root.join(display);
             let (module, source_map) =
-                crate::languages::typescript::parser::parse_syntax_tree(&path)?;
+                codeatlas_languages::typescript::parser::parse_syntax_tree(&path)?;
             let mut collector = ModuleCollector::new(display.to_string(), source_map);
             module.visit_with(&mut collector);
             self.modules.insert(display.to_string(), collector.finish());

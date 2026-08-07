@@ -6,7 +6,7 @@ mod workspace;
 
 use crate::config::{ProjectConfig, RepositoryScope};
 use crate::dead_code::{DeadCodeFinding, DeadCodeFindingKind};
-use crate::{dead_code, languages, outputs};
+use crate::{dead_code, outputs};
 use codeatlas_domain::source_graph::{
     AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope,
     EdgeTarget, FindingConfidence, NodeId, ProjectId, SourceContext, SourceEdge, SourceEdgeKind,
@@ -35,7 +35,7 @@ fn source_graph_fixture(path: &str) -> codeatlas_domain::source_graph::SourceGra
     let config_path = root.join("codeatlas.json");
     let project = ProjectConfig::load(&root, Some(&config_path)).expect("fixture configuration");
     let projects = project.analysis_projects().expect("analysis projects");
-    languages::reachability::build_source_graph(&projects).expect("source graph")
+    crate::analysis::build_source_graph(&projects).expect("source graph")
 }
 
 fn finding<'a>(

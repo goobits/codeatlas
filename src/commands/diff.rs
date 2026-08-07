@@ -125,7 +125,7 @@ fn create_workspace_baseline(path: &Path, config_path: Option<&Path>) -> Result<
             continue;
         }
 
-        if crate::languages::get_scanners_auto(&member_project.root).is_empty()
+        if codeatlas_languages::get_scanners_auto(&member_project.root).is_empty()
             && member_project.config.languages.is_empty()
         {
             reports.push((

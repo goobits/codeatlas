@@ -8,24 +8,24 @@ const DENIAL_REASON: &str = "publishes to the real artifact registry";
 #[test]
 fn directive_attachment_has_rust_python_javascript_typescript_and_sql_parity() {
     let root = fixture_root();
-    let rust = crate::languages::rust::parser::parse_module_info(
+    let rust = codeatlas_languages::rust::parser::parse_module_info(
         &root.join("directives.rs"),
         &root,
         include_str!("../../tests/fixtures/code_fuzz/directives.rs"),
     )
     .expect("Rust directives");
-    let python = crate::languages::python::parser::parse_module_info(
+    let python = codeatlas_languages::python::parser::parse_module_info(
         &root.join("directives.py"),
         &root,
         include_str!("../../tests/fixtures/code_fuzz/directives.py"),
     )
     .expect("Python directives");
-    let javascript = crate::languages::typescript::parser::parse_source(
+    let javascript = codeatlas_languages::typescript::parser::parse_source(
         include_str!("../../tests/fixtures/code_fuzz/directives.js"),
         "directives.js",
     )
     .expect("JavaScript directives");
-    let typescript = crate::languages::typescript::parser::parse_source(
+    let typescript = codeatlas_languages::typescript::parser::parse_source(
         include_str!("../../tests/fixtures/code_fuzz/directives.ts"),
         "directives.ts",
     )
@@ -126,8 +126,7 @@ fn public_callable_inventory_has_no_silent_omissions_and_policy_only_subtracts()
     let project = crate::config::ProjectConfig::load(&root, Some(&root.join("codeatlas.json")))
         .expect("code fuzz fixture config");
     let projects = project.analysis_projects().expect("analysis projects");
-    let graph = crate::languages::reachability::build_source_graph(&projects)
-        .expect("fixture source graph");
+    let graph = crate::analysis::build_source_graph(&projects).expect("fixture source graph");
     let inventory =
         crate::fuzz::code::build_inventory(&graph, &[], project.config.fuzz.limits.max_cases)
             .expect("fuzzability inventory");

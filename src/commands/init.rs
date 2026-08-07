@@ -18,7 +18,7 @@ pub(crate) fn run_postgres(path: &Path, write: bool, config_path: Option<&Path>)
 
 fn init_code(path: &Path, write: bool, config_path: Option<&Path>) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let languages = crate::languages::detect_language_ids(&project.root);
+    let languages = codeatlas_languages::detect_language_ids(&project.root);
     if languages.is_empty() {
         anyhow::bail!(
             "No supported code languages were discovered in {}",

@@ -43,8 +43,7 @@ fn agentspeak_resolution_conformance_matches_source_graph() {
     let projects = project
         .analysis_projects()
         .expect("resolve fixture analysis project");
-    let graph = crate::languages::reachability::build_source_graph(&projects)
-        .expect("build fixture source graph");
+    let graph = crate::analysis::build_source_graph(&projects).expect("build fixture source graph");
     let target = resolve_expected_target(&graph, &expected["target"]);
     let reachability = Reachability::analyze(&graph).expect("analyze fixture reachability");
     let (consumers, witnesses) = resolved_importers(&graph, &reachability, &target);
