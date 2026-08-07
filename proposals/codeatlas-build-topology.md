@@ -1,6 +1,6 @@
 # Measured build topology and TypeMill-assisted crate extraction
 
-Status: Accepted; implementation not started
+Status: Accepted; implementation in progress
 
 Decision scope: Reduce CodeAtlas edit/build/test cost while making dependency
 direction explicit, without changing CLI behavior, evidence bytes, artifact
@@ -97,7 +97,7 @@ it would silently absorb the probe and change its dependency resolution.
 
 ## Phase 1: Pin the build and dependency baseline
 
-Status: [ ] Not started
+Status: [x] Complete
 
 LOC: +140-220 / -0-20
 
@@ -114,6 +114,27 @@ stay within 10 percent before its result can be used as a comparison.
 The benchmark uses mtime-only touches restored by the next Cargo invocation;
 it does not change source bytes or create a benchmark-only code path. Cold
 dependency download time is recorded separately and is not an extraction win.
+
+Baseline evidence (commit `8147807`, Rust/Cargo 1.97.1, Linux AArch64, 22
+logical CPUs, 50.4 GB RAM, two Cargo jobs, external targets):
+
+| Lane | Wall | Peak RSS | Compiled packages |
+| --- | ---: | ---: | ---: |
+| unchanged `cargo check` (median of three) | 0.135 s | 99,932 KiB | 0 |
+| app edit then `cargo build` | 17.17 s | 1,665,200 KiB | 1 |
+| parser edit then `cargo build` | 14.58 s | 1,666,904 KiB | 1 |
+| root `cargo test --no-run` after the edit lanes | 23.80 s | 1,745,584 KiB | 1 |
+| empty-target offline `cargo build` | 105.56 s | 3,079,308 KiB | 295 |
+
+The unchanged checks measured 130.861, 134.607, and 136.304 milliseconds, a
+4.0-percent full range around the median. An initial 11.58-second root refresh
+was classified as warm-up rather than no-op evidence. The two touched source
+files retained identical SHA-256 digests. The warm target ended at
+9,934,517,413 bytes; the clean target was 2,885,988,130 bytes and its root
+binary was 444,380,016 bytes. The separately measured registry fetch took
+0.53 seconds, after which the clean build ran offline. Complete logs and timing
+receipts live outside the checkout under
+`/tmp/codeatlas-gha-phase9.GAkQVR/benchmarks/topology-phase1`.
 
 ## Phase 2: Extract the dependency-light domain crate and remove report cycles
 

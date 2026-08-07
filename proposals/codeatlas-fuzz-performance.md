@@ -505,7 +505,7 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-07): 105 open CodeAtlas implementation checks
+Remaining-scope audit (2026-08-07): 104 open CodeAtlas implementation checks
 remain across Phase 10A and Phases 11 through 21, including Phase 16A and the
 deferred Phase 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
@@ -1045,7 +1045,7 @@ last Phase 10 item.
 Active child:
 [`codeatlas-build-topology.md`](codeatlas-build-topology.md) Phases 1 through 7.
 
-- [ ] Record the controlled no-op, app-edit, parser-edit, and test-build
+- [x] Record the controlled no-op, app-edit, parser-edit, and test-build
   baseline with wall time, peak RSS, compiled packages, artifact bytes, one
   external Cargo target, and fixed job count.
 - [ ] Keep `codeatlas-isolation-conformance` excluded, independently locked,
@@ -1608,6 +1608,11 @@ read-only and will not reconstruct or vendor it.
   uploaded artifact digest is recorded above, and the compatible Cargo cache
   restores and saves useful bounded state. HTTP workload execution remains
   disconnected until Phase 10 rather than bypassing the accepted migration.
+- 2026-08-06: Phase 10A Phase 1 pins the monolithic build baseline at exact
+  commit `8147807` with two Cargo jobs and external state. Three unchanged
+  checks vary by 4.0 percent; controlled app, parser, test-build, and offline
+  clean-target lanes record wall time, peak RSS, compiled packages, and
+  artifact bytes while mtime probes preserve exact source digests.
 
 ## Existing-first check
 
