@@ -1,8 +1,8 @@
-use crate::domain::source_graph::{
+use codeatlas_domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, ContextRole, FindingConfidence, NodeId, SourceEvidence,
     SourceLanguage,
 };
-use crate::domain::{EvidenceClass, SourceDisposition};
+use codeatlas_domain::{EvidenceClass, SourceDisposition};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
     Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum EvidenceClass {
+pub enum EvidenceClass {
     Direct,
     Inferred,
     BoundaryLimited,
@@ -34,7 +34,7 @@ pub(crate) enum EvidenceClass {
     Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum SourceDisposition {
+pub enum SourceDisposition {
     Maintained,
     Generated,
     Fixture,

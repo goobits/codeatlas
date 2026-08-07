@@ -1,4 +1,4 @@
-use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolKind, Visibility};
+use codeatlas_domain::{Language, ScanReport, Stability, Symbol, SymbolKind, Visibility};
 use std::collections::BTreeMap;
 
 const MAX_EVIDENCE_REFERENCE_ENTRIES: usize = 20_000;

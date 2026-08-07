@@ -1,13 +1,13 @@
 use super::parser;
 use crate::config::ResolvedAnalysisProject;
-use crate::domain::source_graph::{
+use crate::languages::reachability::{connect_named_symbol_edges, resolve_reference_sources};
+use anyhow::Result;
+use codeatlas_domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, ProjectId, SourceBinding, SourceEdge,
     SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
     SourceSymbol,
 };
-use crate::domain::{Symbol, Visibility};
-use crate::languages::reachability::{connect_named_symbol_edges, resolve_reference_sources};
-use anyhow::Result;
+use codeatlas_domain::{Symbol, Visibility};
 use contexts::{
     add_package_exports, add_pyproject_entrypoints, add_script_context, add_test_context,
     exported_symbol, exported_symbols,

@@ -1,5 +1,5 @@
 use super::{parser, resolver};
-use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
+use codeatlas_domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
 use std::path::Path;
 
 struct ModuleInfo {
@@ -126,7 +126,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
             }
             info.symbols
                 .iter()
-                .filter(|sym| sym.visibility == crate::domain::Visibility::Public)
+                .filter(|sym| sym.visibility == codeatlas_domain::Visibility::Public)
                 .map(|sym| sym.name.clone())
                 .collect()
         };

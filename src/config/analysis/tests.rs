@@ -2,7 +2,7 @@ use super::{
     validate_test_subjects, AnalysisContextConfig, AnalysisProjectConfig, TestSubjectConfig,
 };
 use crate::config::CodeAtlasConfig;
-use crate::domain::source_graph::{ContextRole, ContextScope};
+use codeatlas_domain::source_graph::{ContextRole, ContextScope};
 
 #[test]
 fn config_reads_arbitrary_named_reachability_contexts() {

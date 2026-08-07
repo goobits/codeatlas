@@ -1,6 +1,6 @@
 use super::callable_effects::{collect_arrow_direct_effects, collect_direct_effects};
 use super::format::{format_entity_name, format_ts_type};
-use crate::domain::{
+use codeatlas_domain::{
     CallableBody, CallableContract, CallableKind, CallableParameter, CallableSignature,
     Constructibility, ParameterRequirement, ParameterRole, ReceiverContract, ReceiverRequirement,
     SemanticField, SemanticLiteral, SemanticType, StringEncoding, TypeParameterContract,

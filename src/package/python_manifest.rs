@@ -1,5 +1,5 @@
-use crate::domain::{PackageExport, PackageInfo};
 use anyhow::{Context, Result};
+use codeatlas_domain::{PackageExport, PackageInfo};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 

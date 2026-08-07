@@ -1,5 +1,4 @@
 use crate::config::{LexiconProviderCoverage, LexiconProviderFormat, LexiconProviderTier};
-use crate::domain::EvidenceClass;
 use crate::lexicon::{
     CallableCandidateKind, ConceptCandidate, ConceptCandidateConfidence, ConceptCandidateRule,
     ConceptEvidenceRelation, ConceptSuppressionKind, LexiconReport, LexiconSymbol,
@@ -7,6 +6,7 @@ use crate::lexicon::{
     SemanticSiblingCounterevidenceState, SemanticSiblingDisposition, SemanticSiblingEvidence,
     SemanticSiblingNominationKind, SemanticSiblingOmissionKind,
 };
+use codeatlas_domain::EvidenceClass;
 
 pub(crate) fn render_text(report: &LexiconReport) -> String {
     let mut output = String::new();

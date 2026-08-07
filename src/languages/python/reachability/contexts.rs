@@ -3,11 +3,11 @@ use super::{
     PROJECT_ENTRYPOINT_CONTEXT, TEST_CONTEXT, TOOLING_CONTEXT,
 };
 use crate::config::ResolvedAnalysisProject;
-use crate::domain::source_graph::{
+use anyhow::Result;
+use codeatlas_domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, NodeId,
     SourceContext, SourceEvidence, SourceGraph,
 };
-use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 

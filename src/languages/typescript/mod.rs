@@ -1,6 +1,6 @@
-use crate::domain::{Language, ScanConfig, ScanReport, Symbol};
 use crate::languages::definition::LanguageDefinition;
 use anyhow::Result;
+use codeatlas_domain::{Language, ScanConfig, ScanReport, Symbol};
 use std::path::Path;
 
 pub(crate) mod parser;

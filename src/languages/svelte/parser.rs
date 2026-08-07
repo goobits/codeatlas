@@ -1,5 +1,5 @@
-use crate::domain::Symbol;
 use anyhow::Result;
+use codeatlas_domain::Symbol;
 use std::path::Path;
 
 pub(crate) fn parse_file(file_path: &Path, root_dir: &Path, source: &str) -> Result<Vec<Symbol>> {

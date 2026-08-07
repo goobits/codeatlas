@@ -1,13 +1,13 @@
 use super::{contexts, Module, ModuleKey, ProjectEvidence, EXTRACTOR};
 use crate::config::ResolvedAnalysisProject;
-use crate::domain::source_graph::{
+use crate::languages::typescript::parser;
+use anyhow::Result;
+use codeatlas_domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, SourceEdge, SourceEdgeKind,
     SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceSymbol,
     SourceVisibility,
 };
-use crate::domain::Symbol;
-use crate::languages::typescript::parser;
-use anyhow::Result;
+use codeatlas_domain::Symbol;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 

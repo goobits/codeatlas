@@ -1,6 +1,6 @@
 //! Shared pure matching primitives for adapter-owned effect evidence.
 
-use crate::domain::{CallableEffect, EffectKind, EvidenceClass};
+use codeatlas_domain::{CallableEffect, EffectKind, EvidenceClass};
 use std::collections::BTreeSet;
 
 pub(super) fn record_direct_effect(effects: &mut BTreeSet<CallableEffect>, kind: EffectKind) {
@@ -32,7 +32,7 @@ pub(super) fn has_qualified_action(
 #[cfg(test)]
 mod tests {
     use super::{has_qualified_action, record_direct_effect};
-    use crate::domain::{EffectKind, EffectProvenance, EvidenceClass};
+    use codeatlas_domain::{EffectKind, EffectProvenance, EvidenceClass};
     use std::collections::BTreeSet;
 
     #[test]

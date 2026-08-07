@@ -144,7 +144,7 @@ fn load_graph(
     config_path: Option<&Path>,
 ) -> Result<(
     Vec<crate::config::ResolvedAnalysisProject>,
-    crate::domain::source_graph::SourceGraph,
+    codeatlas_domain::source_graph::SourceGraph,
     PathBuf,
 )> {
     let (projects, repository_root) = load_projects(path, workspace, config_path)?;
@@ -234,7 +234,7 @@ fn apply_exact_source_family(projects: &mut [ResolvedAnalysisProject], family: S
 mod tests {
     use super::{apply_exact_source_family, source_family, status_gates, SourceFamily};
     use crate::config::ResolvedAnalysisProject;
-    use crate::domain::source_graph::ProjectId;
+    use codeatlas_domain::source_graph::ProjectId;
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::Path;

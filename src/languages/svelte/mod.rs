@@ -3,9 +3,9 @@ pub(super) mod reachability;
 
 pub(crate) use reachability::parse_source as parse_module_source;
 
-use crate::domain::{Language, Symbol};
 use crate::languages::definition::LanguageDefinition;
 use anyhow::Result;
+use codeatlas_domain::{Language, Symbol};
 use std::path::Path;
 
 /// Svelte/SvelteKit language adapter.

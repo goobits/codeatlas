@@ -1,6 +1,6 @@
 use super::parser;
-use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
 use crate::languages::ecmascript::resolver;
+use codeatlas_domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 
@@ -152,7 +152,7 @@ fn referenced_declaration_symbols(
         else {
             continue;
         };
-        symbol.visibility = crate::domain::Visibility::Public;
+        symbol.visibility = codeatlas_domain::Visibility::Public;
         symbol.referenced = true;
         rewrite_symbol_signatures(&mut symbol, aliases);
         by_file.entry(file).or_default().push(symbol);
@@ -243,7 +243,7 @@ pub(crate) fn reachable_symbol_ids_for_exports(
 }
 
 fn collect_public_symbol_ids(symbol: &Symbol, ids: &mut HashSet<String>) {
-    if symbol.visibility == crate::domain::Visibility::Public {
+    if symbol.visibility == codeatlas_domain::Visibility::Public {
         ids.insert(symbol.id.clone());
     }
     for child in &symbol.children {
@@ -309,7 +309,7 @@ fn reference_signatures(symbol: &Symbol) -> Vec<String> {
 
 fn collect_public_child_signatures(symbols: &[Symbol], signatures: &mut Vec<String>) {
     for symbol in symbols {
-        if symbol.visibility != crate::domain::Visibility::Public {
+        if symbol.visibility != codeatlas_domain::Visibility::Public {
             continue;
         }
         signatures.push(symbol.signature.clone());
@@ -603,7 +603,7 @@ fn public_symbol_variants(
         };
         for alias in public_aliases {
             let mut public_symbol = symbol.clone();
-            public_symbol.visibility = crate::domain::Visibility::Public;
+            public_symbol.visibility = codeatlas_domain::Visibility::Public;
             rename_public_symbol(&mut public_symbol, alias);
             rewrite_symbol_signatures(&mut public_symbol, aliases);
             variants.push(public_symbol);

@@ -1,9 +1,9 @@
 use crate::dead_code::{DeadCodeFinding, DeadCodeFindingKind, DeadCodeReport};
-use crate::domain::source_graph::{
+use anyhow::Result;
+use codeatlas_domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, ContextRole, FindingConfidence,
 };
-use crate::domain::{EvidenceClass, SourceDisposition};
-use anyhow::Result;
+use codeatlas_domain::{EvidenceClass, SourceDisposition};
 use std::collections::BTreeMap;
 
 pub(crate) fn render_json(report: &DeadCodeReport) -> Result<String> {

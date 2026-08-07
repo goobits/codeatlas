@@ -2,7 +2,7 @@ use super::{
     python_import, python_import_from, span_from_range, PythonDynamicDependency,
     PythonReachabilityFacts, PythonScopedImport, PythonUncertainty, PythonUncertaintyKind,
 };
-use crate::domain::Span;
+use codeatlas_domain::Span;
 use rustpython_ast::{Ranged, Visitor};
 use rustpython_parser::ast;
 use rustpython_parser::source_code::LineIndex;

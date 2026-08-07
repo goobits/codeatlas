@@ -13,12 +13,12 @@ use self::shape::{
     query_result, resolve_table_references,
 };
 use crate::config::PostgresQueryPolicyConfig;
-use crate::domain::FuzzPolicyEvidence;
 use crate::execution::ExecutionEffect;
 use crate::postgres::model::{
     PostgresCatalogInventory, PostgresQueryContract, PostgresQueryEligibilityReason,
     PostgresQueryEligibilityReasonCode, PostgresStatementClass,
 };
+use codeatlas_domain::FuzzPolicyEvidence;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 

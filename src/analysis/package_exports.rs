@@ -1,6 +1,6 @@
 //! Public package export annotation and declaration consolidation.
 
-use crate::domain::{PackageInfo, ScanConfig, ScanReport, Symbol};
+use codeatlas_domain::{PackageInfo, ScanConfig, ScanReport, Symbol};
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
@@ -153,7 +153,7 @@ fn format_public_path(package: &str, public_path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{consolidate_declaration_symbols, format_public_path};
-    use crate::domain::ScanReport;
+    use codeatlas_domain::ScanReport;
 
     #[test]
     fn formats_package_export_paths() {
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn declaration_consolidation_prefers_the_root_export_deterministically() {
-        fn symbol(path: &str, export_path: &str) -> crate::domain::Symbol {
+        fn symbol(path: &str, export_path: &str) -> codeatlas_domain::Symbol {
             let mut symbol = crate::languages::typescript::parser::parse_source(
                 "export interface PublicApi { readonly ready: boolean }",
                 path,

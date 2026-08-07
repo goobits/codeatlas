@@ -8,7 +8,7 @@ use std::path::PathBuf;
 fn fixture() -> (
     PathBuf,
     Vec<crate::config::ResolvedAnalysisProject>,
-    crate::domain::source_graph::SourceGraph,
+    codeatlas_domain::source_graph::SourceGraph,
 ) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/testing");
     let project = ProjectConfig::load(&root, Some(&root.join("codeatlas.json")))
@@ -115,7 +115,7 @@ fn impact_and_witnesses_separate_observed_declared_and_fallback_evidence() {
         graph
             .contexts
             .values()
-            .filter(|context| context.role == crate::domain::source_graph::ContextRole::Test)
+            .filter(|context| context.role == codeatlas_domain::source_graph::ContextRole::Test)
             .map(|context| &context.project)
             .collect::<std::collections::BTreeSet<_>>()
             .len()

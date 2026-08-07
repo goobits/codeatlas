@@ -1,6 +1,6 @@
 use super::source_layout::SourceLayout;
-use crate::domain::{PackageExport, PackageInfo};
 use anyhow::{Context, Result};
+use codeatlas_domain::{PackageExport, PackageInfo};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 

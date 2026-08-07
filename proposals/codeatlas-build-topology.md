@@ -147,6 +147,13 @@ continues to exclude the independently locked isolation probe, and packages the
 new crate. A focused topology test rejects a wildcard member and loss of the
 probe's nested workspace or lock before any source move is attempted.
 
+TypeMill checkpoint: stable Mill 0.8.18 advertised Rust file moves and was
+probed from clean commit `c9ac41b`. Two destination-safe previews blocked
+without source mutation; the final preview reported `target_not_supported`
+because its workspace resource reconciliation reached an unrelated Python
+import root. No plan was applied. The accepted ordinary-edit fallback owns the
+move rather than retaining a partial TypeMill result or compatibility module.
+
 Verify: `cargo test -p codeatlas-domain`, root scan/check/inspect schema bytes,
 and HTTP/PostgreSQL docs fixtures are unchanged. Import search finds no root
 domain module or compatibility re-export and no HTTP/PostgreSQL dependency on

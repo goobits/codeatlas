@@ -20,7 +20,7 @@ fn scan_reports_require_an_explicit_schema_contract() {
         "imports":[],
         "unused_public":[]
     }"#;
-    assert!(serde_json::from_str::<crate::domain::ScanReport>(legacy).is_err());
+    assert!(serde_json::from_str::<codeatlas_domain::ScanReport>(legacy).is_err());
 }
 
 #[test]
@@ -134,7 +134,7 @@ export class StoreImpl {
             .filter(|child| child.name == "current")
             .collect::<Vec<_>>();
         assert_eq!(accessors.len(), 1);
-        assert_eq!(accessors[0].kind, crate::domain::SymbolKind::Property);
+        assert_eq!(accessors[0].kind, codeatlas_domain::SymbolKind::Property);
         assert!(accessors[0]
             .signature
             .lines()

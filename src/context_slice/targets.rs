@@ -1,6 +1,6 @@
 use super::model::TargetResolution;
-use crate::domain::source_graph::{NodeId, ProjectId, SourceGraph, SourceNode};
 use anyhow::{Context, Result};
+use codeatlas_domain::source_graph::{NodeId, ProjectId, SourceGraph, SourceNode};
 use std::collections::BTreeSet;
 
 pub(crate) fn resolve_target(graph: &SourceGraph, query: &str) -> Result<TargetResolution> {

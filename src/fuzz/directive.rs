@@ -1,4 +1,6 @@
-use crate::domain::{FuzzDenial, FuzzDirectiveIssue, FuzzDirectiveIssueKind, FuzzPolicyEvidence};
+use codeatlas_domain::{
+    FuzzDenial, FuzzDirectiveIssue, FuzzDirectiveIssueKind, FuzzPolicyEvidence,
+};
 
 pub(crate) const FUZZ_DIRECTIVE_MARKER: &str = "@codeatlas-fuzz";
 pub(crate) const MAX_FUZZ_DIRECTIVE_REASON_BYTES: usize = 256;
@@ -167,7 +169,7 @@ fn issue(line: u32, kind: FuzzDirectiveIssueKind, message: &str) -> FuzzDirectiv
 #[cfg(test)]
 mod tests {
     use super::{merge_policy, parse_directive_lines, MAX_FUZZ_DIRECTIVE_REASON_BYTES};
-    use crate::domain::FuzzDirectiveIssueKind;
+    use codeatlas_domain::FuzzDirectiveIssueKind;
 
     #[test]
     fn deny_is_the_only_bounded_subtractive_directive() {

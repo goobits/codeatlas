@@ -1,5 +1,5 @@
 use super::HttpUsageEvidenceKind;
-use crate::domain::source_graph::SourceLanguage;
+use codeatlas_domain::source_graph::SourceLanguage;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum LiteralKind {

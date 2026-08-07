@@ -1,7 +1,7 @@
 use super::cargo::{CargoLayout, CargoTarget};
 use super::{Module, ModuleKey};
-use crate::domain::source_graph::{NodeId, ProjectId};
 use crate::languages::rust::parser;
+use codeatlas_domain::source_graph::{NodeId, ProjectId};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 

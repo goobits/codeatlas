@@ -12,10 +12,10 @@ pub(crate) mod postgres;
 pub(crate) mod testing;
 
 use crate::config::ProjectConfig;
-use crate::domain::{ScanConfig, ScanReport};
 use crate::{analysis, languages, outputs, package};
 use anyhow::Result;
 use clap::ValueEnum;
+use codeatlas_domain::{ScanConfig, ScanReport};
 use std::path::{Path, PathBuf};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

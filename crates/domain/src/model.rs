@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
-pub(crate) const SCAN_SCHEMA_VERSION: u32 = 4;
+pub const SCAN_SCHEMA_VERSION: u32 = 4;
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct ScanReport {
+pub struct ScanReport {
     pub schema_version: u32,
     pub tool_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -38,7 +38,7 @@ impl Default for ScanReport {
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct PackageInfo {
+pub struct PackageInfo {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
@@ -47,27 +47,27 @@ pub(crate) struct PackageInfo {
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct PackageExport {
+pub struct PackageExport {
     pub public_path: String,
     pub source_path: String,
 }
 
 /// A dependency edge from one file to another.
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub(crate) struct FileEdge {
+pub struct FileEdge {
     pub from: String,
     pub to: String,
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, Default)]
-pub(crate) struct ScanStats {
+pub struct ScanStats {
     pub files_scanned: usize,
     pub files_skipped: usize,
     pub symbols_found: usize,
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct SkippedFile {
+pub struct SkippedFile {
     pub path: String,
     pub reason: String,
     pub language: Language,
@@ -76,7 +76,7 @@ pub(crate) struct SkippedFile {
 #[derive(
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
-pub(crate) struct Span {
+pub struct Span {
     pub start_line: u32,
     pub start_col: u32,
     pub end_line: u32,
@@ -84,7 +84,7 @@ pub(crate) struct Span {
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct Symbol {
+pub struct Symbol {
     /// ID Format: "{lang}:{repo_path}:{kind}#{name}"
     pub id: String,
     pub name: String,
@@ -111,7 +111,7 @@ pub(crate) struct Symbol {
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub(crate) struct SymbolDocs {
+pub struct SymbolDocs {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub summary: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -136,7 +136,7 @@ pub(crate) struct SymbolDocs {
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FuzzPolicyEvidence {
+pub struct FuzzPolicyEvidence {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub denial: Option<FuzzDenial>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -147,7 +147,7 @@ pub(crate) struct FuzzPolicyEvidence {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FuzzDenial {
+pub struct FuzzDenial {
     pub line: u32,
     pub reason: String,
 }
@@ -156,7 +156,7 @@ pub(crate) struct FuzzDenial {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FuzzDirectiveIssue {
+pub struct FuzzDirectiveIssue {
     pub line: u32,
     pub kind: FuzzDirectiveIssueKind,
     pub message: String,
@@ -166,7 +166,7 @@ pub(crate) struct FuzzDirectiveIssue {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum FuzzDirectiveIssueKind {
+pub enum FuzzDirectiveIssueKind {
     Malformed,
     UnsupportedAction,
     EmptyReason,
@@ -176,7 +176,7 @@ pub(crate) enum FuzzDirectiveIssueKind {
 }
 
 impl FuzzDirectiveIssueKind {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Malformed => "malformed",
             Self::UnsupportedAction => "unsupported_action",
@@ -190,26 +190,26 @@ impl FuzzDirectiveIssueKind {
 
 #[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Stability {
+pub enum Stability {
     Experimental,
     Beta,
     Stable,
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct ImportUsage {
+pub struct ImportUsage {
     pub id: String,
     pub importers: Vec<String>,
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct UnusedPublic {
+pub struct UnusedPublic {
     pub id: String,
     pub suggestion: String,
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) enum Visibility {
+pub enum Visibility {
     Public,
     Internal,
     Private,
@@ -217,7 +217,7 @@ pub(crate) enum Visibility {
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub(crate) enum Language {
+pub enum Language {
     TypeScript,
     Python,
     Rust,
@@ -227,7 +227,7 @@ pub(crate) enum Language {
 #[derive(
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
-pub(crate) enum SymbolKind {
+pub enum SymbolKind {
     Module,
     Class,
     Method,

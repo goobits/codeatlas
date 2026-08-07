@@ -1,12 +1,12 @@
 use super::resolver::{ModuleResolver, Resolution};
 use super::{contexts, Module, ModuleKey, EXTRACTOR};
-use crate::domain::source_graph::{
-    AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, SourceBinding, SourceEdge,
-    SourceEdgeKind, SourceEvidence, SourceGraph,
-};
 use crate::languages::reachability::{connect_named_symbol_edges, resolve_reference_sources};
 use crate::languages::typescript::parser;
 use anyhow::Result;
+use codeatlas_domain::source_graph::{
+    AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, SourceBinding, SourceEdge,
+    SourceEdgeKind, SourceEvidence, SourceGraph,
+};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub(super) fn connect_module(
@@ -305,7 +305,7 @@ fn connect_module_resolution(
     specifier: &str,
     resolution: &Resolution,
     kind: SourceEdgeKind,
-    span: Option<crate::domain::Span>,
+    span: Option<codeatlas_domain::Span>,
 ) {
     let (target, observed_kind) = match resolution {
         Resolution::Resolved(key) | Resolution::ResolvedResource(key) => (

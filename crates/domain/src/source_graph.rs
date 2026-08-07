@@ -13,10 +13,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-pub(crate) const SOURCE_GRAPH_SCHEMA_VERSION: u32 = 6;
+pub const SOURCE_GRAPH_SCHEMA_VERSION: u32 = 6;
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct SourceGraph {
+pub struct SourceGraph {
     pub schema_version: u32,
     pub projects: BTreeMap<ProjectId, SourceProject>,
     pub nodes: BTreeMap<NodeId, SourceNode>,
@@ -39,32 +39,32 @@ impl Default for SourceGraph {
 }
 
 impl SourceGraph {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
-    pub(crate) fn add_project(&mut self, project: SourceProject) -> Result<(), GraphError> {
+    pub fn add_project(&mut self, project: SourceProject) -> Result<(), GraphError> {
         if self.projects.insert(project.id.clone(), project).is_some() {
             return Err(GraphError::Project);
         }
         Ok(())
     }
 
-    pub(crate) fn add_node(&mut self, id: NodeId, node: SourceNode) -> Result<(), GraphError> {
+    pub fn add_node(&mut self, id: NodeId, node: SourceNode) -> Result<(), GraphError> {
         if self.nodes.insert(id, node).is_some() {
             return Err(GraphError::Node);
         }
         Ok(())
     }
 
-    pub(crate) fn add_context(&mut self, context: SourceContext) -> Result<(), GraphError> {
+    pub fn add_context(&mut self, context: SourceContext) -> Result<(), GraphError> {
         if self.contexts.insert(context.id.clone(), context).is_some() {
             return Err(GraphError::Context);
         }
         Ok(())
     }
 
-    pub(crate) fn record_boundary(
+    pub fn record_boundary(
         &mut self,
         project: &ProjectId,
         node: Option<NodeId>,
@@ -86,7 +86,7 @@ impl SourceGraph {
         });
     }
 
-    pub(crate) fn validate(&self) -> Result<(), Vec<GraphDiagnostic>> {
+    pub fn validate(&self) -> Result<(), Vec<GraphDiagnostic>> {
         let mut diagnostics = Vec::new();
 
         for (node_id, node) in &self.nodes {
@@ -193,7 +193,7 @@ impl SourceGraph {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
 #[serde(transparent)]
-pub(crate) struct ProjectId(pub String);
+pub struct ProjectId(pub String);
 
 impl fmt::Display for ProjectId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -205,10 +205,10 @@ impl fmt::Display for ProjectId {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
 #[serde(transparent)]
-pub(crate) struct NodeId(pub String);
+pub struct NodeId(pub String);
 
 impl NodeId {
-    pub(crate) fn file(project: &ProjectId, path: &str) -> Self {
+    pub fn file(project: &ProjectId, path: &str) -> Self {
         Self(format!(
             "file/{}/{}",
             escape_id_segment(&project.0),
@@ -216,7 +216,7 @@ impl NodeId {
         ))
     }
 
-    pub(crate) fn symbol(file: &Self, local_id: &str) -> Self {
+    pub fn symbol(file: &Self, local_id: &str) -> Self {
         Self(format!(
             "symbol/{}/{}",
             escape_id_segment(&file.0),
@@ -235,10 +235,10 @@ impl fmt::Display for NodeId {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
 #[serde(transparent)]
-pub(crate) struct ContextId(pub String);
+pub struct ContextId(pub String);
 
 impl ContextId {
-    pub(crate) fn new(project: &ProjectId, name: &str) -> Self {
+    pub fn new(project: &ProjectId, name: &str) -> Self {
         Self(format!(
             "context/{}/{}",
             escape_id_segment(&project.0),
@@ -254,7 +254,7 @@ impl fmt::Display for ContextId {
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct SourceProject {
+pub struct SourceProject {
     pub id: ProjectId,
     pub root: String,
     pub languages: BTreeSet<SourceLanguage>,
@@ -263,13 +263,13 @@ pub(crate) struct SourceProject {
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub(crate) enum SourceNode {
+pub enum SourceNode {
     File(SourceFile),
     Symbol(SourceSymbol),
 }
 
 impl SourceNode {
-    pub(crate) fn project(&self) -> &ProjectId {
+    pub fn project(&self) -> &ProjectId {
         match self {
             Self::File(file) => &file.project,
             Self::Symbol(symbol) => &symbol.project,
@@ -278,14 +278,14 @@ impl SourceNode {
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct SourceFile {
+pub struct SourceFile {
     pub project: ProjectId,
     pub path: String,
     pub language: SourceLanguage,
 }
 
 #[derive(schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct SourceSymbol {
+pub struct SourceSymbol {
     pub project: ProjectId,
     pub file: NodeId,
     pub name: String,
@@ -312,7 +312,7 @@ pub(crate) struct SourceSymbol {
     Ord,
     Hash,
 )]
-pub(crate) enum SourceLanguage {
+pub enum SourceLanguage {
     #[serde(rename = "javascript")]
     JavaScript,
     #[serde(rename = "typescript")]
@@ -339,7 +339,7 @@ pub(crate) enum SourceLanguage {
     Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum SourceSymbolKind {
+pub enum SourceSymbolKind {
     Module,
     Class,
     Function,
@@ -388,7 +388,7 @@ impl From<SymbolKind> for SourceSymbolKind {
     Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum SourceVisibility {
+pub enum SourceVisibility {
     Public,
     Internal,
     Private,
@@ -420,14 +420,14 @@ impl From<Visibility> for SourceVisibility {
     Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum AnalysisCompleteness {
+pub enum AnalysisCompleteness {
     Complete,
     Partial,
     Unsupported,
 }
 
 impl AnalysisCompleteness {
-    pub(crate) fn worst(self, other: Self) -> Self {
+    pub fn worst(self, other: Self) -> Self {
         use AnalysisCompleteness::{Complete, Partial, Unsupported};
         match (self, other) {
             (Unsupported, _) | (_, Unsupported) => Unsupported,
@@ -451,7 +451,7 @@ impl AnalysisCompleteness {
     Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum FindingConfidence {
+pub enum FindingConfidence {
     High,
     Medium,
     Low,
@@ -460,7 +460,7 @@ pub(crate) enum FindingConfidence {
 #[derive(
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
-pub(crate) struct SourceContext {
+pub struct SourceContext {
     pub id: ContextId,
     pub project: ProjectId,
     pub name: String,
@@ -484,7 +484,7 @@ pub(crate) struct SourceContext {
     Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ContextRole {
+pub enum ContextRole {
     Production,
     Test,
     Tooling,
@@ -505,7 +505,7 @@ pub(crate) enum ContextRole {
     Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ContextScope {
+pub enum ContextScope {
     #[default]
     Runtime,
     PublicSurface,
@@ -514,7 +514,7 @@ pub(crate) enum ContextScope {
 #[derive(
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
-pub(crate) struct SourceEdge {
+pub struct SourceEdge {
     pub from: NodeId,
     pub to: EdgeTarget,
     pub kind: SourceEdgeKind,
@@ -527,7 +527,7 @@ pub(crate) struct SourceEdge {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
-pub(crate) enum EdgeTarget {
+pub enum EdgeTarget {
     Node(NodeId),
     External(String),
     UnexportedWorkspace(String),
@@ -550,7 +550,7 @@ pub(crate) enum EdgeTarget {
     Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum SourceEdgeKind {
+pub enum SourceEdgeKind {
     Contains,
     ModuleDependency,
     Import,
@@ -566,7 +566,7 @@ pub(crate) enum SourceEdgeKind {
 #[derive(
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
-pub(crate) struct SourceBinding {
+pub struct SourceBinding {
     pub imported: String,
     pub local: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -580,7 +580,7 @@ pub(crate) struct SourceBinding {
 #[derive(
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
-pub(crate) struct SourceEvidence {
+pub struct SourceEvidence {
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
@@ -588,11 +588,7 @@ pub(crate) struct SourceEvidence {
 }
 
 impl SourceEvidence {
-    pub(crate) fn new(
-        path: impl Into<String>,
-        span: Option<Span>,
-        extractor: impl Into<String>,
-    ) -> Self {
+    pub fn new(path: impl Into<String>, span: Option<Span>, extractor: impl Into<String>) -> Self {
         Self {
             path: path.into(),
             span,
@@ -604,7 +600,7 @@ impl SourceEvidence {
 #[derive(
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
-pub(crate) struct AnalysisBoundary {
+pub struct AnalysisBoundary {
     pub project: ProjectId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node: Option<NodeId>,
@@ -628,7 +624,7 @@ pub(crate) struct AnalysisBoundary {
     Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum BoundaryKind {
+pub enum BoundaryKind {
     DynamicImport,
     Reflection,
     MacroExpansion,
@@ -639,7 +635,7 @@ pub(crate) enum BoundaryKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct GraphDiagnostic {
+pub struct GraphDiagnostic {
     pub code: &'static str,
     pub message: String,
 }
@@ -651,7 +647,7 @@ impl GraphDiagnostic {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum GraphError {
+pub enum GraphError {
     #[error("project ID already exists")]
     Project,
     #[error("node ID already exists")]
@@ -670,7 +666,7 @@ mod tests {
         AnalysisCompleteness, BoundaryKind, ContextId, NodeId, ProjectId, SourceEvidence,
         SourceGraph, SourceLanguage, SourceProject, SourceSymbolKind, SourceVisibility,
     };
-    use crate::domain::{SymbolKind, Visibility};
+    use crate::{SymbolKind, Visibility};
     use std::collections::BTreeSet;
 
     #[test]

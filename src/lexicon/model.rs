@@ -1,6 +1,6 @@
 use super::semantic_siblings::SemanticSiblingAnalysis;
 use crate::config::{LexiconProviderCoverage, LexiconProviderFormat, LexiconProviderTier};
-use crate::domain::{EvidenceClass, Language, Span, SymbolKind, Visibility};
+use codeatlas_domain::{EvidenceClass, Language, Span, SymbolKind, Visibility};
 use serde::Serialize;
 
 pub(crate) const LEXICON_SCHEMA_VERSION: u32 = 5;

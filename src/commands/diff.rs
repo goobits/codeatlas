@@ -1,7 +1,7 @@
 use super::{annotate_report, build_scan_config, exit_code, load_project, scan_project};
-use crate::domain::{PackageInfo, ScanReport, Symbol, SymbolKind};
 use anyhow::{Context, Result};
 use base64::Engine;
+use codeatlas_domain::{PackageInfo, ScanReport, Symbol, SymbolKind};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -531,7 +531,7 @@ mod tests {
     use super::{
         baseline_from_reports, symbols_by_stable_key, ROOT_EXPORT_PATH, SUPPORTING_EXPORT_PATH,
     };
-    use crate::domain::{
+    use codeatlas_domain::{
         Language, PackageExport, PackageInfo, ScanReport, Symbol, SymbolKind, Visibility,
     };
 

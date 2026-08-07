@@ -1,8 +1,8 @@
-use crate::domain::{Language, ScanConfig, ScanReport, Symbol, Visibility};
 use crate::languages;
 use crate::languages::ecmascript::resolver;
 use crate::package;
 use anyhow::{Context, Result};
+use codeatlas_domain::{Language, ScanConfig, ScanReport, Symbol, Visibility};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 

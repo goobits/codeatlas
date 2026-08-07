@@ -213,7 +213,7 @@ fn collect_query_file(
 fn collected_query(
     contract_id: &str,
     sql: ecmascript::StaticSql,
-    fuzz_policy: Option<crate::domain::FuzzPolicyEvidence>,
+    fuzz_policy: Option<codeatlas_domain::FuzzPolicyEvidence>,
     documentation: PostgresQueryDocumentation,
     fuzz_exclusions: &[String],
 ) -> CollectedQuery {
@@ -244,7 +244,7 @@ fn collected_query(
 }
 
 struct LeadingSqlEvidence {
-    fuzz_policy: Option<crate::domain::FuzzPolicyEvidence>,
+    fuzz_policy: Option<codeatlas_domain::FuzzPolicyEvidence>,
     documentation: PostgresQueryDocumentation,
 }
 
@@ -369,7 +369,7 @@ fn append_fuzz_policy_findings(
 #[cfg(test)]
 mod fuzz_directive_tests {
     use super::leading_sql_evidence;
-    use crate::domain::FuzzDirectiveIssueKind;
+    use codeatlas_domain::FuzzDirectiveIssueKind;
 
     #[test]
     fn sql_directive_is_leading_comment_convenience_only() {

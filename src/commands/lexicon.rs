@@ -1,9 +1,9 @@
 use super::{annotate_report, build_scan_config, exit_code, load_project, scan_project};
 use crate::config::ProjectConfig;
-use crate::domain::{ScanReport, Symbol};
 use crate::{lexicon, outputs};
 use anyhow::{Context, Result};
 use clap::ValueEnum;
+use codeatlas_domain::{ScanReport, Symbol};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 

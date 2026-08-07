@@ -13,7 +13,7 @@ use super::model::{
 use super::provider::{canonicalize_term_pair, ProviderRelationKind};
 use super::symbols::project_symbol;
 use crate::config::LexiconProviderTier;
-use crate::domain::Symbol;
+use codeatlas_domain::Symbol;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) struct ConceptObservation<'a> {

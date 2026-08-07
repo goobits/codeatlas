@@ -1,5 +1,5 @@
 use super::{parser, resolver};
-use crate::domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol, Visibility};
+use codeatlas_domain::{Language, ScanConfig, ScanReport, SkippedFile, Symbol, Visibility};
 use std::path::Path;
 
 struct ModuleInfo {

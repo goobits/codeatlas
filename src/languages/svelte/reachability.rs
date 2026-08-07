@@ -24,7 +24,7 @@ fn offset_module_info(info: &mut TypeScriptModuleInfo, line_offset: u32) {
     }
 }
 
-fn offset_symbol(symbol: &mut crate::domain::Symbol, line_offset: u32) {
+fn offset_symbol(symbol: &mut codeatlas_domain::Symbol, line_offset: u32) {
     if let Some(span) = &mut symbol.span {
         span.start_line += line_offset;
         span.end_line += line_offset;

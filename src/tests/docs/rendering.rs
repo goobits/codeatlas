@@ -63,7 +63,7 @@ fn package_docs_follow_public_exports_and_jsdoc() {
         .iter()
         .find(|child| child.name == "size")
         .expect("ThingStore.size getter");
-    assert_eq!(size.kind, crate::domain::SymbolKind::Property);
+    assert_eq!(size.kind, codeatlas_domain::SymbolKind::Property);
     assert_eq!(size.signature, "get size() -> number");
     let add = report
         .symbols

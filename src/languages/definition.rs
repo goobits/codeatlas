@@ -4,8 +4,8 @@
 //! 1. Implement `LanguageDefinition` for your language
 //! 2. Add it to the built-in `LanguageRegistry`
 
-use crate::domain::{Language, ScanConfig, ScanReport, Symbol};
 use anyhow::Result;
+use codeatlas_domain::{Language, ScanConfig, ScanReport, Symbol};
 use std::path::Path;
 
 /// Core trait implemented by each built-in language adapter.

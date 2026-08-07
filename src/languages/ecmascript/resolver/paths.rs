@@ -1,6 +1,6 @@
 use super::{ModuleKey, Resolution};
-use crate::domain::source_graph::ProjectId;
 use anyhow::Result;
+use codeatlas_domain::source_graph::ProjectId;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 

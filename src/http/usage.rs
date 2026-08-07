@@ -1,11 +1,11 @@
 use super::model::{HttpConfidence, HttpSourceCompleteness, HttpSourceOperation};
 use crate::analysis::reachability::Reachability;
 use crate::config::{RepositoryMember, RepositoryScope, RepositoryScopeEvidence};
-use crate::domain::source_graph::{
+use anyhow::{Context, Result};
+use codeatlas_domain::source_graph::{
     AnalysisCompleteness, ContextRole, EdgeTarget, FindingConfidence, NodeId, ProjectId,
     SourceEdgeKind, SourceGraph, SourceNode,
 };
-use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 

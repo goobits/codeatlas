@@ -1,6 +1,6 @@
 use super::SourceIndex;
 use crate::config::{AnalysisContextConfig, ResolvedAnalysisProject};
-use crate::domain::source_graph::{
+use codeatlas_domain::source_graph::{
     AnalysisCompleteness, ContextRole, ContextScope, EdgeTarget, NodeId, ProjectId, SourceEdge,
     SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
     SourceProject,

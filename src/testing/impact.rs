@@ -6,11 +6,11 @@ use super::{
 };
 use crate::analysis::reachability::{project_confidence, render_diagnostics, Reachability};
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
-use crate::domain::source_graph::{
+use anyhow::Result;
+use codeatlas_domain::source_graph::{
     ContextId, ContextRole, FindingConfidence, NodeId, ProjectId, SourceContext, SourceGraph,
     SourceNode,
 };
-use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 

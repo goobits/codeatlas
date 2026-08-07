@@ -1,7 +1,7 @@
 use super::reference;
 use crate::config::DocsConfig;
-use crate::domain::{ScanReport, Symbol};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use codeatlas_domain::{ScanReport, Symbol};
 use pulldown_cmark::{html, Event, Options, Parser};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;

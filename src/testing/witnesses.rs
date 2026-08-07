@@ -4,11 +4,11 @@ use super::{
 };
 use crate::analysis::reachability::{render_diagnostics, symbol_confidence, Reachability};
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
-use crate::domain::source_graph::{
+use anyhow::Result;
+use codeatlas_domain::source_graph::{
     ContextId, ContextRole, ContextScope, FindingConfidence, ProjectId, SourceContext, SourceGraph,
     SourceNode, SourceVisibility,
 };
-use anyhow::Result;
 use globset::GlobMatcher;
 use std::collections::BTreeSet;
 

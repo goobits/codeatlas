@@ -4,11 +4,11 @@
 //! module combines their facts, then applies portable project contexts.
 
 use crate::config::{AnalysisContextConfig, ResolvedAnalysisProject};
-use crate::domain::source_graph::{
+use anyhow::{Context, Result};
+use codeatlas_domain::source_graph::{
     AnalysisCompleteness, ContextId, EdgeTarget, NodeId, SourceContext, SourceEdge, SourceEdgeKind,
     SourceEvidence, SourceGraph, SourceLanguage, SourceNode, SourceProject,
 };
-use anyhow::{Context, Result};
 use globset::{GlobBuilder, GlobMatcher};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -336,7 +336,7 @@ fn matching_files(
 #[cfg(test)]
 mod tests {
     use super::detected_language;
-    use crate::domain::source_graph::SourceLanguage;
+    use codeatlas_domain::source_graph::SourceLanguage;
     use std::path::Path;
 
     #[test]

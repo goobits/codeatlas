@@ -10,7 +10,7 @@ pub(crate) mod typescript;
 
 pub(crate) use svelte::parse_module_source as parse_svelte_module_source;
 
-use crate::domain::{
+use codeatlas_domain::{
     LanguageScanner, ScanConfig, ScanReport, SkippedFile, Symbol, SymbolKind, Visibility,
 };
 use definition::LanguageDefinition;

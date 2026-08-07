@@ -1,4 +1,4 @@
-use crate::domain::{Language, ScanReport};
+use codeatlas_domain::{Language, ScanReport};
 use colored::*;
 
 pub(crate) fn render(report: &ScanReport) -> String {

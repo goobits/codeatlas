@@ -4,7 +4,7 @@ use super::format::{
     format_return_type, format_ts_fn_param, format_ts_type, format_type_args, format_type_params,
     kind_to_str, member_visibility,
 };
-use crate::domain::{
+use codeatlas_domain::{
     CallableContract, CallableKind, Language, Span, Symbol, SymbolKind, Visibility,
 };
 use swc_core::common::{sync::Lrc, SourceFile, SourceMap};

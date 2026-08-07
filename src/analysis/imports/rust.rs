@@ -1,6 +1,6 @@
 use super::{add_file_edge, add_importer, FileEdges, Importers};
-use crate::domain::Language;
 use crate::languages::rust::{parser, resolver};
+use codeatlas_domain::Language;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 

@@ -4,8 +4,8 @@ use super::{
     TestingInventoryReport, TestingProjectInventory,
 };
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
-use crate::domain::source_graph::{AnalysisCompleteness, ContextRole, SourceGraph, SourceNode};
 use anyhow::Result;
+use codeatlas_domain::source_graph::{AnalysisCompleteness, ContextRole, SourceGraph, SourceNode};
 use std::collections::BTreeMap;
 
 pub(crate) fn analyze(
@@ -59,7 +59,7 @@ pub(crate) fn analyze(
 
 fn resolve_subject(
     graph: &SourceGraph,
-    context: &crate::domain::source_graph::SourceContext,
+    context: &codeatlas_domain::source_graph::SourceContext,
     subject: &TestSubjectConfig,
 ) -> Result<DeclaredTestSubject> {
     match subject {

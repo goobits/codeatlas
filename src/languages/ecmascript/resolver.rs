@@ -1,7 +1,7 @@
 use super::{Module, ModuleKey, ProjectSelection};
-use crate::domain::source_graph::ProjectId;
 use crate::languages::typescript::parser::DynamicDependencyTarget;
 use anyhow::Result;
+use codeatlas_domain::source_graph::ProjectId;
 use config::{apply_alias_capture, load_alias_config, load_package_imports, match_alias};
 use paths::{
     has_resource_query, infer_workspace_root, is_generated_package_export,

@@ -1,6 +1,6 @@
 use super::callable::qualified_name;
-use crate::domain::{CallableEffect, EffectKind};
 use crate::languages::effects::{has_qualified_action, record_direct_effect};
+use codeatlas_domain::{CallableEffect, EffectKind};
 use rustpython_ast::Visitor;
 use rustpython_parser::ast;
 use std::collections::BTreeSet;

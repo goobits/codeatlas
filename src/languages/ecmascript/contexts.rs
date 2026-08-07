@@ -1,10 +1,10 @@
 use super::resolver::ModuleResolver;
 use super::{Module, ModuleKey, ProjectEvidence};
 use crate::config::ResolvedAnalysisProject;
-use crate::domain::source_graph::{
+use anyhow::Result;
+use codeatlas_domain::source_graph::{
     ContextId, ContextRole, ContextScope, NodeId, SourceContext, SourceGraph,
 };
-use anyhow::Result;
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;

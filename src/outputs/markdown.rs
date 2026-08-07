@@ -1,5 +1,5 @@
 use super::reference;
-use crate::domain::{ScanReport, Symbol};
+use codeatlas_domain::{ScanReport, Symbol};
 
 pub(crate) fn render_evidence(document: &reference::EvidenceDocument) -> anyhow::Result<String> {
     document.validate()?;

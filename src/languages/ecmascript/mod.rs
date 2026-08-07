@@ -1,7 +1,7 @@
 use super::typescript::parser;
 use crate::config::ResolvedAnalysisProject;
-use crate::domain::source_graph::{NodeId, ProjectId, SourceGraph, SourceLanguage};
 use anyhow::Result;
+use codeatlas_domain::source_graph::{NodeId, ProjectId, SourceGraph, SourceLanguage};
 use rayon::prelude::*;
 use resolver::ModuleResolver;
 use std::collections::{BTreeMap, BTreeSet};

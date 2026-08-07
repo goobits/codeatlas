@@ -1,5 +1,5 @@
-use crate::domain::source_graph::SourceLanguage;
-use crate::domain::{FuzzDirectiveIssueKind, FuzzPolicyEvidence, Symbol};
+use codeatlas_domain::source_graph::SourceLanguage;
+use codeatlas_domain::{FuzzDirectiveIssueKind, FuzzPolicyEvidence, Symbol};
 use std::collections::BTreeSet;
 use std::path::Path;
 

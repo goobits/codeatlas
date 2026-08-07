@@ -45,8 +45,8 @@ pub(crate) struct RustAnalysisConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct AnalysisContextConfig {
-    pub role: crate::domain::source_graph::ContextRole,
-    pub scope: crate::domain::source_graph::ContextScope,
+    pub role: codeatlas_domain::source_graph::ContextRole,
+    pub scope: codeatlas_domain::source_graph::ContextScope,
     pub entrypoints: Vec<String>,
     pub subjects: Vec<TestSubjectConfig>,
 }
@@ -54,8 +54,8 @@ pub(crate) struct AnalysisContextConfig {
 impl Default for AnalysisContextConfig {
     fn default() -> Self {
         Self {
-            role: crate::domain::source_graph::ContextRole::Production,
-            scope: crate::domain::source_graph::ContextScope::Runtime,
+            role: codeatlas_domain::source_graph::ContextRole::Production,
+            scope: codeatlas_domain::source_graph::ContextScope::Runtime,
             entrypoints: Vec::new(),
             subjects: Vec::new(),
         }
@@ -73,7 +73,7 @@ pub(crate) enum TestSubjectConfig {
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ResolvedAnalysisProject {
-    pub id: crate::domain::source_graph::ProjectId,
+    pub id: codeatlas_domain::source_graph::ProjectId,
     pub root: PathBuf,
     pub report_root: String,
     pub languages: Vec<String>,
@@ -175,7 +175,7 @@ impl ProjectConfig {
                 validate_test_subjects(&id, name, context)?;
             }
             let resolved_project = ResolvedAnalysisProject {
-                id: crate::domain::source_graph::ProjectId(id),
+                id: codeatlas_domain::source_graph::ProjectId(id),
                 report_root: {
                     let relative = crate::paths::normalize_relative_path(&root, &self.config_dir);
                     if relative.is_empty() {
@@ -208,8 +208,8 @@ impl ProjectConfig {
             BTreeMap::from([(
                 "application".to_string(),
                 AnalysisContextConfig {
-                    role: crate::domain::source_graph::ContextRole::Production,
-                    scope: crate::domain::source_graph::ContextScope::Runtime,
+                    role: codeatlas_domain::source_graph::ContextRole::Production,
+                    scope: codeatlas_domain::source_graph::ContextScope::Runtime,
                     entrypoints: self.config.entrypoints.clone(),
                     subjects: Vec::new(),
                 },
@@ -291,7 +291,7 @@ impl ProjectConfig {
         add_inferred_context(
             projects,
             "codeatlas-http-fuzz",
-            crate::domain::source_graph::ContextRole::Test,
+            codeatlas_domain::source_graph::ContextRole::Test,
             &fuzz_sources,
         )
     }
@@ -350,7 +350,7 @@ impl ProjectConfig {
         add_inferred_context(
             projects,
             "codeatlas-postgres-migrations",
-            crate::domain::source_graph::ContextRole::Production,
+            codeatlas_domain::source_graph::ContextRole::Production,
             &sources,
         )
     }
@@ -430,7 +430,7 @@ pub(super) fn finalize_project_boundaries(projects: &mut [ResolvedAnalysisProjec
 fn add_inferred_context(
     projects: &mut [ResolvedAnalysisProject],
     name: &str,
-    role: crate::domain::source_graph::ContextRole,
+    role: codeatlas_domain::source_graph::ContextRole,
     sources: &[PathBuf],
 ) -> Result<()> {
     for project in projects {
@@ -452,12 +452,12 @@ fn add_inferred_context(
                 .entry(name.to_string())
                 .or_insert_with(|| AnalysisContextConfig {
                     role,
-                    scope: crate::domain::source_graph::ContextScope::Runtime,
+                    scope: codeatlas_domain::source_graph::ContextScope::Runtime,
                     entrypoints: Vec::new(),
                     subjects: Vec::new(),
                 });
         if context.role != role
-            || context.scope != crate::domain::source_graph::ContextScope::Runtime
+            || context.scope != codeatlas_domain::source_graph::ContextScope::Runtime
         {
             anyhow::bail!(
                 "Reserved inferred analysis context {name:?} in {} must use role {role:?} and runtime scope",
@@ -502,7 +502,7 @@ fn validate_test_subjects(
     if context.subjects.is_empty() {
         return Ok(());
     }
-    if context.role != crate::domain::source_graph::ContextRole::Test {
+    if context.role != codeatlas_domain::source_graph::ContextRole::Test {
         anyhow::bail!(
             "Analysis context {name} in {project} can declare subjects only when its role is test"
         );

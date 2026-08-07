@@ -9,7 +9,7 @@ use super::symbols::{
     sort_symbols, tokenize_identifier,
 };
 use super::SemanticSiblingAnalysis;
-use crate::domain::{ScanReport, Symbol, SymbolKind};
+use codeatlas_domain::{ScanReport, Symbol, SymbolKind};
 use std::collections::{BTreeMap, BTreeSet};
 
 struct SymbolView<'a> {
@@ -234,12 +234,12 @@ fn is_concept_kind(kind: SymbolKind) -> bool {
 #[cfg(test)]
 mod tests {
     use super::analyze;
-    use crate::domain::{
+    use crate::lexicon::{concept_policy::LexiconPolicy, SemanticSiblingAnalysis};
+    use codeatlas_domain::{
         CallableBody, CallableContract, CallableKind, CallableParameter, CallableSignature,
         Constructibility, Language, ParameterRequirement, ParameterRole, ReceiverContract,
         ScanReport, SemanticType, Symbol, SymbolKind, Visibility,
     };
-    use crate::lexicon::{concept_policy::LexiconPolicy, SemanticSiblingAnalysis};
 
     fn symbol(
         file_path: &str,
@@ -262,7 +262,7 @@ mod tests {
                         role: ParameterRole::Positional,
                         requirement: ParameterRequirement::Required,
                         semantic_type: SemanticType::Unknown {
-                            reason: crate::domain::TypeUnknownReason::Unresolved,
+                            reason: codeatlas_domain::TypeUnknownReason::Unresolved,
                             display: Some("unknown".to_string()),
                         },
                         constructibility: Constructibility::Unknown,
@@ -306,7 +306,7 @@ mod tests {
         );
         public_surface.export_paths = vec!["@example/fluid".to_string()];
         let scan = ScanReport {
-            stats: crate::domain::ScanStats {
+            stats: codeatlas_domain::ScanStats {
                 files_scanned: 6,
                 files_skipped: 0,
                 symbols_found: 6,

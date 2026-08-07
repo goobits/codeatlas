@@ -1,4 +1,6 @@
-use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolDocs, SymbolKind, Visibility};
+use codeatlas_domain::{
+    Language, ScanReport, Stability, Symbol, SymbolDocs, SymbolKind, Visibility,
+};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
@@ -417,7 +419,7 @@ fn has_docs(docs: &SymbolDocs) -> bool {
 #[cfg(test)]
 mod tests {
     use super::parse_doc;
-    use crate::domain::Stability;
+    use codeatlas_domain::Stability;
 
     #[test]
     fn parses_structured_jsdoc() {

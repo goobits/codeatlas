@@ -1,4 +1,4 @@
-use crate::domain::FuzzPolicyEvidence;
+use codeatlas_domain::FuzzPolicyEvidence;
 
 pub(super) fn fuzz_policy(source: &str, start_line: u32) -> Option<FuzzPolicyEvidence> {
     let lines = source.lines().collect::<Vec<_>>();

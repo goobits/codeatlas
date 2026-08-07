@@ -1,4 +1,4 @@
-use crate::domain::Symbol;
+use codeatlas_domain::Symbol;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use swc_core::common::{sync::Lrc, SourceMap};
@@ -77,7 +77,7 @@ pub(crate) struct ReachabilityFacts {
 pub(crate) struct DynamicDependency {
     pub target: DynamicDependencyTarget,
     pub kind: DynamicDependencyKind,
-    pub span: crate::domain::Span,
+    pub span: codeatlas_domain::Span,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

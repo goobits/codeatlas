@@ -1,4 +1,4 @@
-use crate::domain::{
+use codeatlas_domain::{
     CallableBlockKind, CallableContract, CallableKind, EffectKind, EffectProvenance, EvidenceClass,
     ReceiverRequirement, SemanticType, Symbol,
 };
@@ -141,7 +141,7 @@ export function parse(value: string | boolean): boolean { return Boolean(value) 
         contract
             .signatures
             .iter()
-            .filter(|signature| signature.body == crate::domain::CallableBody::DeclarationOnly)
+            .filter(|signature| signature.body == codeatlas_domain::CallableBody::DeclarationOnly)
             .count(),
         2
     );

@@ -302,10 +302,10 @@ fn is_static_existence_probe(expression: &Expr) -> bool {
     }
 }
 
-fn source_span(source_map: &SourceMap, span: swc_core::common::Span) -> crate::domain::Span {
+fn source_span(source_map: &SourceMap, span: swc_core::common::Span) -> codeatlas_domain::Span {
     let start = source_map.lookup_char_pos(span.lo);
     let end = source_map.lookup_char_pos(span.hi);
-    crate::domain::Span {
+    codeatlas_domain::Span {
         start_line: start.line as u32,
         start_col: start.col.0 as u32,
         end_line: end.line as u32,

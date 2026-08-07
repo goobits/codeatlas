@@ -11,8 +11,8 @@ pub(crate) use witnesses::analyze as analyze_witnesses;
 pub(crate) use working_tree::paths as git_working_tree_paths;
 
 use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
-use crate::domain::source_graph::{NodeId, SourceContext, SourceGraph, SourceNode};
 use anyhow::{Context, Result};
+use codeatlas_domain::source_graph::{NodeId, SourceContext, SourceGraph, SourceNode};
 use globset::{GlobBuilder, GlobMatcher};
 
 fn configured_subjects<'a>(

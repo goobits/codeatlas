@@ -1,10 +1,10 @@
 use super::{CargoLayout, Module, ModuleKey, EXTRACTOR};
 use crate::config::ResolvedAnalysisProject;
-use crate::domain::source_graph::{
+use anyhow::Result;
+use codeatlas_domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, SourceContext,
     SourceEvidence, SourceGraph,
 };
-use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn add_cargo_contexts(

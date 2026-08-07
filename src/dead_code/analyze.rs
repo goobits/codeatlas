@@ -8,7 +8,7 @@ use crate::analysis::reachability::render_diagnostics;
 use crate::analysis::reachability::{
     file_confidence, project_confidence, symbol_confidence, Reachability,
 };
-use crate::domain::source_graph::{
+use codeatlas_domain::source_graph::{
     BoundaryKind, ContextRole, EdgeTarget, FindingConfidence, NodeId, SourceEdgeKind,
     SourceEvidence, SourceGraph, SourceLanguage, SourceNode, SourceVisibility,
 };
@@ -457,7 +457,7 @@ fn append_fuzz_directive_findings(
     report: &mut DeadCodeReport,
     graph: &SourceGraph,
     reachability: &Reachability,
-    context_names: &BTreeMap<crate::domain::source_graph::ContextId, String>,
+    context_names: &BTreeMap<codeatlas_domain::source_graph::ContextId, String>,
 ) {
     for (node_id, node) in &graph.nodes {
         let SourceNode::Symbol(symbol) = node else {
@@ -489,7 +489,7 @@ fn append_fuzz_directive_findings(
                     confidence: FindingConfidence::High,
                     evidence: SourceEvidence {
                         path: file.path.clone(),
-                        span: Some(crate::domain::Span {
+                        span: Some(codeatlas_domain::Span {
                             start_line: issue.line,
                             start_col: 0,
                             end_line: issue.line,
@@ -518,8 +518,8 @@ fn public_dependency_nodes(graph: &SourceGraph) -> BTreeSet<NodeId> {
     for edge in &graph.edges {
         if matches!(
             edge.kind,
-            crate::domain::source_graph::SourceEdgeKind::Contains
-                | crate::domain::source_graph::SourceEdgeKind::ReExport
+            codeatlas_domain::source_graph::SourceEdgeKind::Contains
+                | codeatlas_domain::source_graph::SourceEdgeKind::ReExport
         ) {
             continue;
         }
@@ -556,7 +556,7 @@ fn public_dependency_nodes(graph: &SourceGraph) -> BTreeSet<NodeId> {
 
 fn root_context_labels(
     roots: &BTreeSet<crate::analysis::reachability::ReachabilityRoot>,
-    names: &BTreeMap<crate::domain::source_graph::ContextId, String>,
+    names: &BTreeMap<codeatlas_domain::source_graph::ContextId, String>,
     graph: &SourceGraph,
 ) -> Vec<DeadCodeRootContext> {
     roots
@@ -579,8 +579,8 @@ fn root_context_labels(
 }
 
 fn context_labels(
-    contexts: &BTreeSet<crate::domain::source_graph::ContextId>,
-    names: &BTreeMap<crate::domain::source_graph::ContextId, String>,
+    contexts: &BTreeSet<codeatlas_domain::source_graph::ContextId>,
+    names: &BTreeMap<codeatlas_domain::source_graph::ContextId, String>,
 ) -> Vec<String> {
     contexts
         .iter()
@@ -596,13 +596,13 @@ fn context_labels(
 fn project_for_node<'a>(
     graph: &'a SourceGraph,
     node: &NodeId,
-) -> Option<&'a crate::domain::source_graph::ProjectId> {
+) -> Option<&'a codeatlas_domain::source_graph::ProjectId> {
     graph.nodes.get(node).map(SourceNode::project)
 }
 
 fn is_workspace_root_project(
     graph: &SourceGraph,
-    project: &crate::domain::source_graph::ProjectId,
+    project: &codeatlas_domain::source_graph::ProjectId,
 ) -> bool {
     graph
         .projects
@@ -620,7 +620,7 @@ fn file_language(graph: &SourceGraph, node: &NodeId) -> Option<SourceLanguage> {
 
 fn unresolved_internal_confidence(
     graph: &SourceGraph,
-    project: &crate::domain::source_graph::ProjectId,
+    project: &codeatlas_domain::source_graph::ProjectId,
     node: Option<&NodeId>,
 ) -> FindingConfidence {
     let project_level_confidence = project_confidence(graph, project);

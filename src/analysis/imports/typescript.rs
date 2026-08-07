@@ -1,7 +1,7 @@
 use super::{add_file_edge, add_importer, FileEdges, Importers};
-use crate::domain::{Language, ScanReport, Symbol, Visibility};
 use crate::languages::ecmascript::resolver;
 use crate::languages::typescript::parser;
+use codeatlas_domain::{Language, ScanReport, Symbol, Visibility};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 

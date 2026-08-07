@@ -1,6 +1,6 @@
-use crate::domain::ScanConfig;
 use crate::languages;
 use crate::{analysis, commands};
+use codeatlas_domain::ScanConfig;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -41,7 +41,7 @@ fn unused_public_typescript() {
     assert!(!unused.contains("ts:src/lib.ts:interface#SupportOptions"));
 }
 
-fn package_consumer_report(file_name: &str, source: &str) -> crate::domain::ScanReport {
+fn package_consumer_report(file_name: &str, source: &str) -> codeatlas_domain::ScanReport {
     let root = fixture_root("ts");
     let config = ScanConfig {
         include_types: true,

@@ -39,7 +39,7 @@ pub(crate) struct RepositoryMemberEvidence {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RepositoryMember {
-    pub(crate) id: crate::domain::source_graph::ProjectId,
+    pub(crate) id: codeatlas_domain::source_graph::ProjectId,
     pub(crate) root: PathBuf,
     pub(crate) report_root: String,
     pub(crate) config_path: Option<PathBuf>,
@@ -52,7 +52,7 @@ pub(crate) struct RepositoryMember {
 
 impl RepositoryMember {
     fn new(
-        id: crate::domain::source_graph::ProjectId,
+        id: codeatlas_domain::source_graph::ProjectId,
         report_root: String,
         package_member: bool,
         project: ProjectConfig,
@@ -126,7 +126,7 @@ impl RepositoryScope {
             .find(|candidate| candidate.root == project.root)
             .map(|candidate| candidate.id.clone())
             .unwrap_or_else(|| {
-                crate::domain::source_graph::ProjectId("repository-root".to_string())
+                codeatlas_domain::source_graph::ProjectId("repository-root".to_string())
             });
         let mut members = vec![RepositoryMember::new(
             id,
@@ -167,7 +167,7 @@ impl RepositoryScope {
         for (name, root, report_root) in &packages {
             let member_project = load_member_project(project, root)?;
             members.push(RepositoryMember::new(
-                crate::domain::source_graph::ProjectId(name.clone()),
+                codeatlas_domain::source_graph::ProjectId(name.clone()),
                 report_root.clone(),
                 true,
                 member_project,
@@ -177,7 +177,7 @@ impl RepositoryScope {
             let id = unique_root_id(&members)?;
             let report_root = crate::paths::normalize_relative_path(&project.root, &workspace_root);
             members.push(RepositoryMember::new(
-                crate::domain::source_graph::ProjectId(id),
+                codeatlas_domain::source_graph::ProjectId(id),
                 if report_root.is_empty() {
                     ".".to_string()
                 } else {
@@ -192,7 +192,7 @@ impl RepositoryScope {
         let mut analysis_projects = packages
             .iter()
             .map(|(name, root, report_root)| ResolvedAnalysisProject {
-                id: crate::domain::source_graph::ProjectId(name.clone()),
+                id: codeatlas_domain::source_graph::ProjectId(name.clone()),
                 root: root.clone(),
                 report_root: report_root.clone(),
                 languages: if root == &project.root {

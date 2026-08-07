@@ -1,9 +1,9 @@
 use super::{contexts::exported_symbol, Module, ModuleKey, EXTRACTOR};
-use crate::domain::source_graph::{
+use anyhow::Result;
+use codeatlas_domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, ProjectId, SourceBinding, SourceEdge,
     SourceEdgeKind, SourceEvidence, SourceGraph,
 };
-use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 

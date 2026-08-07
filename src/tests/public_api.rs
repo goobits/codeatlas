@@ -1,5 +1,5 @@
-use crate::domain::ScanConfig;
 use crate::languages;
+use codeatlas_domain::ScanConfig;
 use std::path::PathBuf;
 
 fn fixture_root(path: &str) -> PathBuf {
@@ -62,18 +62,18 @@ fn python_parser_projects_module_constants_and_class_properties_without_values()
         .find(|symbol| symbol.name == "PublicClient")
         .expect("public class");
 
-    assert_eq!(timeout.kind, crate::domain::SymbolKind::Const);
+    assert_eq!(timeout.kind, codeatlas_domain::SymbolKind::Const);
     assert_eq!(timeout.signature, "PUBLIC_TIMEOUT: int");
     assert_eq!(label.signature, "PUBLIC_LABEL");
     assert!(!label.signature.contains("fixture-secret"));
     assert!(client.children.iter().any(|child| {
         child.name == "endpoint"
-            && child.kind == crate::domain::SymbolKind::Property
+            && child.kind == codeatlas_domain::SymbolKind::Property
             && child.signature == "endpoint: str"
     }));
     assert!(client.children.iter().any(|child| {
         child.name == "retries"
-            && child.kind == crate::domain::SymbolKind::Property
+            && child.kind == codeatlas_domain::SymbolKind::Property
             && child.signature == "retries"
     }));
 }

@@ -5,8 +5,8 @@ use super::model::{
     SemanticSiblingEvidenceOrigin, SemanticSiblingNomination, SemanticSiblingNominationKind,
 };
 use super::{has_unknown_type, NominationSeed, SiblingFact};
-use crate::domain::source_graph::SourceVisibility;
 use anyhow::Result;
+use codeatlas_domain::source_graph::SourceVisibility;
 use std::collections::BTreeSet;
 
 pub(super) fn evaluate(

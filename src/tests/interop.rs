@@ -1,6 +1,6 @@
 use crate::analysis::reachability::Reachability;
 use crate::config::ProjectConfig;
-use crate::domain::source_graph::{
+use codeatlas_domain::source_graph::{
     BoundaryKind, EdgeTarget, NodeId, SourceEdgeKind, SourceGraph, SourceNode,
 };
 use sha2::{Digest, Sha256};
@@ -253,7 +253,7 @@ fn resolved_importers(
         };
         let is_test = reachability
             .roles(&edge.from)
-            .contains(&crate::domain::source_graph::ContextRole::Test);
+            .contains(&codeatlas_domain::source_graph::ContextRole::Test);
         importers
             .entry(path.to_string())
             .and_modify(|observed| *observed |= is_test)

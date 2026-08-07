@@ -1,5 +1,5 @@
-use crate::domain::{FuzzPolicyEvidence, Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
+use codeatlas_domain::{FuzzPolicyEvidence, Language, Span, Symbol, SymbolKind, Visibility};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -274,7 +274,7 @@ impl SymbolVisitor {
         signature: &syn::Signature,
         kind: SymbolKind,
         visibility: Visibility,
-        contract: crate::domain::CallableContract,
+        contract: codeatlas_domain::CallableContract,
         attributes: &[Attribute],
     ) -> Symbol {
         let mut symbol = self.create_symbol(
@@ -362,8 +362,8 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
             vis,
             callable::contract(
                 &node.sig,
-                crate::domain::CallableKind::Function,
-                crate::domain::CallableBody::Present,
+                codeatlas_domain::CallableKind::Function,
+                codeatlas_domain::CallableBody::Present,
                 Some(&node.block),
             ),
             &node.attrs,
@@ -444,8 +444,8 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                         m_vis,
                         callable::contract(
                             &method.sig,
-                            crate::domain::CallableKind::Method,
-                            crate::domain::CallableBody::Present,
+                            codeatlas_domain::CallableKind::Method,
+                            codeatlas_domain::CallableBody::Present,
                             Some(&method.block),
                         ),
                         &method.attrs,
@@ -488,8 +488,8 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                         m_vis,
                         callable::contract(
                             &method.sig,
-                            crate::domain::CallableKind::Method,
-                            crate::domain::CallableBody::Present,
+                            codeatlas_domain::CallableKind::Method,
+                            codeatlas_domain::CallableBody::Present,
                             Some(&method.block),
                         ),
                         &method.attrs,
@@ -562,11 +562,11 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
                     m_vis,
                     callable::contract(
                         &method.sig,
-                        crate::domain::CallableKind::Method,
+                        codeatlas_domain::CallableKind::Method,
                         if method.default.is_some() {
-                            crate::domain::CallableBody::Present
+                            codeatlas_domain::CallableBody::Present
                         } else {
-                            crate::domain::CallableBody::DeclarationOnly
+                            codeatlas_domain::CallableBody::DeclarationOnly
                         },
                         method.default.as_ref(),
                     ),

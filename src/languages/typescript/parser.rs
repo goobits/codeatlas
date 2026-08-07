@@ -23,7 +23,10 @@ use swc_core::ecma::parser::{lexer::Lexer, EsConfig, Parser, StringInput, Syntax
 use swc_core::ecma::visit::VisitWith;
 use visitor::SymbolVisitor;
 
-pub(crate) fn parse_file(file_path: &Path, root_dir: &Path) -> Result<Vec<crate::domain::Symbol>> {
+pub(crate) fn parse_file(
+    file_path: &Path,
+    root_dir: &Path,
+) -> Result<Vec<codeatlas_domain::Symbol>> {
     Ok(parse_module_info(file_path, root_dir)?.symbols)
 }
 
@@ -80,7 +83,7 @@ fn build_module_info(
     let exports = collect_exports(&module);
     for symbol in &mut visitor.symbols {
         if exports.local_exports.contains(&symbol.name) {
-            symbol.visibility = crate::domain::Visibility::Public;
+            symbol.visibility = codeatlas_domain::Visibility::Public;
         }
     }
     consolidate_overloads(&mut visitor.symbols);
@@ -95,8 +98,8 @@ fn build_module_info(
     }
 }
 
-fn consolidate_overloads(symbols: &mut Vec<crate::domain::Symbol>) {
-    let mut consolidated: Vec<crate::domain::Symbol> = Vec::with_capacity(symbols.len());
+fn consolidate_overloads(symbols: &mut Vec<codeatlas_domain::Symbol>) {
+    let mut consolidated: Vec<codeatlas_domain::Symbol> = Vec::with_capacity(symbols.len());
     let mut indices: HashMap<String, usize> = HashMap::new();
     for mut symbol in symbols.drain(..) {
         consolidate_overloads(&mut symbol.children);

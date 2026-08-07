@@ -199,9 +199,12 @@ fn generate_evidence(
     Ok(0)
 }
 
-fn missing_descriptions(report: &crate::domain::ScanReport, include_private: bool) -> Vec<String> {
-    fn collect(symbol: &crate::domain::Symbol, include_private: bool, output: &mut Vec<String>) {
-        if !include_private && symbol.visibility != crate::domain::Visibility::Public {
+fn missing_descriptions(
+    report: &codeatlas_domain::ScanReport,
+    include_private: bool,
+) -> Vec<String> {
+    fn collect(symbol: &codeatlas_domain::Symbol, include_private: bool, output: &mut Vec<String>) {
+        if !include_private && symbol.visibility != codeatlas_domain::Visibility::Public {
             return;
         }
         let documented = symbol.docs.as_ref().is_some_and(|docs| {

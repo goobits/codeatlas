@@ -1,4 +1,4 @@
-use crate::domain::{SymbolKind, Visibility};
+use codeatlas_domain::{SymbolKind, Visibility};
 use swc_core::ecma::ast::*;
 
 pub(super) fn kind_to_str(kind: SymbolKind) -> &'static str {

@@ -1,5 +1,5 @@
-use crate::domain::{FuzzPolicyEvidence, Language, Span, Symbol, SymbolKind, Visibility};
 use anyhow::Result;
+use codeatlas_domain::{FuzzPolicyEvidence, Language, Span, Symbol, SymbolKind, Visibility};
 use rustpython_parser::source_code::LineIndex;
 use rustpython_parser::text_size::TextRange;
 use rustpython_parser::{ast, Parse};

@@ -1,6 +1,6 @@
 use super::callable::path_identity;
-use crate::domain::{CallableEffect, EffectKind};
 use crate::languages::effects::{has_qualified_action, record_direct_effect};
+use codeatlas_domain::{CallableEffect, EffectKind};
 use std::collections::BTreeSet;
 use syn::visit::Visit;
 

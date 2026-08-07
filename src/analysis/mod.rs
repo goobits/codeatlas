@@ -1,4 +1,4 @@
-use crate::domain::ScanReport;
+use codeatlas_domain::ScanReport;
 use std::path::Path;
 
 mod dependency_types;

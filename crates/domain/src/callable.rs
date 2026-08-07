@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CallableContract {
+pub struct CallableContract {
     pub signatures: Vec<CallableSignature>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effects: Vec<CallableEffect>,
@@ -14,7 +14,7 @@ pub(crate) struct CallableContract {
 }
 
 impl CallableContract {
-    pub(crate) fn new(
+    pub fn new(
         signatures: impl IntoIterator<Item = CallableSignature>,
         effects: impl IntoIterator<Item = CallableEffect>,
     ) -> Self {
@@ -27,13 +27,13 @@ impl CallableContract {
         contract
     }
 
-    pub(crate) fn merge(&mut self, other: Self) {
+    pub fn merge(&mut self, other: Self) {
         self.signatures.extend(other.signatures);
         self.effects.extend(other.effects);
         self.normalize();
     }
 
-    pub(crate) fn replace_effects(&mut self, effects: impl IntoIterator<Item = CallableEffect>) {
+    pub fn replace_effects(&mut self, effects: impl IntoIterator<Item = CallableEffect>) {
         self.effects = effects.into_iter().collect();
         self.normalize();
     }
@@ -51,7 +51,7 @@ impl CallableContract {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CallableSignature {
+pub struct CallableSignature {
     pub kind: CallableKind,
     pub body: CallableBody,
     pub is_async: bool,
@@ -66,7 +66,7 @@ pub(crate) struct CallableSignature {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum CallableKind {
+pub enum CallableKind {
     Function,
     Method,
     Constructor,
@@ -78,7 +78,7 @@ pub(crate) enum CallableKind {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum CallableBody {
+pub enum CallableBody {
     Present,
     DeclarationOnly,
 }
@@ -87,13 +87,13 @@ pub(crate) enum CallableBody {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ReceiverContract {
+pub struct ReceiverContract {
     pub requirement: ReceiverRequirement,
     pub constructibility: Constructibility,
 }
 
 impl ReceiverContract {
-    pub(crate) const fn none() -> Self {
+    pub const fn none() -> Self {
         Self {
             requirement: ReceiverRequirement::None,
             constructibility: Constructibility::Direct,
@@ -105,7 +105,7 @@ impl ReceiverContract {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ReceiverRequirement {
+pub enum ReceiverRequirement {
     None,
     Instance,
     MutableInstance,
@@ -117,7 +117,7 @@ pub(crate) enum ReceiverRequirement {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Constructibility {
+pub enum Constructibility {
     Direct,
     RequiresFactory,
     Unsupported,
@@ -128,7 +128,7 @@ pub(crate) enum Constructibility {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct TypeParameterContract {
+pub struct TypeParameterContract {
     pub name: String,
     pub kind: TypeParameterKind,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -141,7 +141,7 @@ pub(crate) struct TypeParameterContract {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum TypeParameterKind {
+pub enum TypeParameterKind {
     Type,
     Const,
     Lifetime,
@@ -153,7 +153,7 @@ pub(crate) enum TypeParameterKind {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CallableParameter {
+pub struct CallableParameter {
     pub position: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -167,7 +167,7 @@ pub(crate) struct CallableParameter {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ParameterRole {
+pub enum ParameterRole {
     Positional,
     PositionalOnly,
     PositionalOrNamed,
@@ -180,7 +180,7 @@ pub(crate) enum ParameterRole {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ParameterRequirement {
+pub enum ParameterRequirement {
     Required,
     Optional,
     Defaulted,
@@ -190,7 +190,7 @@ pub(crate) enum ParameterRequirement {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum SemanticType {
+pub enum SemanticType {
     Unknown {
         reason: TypeUnknownReason,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -267,7 +267,7 @@ pub(crate) enum SemanticType {
 }
 
 impl SemanticType {
-    pub(crate) fn unknown(reason: TypeUnknownReason, display: impl Into<String>) -> Self {
+    pub fn unknown(reason: TypeUnknownReason, display: impl Into<String>) -> Self {
         let display = display.into();
         Self::Unknown {
             reason,
@@ -275,7 +275,7 @@ impl SemanticType {
         }
     }
 
-    pub(crate) fn union(variants: impl IntoIterator<Item = Self>) -> Self {
+    pub fn union(variants: impl IntoIterator<Item = Self>) -> Self {
         let mut variants = variants.into_iter().collect::<Vec<_>>();
         variants.sort();
         variants.dedup();
@@ -286,7 +286,7 @@ impl SemanticType {
         }
     }
 
-    pub(crate) fn constructibility(&self) -> Constructibility {
+    pub fn constructibility(&self) -> Constructibility {
         match self {
             Self::Unknown { .. } | Self::TypeParameter { .. } => Constructibility::Unknown,
             Self::Named { .. } => Constructibility::RequiresFactory,
@@ -328,7 +328,7 @@ fn combine_constructibility<'a>(
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum TypeUnknownReason {
+pub enum TypeUnknownReason {
     MissingAnnotation,
     Unresolved,
     Unsupported,
@@ -340,7 +340,7 @@ pub(crate) enum TypeUnknownReason {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum StringEncoding {
+pub enum StringEncoding {
     Utf8,
     Utf16,
     Unicode,
@@ -351,7 +351,7 @@ pub(crate) enum StringEncoding {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
-pub(crate) enum SemanticLiteral {
+pub enum SemanticLiteral {
     Boolean(bool),
     Integer(String),
     Float(String),
@@ -363,7 +363,7 @@ pub(crate) enum SemanticLiteral {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SemanticField {
+pub struct SemanticField {
     pub name: String,
     pub required: bool,
     pub semantic_type: SemanticType,
@@ -373,7 +373,7 @@ pub(crate) struct SemanticField {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CallableEffect {
+pub struct CallableEffect {
     pub kind: EffectKind,
     pub provenance: EffectProvenance,
     pub evidence: EvidenceClass,
@@ -382,11 +382,7 @@ pub(crate) struct CallableEffect {
 }
 
 impl CallableEffect {
-    pub(crate) fn new_direct(
-        kind: EffectKind,
-        evidence: EvidenceClass,
-        span: Option<Span>,
-    ) -> Self {
+    pub fn new_direct(kind: EffectKind, evidence: EvidenceClass, span: Option<Span>) -> Self {
         Self {
             kind,
             provenance: EffectProvenance::Direct,
@@ -400,7 +396,7 @@ impl CallableEffect {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum EffectKind {
+pub enum EffectKind {
     FilesystemRead,
     FilesystemWrite,
     Network,
@@ -417,7 +413,7 @@ pub(crate) enum EffectKind {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub(crate) enum EffectProvenance {
+pub enum EffectProvenance {
     Direct,
     Propagated { source_target: String },
 }
@@ -426,7 +422,7 @@ pub(crate) enum EffectProvenance {
     schemars::JsonSchema, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CallableBlockReason {
+pub struct CallableBlockReason {
     pub kind: CallableBlockKind,
     pub subject: String,
 }
@@ -435,7 +431,7 @@ pub(crate) struct CallableBlockReason {
     schemars::JsonSchema, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum CallableBlockKind {
+pub enum CallableBlockKind {
     DeclarationOnly,
     MissingType,
     UnresolvedType,

@@ -5,7 +5,7 @@
 //! - Creating scanners for specific languages
 
 use super::definition::LanguageDefinition;
-use crate::domain::{LanguageScanner, ScanConfig, ScanReport};
+use codeatlas_domain::{LanguageScanner, ScanConfig, ScanReport};
 use std::path::Path;
 use std::sync::Arc;
 use walkdir::WalkDir;

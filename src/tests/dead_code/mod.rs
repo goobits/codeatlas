@@ -6,14 +6,14 @@ mod workspace;
 
 use crate::config::{ProjectConfig, RepositoryScope};
 use crate::dead_code::{DeadCodeFinding, DeadCodeFindingKind};
-use crate::domain::source_graph::{
+use crate::{dead_code, languages, outputs};
+use codeatlas_domain::source_graph::{
     AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope,
     EdgeTarget, FindingConfidence, NodeId, ProjectId, SourceContext, SourceEdge, SourceEdgeKind,
     SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode, SourceProject,
     SourceSymbol, SourceSymbolKind, SourceVisibility,
 };
-use crate::domain::{EvidenceClass, SourceDisposition};
-use crate::{dead_code, languages, outputs};
+use codeatlas_domain::{EvidenceClass, SourceDisposition};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
@@ -30,7 +30,7 @@ fn analyze_fixture(path: &str) -> crate::dead_code::DeadCodeReport {
     dead_code::analyze(&graph).expect("dead-code report")
 }
 
-fn source_graph_fixture(path: &str) -> crate::domain::source_graph::SourceGraph {
+fn source_graph_fixture(path: &str) -> codeatlas_domain::source_graph::SourceGraph {
     let root = fixture_root(path);
     let config_path = root.join("codeatlas.json");
     let project = ProjectConfig::load(&root, Some(&config_path)).expect("fixture configuration");

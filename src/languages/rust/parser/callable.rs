@@ -1,6 +1,6 @@
 use super::callable_effects::collect_direct_effects;
 use super::signatures::format_type;
-use crate::domain::{
+use codeatlas_domain::{
     CallableBody, CallableContract, CallableKind, CallableParameter, CallableSignature,
     Constructibility, ParameterRequirement, ParameterRole, ReceiverContract, ReceiverRequirement,
     SemanticLiteral, SemanticType, StringEncoding, TypeParameterContract, TypeParameterKind,
