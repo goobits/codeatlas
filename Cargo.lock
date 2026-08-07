@@ -380,7 +380,6 @@ dependencies = [
  "bytes",
  "cargo_metadata",
  "clap",
- "codeatlas-domain",
  "codeatlas-isolation-conformance",
  "colored",
  "ctrlc",
