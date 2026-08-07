@@ -964,6 +964,21 @@ regression plus all 13 non-live isolation cases pass. Commit and push this
 test-boundary correction, then issue one duplicate-checked hosted run; do not
 begin Phase 11 until both managed HTTP profiles pass there.
 
+Exact run `31143159462` at revision `3f4b0f9` reached the stateful target and
+consumed 70 calls, then ended correctly `partial` at 110,082 milliseconds with
+all cleanup verified. Its 128 peak open descriptors exactly hit the plan
+ceiling. The shared managed-server proxy opened one Unix upstream per request
+without explicitly closing HTTP/1.1 keep-alive; the two relay legs could
+therefore outlive a response. Artifact `8980589056` is 68,427,576 bytes with
+verified digest
+`sha256:99f2e509245b891f9e71de5d9347f7b3e029aa682bd3bb7232b443a36f91231f`
+and empty after-state logs. The proxy now requires `Connection: close` on that
+per-request upstream only. Its regression failed before the change, then all 11
+proxy contracts, 13 non-live isolation cases, formatting, and Clippy passed.
+Commit and push this transport-owner correction, then issue one
+duplicate-checked hosted run; do not begin Phase 11 until both managed HTTP
+profiles pass there.
+
 - [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
   effect evidence into the shared target classifier.
 - [ ] Route reviewed and eligible single-shot HTTP runs through the same

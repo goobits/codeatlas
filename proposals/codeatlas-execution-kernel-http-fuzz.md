@@ -1717,6 +1717,31 @@ Fifth Phase 5 hosted attempt, 2026-08-07:
   equivalent run for the new revision, then dispatch the existing hosted gate
   once.
 
+Sixth Phase 5 hosted attempt, 2026-08-07:
+
+- Exact GitHub run `31143159462` used clean revision `3f4b0f9`, reached the
+  stateful managed target, and consumed 70 of 256 permitted calls before the
+  normal 110,082-millisecond execution boundary. Receipt
+  `receipt_cc76d8086d609051f3284e02b2c22e8ddff67478846040b006d1717fe51d19e9`
+  is correctly `partial`; every container, proxy, and scratch lease released
+  and verified.
+- The receipt's 128 peak open descriptors exactly reached the plan ceiling.
+  Inspection found that the managed-server proxy owns one fresh Unix upstream
+  connection per request but did not explicitly close HTTP/1.1 keep-alive, so
+  its two relay legs could outlive the bounded response. This is a shared
+  transport defect rather than Schemathesis generation behavior.
+- Artifact `8980589056` is 68,427,576 bytes with verified digest
+  `sha256:99f2e509245b891f9e71de5d9347f7b3e029aa682bd3bb7232b443a36f91231f`;
+  its execution and registry after-state logs are empty and all image/builder
+  cleanup completed.
+- The existing proxy owner now sends `Connection: close` only on its
+  per-request managed Unix upstream. The focused conformance assertion failed
+  before this change and passes afterward; all 11 proxy contracts, all 13
+  non-live isolation cases, formatting, and warning-denying Clippy pass from
+  external build state. Next exact action: commit and push this transport fix,
+  confirm zero equivalent run for the new revision, and dispatch the existing
+  hosted gate once.
+
 LOC: +700-1,100 / -250-450
 
 Verify: Existing positive, negative, boundary, unsupported-method, and stateful

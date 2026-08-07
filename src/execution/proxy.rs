@@ -420,6 +420,13 @@ impl ProxyUpstreamClient {
             } => {
                 use std::os::unix::fs::FileTypeExt;
 
+                let mut request = request;
+                // This transport owns one Unix connection per request. Force
+                // both relays to release it once the bounded response arrives.
+                request
+                    .headers_mut()
+                    .insert(CONNECTION, HeaderValue::from_static("close"));
+
                 let expected_peer_pid = expected_peer_pid.load(Ordering::Acquire);
                 if expected_peer_pid == 0 {
                     return Err(ForwardFailure::Rejected);
@@ -1008,6 +1015,7 @@ mod tests {
                                     stream,
                                     observed,
                                     observed_header,
+                                    Arc::new(AtomicBool::new(false)),
                                     call_notification,
                                     behavior,
                                 )
@@ -1018,6 +1026,7 @@ mod tests {
                                 stream,
                                 observed,
                                 observed_header,
+                                Arc::new(AtomicBool::new(false)),
                                 call_notification,
                                 behavior,
                             )
@@ -1052,6 +1061,7 @@ mod tests {
         stream: I,
         observed: Arc<AtomicU64>,
         observed_header: Arc<AtomicBool>,
+        observed_connection_close: Arc<AtomicBool>,
         call_notification: Arc<Notify>,
         behavior: TargetBehavior,
     ) where
@@ -1060,11 +1070,19 @@ mod tests {
         let service = service_fn(move |request: Request<Incoming>| {
             let observed = Arc::clone(&observed);
             let observed_header = Arc::clone(&observed_header);
+            let observed_connection_close = Arc::clone(&observed_connection_close);
             let call_notification = Arc::clone(&call_notification);
             async move {
                 observed.fetch_add(1, Ordering::SeqCst);
                 if request.headers().contains_key(CALL_CATEGORY_HEADER) {
                     observed_header.store(true, Ordering::SeqCst);
+                }
+                if request
+                    .headers()
+                    .get(hyper::header::CONNECTION)
+                    .is_some_and(|value| value.as_bytes() == b"close")
+                {
+                    observed_connection_close.store(true, Ordering::SeqCst);
                 }
                 call_notification.notify_one();
                 let response = match behavior {
@@ -1277,6 +1295,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn managed_server_socket_reuses_the_same_proxy_policy() {
+        const MANAGED_REQUESTS: u64 = 8;
         let root = std::env::temp_dir().join(format!(
             "codeatlas-proxy-managed-{}-{}",
             std::process::id(),
@@ -1285,7 +1304,7 @@ mod tests {
         std::fs::create_dir(&root).expect("private managed-server fixture root");
         let client_socket = root.join("client.sock");
         let server_socket = root.join("server.sock");
-        let limits = limits(2, 1024);
+        let limits = limits(MANAGED_REQUESTS + 1, 1024);
         let scheduler = ExecutionScheduler::new(&limits, 0).expect("scheduler");
         let result = scheduler.run(|context| {
             let client_socket = client_socket.clone();
@@ -1295,16 +1314,21 @@ mod tests {
                 let listener = UnixListener::bind(server_address.path())?;
                 let calls = Arc::new(AtomicU64::new(0));
                 let observed = Arc::clone(&calls);
+                let saw_connection_close = Arc::new(AtomicBool::new(false));
+                let observed_connection_close = Arc::clone(&saw_connection_close);
                 let target = tokio::spawn(async move {
-                    let (stream, _) = listener.accept().await?;
-                    serve_target_connection(
-                        stream,
-                        observed,
-                        Arc::new(AtomicBool::new(false)),
-                        Arc::new(Notify::new()),
-                        TargetBehavior::Success,
-                    )
-                    .await;
+                    for _ in 0..MANAGED_REQUESTS {
+                        let (stream, _) = listener.accept().await?;
+                        serve_target_connection(
+                            stream,
+                            Arc::clone(&observed),
+                            Arc::new(AtomicBool::new(false)),
+                            Arc::clone(&observed_connection_close),
+                            Arc::new(Notify::new()),
+                            TargetBehavior::Success,
+                        )
+                        .await;
+                    }
                     Ok::<_, anyhow::Error>(())
                 });
                 let upstream = Url::parse("http://127.0.0.1:41002/")?;
@@ -1329,15 +1353,18 @@ mod tests {
                 );
                 assert_eq!(calls.load(Ordering::SeqCst), 0);
                 proxy.corroborate_managed_server_peer(std::process::id())?;
-                assert_eq!(
-                    request_unix(&mut sender, proxy.endpoint()).await?,
-                    StatusCode::OK
-                );
+                for _ in 0..MANAGED_REQUESTS {
+                    assert_eq!(
+                        request_unix(&mut sender, proxy.endpoint()).await?,
+                        StatusCode::OK
+                    );
+                }
+                assert!(saw_connection_close.load(Ordering::SeqCst));
                 assert_eq!(
                     request_unix(&mut sender, proxy.endpoint()).await?,
                     StatusCode::TOO_MANY_REQUESTS
                 );
-                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                assert_eq!(calls.load(Ordering::SeqCst), MANAGED_REQUESTS);
                 drop(sender);
                 proxy.shutdown().await?;
                 let _ = connection.await;
