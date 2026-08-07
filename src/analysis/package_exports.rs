@@ -1,6 +1,6 @@
 //! Public package export annotation and declaration consolidation.
 
-use codeatlas_domain::{PackageInfo, ScanConfig, ScanReport, Symbol};
+use crate::domain::{PackageInfo, ScanConfig, ScanReport, Symbol};
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
@@ -21,7 +21,7 @@ pub(crate) fn annotate(
         .filter(|export| is_typescript_path(&export.source_path))
         .map(|export| export.source_path.clone())
         .collect::<Vec<_>>();
-    let mut typescript_ids = codeatlas_languages::typescript::reachable_symbol_ids_by_entrypoint(
+    let mut typescript_ids = crate::languages::typescript::reachable_symbol_ids_by_entrypoint(
         root_dir,
         &typescript_entrypoints,
         no_default_ignore,
@@ -104,8 +104,8 @@ fn reachable_ids(root_dir: &Path, entrypoint: &str, no_default_ignore: bool) -> 
         entrypoints: Some(vec![entrypoint.to_string()]),
         no_default_ignore,
     };
-    let scanners = codeatlas_languages::get_scanners_auto(root_dir);
-    let report = codeatlas_languages::scan_all(root_dir, &config, scanners);
+    let scanners = crate::languages::get_scanners_auto(root_dir);
+    let report = crate::languages::scan_all(root_dir, &config, scanners);
     let mut ids = HashSet::new();
     for symbol in &report.symbols {
         collect_ids(symbol, &mut ids);
@@ -153,7 +153,7 @@ fn format_public_path(package: &str, public_path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{consolidate_declaration_symbols, format_public_path};
-    use codeatlas_domain::ScanReport;
+    use crate::domain::ScanReport;
 
     #[test]
     fn formats_package_export_paths() {
@@ -170,8 +170,8 @@ mod tests {
 
     #[test]
     fn declaration_consolidation_prefers_the_root_export_deterministically() {
-        fn symbol(path: &str, export_path: &str) -> codeatlas_domain::Symbol {
-            let mut symbol = codeatlas_languages::typescript::parser::parse_source(
+        fn symbol(path: &str, export_path: &str) -> crate::domain::Symbol {
+            let mut symbol = crate::languages::typescript::parser::parse_source(
                 "export interface PublicApi { readonly ready: boolean }",
                 path,
             )

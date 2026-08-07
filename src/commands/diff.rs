@@ -1,7 +1,7 @@
 use super::{annotate_report, build_scan_config, exit_code, load_project, scan_project};
+use crate::domain::{PackageInfo, ScanReport, Symbol, SymbolKind};
 use anyhow::{Context, Result};
 use base64::Engine;
-use codeatlas_domain::{PackageInfo, ScanReport, Symbol, SymbolKind};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -99,7 +99,7 @@ pub(crate) fn render_baseline(baseline: &PublicApiBaseline) -> Result<String> {
 fn create_single_baseline(path: &Path, config_path: Option<&Path>) -> Result<PublicApiBaseline> {
     let project = load_project(path, config_path)?;
     let report = scan_report(&project)?;
-    let root = codeatlas_source::paths::normalize_path(&project.root);
+    let root = crate::paths::normalize_path(&project.root);
     baseline_from_reports(vec![(root, report)], false)
 }
 
@@ -114,7 +114,7 @@ fn create_workspace_baseline(path: &Path, config_path: Option<&Path>) -> Result<
     {
         let member_name = &member.id.0;
         let member_project = member.project();
-        let Some(package) = codeatlas_source::package::discover_for_docs(
+        let Some(package) = crate::package::discover_for_docs(
             &member_project.root,
             member_project.config.docs.declaration_contract,
         )?
@@ -125,7 +125,7 @@ fn create_workspace_baseline(path: &Path, config_path: Option<&Path>) -> Result<
             continue;
         }
 
-        if codeatlas_languages::get_scanners_auto(&member_project.root).is_empty()
+        if crate::languages::get_scanners_auto(&member_project.root).is_empty()
             && member_project.config.languages.is_empty()
         {
             reports.push((
@@ -531,7 +531,7 @@ mod tests {
     use super::{
         baseline_from_reports, symbols_by_stable_key, ROOT_EXPORT_PATH, SUPPORTING_EXPORT_PATH,
     };
-    use codeatlas_domain::{
+    use crate::domain::{
         Language, PackageExport, PackageInfo, ScanReport, Symbol, SymbolKind, Visibility,
     };
 

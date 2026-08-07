@@ -177,7 +177,7 @@ impl SemanticSiblingsConfig {
                         .strip_prefix(&repository_root)
                         .expect("confined semantic sibling path")
                         .to_path_buf();
-                    let relative = codeatlas_source::paths::normalize_path(&relative);
+                    let relative = crate::paths::normalize_path(&relative);
                     set_roots.push((&member.id, absolute.clone()));
                     paths.push(ResolvedSemanticSiblingPath {
                         relative,

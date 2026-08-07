@@ -1,7 +1,7 @@
 use super::reference;
 use crate::config::DocsConfig;
+use crate::domain::{ScanReport, Symbol};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use codeatlas_domain::{EvidenceDocument, EvidenceEntry, ScanReport, Symbol};
 use pulldown_cmark::{html, Event, Options, Parser};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -197,7 +197,7 @@ pub(crate) fn render_with_options(
 }
 
 pub(crate) fn render_evidence(
-    document: &EvidenceDocument,
+    document: &reference::EvidenceDocument,
     options: &DocsConfig,
 ) -> anyhow::Result<String> {
     document.validate()?;
@@ -339,7 +339,7 @@ pub(crate) fn render_evidence(
 
 fn render_evidence_sidebar(
     output: &mut String,
-    document: &EvidenceDocument,
+    document: &reference::EvidenceDocument,
     product_name: &str,
     home_url: Option<&str>,
 ) {
@@ -387,7 +387,7 @@ fn render_evidence_sidebar(
     output.push_str("\t\t</nav>\n\t</aside>\n");
 }
 
-fn render_evidence_entry(output: &mut String, entry: &EvidenceEntry) {
+fn render_evidence_entry(output: &mut String, entry: &reference::EvidenceEntry) {
     let mut search = vec![entry.name.clone(), entry.kind.clone()];
     search.extend(entry.description.iter().cloned());
     search.extend(

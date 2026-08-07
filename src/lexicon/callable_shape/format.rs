@@ -1,4 +1,4 @@
-use codeatlas_domain::{
+use crate::domain::{
     CallableKind, CallableSignature, Constructibility, ParameterRequirement, ParameterRole,
     ReceiverRequirement, SemanticLiteral, SemanticType, StringEncoding, TypeParameterKind,
     TypeUnknownReason,
@@ -15,8 +15,8 @@ pub(super) fn format_callable_shape(signatures: &[CallableSignature]) -> String 
 fn format_signature(signature: &CallableSignature) -> String {
     let async_prefix = if signature.is_async { "async " } else { "" };
     let declaration = match signature.body {
-        codeatlas_domain::CallableBody::Present => "body",
-        codeatlas_domain::CallableBody::DeclarationOnly => "declaration",
+        crate::domain::CallableBody::Present => "body",
+        crate::domain::CallableBody::DeclarationOnly => "declaration",
     };
     let type_parameters = if signature.type_parameters.is_empty() {
         String::new()

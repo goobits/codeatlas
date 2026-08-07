@@ -1,9 +1,9 @@
 use super::{annotate_report, build_scan_config, exit_code, load_project, scan_project};
 use crate::config::ProjectConfig;
+use crate::domain::{ScanReport, Symbol};
 use crate::{lexicon, outputs};
 use anyhow::{Context, Result};
 use clap::ValueEnum;
-use codeatlas_domain::{ScanReport, Symbol};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -106,7 +106,7 @@ fn run_inner(
     let semantic_sibling_analysis = if project.semantic_sibling_comparison_sets().is_empty() {
         lexicon::SemanticSiblingAnalysis::default()
     } else {
-        let graph = crate::analysis::build_source_graph(scope.analysis_projects())?;
+        let graph = crate::languages::reachability::build_source_graph(scope.analysis_projects())?;
         lexicon::analyze_semantic_siblings(
             &graph,
             project.semantic_sibling_comparison_sets(),
@@ -145,8 +145,7 @@ fn scan_workspace(
         .iter()
         .filter(|member| member.package_member)
         .filter_map(|member| {
-            let prefix =
-                codeatlas_source::paths::normalize_relative_path(&member.root, &project.root);
+            let prefix = crate::paths::normalize_relative_path(&member.root, &project.root);
             (!prefix.is_empty()).then_some((prefix, member.id.0.clone(), member))
         })
         .collect::<Vec<_>>();
@@ -207,7 +206,7 @@ fn strip_symbol_prefix(symbol: &mut Symbol, prefix: &str) -> Result<()> {
                 symbol.file_path, prefix
             )
         })?;
-    let relative = codeatlas_source::paths::normalize_path(relative);
+    let relative = crate::paths::normalize_path(relative);
     rewrite_symbol_path(symbol, &relative);
     for child in &mut symbol.children {
         strip_symbol_prefix(child, prefix)?;
@@ -216,8 +215,7 @@ fn strip_symbol_prefix(symbol: &mut Symbol, prefix: &str) -> Result<()> {
 }
 
 fn add_symbol_prefix(symbol: &mut Symbol, prefix: &str) {
-    let rebased =
-        codeatlas_source::paths::normalize_path(&Path::new(prefix).join(&symbol.file_path));
+    let rebased = crate::paths::normalize_path(&Path::new(prefix).join(&symbol.file_path));
     rewrite_symbol_path(symbol, &rebased);
     for child in &mut symbol.children {
         add_symbol_prefix(child, prefix);

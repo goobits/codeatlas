@@ -1,7 +1,7 @@
 use super::{
     store, CacheEnvelope, SourceIndex, SOURCE_INDEX_ALGORITHM_VERSION, SOURCE_INDEX_FORMAT_VERSION,
 };
-use codeatlas_domain::source_graph::SourceGraph;
+use crate::domain::source_graph::SourceGraph;
 use std::sync::atomic::Ordering;
 
 impl SourceIndex {

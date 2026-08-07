@@ -1,11 +1,11 @@
 use super::compiler::CompileResult;
 use super::diagnostic::Severity;
 use crate::analysis::reachability::{render_diagnostics, Reachability};
-use anyhow::Context;
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     ContextRole, EdgeTarget, NodeId, ProjectId, SourceEdgeKind, SourceEvidence, SourceGraph,
     SourceNode,
 };
+use anyhow::Context;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -243,7 +243,7 @@ fn intrinsic_findings(
             let source = project_for_node(graph, &edge.from)?.0.clone();
             match (&edge.kind, &edge.to) {
                 (_, EdgeTarget::UnexportedWorkspace(specifier)) => {
-                    let target = codeatlas_source::package::split_package_specifier(specifier)
+                    let target = crate::package::split_package_specifier(specifier)
                         .map(|(package, _)| package)
                         .unwrap_or_else(|| specifier.clone());
                     if source == target {
@@ -368,7 +368,7 @@ fn declared_severity(value: Option<&str>) -> Severity {
 mod tests {
     use super::*;
     use crate::architecture::graph::{CompileMode, CompiledGraph, GraphDeclaration};
-    use codeatlas_domain::source_graph::{
+    use crate::domain::source_graph::{
         AnalysisCompleteness, ContextId, ContextScope, SourceContext, SourceFile, SourceLanguage,
         SourceProject, SOURCE_GRAPH_SCHEMA_VERSION,
     };
@@ -422,7 +422,7 @@ mod tests {
         ] {
             source_graph
                 .edges
-                .insert(codeatlas_domain::source_graph::SourceEdge {
+                .insert(crate::domain::source_graph::SourceEdge {
                     from: files[source].clone(),
                     to: EdgeTarget::Node(files[target].clone()),
                     kind,
@@ -432,7 +432,7 @@ mod tests {
         }
         source_graph
             .edges
-            .insert(codeatlas_domain::source_graph::SourceEdge {
+            .insert(crate::domain::source_graph::SourceEdge {
                 from: files["@fixture/a"].clone(),
                 to: EdgeTarget::UnexportedWorkspace("@fixture/c/private".to_string()),
                 kind: SourceEdgeKind::ModuleDependency,

@@ -1,5 +1,5 @@
+use crate::config::ResolvedAnalysisProject;
 use anyhow::Result;
-use codeatlas_domain::ResolvedAnalysisProject;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -33,19 +33,13 @@ pub(super) fn create(projects: &[ResolvedAnalysisProject]) -> Result<SourceSnaps
             "**/conftest.py".to_string(),
             "**/*.html".to_string(),
         ];
-        patterns.extend(codeatlas_source::package::discover_runtime_entrypoints(
-            &project.root,
-        )?);
-        patterns.extend(codeatlas_source::package::discover_bundled_entrypoints(
-            &project.root,
-        )?);
-        patterns.extend(codeatlas_source::package::discover_tooling_entrypoints(
-            &project.root,
-        )?);
+        patterns.extend(crate::package::discover_runtime_entrypoints(&project.root)?);
+        patterns.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
+        patterns.extend(crate::package::discover_tooling_entrypoints(&project.root)?);
         patterns.sort();
         patterns.dedup();
         let discovery =
-            codeatlas_source::source_discovery::discover_project_sources(project, &patterns);
+            crate::languages::reachability::discover_project_sources(project, &patterns);
         let mut digest = Sha256::new();
         digest.update(b"atlas.codeatlas.dev/source-index-project/v1\0");
         digest.update(serde_json::to_vec(project)?);
@@ -62,7 +56,7 @@ pub(super) fn create(projects: &[ResolvedAnalysisProject]) -> Result<SourceSnaps
             let fingerprint = files
                 .entry(path.clone())
                 .or_insert_with(|| fingerprint(&path));
-            let relative = codeatlas_source::paths::normalize_relative_path(&path, &project.root);
+            let relative = crate::paths::normalize_relative_path(&path, &project.root);
             hash_value(&mut digest, relative.as_bytes());
             hash_value(&mut digest, fingerprint.digest.as_bytes());
             digest.update(fingerprint.bytes.to_le_bytes());
@@ -72,7 +66,7 @@ pub(super) fn create(projects: &[ResolvedAnalysisProject]) -> Result<SourceSnaps
     let mut digest = Sha256::new();
     digest.update(b"atlas.codeatlas.dev/source-index-snapshot/v1\0");
     digest.update(SOURCE_INDEX_ALGORITHM_VERSION.to_le_bytes());
-    digest.update(codeatlas_domain::source_graph::SOURCE_GRAPH_SCHEMA_VERSION.to_le_bytes());
+    digest.update(crate::domain::source_graph::SOURCE_GRAPH_SCHEMA_VERSION.to_le_bytes());
     for (project, project_digest) in project_digests {
         hash_value(&mut digest, project.as_bytes());
         hash_value(&mut digest, project_digest.as_bytes());

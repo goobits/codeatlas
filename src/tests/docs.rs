@@ -1,8 +1,6 @@
 use crate::config::ProjectConfig;
-use crate::{analysis, commands, outputs};
-use codeatlas_domain::ScanConfig;
-use codeatlas_languages as languages;
-use codeatlas_source::package;
+use crate::domain::ScanConfig;
+use crate::{analysis, commands, languages, outputs, package};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -14,7 +12,7 @@ fn fixture_root() -> PathBuf {
         .join("docs")
 }
 
-fn fixture_report(include_private: bool) -> codeatlas_domain::ScanReport {
+fn fixture_report(include_private: bool) -> crate::domain::ScanReport {
     let root = fixture_root();
     let config = ScanConfig {
         include_types: true,

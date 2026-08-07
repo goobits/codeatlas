@@ -3,12 +3,12 @@ use super::{
     ObservedTestWitness, PublicApiTestWitness, TestWitnessStatus, TestingWitnessReport,
 };
 use crate::analysis::reachability::{render_diagnostics, symbol_confidence, Reachability};
-use anyhow::Result;
-use codeatlas_domain::source_graph::{
+use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
+use crate::domain::source_graph::{
     ContextId, ContextRole, ContextScope, FindingConfidence, ProjectId, SourceContext, SourceGraph,
     SourceNode, SourceVisibility,
 };
-use codeatlas_domain::{ResolvedAnalysisProject, TestSubject};
+use anyhow::Result;
 use globset::GlobMatcher;
 use std::collections::BTreeSet;
 
@@ -92,7 +92,7 @@ pub(crate) fn analyze(
         report.public_api.push(PublicApiTestWitness {
             node_id: node_id.clone(),
             project: symbol.project.0.clone(),
-            path: codeatlas_source::paths::repository_path(
+            path: crate::paths::repository_path(
                 graph
                     .projects
                     .get(&symbol.project)
@@ -183,11 +183,11 @@ fn compile_declared_matchers(
     for context in contexts {
         for subject in configured_subjects(projects, context) {
             let (display, target) = match subject {
-                TestSubject::Project(project) => (
+                TestSubjectConfig::Project(project) => (
                     format!("project:{project}"),
                     DeclaredTarget::Project(ProjectId(project.clone())),
                 ),
-                TestSubject::Source(pattern) => (
+                TestSubjectConfig::Source(pattern) => (
                     format!("source:{pattern}"),
                     DeclaredTarget::Source(compile_subject(pattern, &context.id.0)?),
                 ),
@@ -203,9 +203,9 @@ fn compile_declared_matchers(
     Ok(matchers)
 }
 
-fn subject_display(subject: &TestSubject) -> String {
+fn subject_display(subject: &TestSubjectConfig) -> String {
     match subject {
-        TestSubject::Project(project) => format!("project:{project}"),
-        TestSubject::Source(pattern) => format!("source:{pattern}"),
+        TestSubjectConfig::Project(project) => format!("project:{project}"),
+        TestSubjectConfig::Source(pattern) => format!("source:{pattern}"),
     }
 }

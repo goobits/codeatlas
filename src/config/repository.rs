@@ -1,7 +1,9 @@
-use super::analysis::{finalize_project_boundaries, merge_analysis_settings};
+use super::analysis::{
+    finalize_project_boundaries, merge_analysis_settings, ResolvedAnalysisProject,
+    RustAnalysisConfig,
+};
 use super::ProjectConfig;
 use anyhow::{Context, Result};
-use codeatlas_domain::{ResolvedAnalysisProject, RustAnalysisOptions};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -37,7 +39,7 @@ pub(crate) struct RepositoryMemberEvidence {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RepositoryMember {
-    pub(crate) id: codeatlas_domain::source_graph::ProjectId,
+    pub(crate) id: crate::domain::source_graph::ProjectId,
     pub(crate) root: PathBuf,
     pub(crate) report_root: String,
     pub(crate) config_path: Option<PathBuf>,
@@ -50,7 +52,7 @@ pub(crate) struct RepositoryMember {
 
 impl RepositoryMember {
     fn new(
-        id: codeatlas_domain::source_graph::ProjectId,
+        id: crate::domain::source_graph::ProjectId,
         report_root: String,
         package_member: bool,
         project: ProjectConfig,
@@ -124,7 +126,7 @@ impl RepositoryScope {
             .find(|candidate| candidate.root == project.root)
             .map(|candidate| candidate.id.clone())
             .unwrap_or_else(|| {
-                codeatlas_domain::source_graph::ProjectId("repository-root".to_string())
+                crate::domain::source_graph::ProjectId("repository-root".to_string())
             });
         let mut members = vec![RepositoryMember::new(
             id,
@@ -147,7 +149,7 @@ impl RepositoryScope {
     }
 
     fn resolve_workspace(project: &ProjectConfig) -> Result<Self> {
-        let workspace = codeatlas_source::package::discover_workspace(&project.root)?;
+        let workspace = crate::package::discover_workspace(&project.root)?;
         let workspace_root = workspace.root.clone();
         let mut packages = workspace
             .members
@@ -165,7 +167,7 @@ impl RepositoryScope {
         for (name, root, report_root) in &packages {
             let member_project = load_member_project(project, root)?;
             members.push(RepositoryMember::new(
-                codeatlas_domain::source_graph::ProjectId(name.clone()),
+                crate::domain::source_graph::ProjectId(name.clone()),
                 report_root.clone(),
                 true,
                 member_project,
@@ -173,10 +175,9 @@ impl RepositoryScope {
         }
         if !members.iter().any(|member| member.root == project.root) {
             let id = unique_root_id(&members)?;
-            let report_root =
-                codeatlas_source::paths::normalize_relative_path(&project.root, &workspace_root);
+            let report_root = crate::paths::normalize_relative_path(&project.root, &workspace_root);
             members.push(RepositoryMember::new(
-                codeatlas_domain::source_graph::ProjectId(id),
+                crate::domain::source_graph::ProjectId(id),
                 if report_root.is_empty() {
                     ".".to_string()
                 } else {
@@ -191,7 +192,7 @@ impl RepositoryScope {
         let mut analysis_projects = packages
             .iter()
             .map(|(name, root, report_root)| ResolvedAnalysisProject {
-                id: codeatlas_domain::source_graph::ProjectId(name.clone()),
+                id: crate::domain::source_graph::ProjectId(name.clone()),
                 root: root.clone(),
                 report_root: report_root.clone(),
                 languages: if root == &project.root {
@@ -200,14 +201,14 @@ impl RepositoryScope {
                     Vec::new()
                 },
                 contexts: if root == &project.root {
-                    project.default_resolved_analysis_contexts()
+                    project.default_analysis_contexts()
                 } else {
                     BTreeMap::new()
                 },
                 assume_reachable: Vec::new(),
                 require_complete: false,
                 no_default_ignore: project.config.no_default_ignore,
-                rust: RustAnalysisOptions::default(),
+                rust: RustAnalysisConfig::default(),
                 workspace_member: true,
                 excluded_roots: Vec::new(),
             })
@@ -329,8 +330,7 @@ impl RepositoryScope {
     }
 
     pub(crate) fn evidence(&self) -> RepositoryScopeEvidence {
-        let selected_root =
-            codeatlas_source::paths::normalize_relative_path(&self.root, &self.workspace_root);
+        let selected_root = crate::paths::normalize_relative_path(&self.root, &self.workspace_root);
         RepositoryScopeEvidence {
             selected_root: if selected_root.is_empty() {
                 ".".to_string()
@@ -347,7 +347,7 @@ impl RepositoryScope {
                     id: member.id.0.clone(),
                     root: member.report_root.clone(),
                     config_path: member.config_path.as_ref().map(|path| {
-                        codeatlas_source::paths::normalize_relative_path(path, &self.workspace_root)
+                        crate::paths::normalize_relative_path(path, &self.workspace_root)
                     }),
                     config_digest: member.config_digest.clone(),
                     http_contracts: member.http_contracts.clone(),
@@ -419,8 +419,7 @@ fn append_local_members(
                             .display()
                     )
                 })?;
-            let report_root =
-                codeatlas_source::paths::normalize_relative_path(&local.root, workspace_root);
+            let report_root = crate::paths::normalize_relative_path(&local.root, workspace_root);
             members.push(RepositoryMember::new(
                 id,
                 if report_root.is_empty() {
@@ -514,8 +513,7 @@ fn merge_owned_projects(
                 existing.root.display()
             );
         }
-        owned.report_root =
-            codeatlas_source::paths::normalize_relative_path(&owned.root, workspace_root);
+        owned.report_root = crate::paths::normalize_relative_path(&owned.root, workspace_root);
         projects.push(owned);
     }
     projects.sort_by(|left, right| {

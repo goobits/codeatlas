@@ -1,5 +1,5 @@
 use super::model::LexiconSymbol;
-use codeatlas_domain::{Symbol, SymbolKind};
+use crate::domain::{Symbol, SymbolKind};
 use std::collections::BTreeSet;
 
 pub(super) fn normalize_signature(signature: &str, name: &str) -> String {

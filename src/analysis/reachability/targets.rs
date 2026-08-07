@@ -1,5 +1,5 @@
 use super::{adjacencies, public_surface_roots, Reachability};
-use codeatlas_domain::source_graph::{ContextScope, GraphDiagnostic, NodeId, SourceGraph};
+use crate::domain::source_graph::{ContextScope, GraphDiagnostic, NodeId, SourceGraph};
 use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque};
 
 impl Reachability {

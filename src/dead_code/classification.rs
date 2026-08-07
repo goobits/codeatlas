@@ -1,8 +1,8 @@
 use super::model::{DeadCodeFinding, DeadCodeFindingKind, DeadCodeRootContext};
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     ContextRole, FindingConfidence, NodeId, SourceEvidence, SourceLanguage,
 };
-use codeatlas_domain::{EvidenceClass, SourceDisposition};
+use crate::domain::{EvidenceClass, SourceDisposition};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -87,7 +87,7 @@ fn source_disposition(path: &str) -> SourceDisposition {
     }) {
         return SourceDisposition::Generated;
     }
-    if codeatlas_source::source_policy::is_conventional_test_source(Path::new(path)) {
+    if crate::source_policy::is_conventional_test_source(Path::new(path)) {
         return SourceDisposition::Test;
     }
     if parts.iter().any(|part| {
@@ -135,7 +135,7 @@ fn stable_finding_id(kind: DeadCodeFindingKind, details: &FindingDetails) -> Str
 #[cfg(test)]
 mod tests {
     use super::source_disposition;
-    use codeatlas_domain::SourceDisposition;
+    use crate::domain::SourceDisposition;
 
     #[test]
     fn source_disposition_uses_structural_path_segments() {

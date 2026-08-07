@@ -1,4 +1,4 @@
-use codeatlas_domain::{
+use crate::domain::{
     CallableBlockKind, CallableContract, CallableKind, EffectKind, EffectProvenance, EvidenceClass,
     ReceiverRequirement, SemanticType, Symbol,
 };
@@ -124,7 +124,7 @@ fn receivers_are_structured_without_becoming_parameters() {
 
 #[test]
 fn overloads_merge_structured_signatures_without_display_reparsing() {
-    let info = codeatlas_languages::typescript::parser::parse_source(
+    let info = crate::languages::typescript::parser::parse_source(
         r#"
 export function parse(value: string): boolean;
 export function parse(value: boolean): boolean;
@@ -141,7 +141,7 @@ export function parse(value: string | boolean): boolean { return Boolean(value) 
         contract
             .signatures
             .iter()
-            .filter(|signature| signature.body == codeatlas_domain::CallableBody::DeclarationOnly)
+            .filter(|signature| signature.body == crate::domain::CallableBody::DeclarationOnly)
             .count(),
         2
     );
@@ -211,7 +211,7 @@ fn known_direct_effects_share_one_conservative_cross_language_vocabulary() {
 }
 
 fn rust_contract(source: &str, symbol: &str) -> CallableContract {
-    let info = codeatlas_languages::rust::parser::parse_module_info(
+    let info = crate::languages::rust::parser::parse_module_info(
         Path::new("src/case.rs"),
         Path::new("."),
         source,
@@ -224,7 +224,7 @@ fn rust_contract(source: &str, symbol: &str) -> CallableContract {
 }
 
 fn python_contract(source: &str, symbol: &str) -> CallableContract {
-    let info = codeatlas_languages::python::parser::parse_module_info(
+    let info = crate::languages::python::parser::parse_module_info(
         Path::new("src/case.py"),
         Path::new("."),
         source,
@@ -237,7 +237,7 @@ fn python_contract(source: &str, symbol: &str) -> CallableContract {
 }
 
 fn ecmascript_contract(source: &str, path: &str, symbol: &str) -> CallableContract {
-    let info = codeatlas_languages::typescript::parser::parse_source(source, path)
+    let info = crate::languages::typescript::parser::parse_source(source, path)
         .expect("ECMAScript contract source");
     find_symbol(&info.symbols, symbol)
         .callable
@@ -246,7 +246,7 @@ fn ecmascript_contract(source: &str, path: &str, symbol: &str) -> CallableContra
 }
 
 fn rust_child_contract(source: &str, parent: &str, child: &str) -> CallableContract {
-    let info = codeatlas_languages::rust::parser::parse_module_info(
+    let info = crate::languages::rust::parser::parse_module_info(
         Path::new("src/service.rs"),
         Path::new("."),
         source,
@@ -256,7 +256,7 @@ fn rust_child_contract(source: &str, parent: &str, child: &str) -> CallableContr
 }
 
 fn python_child_contract(source: &str, parent: &str, child: &str) -> CallableContract {
-    let info = codeatlas_languages::python::parser::parse_module_info(
+    let info = crate::languages::python::parser::parse_module_info(
         Path::new("src/service.py"),
         Path::new("."),
         source,
@@ -271,7 +271,7 @@ fn ecmascript_child_contract(
     parent: &str,
     child: &str,
 ) -> CallableContract {
-    let info = codeatlas_languages::typescript::parser::parse_source(source, path)
+    let info = crate::languages::typescript::parser::parse_source(source, path)
         .expect("ECMAScript method source");
     child_contract(&info.symbols, parent, child)
 }

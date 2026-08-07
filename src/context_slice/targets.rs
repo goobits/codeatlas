@@ -1,6 +1,6 @@
 use super::model::TargetResolution;
+use crate::domain::source_graph::{NodeId, ProjectId, SourceGraph, SourceNode};
 use anyhow::{Context, Result};
-use codeatlas_domain::source_graph::{NodeId, ProjectId, SourceGraph, SourceNode};
 use std::collections::BTreeSet;
 
 pub(crate) fn resolve_target(graph: &SourceGraph, query: &str) -> Result<TargetResolution> {
@@ -75,8 +75,7 @@ fn resolve_files(
                     if project.is_none_or(|project| &file.project == project)
                         && if repository_relative {
                             graph.projects.get(&file.project).is_some_and(|project| {
-                                codeatlas_source::paths::repository_path(&project.root, &file.path)
-                                    == path
+                                crate::paths::repository_path(&project.root, &file.path) == path
                             })
                         } else {
                             file.path == path

@@ -7,10 +7,10 @@ use super::static_schema::{
     StaticSchemaDiscovery, StaticSchemaObject, StaticSchemaObjectKind, StaticSchemaSourceKind,
 };
 use crate::config::{RepositoryMember, RepositoryScope};
-use anyhow::Result;
-use codeatlas_domain::{
+use crate::outputs::reference::{
     EvidenceDocument, EvidenceEntry, EvidenceFact, EvidenceGroup, EvidenceSection, EvidenceTable,
 };
+use anyhow::Result;
 use serde::Serialize;
 
 pub(crate) fn build(scope: &RepositoryScope) -> Result<EvidenceDocument> {
@@ -501,7 +501,7 @@ fn repository_location(
     line: u32,
     column: Option<u32>,
 ) -> String {
-    let path = codeatlas_source::paths::repository_path(&member.report_root, path);
+    let path = crate::paths::repository_path(&member.report_root, path);
     match column {
         Some(column) => format!("{path}:{line}:{column}"),
         None => format!("{path}:{line}"),

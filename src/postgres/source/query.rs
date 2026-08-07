@@ -3,11 +3,11 @@ use super::{
     PostgresQueryDocumentation, MAX_SQL_BYTES,
 };
 use crate::config::{PostgresContractConfig, ProjectConfig};
+use crate::paths;
 use crate::postgres::model::{PostgresEvidence, PostgresFinding, PostgresFindingSeverity};
 use crate::postgres::target::query::{analyze_query, StaticQueryInput};
+use crate::source_discovery::{self, SourceDiscoveryRequest};
 use anyhow::{Context, Result};
-use codeatlas_source::paths;
-use codeatlas_source::source_discovery::{self, SourceDiscoveryRequest};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -131,7 +131,7 @@ fn query_paths(
         paths.extend(discovery.files.into_iter().filter(|path| {
             discovery::is_supported_source_file(path)
                 && !is_excluded_query_path(path, &excluded_paths)
-                && !codeatlas_source::source_policy::is_conventional_test_source(
+                && !crate::source_policy::is_conventional_test_source(
                     path.strip_prefix(&root).unwrap_or(path),
                 )
         }));
@@ -213,7 +213,7 @@ fn collect_query_file(
 fn collected_query(
     contract_id: &str,
     sql: ecmascript::StaticSql,
-    fuzz_policy: Option<codeatlas_domain::FuzzPolicyEvidence>,
+    fuzz_policy: Option<crate::domain::FuzzPolicyEvidence>,
     documentation: PostgresQueryDocumentation,
     fuzz_exclusions: &[String],
 ) -> CollectedQuery {
@@ -244,7 +244,7 @@ fn collected_query(
 }
 
 struct LeadingSqlEvidence {
-    fuzz_policy: Option<codeatlas_domain::FuzzPolicyEvidence>,
+    fuzz_policy: Option<crate::domain::FuzzPolicyEvidence>,
     documentation: PostgresQueryDocumentation,
 }
 
@@ -297,7 +297,7 @@ fn leading_sql_evidence(source: &str) -> LeadingSqlEvidence {
         }
         break;
     }
-    let fuzz_policy = codeatlas_domain::parse_fuzz_directive_lines(documentation.clone());
+    let fuzz_policy = crate::fuzz::directive::parse_directive_lines(documentation.clone());
     let description = documentation
         .into_iter()
         .map(|(_, value)| value)
@@ -335,7 +335,7 @@ fn leading_sql_evidence(source: &str) -> LeadingSqlEvidence {
 fn is_fuzz_directive(value: &str) -> bool {
     value
         .trim()
-        .strip_prefix(codeatlas_domain::FUZZ_DIRECTIVE_MARKER)
+        .strip_prefix(crate::fuzz::directive::FUZZ_DIRECTIVE_MARKER)
         .is_some_and(|payload| {
             payload.is_empty() || payload.chars().next().is_some_and(char::is_whitespace)
         })
@@ -369,7 +369,7 @@ fn append_fuzz_policy_findings(
 #[cfg(test)]
 mod fuzz_directive_tests {
     use super::leading_sql_evidence;
-    use codeatlas_domain::FuzzDirectiveIssueKind;
+    use crate::domain::FuzzDirectiveIssueKind;
 
     #[test]
     fn sql_directive_is_leading_comment_convenience_only() {

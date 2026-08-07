@@ -1,5 +1,6 @@
 pub(crate) mod code;
 pub(crate) mod corpus;
+pub(crate) mod directive;
 mod model;
 pub(crate) mod reproducer;
 

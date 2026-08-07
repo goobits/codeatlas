@@ -5,12 +5,12 @@ use super::{
     TestingImpactReport,
 };
 use crate::analysis::reachability::{project_confidence, render_diagnostics, Reachability};
-use anyhow::Result;
-use codeatlas_domain::source_graph::{
+use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
+use crate::domain::source_graph::{
     ContextId, ContextRole, FindingConfidence, NodeId, ProjectId, SourceContext, SourceGraph,
     SourceNode,
 };
-use codeatlas_domain::{ResolvedAnalysisProject, TestSubject};
+use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -199,12 +199,12 @@ fn select_declared(
     for context in test_contexts {
         for subject in configured_subjects(projects, context) {
             let (matches, kind, display) = match subject {
-                TestSubject::Project(project) => (
+                TestSubjectConfig::Project(project) => (
                     project == &changed_project.0,
                     TestImpactEvidenceKind::DeclaredProject,
                     format!("project:{project}"),
                 ),
-                TestSubject::Source(pattern) => (
+                TestSubjectConfig::Source(pattern) => (
                     context.project == *changed_project
                         && compile_subject(pattern, &context.id.0)?.is_match(changed_source),
                     TestImpactEvidenceKind::DeclaredSource,
@@ -318,9 +318,9 @@ fn impacted_projects(
 
 fn normalize_changed_path(path: &Path, repository_root: &Path) -> String {
     if path.is_absolute() {
-        codeatlas_source::paths::normalize_relative_path(path, repository_root)
+        crate::paths::normalize_relative_path(path, repository_root)
     } else {
-        codeatlas_source::paths::normalize_path(path)
+        crate::paths::normalize_path(path)
     }
 }
 
@@ -331,7 +331,7 @@ fn resolve_files(graph: &SourceGraph, path: &str) -> BTreeSet<NodeId> {
         .filter_map(|(id, node)| match node {
             SourceNode::File(file)
                 if graph.projects.get(&file.project).is_some_and(|project| {
-                    codeatlas_source::paths::repository_path(&project.root, &file.path) == path
+                    crate::paths::repository_path(&project.root, &file.path) == path
                 }) =>
             {
                 Some(id.clone())

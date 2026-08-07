@@ -11,7 +11,7 @@
 		"test:interop:hqa": "cargo test --locked --jobs 1 outputs::hqa_inventory::tests::golden_inventory_validates_against_external_hqa_schema -- --ignored --exact",
 		"test:interop:resolution": "cargo test --locked --jobs 1 --bin codeatlas tests::interop::agentspeak_resolution_conformance_matches_source_graph -- --exact --nocapture",
 		"test:postgres-live": "cargo test --locked --jobs 1 --test postgres_cli managed_postgres_smoke_covers_replay_baseline_diff_and_cleanup -- --ignored --exact --nocapture",
-		"test:node": "node --test tests/wrapper.test.js tests/storage.test.js tests/build-topology.test.js tests/container-image-build.test.js tests/isolation-live.test.js",
+		"test:node": "node --test tests/wrapper.test.js tests/storage.test.js tests/container-image-build.test.js tests/isolation-live.test.js",
 		"test:isolation-live": "node tasks/check-isolation-live.js",
 		"probe:build": "node tasks/build-isolation-probe.js",
 		"http-workload:build": "node tasks/build-http-workload.js",
@@ -40,9 +40,6 @@
 	"files": [
 		"bin/**",
 		"src/**",
-		"crates/domain/**",
-		"crates/languages/**",
-		"crates/source/**",
 		"crates/isolation-conformance/Cargo.lock",
 		"crates/isolation-conformance/Cargo.toml",
 		"crates/isolation-conformance/src/**",

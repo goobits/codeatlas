@@ -1,8 +1,8 @@
+use crate::domain::source_graph::{AnalysisCompleteness, FindingConfidence};
 use crate::testing::{
     ChangedPathResolution, DeclaredTestSubject, TestImpactEvidenceKind, TestWitnessStatus,
     TestingImpactReport, TestingInventoryReport, TestingWitnessReport,
 };
-use codeatlas_domain::source_graph::{AnalysisCompleteness, FindingConfidence};
 
 const TEST_WITNESS_TEXT_DETAIL_LIMIT: usize = 200;
 

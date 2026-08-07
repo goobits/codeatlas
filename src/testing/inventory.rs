@@ -3,9 +3,9 @@ use super::{
     TestContextInventory, TestRunner, TestScriptInventory, TestScriptLocation,
     TestingInventoryReport, TestingProjectInventory,
 };
+use crate::config::{ResolvedAnalysisProject, TestSubjectConfig};
+use crate::domain::source_graph::{AnalysisCompleteness, ContextRole, SourceGraph, SourceNode};
 use anyhow::Result;
-use codeatlas_domain::source_graph::{AnalysisCompleteness, ContextRole, SourceGraph, SourceNode};
-use codeatlas_domain::{ResolvedAnalysisProject, TestSubject};
 use std::collections::BTreeMap;
 
 pub(crate) fn analyze(
@@ -59,18 +59,18 @@ pub(crate) fn analyze(
 
 fn resolve_subject(
     graph: &SourceGraph,
-    context: &codeatlas_domain::source_graph::SourceContext,
-    subject: &TestSubject,
+    context: &crate::domain::source_graph::SourceContext,
+    subject: &TestSubjectConfig,
 ) -> Result<DeclaredTestSubject> {
     match subject {
-        TestSubject::Project(project) => Ok(DeclaredTestSubject::Project {
+        TestSubjectConfig::Project(project) => Ok(DeclaredTestSubject::Project {
             project: project.clone(),
             resolved: graph
                 .projects
                 .keys()
                 .any(|candidate| candidate.0 == *project),
         }),
-        TestSubject::Source(pattern) => {
+        TestSubjectConfig::Source(pattern) => {
             let matcher = compile_subject(pattern, &context.id.0)?;
             let matched_paths = graph
                 .nodes
@@ -95,7 +95,7 @@ fn resolve_subject(
 pub(super) fn scripts_for_project(
     project: &ResolvedAnalysisProject,
 ) -> Result<Vec<TestScriptInventory>> {
-    let mut scripts = codeatlas_source::package::read_scripts(&project.root)?
+    let mut scripts = crate::package::read_scripts(&project.root)?
         .into_iter()
         .filter_map(|(name, command)| {
             let mut runners = detect_runners(&command);

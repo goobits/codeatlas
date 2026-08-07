@@ -1,10 +1,10 @@
 use super::SourceIndex;
-use codeatlas_domain::source_graph::{
+use crate::config::{AnalysisContextConfig, ResolvedAnalysisProject};
+use crate::domain::source_graph::{
     AnalysisCompleteness, ContextRole, ContextScope, EdgeTarget, NodeId, ProjectId, SourceEdge,
     SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
     SourceProject,
 };
-use codeatlas_domain::{AnalysisContext, ResolvedAnalysisProject};
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -45,7 +45,7 @@ fn project(root: &Path) -> ResolvedAnalysisProject {
         languages: vec!["ts".to_string()],
         contexts: BTreeMap::from([(
             "application".to_string(),
-            AnalysisContext {
+            AnalysisContextConfig {
                 role: ContextRole::Production,
                 scope: ContextScope::Runtime,
                 entrypoints: vec!["src/index.ts".to_string()],

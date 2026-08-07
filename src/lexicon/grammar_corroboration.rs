@@ -13,7 +13,7 @@ use super::symbols::{
     has_structural_detail, project_symbol, resolve_semantic_scope, resolve_symbol_shape,
     sort_symbols,
 };
-use codeatlas_domain::{Symbol, SymbolKind};
+use crate::domain::{Symbol, SymbolKind};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) struct GrammarObservation<'a> {

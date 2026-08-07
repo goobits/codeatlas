@@ -202,10 +202,7 @@ pub(super) fn source_error(
         PostgresFindingSeverity::Error,
         code,
         &contract.id,
-        Some(codeatlas_source::paths::normalize_relative_path(
-            path,
-            &project.root,
-        )),
+        Some(crate::paths::normalize_relative_path(path, &project.root)),
         error.to_string(),
         true,
         None,

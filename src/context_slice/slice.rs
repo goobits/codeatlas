@@ -2,9 +2,9 @@ use super::model::{
     ContextSliceOmitted, ContextSliceReport, ContextSliceRequest, CONTEXT_SLICE_SCHEMA_VERSION,
 };
 use super::targets::resolve_target;
+use crate::domain::source_graph::{EdgeTarget, SourceGraph};
 use crate::inspection::projection::{self, ProjectionPage, ProjectionRequest};
 use anyhow::Result;
-use codeatlas_domain::source_graph::{EdgeTarget, SourceGraph};
 use std::collections::BTreeSet;
 
 pub(crate) fn create(
@@ -168,9 +168,9 @@ pub(crate) fn create(
 }
 
 fn owns_project(
-    page: &ProjectionPage<codeatlas_domain::source_graph::NodeId>,
+    page: &ProjectionPage<crate::domain::source_graph::NodeId>,
     graph: &SourceGraph,
-    project: &codeatlas_domain::source_graph::ProjectId,
+    project: &crate::domain::source_graph::ProjectId,
 ) -> bool {
     page.ordered_nodes
         .iter()
@@ -187,7 +187,7 @@ fn owns_project(
 mod tests {
     use super::{create, ContextSliceRequest};
     use crate::context_slice::ContextDirection;
-    use codeatlas_domain::source_graph::{
+    use crate::domain::source_graph::{
         AnalysisCompleteness, ContextId, ContextRole, ContextScope, EdgeTarget, NodeId, ProjectId,
         SourceContext, SourceEdge, SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph,
         SourceLanguage, SourceNode, SourceProject,
@@ -432,10 +432,10 @@ mod tests {
         let mut changed = graph;
         changed
             .boundaries
-            .insert(codeatlas_domain::source_graph::AnalysisBoundary {
+            .insert(crate::domain::source_graph::AnalysisBoundary {
                 project: ProjectId("example".to_owned()),
                 node: None,
-                kind: codeatlas_domain::source_graph::BoundaryKind::Reflection,
+                kind: crate::domain::source_graph::BoundaryKind::Reflection,
                 effect: AnalysisCompleteness::Partial,
                 message: "changed evidence".to_owned(),
                 evidence: SourceEvidence::new("src/b.ts", None, "test"),

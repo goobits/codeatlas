@@ -5,12 +5,12 @@ use super::model::{
 };
 use super::nominate;
 use super::{collect_type_roles, IncompleteGraphScope, NominationSeed, SiblingFact};
-use crate::lexicon::concept_policy::LexiconPolicy;
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, NodeId, ProjectId, SourceEvidence, SourceFile, SourceGraph,
     SourceLanguage, SourceNode, SourceProject, SourceVisibility,
 };
-use codeatlas_domain::{EffectKind, SemanticType};
+use crate::domain::{EffectKind, SemanticType};
+use crate::lexicon::concept_policy::LexiconPolicy;
 use std::collections::BTreeSet;
 
 fn fact(member: &str, id: &str, action: &str) -> SiblingFact {

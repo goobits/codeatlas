@@ -445,7 +445,7 @@ fn managed_command(
             command.cwd.display()
         )
     })?;
-    let normalized_cwd = codeatlas_source::paths::normalize_path(relative_cwd);
+    let normalized_cwd = crate::paths::normalize_path(relative_cwd);
     let cwd = if normalized_cwd.is_empty() {
         "."
     } else {

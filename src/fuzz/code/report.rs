@@ -2,12 +2,12 @@ use super::corpus::{map_signature, CorpusMappingIssue};
 #[cfg(test)]
 use crate::analysis::reachability::render_diagnostics;
 use crate::analysis::reachability::Reachability;
-use crate::fuzz::corpus::{select_pairwise, CorpusDimension};
-use anyhow::Result;
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     ContextScope, NodeId, SourceGraph, SourceLanguage, SourceNode, SourceVisibility,
 };
-use codeatlas_domain::{CallableBlockReason, CallableContract, FuzzPolicyEvidence};
+use crate::domain::{CallableBlockReason, CallableContract, FuzzPolicyEvidence};
+use crate::fuzz::corpus::{select_pairwise, CorpusDimension};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 

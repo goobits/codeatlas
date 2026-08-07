@@ -3,8 +3,8 @@ use super::subject_terms::{
     RepositoryTermRole, RepositoryTermSource, RepositoryTermSourceKind, SubjectTermCollection,
     SubjectTermSeed, SubjectTermSeedKind,
 };
+use crate::domain::{ScanReport, Symbol};
 use anyhow::Result;
-use codeatlas_domain::{ScanReport, Symbol};
 
 pub(crate) fn collect_code_terms(scan: &ScanReport) -> Result<SubjectTermCollection> {
     let completeness =

@@ -5,11 +5,11 @@
 //! the existing lexical-reference graph. It never infers purity from an empty
 //! effect set.
 
-use anyhow::Result;
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     AnalysisCompleteness, EdgeTarget, NodeId, SourceEdgeKind, SourceGraph, SourceNode,
 };
-use codeatlas_domain::{CallableEffect, EffectKind, EffectProvenance, EvidenceClass, Span};
+use crate::domain::{CallableEffect, EffectKind, EffectProvenance, EvidenceClass, Span};
+use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
 
 const DEFAULT_LIMITS: EffectAnalysisLimits = EffectAnalysisLimits {
@@ -223,12 +223,12 @@ fn ensure_limit(kind: &str, observed: usize, maximum: usize) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{annotate_callable_effects_with_limits, EffectAnalysisLimits};
-    use codeatlas_domain::source_graph::{
+    use crate::domain::source_graph::{
         AnalysisCompleteness, BoundaryKind, EdgeTarget, NodeId, ProjectId, SourceEdge,
         SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
         SourceProject, SourceSymbol, SourceSymbolKind, SourceVisibility,
     };
-    use codeatlas_domain::{
+    use crate::domain::{
         CallableBody, CallableContract, CallableEffect, CallableKind, CallableSignature,
         EffectKind, EffectProvenance, EvidenceClass, ReceiverContract, SemanticType,
     };

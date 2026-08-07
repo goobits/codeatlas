@@ -1,5 +1,146 @@
-use codeatlas_domain::{Language, ScanReport, Stability, Symbol, SymbolKind, Visibility};
+use crate::domain::{Language, ScanReport, Stability, Symbol, SymbolKind, Visibility};
 use std::collections::BTreeMap;
+
+const MAX_EVIDENCE_REFERENCE_ENTRIES: usize = 20_000;
+const MAX_EVIDENCE_REFERENCE_ROWS: usize = 100_000;
+const MAX_EVIDENCE_REFERENCE_TEXT_BYTES: usize = 32 * 1024 * 1024;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceDocument {
+    pub(crate) title: String,
+    pub(crate) subject: String,
+    pub(crate) summary: Option<String>,
+    pub(crate) groups: Vec<EvidenceGroup>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceGroup {
+    pub(crate) name: String,
+    pub(crate) sections: Vec<EvidenceSection>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceSection {
+    pub(crate) name: String,
+    pub(crate) entries: Vec<EvidenceEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceEntry {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) kind: String,
+    pub(crate) description: Option<String>,
+    pub(crate) missing_description: Option<String>,
+    pub(crate) facts: Vec<EvidenceFact>,
+    pub(crate) tables: Vec<EvidenceTable>,
+    pub(crate) notes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceFact {
+    pub(crate) label: String,
+    pub(crate) value: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceTable {
+    pub(crate) title: String,
+    pub(crate) columns: Vec<String>,
+    pub(crate) rows: Vec<Vec<String>>,
+}
+
+impl EvidenceDocument {
+    pub(crate) fn validate(&self) -> anyhow::Result<()> {
+        let mut ids = std::collections::BTreeSet::new();
+        let mut entries = 0_usize;
+        let mut rows = 0_usize;
+        let mut text_bytes =
+            self.title.len() + self.subject.len() + self.summary.as_ref().map_or(0, String::len);
+        if self.title.trim().is_empty() || self.subject.trim().is_empty() {
+            anyhow::bail!("Evidence reference title and subject must be nonblank");
+        }
+        for group in &self.groups {
+            text_bytes = text_bytes.saturating_add(group.name.len());
+            for section in &group.sections {
+                text_bytes = text_bytes.saturating_add(section.name.len());
+                for entry in &section.entries {
+                    entries = entries.saturating_add(1);
+                    if entry.id.trim().is_empty() || !ids.insert(entry.id.as_str()) {
+                        anyhow::bail!(
+                            "Evidence reference entry IDs must be nonblank and unique: {:?}",
+                            entry.id
+                        );
+                    }
+                    if entry.name.trim().is_empty() || entry.kind.trim().is_empty() {
+                        anyhow::bail!(
+                            "Evidence reference entry {} needs a name and kind",
+                            entry.id
+                        );
+                    }
+                    text_bytes = text_bytes
+                        .saturating_add(entry.id.len())
+                        .saturating_add(entry.name.len())
+                        .saturating_add(entry.kind.len())
+                        .saturating_add(entry.description.as_ref().map_or(0, String::len))
+                        .saturating_add(entry.missing_description.as_ref().map_or(0, String::len));
+                    if entry.description.is_some() && entry.missing_description.is_some() {
+                        anyhow::bail!(
+                            "Evidence reference entry {} cannot have both sourced and missing descriptions",
+                            entry.id
+                        );
+                    }
+                    for fact in &entry.facts {
+                        text_bytes = text_bytes
+                            .saturating_add(fact.label.len())
+                            .saturating_add(fact.value.len());
+                    }
+                    for note in &entry.notes {
+                        text_bytes = text_bytes.saturating_add(note.len());
+                    }
+                    for table in &entry.tables {
+                        text_bytes = text_bytes.saturating_add(table.title.len());
+                        text_bytes = table
+                            .columns
+                            .iter()
+                            .fold(text_bytes, |total, value| total.saturating_add(value.len()));
+                        for row in &table.rows {
+                            if row.len() != table.columns.len() {
+                                anyhow::bail!(
+                                    "Evidence reference table {:?} has a row with {} cells for {} columns",
+                                    table.title,
+                                    row.len(),
+                                    table.columns.len()
+                                );
+                            }
+                            rows = rows.saturating_add(1);
+                            text_bytes = row
+                                .iter()
+                                .fold(text_bytes, |total, value| total.saturating_add(value.len()));
+                        }
+                    }
+                }
+            }
+        }
+        if entries > MAX_EVIDENCE_REFERENCE_ENTRIES {
+            anyhow::bail!(
+                "Evidence reference has {entries} entries; limit is {MAX_EVIDENCE_REFERENCE_ENTRIES}"
+            );
+        }
+        if rows > MAX_EVIDENCE_REFERENCE_ROWS {
+            anyhow::bail!(
+                "Evidence reference has {rows} table rows; limit is {MAX_EVIDENCE_REFERENCE_ROWS}"
+            );
+        }
+        if text_bytes > MAX_EVIDENCE_REFERENCE_TEXT_BYTES {
+            anyhow::bail!(
+                "Evidence reference has {text_bytes} text bytes; limit is {MAX_EVIDENCE_REFERENCE_TEXT_BYTES}"
+            );
+        }
+        Ok(())
+    }
+}
+
 pub(crate) struct ApiReference<'a> {
     pub(crate) groups: Vec<ReferenceGroup<'a>>,
     pub(crate) title: String,

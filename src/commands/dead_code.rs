@@ -1,5 +1,5 @@
 use super::{exit_code, load_project, output};
-use crate::{dead_code, outputs};
+use crate::{dead_code, languages, outputs};
 use anyhow::Result;
 use clap::ValueEnum;
 use std::collections::BTreeSet;
@@ -45,7 +45,7 @@ fn analyze(
     let project = load_project(path, config_path)?;
     let scope = crate::config::RepositoryScope::resolve(&project, workspace)?;
     let projects = scope.analysis_projects();
-    let graph = crate::analysis::build_source_graph(projects)?;
+    let graph = languages::reachability::build_source_graph(projects)?;
     let reachability = crate::analysis::reachability::Reachability::analyze(&graph)
         .map_err(crate::analysis::reachability::render_diagnostics)?;
     if check {

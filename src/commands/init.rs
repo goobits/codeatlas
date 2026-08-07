@@ -18,17 +18,15 @@ pub(crate) fn run_postgres(path: &Path, write: bool, config_path: Option<&Path>)
 
 fn init_code(path: &Path, write: bool, config_path: Option<&Path>) -> Result<i32> {
     let project = load_project(path, config_path)?;
-    let languages = codeatlas_languages::detect_language_ids(&project.root);
+    let languages = crate::languages::detect_language_ids(&project.root);
     if languages.is_empty() {
         anyhow::bail!(
             "No supported code languages were discovered in {}",
             project.root.display()
         );
     }
-    let mut entrypoints = codeatlas_source::package::discover_runtime_entrypoints(&project.root)?;
-    entrypoints.extend(codeatlas_source::package::discover_bundled_entrypoints(
-        &project.root,
-    )?);
+    let mut entrypoints = crate::package::discover_runtime_entrypoints(&project.root)?;
+    entrypoints.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
     entrypoints.sort();
     entrypoints.dedup();
 

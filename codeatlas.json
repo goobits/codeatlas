@@ -49,11 +49,11 @@
           "id": "language_adapters",
           "purpose": "compare maintained language adapter responsibilities",
           "members": [
-            { "id": "ecmascript", "paths": ["crates/languages/src/ecmascript"] },
-            { "id": "python", "paths": ["crates/languages/src/python"] },
-            { "id": "rust", "paths": ["crates/languages/src/rust"] },
-            { "id": "svelte", "paths": ["crates/languages/src/svelte"] },
-            { "id": "typescript", "paths": ["crates/languages/src/typescript"] }
+            { "id": "ecmascript", "paths": ["src/languages/ecmascript"] },
+            { "id": "python", "paths": ["src/languages/python"] },
+            { "id": "rust", "paths": ["src/languages/rust"] },
+            { "id": "svelte", "paths": ["src/languages/svelte"] },
+            { "id": "typescript", "paths": ["src/languages/typescript"] }
           ],
           "maximum_nominations": 200
         },

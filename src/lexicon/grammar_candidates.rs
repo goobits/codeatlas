@@ -179,15 +179,15 @@ pub(super) fn collect_grammar_candidates(
 mod tests {
     use super::collect_grammar_candidates;
     use crate::config::LexiconConfig;
-    use crate::lexicon::concept_policy::{load_concept_policy, LexiconPolicy};
-    use crate::lexicon::concepts::ConceptObservation;
-    use crate::lexicon::model::ConceptEvidenceRelation;
-    use crate::lexicon::symbols::tokenize_identifier;
-    use codeatlas_domain::{
+    use crate::domain::{
         CallableBody, CallableContract, CallableKind, CallableParameter, CallableSignature,
         Constructibility, Language, ParameterRequirement, ParameterRole, ReceiverContract,
         SemanticType, Symbol, SymbolKind, Visibility,
     };
+    use crate::lexicon::concept_policy::{load_concept_policy, LexiconPolicy};
+    use crate::lexicon::concepts::ConceptObservation;
+    use crate::lexicon::model::ConceptEvidenceRelation;
+    use crate::lexicon::symbols::tokenize_identifier;
     use std::path::Path;
 
     fn function(language: Language, file: &str, name: &str, signature: &str) -> Symbol {

@@ -1,7 +1,7 @@
 use super::{add_file_edge, add_importer, FileEdges, Importers};
-use codeatlas_domain::{Language, ScanReport, Symbol, Visibility};
-use codeatlas_languages::ecmascript::resolver;
-use codeatlas_languages::typescript::parser;
+use crate::domain::{Language, ScanReport, Symbol, Visibility};
+use crate::languages::ecmascript::resolver;
+use crate::languages::typescript::parser;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
@@ -24,7 +24,7 @@ pub(crate) fn collect_importers(
             return true;
         }
         let name = e.file_name().to_string_lossy();
-        !codeatlas_source::source_policy::is_ignored_dir(&name, no_default_ignore)
+        !crate::source_policy::is_ignored_dir(&name, no_default_ignore)
     }) {
         let entry = match entry {
             Ok(e) => e,
@@ -41,7 +41,7 @@ pub(crate) fn collect_importers(
             continue;
         }
 
-        let relative = codeatlas_source::paths::normalize_relative_path(path, root_dir);
+        let relative = crate::paths::normalize_relative_path(path, root_dir);
         let info = match parser::parse_module_info(path, root_dir) {
             Ok(info) => info,
             Err(_) => continue,
@@ -176,7 +176,7 @@ pub(crate) fn collect_package_consumers(
             return false;
         }
         let name = entry.file_name().to_string_lossy();
-        !codeatlas_source::source_policy::is_ignored_consumer_dir(&name)
+        !crate::source_policy::is_ignored_consumer_dir(&name)
     }) {
         let entry = match entry {
             Ok(entry) => entry,
@@ -197,12 +197,12 @@ pub(crate) fn collect_package_consumers(
             continue;
         }
 
-        let importer = codeatlas_source::paths::normalize_relative_path(path, &consumer_root);
+        let importer = crate::paths::normalize_relative_path(path, &consumer_root);
         let info = if path
             .extension()
             .is_some_and(|extension| extension == "svelte")
         {
-            codeatlas_languages::parse_svelte_module_source(&importer, &source)
+            crate::languages::parse_svelte_module_source(&importer, &source)
         } else {
             parser::parse_source(&source, &importer)
         };
@@ -267,8 +267,7 @@ fn package_symbol_index(
             continue;
         }
         for export_path in &symbol.export_paths {
-            let Some((package_name, _)) =
-                codeatlas_source::package::split_package_specifier(export_path)
+            let Some((package_name, _)) = crate::package::split_package_specifier(export_path)
             else {
                 continue;
             };
@@ -339,7 +338,7 @@ fn collect_signature_dependencies(
         .iter()
         .filter(|symbol| symbol.language == Language::TypeScript)
     {
-        let references = codeatlas_languages::typescript::referenced_identifiers(symbol);
+        let references = crate::languages::typescript::referenced_identifiers(symbol);
         if let Some(candidates) = symbols_by_file.get(&symbol.file_path) {
             dependencies.extend(
                 candidates
@@ -360,7 +359,7 @@ fn collect_signature_dependencies(
             };
             for binding in &import.bindings {
                 let imported = if binding.namespace {
-                    codeatlas_languages::typescript::referenced_namespace_members(
+                    crate::languages::typescript::referenced_namespace_members(
                         symbol,
                         &binding.local,
                     )

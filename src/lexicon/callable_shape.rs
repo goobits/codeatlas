@@ -1,6 +1,6 @@
 mod format;
 
-use codeatlas_domain::{CallableContract, CallableSignature, SemanticType, TypeUnknownReason};
+use crate::domain::{CallableContract, CallableSignature, SemanticType, TypeUnknownReason};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -145,7 +145,7 @@ fn has_semantic_type_evidence(semantic_type: &SemanticType) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{project_callable_shape_exact, project_callable_shape_semantic_roles};
-    use codeatlas_domain::{
+    use crate::domain::{
         CallableBody, CallableContract, CallableKind, CallableParameter, CallableSignature,
         ParameterRequirement, ParameterRole, ReceiverContract, SemanticType, TypeUnknownReason,
     };

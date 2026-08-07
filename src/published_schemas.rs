@@ -9,6 +9,7 @@ use crate::commands::diff::{
 };
 use crate::context_slice::{ContextSliceReport, CONTEXT_SLICE_SCHEMA_VERSION};
 use crate::dead_code::{DeadCodeReport, DEAD_CODE_SCHEMA_VERSION};
+use crate::domain::{ScanReport, SCAN_SCHEMA_VERSION};
 use crate::execution::artifact::is_namespaced_artifact_version;
 use crate::execution::{
     ExecutionPlan, ExecutionReceipt, EXECUTION_PLAN_SCHEMA_VERSION,
@@ -41,7 +42,6 @@ use crate::testing::{
     TESTING_IMPACT_SCHEMA_VERSION, TESTING_INVENTORY_SCHEMA_VERSION,
     TESTING_WITNESS_SCHEMA_VERSION,
 };
-use codeatlas_domain::{ScanReport, SCAN_SCHEMA_VERSION};
 use schemars::{JsonSchema, SchemaGenerator};
 use serde_json::Value;
 

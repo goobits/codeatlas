@@ -1,8 +1,7 @@
 use super::{annotate_report, build_scan_config, exit_code, load_project, output, scan_project};
-use crate::{analysis, outputs};
+use crate::{analysis, outputs, package};
 use anyhow::{Context, Result};
 use clap::ValueEnum;
-use codeatlas_source::package;
 use std::path::Path;
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
@@ -167,7 +166,7 @@ struct EvidenceDocsRequest<'a> {
 
 fn generate_evidence(
     request: EvidenceDocsRequest<'_>,
-    build: fn(&crate::config::RepositoryScope) -> Result<codeatlas_domain::EvidenceDocument>,
+    build: fn(&crate::config::RepositoryScope) -> Result<outputs::reference::EvidenceDocument>,
 ) -> Result<i32> {
     let project = load_project(request.path, request.config_path)?;
     let scope = crate::config::RepositoryScope::resolve(&project, request.workspace)?;
@@ -200,12 +199,9 @@ fn generate_evidence(
     Ok(0)
 }
 
-fn missing_descriptions(
-    report: &codeatlas_domain::ScanReport,
-    include_private: bool,
-) -> Vec<String> {
-    fn collect(symbol: &codeatlas_domain::Symbol, include_private: bool, output: &mut Vec<String>) {
-        if !include_private && symbol.visibility != codeatlas_domain::Visibility::Public {
+fn missing_descriptions(report: &crate::domain::ScanReport, include_private: bool) -> Vec<String> {
+    fn collect(symbol: &crate::domain::Symbol, include_private: bool, output: &mut Vec<String>) {
+        if !include_private && symbol.visibility != crate::domain::Visibility::Public {
             return;
         }
         let documented = symbol.docs.as_ref().is_some_and(|docs| {

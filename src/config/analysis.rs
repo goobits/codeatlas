@@ -1,9 +1,6 @@
 use super::http::HttpFuzzCommandConfig;
 use super::ProjectConfig;
 use anyhow::{Context, Result};
-use codeatlas_domain::{
-    AnalysisContext, ResolvedAnalysisProject, RustAnalysisOptions, TestSubject,
-};
 use globset::GlobBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -48,8 +45,8 @@ pub(crate) struct RustAnalysisConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct AnalysisContextConfig {
-    pub role: codeatlas_domain::source_graph::ContextRole,
-    pub scope: codeatlas_domain::source_graph::ContextScope,
+    pub role: crate::domain::source_graph::ContextRole,
+    pub scope: crate::domain::source_graph::ContextScope,
     pub entrypoints: Vec<String>,
     pub subjects: Vec<TestSubjectConfig>,
 }
@@ -57,8 +54,8 @@ pub(crate) struct AnalysisContextConfig {
 impl Default for AnalysisContextConfig {
     fn default() -> Self {
         Self {
-            role: codeatlas_domain::source_graph::ContextRole::Production,
-            scope: codeatlas_domain::source_graph::ContextScope::Runtime,
+            role: crate::domain::source_graph::ContextRole::Production,
+            scope: crate::domain::source_graph::ContextScope::Runtime,
             entrypoints: Vec::new(),
             subjects: Vec::new(),
         }
@@ -74,37 +71,19 @@ pub(crate) enum TestSubjectConfig {
     Source(String),
 }
 
-impl AnalysisContextConfig {
-    fn resolve(self) -> AnalysisContext {
-        AnalysisContext {
-            role: self.role,
-            scope: self.scope,
-            entrypoints: self.entrypoints,
-            subjects: self
-                .subjects
-                .into_iter()
-                .map(TestSubjectConfig::resolve)
-                .collect(),
-        }
-    }
-}
-
-impl RustAnalysisConfig {
-    fn resolve(self) -> RustAnalysisOptions {
-        RustAnalysisOptions {
-            all_features: self.all_features,
-            features: self.features,
-        }
-    }
-}
-
-impl TestSubjectConfig {
-    fn resolve(self) -> TestSubject {
-        match self {
-            Self::Project(project) => TestSubject::Project(project),
-            Self::Source(pattern) => TestSubject::Source(pattern),
-        }
-    }
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ResolvedAnalysisProject {
+    pub id: crate::domain::source_graph::ProjectId,
+    pub root: PathBuf,
+    pub report_root: String,
+    pub languages: Vec<String>,
+    pub contexts: BTreeMap<String, AnalysisContextConfig>,
+    pub assume_reachable: Vec<String>,
+    pub require_complete: bool,
+    pub no_default_ignore: bool,
+    pub rust: RustAnalysisConfig,
+    pub workspace_member: bool,
+    pub excluded_roots: Vec<PathBuf>,
 }
 
 impl ProjectConfig {
@@ -196,10 +175,9 @@ impl ProjectConfig {
                 validate_test_subjects(&id, name, context)?;
             }
             let resolved_project = ResolvedAnalysisProject {
-                id: codeatlas_domain::source_graph::ProjectId(id),
+                id: crate::domain::source_graph::ProjectId(id),
                 report_root: {
-                    let relative =
-                        codeatlas_source::paths::normalize_relative_path(&root, &self.config_dir);
+                    let relative = crate::paths::normalize_relative_path(&root, &self.config_dir);
                     if relative.is_empty() {
                         ".".to_string()
                     } else {
@@ -208,15 +186,11 @@ impl ProjectConfig {
                 },
                 root,
                 languages: project.languages,
-                contexts: project
-                    .contexts
-                    .into_iter()
-                    .map(|(name, context)| (name, context.resolve()))
-                    .collect(),
+                contexts: project.contexts,
                 assume_reachable: project.assume_reachable,
                 require_complete: project.require_complete,
                 no_default_ignore: self.config.no_default_ignore,
-                rust: project.rust.resolve(),
+                rust: project.rust,
                 workspace_member: false,
                 excluded_roots: Vec::new(),
             };
@@ -234,20 +208,13 @@ impl ProjectConfig {
             BTreeMap::from([(
                 "application".to_string(),
                 AnalysisContextConfig {
-                    role: codeatlas_domain::source_graph::ContextRole::Production,
-                    scope: codeatlas_domain::source_graph::ContextScope::Runtime,
+                    role: crate::domain::source_graph::ContextRole::Production,
+                    scope: crate::domain::source_graph::ContextScope::Runtime,
                     entrypoints: self.config.entrypoints.clone(),
                     subjects: Vec::new(),
                 },
             )])
         }
-    }
-
-    pub(super) fn default_resolved_analysis_contexts(&self) -> BTreeMap<String, AnalysisContext> {
-        self.default_analysis_contexts()
-            .into_iter()
-            .map(|(name, context)| (name, context.resolve()))
-            .collect()
     }
 
     pub(super) fn resolve_local_analysis_projects(
@@ -324,7 +291,7 @@ impl ProjectConfig {
         add_inferred_context(
             projects,
             "codeatlas-http-fuzz",
-            codeatlas_domain::source_graph::ContextRole::Test,
+            crate::domain::source_graph::ContextRole::Test,
             &fuzz_sources,
         )
     }
@@ -353,9 +320,8 @@ impl ProjectConfig {
                     continue;
                 };
                 if root.is_file() {
-                    let display =
-                        codeatlas_source::paths::normalize_relative_path(&root, &self.root);
-                    if codeatlas_source::source_policy::source_argument(&display).is_some() {
+                    let display = crate::paths::normalize_relative_path(&root, &self.root);
+                    if crate::source_policy::source_argument(&display).is_some() {
                         sources.push(root);
                     }
                     continue;
@@ -364,8 +330,8 @@ impl ProjectConfig {
                     continue;
                 }
                 sources.extend(
-                    codeatlas_source::source_discovery::discover(
-                        codeatlas_source::source_discovery::SourceDiscoveryRequest {
+                    crate::source_discovery::discover(
+                        crate::source_discovery::SourceDiscoveryRequest {
                             root: &root,
                             patterns: &[],
                             excluded_roots: &[],
@@ -375,9 +341,8 @@ impl ProjectConfig {
                     .files
                     .into_iter()
                     .filter(|source| {
-                        let display =
-                            codeatlas_source::paths::normalize_relative_path(source, &self.root);
-                        codeatlas_source::source_policy::source_argument(&display).is_some()
+                        let display = crate::paths::normalize_relative_path(source, &self.root);
+                        crate::source_policy::source_argument(&display).is_some()
                     }),
                 );
             }
@@ -385,7 +350,7 @@ impl ProjectConfig {
         add_inferred_context(
             projects,
             "codeatlas-postgres-migrations",
-            codeatlas_domain::source_graph::ContextRole::Production,
+            crate::domain::source_graph::ContextRole::Production,
             &sources,
         )
     }
@@ -396,7 +361,7 @@ impl ProjectConfig {
             .unwrap_or_else(|| self.root.clone());
         std::iter::once(command)
             .chain(args.iter().map(String::as_str))
-            .filter_map(codeatlas_source::source_policy::source_argument)
+            .filter_map(crate::source_policy::source_argument)
             .map(|source| root.join(source))
             .filter(|source| source.is_file())
             .map(|source| source.canonicalize().unwrap_or(source))
@@ -443,7 +408,7 @@ pub(super) fn merge_analysis_settings(
     project.require_complete |= owned.require_complete;
     project.no_default_ignore |= owned.no_default_ignore;
 
-    let default_rust = RustAnalysisOptions::default();
+    let default_rust = RustAnalysisConfig::default();
     if project.rust != default_rust && owned.rust != default_rust && project.rust != owned.rust {
         anyhow::bail!(
             "Rust analysis settings for {} conflict with package-owned config {}",
@@ -465,14 +430,14 @@ pub(super) fn finalize_project_boundaries(projects: &mut [ResolvedAnalysisProjec
 fn add_inferred_context(
     projects: &mut [ResolvedAnalysisProject],
     name: &str,
-    role: codeatlas_domain::source_graph::ContextRole,
+    role: crate::domain::source_graph::ContextRole,
     sources: &[PathBuf],
 ) -> Result<()> {
     for project in projects {
         let mut entrypoints = sources
             .iter()
             .filter_map(|source| source.strip_prefix(&project.root).ok())
-            .map(codeatlas_source::paths::normalize_path)
+            .map(crate::paths::normalize_path)
             .filter(|source| !source.is_empty())
             .collect::<Vec<_>>();
         entrypoints.sort();
@@ -481,17 +446,18 @@ fn add_inferred_context(
             continue;
         }
 
-        let context = project
-            .contexts
-            .entry(name.to_string())
-            .or_insert_with(|| AnalysisContext {
-                role,
-                scope: codeatlas_domain::source_graph::ContextScope::Runtime,
-                entrypoints: Vec::new(),
-                subjects: Vec::new(),
-            });
+        let context =
+            project
+                .contexts
+                .entry(name.to_string())
+                .or_insert_with(|| AnalysisContextConfig {
+                    role,
+                    scope: crate::domain::source_graph::ContextScope::Runtime,
+                    entrypoints: Vec::new(),
+                    subjects: Vec::new(),
+                });
         if context.role != role
-            || context.scope != codeatlas_domain::source_graph::ContextScope::Runtime
+            || context.scope != crate::domain::source_graph::ContextScope::Runtime
         {
             anyhow::bail!(
                 "Reserved inferred analysis context {name:?} in {} must use role {role:?} and runtime scope",
@@ -536,7 +502,7 @@ fn validate_test_subjects(
     if context.subjects.is_empty() {
         return Ok(());
     }
-    if context.role != codeatlas_domain::source_graph::ContextRole::Test {
+    if context.role != crate::domain::source_graph::ContextRole::Test {
         anyhow::bail!(
             "Analysis context {name} in {project} can declare subjects only when its role is test"
         );

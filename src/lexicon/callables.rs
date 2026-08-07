@@ -5,7 +5,7 @@ use super::model::{CallableCandidate, CallableCandidateKind};
 use super::symbols::{
     collect_identifier_concept_terms, project_symbol, resolve_semantic_scope, sort_symbols,
 };
-use codeatlas_domain::{EvidenceClass, Language, Symbol};
+use crate::domain::{EvidenceClass, Language, Symbol};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn find_callable_candidates<'a>(
@@ -185,12 +185,12 @@ fn rank_language(language: Language) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::find_callable_candidates;
-    use crate::lexicon::CallableCandidateKind;
-    use codeatlas_domain::{
+    use crate::domain::{
         CallableBody, CallableContract, CallableKind, CallableParameter, CallableSignature,
         EvidenceClass, Language, ParameterRequirement, ParameterRole, ReceiverContract,
         SemanticType, Symbol, SymbolKind, Visibility,
     };
+    use crate::lexicon::CallableCandidateKind;
 
     fn function(
         file_path: &str,
@@ -317,12 +317,9 @@ mod tests {
                 "def start(value)",
                 Language::Python,
                 "value",
+                SemanticType::unknown(crate::domain::TypeUnknownReason::MissingAnnotation, "value"),
                 SemanticType::unknown(
-                    codeatlas_domain::TypeUnknownReason::MissingAnnotation,
-                    "value",
-                ),
-                SemanticType::unknown(
-                    codeatlas_domain::TypeUnknownReason::MissingAnnotation,
+                    crate::domain::TypeUnknownReason::MissingAnnotation,
                     "return",
                 ),
             ),
@@ -332,12 +329,9 @@ mod tests {
                 "def launch(item)",
                 Language::Python,
                 "item",
+                SemanticType::unknown(crate::domain::TypeUnknownReason::MissingAnnotation, "item"),
                 SemanticType::unknown(
-                    codeatlas_domain::TypeUnknownReason::MissingAnnotation,
-                    "item",
-                ),
-                SemanticType::unknown(
-                    codeatlas_domain::TypeUnknownReason::MissingAnnotation,
+                    crate::domain::TypeUnknownReason::MissingAnnotation,
                     "return",
                 ),
             ),

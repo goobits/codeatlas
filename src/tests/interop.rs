@@ -1,6 +1,6 @@
 use crate::analysis::reachability::Reachability;
 use crate::config::ProjectConfig;
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     BoundaryKind, EdgeTarget, NodeId, SourceEdgeKind, SourceGraph, SourceNode,
 };
 use sha2::{Digest, Sha256};
@@ -43,7 +43,8 @@ fn agentspeak_resolution_conformance_matches_source_graph() {
     let projects = project
         .analysis_projects()
         .expect("resolve fixture analysis project");
-    let graph = crate::analysis::build_source_graph(&projects).expect("build fixture source graph");
+    let graph = crate::languages::reachability::build_source_graph(&projects)
+        .expect("build fixture source graph");
     let target = resolve_expected_target(&graph, &expected["target"]);
     let reachability = Reachability::analyze(&graph).expect("analyze fixture reachability");
     let (consumers, witnesses) = resolved_importers(&graph, &reachability, &target);
@@ -252,7 +253,7 @@ fn resolved_importers(
         };
         let is_test = reachability
             .roles(&edge.from)
-            .contains(&codeatlas_domain::source_graph::ContextRole::Test);
+            .contains(&crate::domain::source_graph::ContextRole::Test);
         importers
             .entry(path.to_string())
             .and_modify(|observed| *observed |= is_test)

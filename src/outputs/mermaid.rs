@@ -1,4 +1,4 @@
-use codeatlas_domain::{ScanReport, Symbol, SymbolKind, Visibility};
+use crate::domain::{ScanReport, Symbol, SymbolKind, Visibility};
 use std::collections::{HashMap, HashSet};
 
 /// W3C Accessible color palette (WCAG 2.1 AA compliant)

@@ -3,6 +3,7 @@ use crate::architecture::{
     compile, conform_source_dependencies, CompileMode, CompileRequest, SourceConformanceReport,
 };
 use crate::commands::{load_project, output};
+use crate::languages;
 use std::path::{Path, PathBuf};
 
 pub(crate) struct Options<'a> {
@@ -65,6 +66,6 @@ fn analyze(
     let project = load_project(options.repository_root, options.config_path)?;
     let scope = crate::config::RepositoryScope::resolve(&project, true)?;
     let projects = scope.source_projects();
-    let graph = crate::analysis::build_source_graph(&projects)?;
+    let graph = languages::reachability::build_source_graph(&projects)?;
     conform_source_dependencies(compilation, &graph)
 }

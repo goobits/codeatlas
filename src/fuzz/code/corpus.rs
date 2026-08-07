@@ -1,9 +1,9 @@
+use crate::domain::{
+    CallableSignature, ParameterRequirement, SemanticLiteral, SemanticType, StringEncoding,
+};
 use crate::fuzz::corpus::{
     BoundaryPoint, CollectionBoundary, CorpusDimension, FloatBoundary, IntegerBoundary,
     LengthBoundary, TextBoundary, TextEncoding, MAX_CORPUS_DEPTH, MAX_CORPUS_DIMENSIONS,
-};
-use codeatlas_domain::{
-    CallableSignature, ParameterRequirement, SemanticLiteral, SemanticType, StringEncoding,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};

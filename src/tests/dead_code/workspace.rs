@@ -17,7 +17,7 @@ fn aggregate_projects_inherit_package_owned_analysis_settings() {
     );
     assert!(owned.require_complete);
 
-    let graph = crate::analysis::build_source_graph(&projects).expect("aggregate graph");
+    let graph = languages::reachability::build_source_graph(&projects).expect("aggregate graph");
     assert!(graph.contexts.values().any(|context| {
         context.project == ProjectId("aggregate-owned".to_string())
             && context.name == "package-tool"
@@ -89,7 +89,7 @@ fn workspace_reachability_discovers_members_resolves_packages_and_preserves_owne
         .excluded_roots
         .iter()
         .any(|root| root.ends_with("sandbox/docs")));
-    let graph = crate::analysis::build_source_graph(&projects).expect("workspace graph");
+    let graph = languages::reachability::build_source_graph(&projects).expect("workspace graph");
 
     let package_a = ProjectId("@fixture/a".to_string());
     let package_b = ProjectId("@fixture/b".to_string());

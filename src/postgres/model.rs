@@ -1,6 +1,6 @@
 use crate::config::{PostgresPsqlMetaCommandMode, PostgresTransactionMode};
+use crate::domain::FuzzPolicyEvidence;
 use crate::execution::ExecutionEffect;
-use codeatlas_domain::FuzzPolicyEvidence;
 use serde::{Deserialize, Serialize};
 
 pub(crate) const POSTGRES_API_VERSION: &str = "codeatlas.postgres/v3";

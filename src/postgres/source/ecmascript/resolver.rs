@@ -1,6 +1,6 @@
 use super::{collector::ModuleCollector, ModuleFacts, SqlExpression, StaticSql};
+use crate::languages::ecmascript::resolver::resolve_relative_module;
 use anyhow::Result;
-use codeatlas_languages::ecmascript::resolver::resolve_relative_module;
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use swc_core::ecma::visit::VisitWith;
@@ -22,7 +22,7 @@ impl<'a> StaticSqlResolver<'a> {
         if !self.modules.contains_key(display) {
             let path = self.root.join(display);
             let (module, source_map) =
-                codeatlas_languages::typescript::parser::parse_syntax_tree(&path)?;
+                crate::languages::typescript::parser::parse_syntax_tree(&path)?;
             let mut collector = ModuleCollector::new(display.to_string(), source_map);
             module.visit_with(&mut collector);
             self.modules.insert(display.to_string(), collector.finish());
@@ -103,15 +103,13 @@ impl<'a> StaticSqlResolver<'a> {
         {
             return Ok(is_ecmascript_source(Path::new(&relative)).then_some(relative));
         }
-        let Some(dependency) = codeatlas_source::package::resolve_dependency(self.root, specifier)
-        else {
+        let Some(dependency) = crate::package::resolve_dependency(self.root, specifier) else {
             return Ok(None);
         };
-        if !codeatlas_source::package::is_local_dependency(self.root, &dependency)? {
+        if !crate::package::is_local_dependency(self.root, &dependency)? {
             return Ok(None);
         }
-        let Some(package) = codeatlas_source::package::discover_javascript(&dependency.root)?
-        else {
+        let Some(package) = crate::package::discover_javascript(&dependency.root)? else {
             return Ok(None);
         };
         let Some(export) = package
@@ -125,7 +123,7 @@ impl<'a> StaticSqlResolver<'a> {
         if !target.is_file() || !is_ecmascript_source(&target) {
             return Ok(None);
         }
-        Ok(Some(codeatlas_source::paths::normalize_relative_path(
+        Ok(Some(crate::paths::normalize_relative_path(
             &target, self.root,
         )))
     }

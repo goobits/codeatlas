@@ -1,8 +1,8 @@
 use super::{exit_code, load_project, output};
-use crate::{outputs, testing};
+use crate::config::ResolvedAnalysisProject;
+use crate::{languages, outputs, testing};
 use anyhow::Result;
 use clap::ValueEnum;
-use codeatlas_domain::ResolvedAnalysisProject;
 use std::path::{Path, PathBuf};
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
@@ -71,7 +71,7 @@ fn impact(
         projects.retain(|project| project_supports_family(project, family));
         apply_exact_source_family(&mut projects, family);
     }
-    let graph = crate::analysis::build_source_graph(&projects)?;
+    let graph = languages::reachability::build_source_graph(&projects)?;
     let report = testing::analyze_impact(&graph, &projects, &repository_root, changed)?;
     let rendered = match format {
         TestingFormat::Text => outputs::testing::render_impact(&report),
@@ -143,12 +143,12 @@ fn load_graph(
     workspace: bool,
     config_path: Option<&Path>,
 ) -> Result<(
-    Vec<codeatlas_domain::ResolvedAnalysisProject>,
-    codeatlas_domain::source_graph::SourceGraph,
+    Vec<crate::config::ResolvedAnalysisProject>,
+    crate::domain::source_graph::SourceGraph,
     PathBuf,
 )> {
     let (projects, repository_root) = load_projects(path, workspace, config_path)?;
-    let graph = crate::analysis::build_source_graph(&projects)?;
+    let graph = languages::reachability::build_source_graph(&projects)?;
     Ok((projects, graph, repository_root))
 }
 
@@ -233,8 +233,8 @@ fn apply_exact_source_family(projects: &mut [ResolvedAnalysisProject], family: S
 #[cfg(test)]
 mod tests {
     use super::{apply_exact_source_family, source_family, status_gates, SourceFamily};
-    use codeatlas_domain::source_graph::ProjectId;
-    use codeatlas_domain::ResolvedAnalysisProject;
+    use crate::config::ResolvedAnalysisProject;
+    use crate::domain::source_graph::ProjectId;
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::Path;

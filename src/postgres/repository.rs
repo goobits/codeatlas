@@ -33,7 +33,7 @@ pub(super) fn query_evidence(
     query: &PostgresQueryContract,
 ) -> PostgresEvidence {
     PostgresEvidence {
-        path: codeatlas_source::paths::repository_path(&member.report_root, &query.path),
+        path: crate::paths::repository_path(&member.report_root, &query.path),
         line: query.line,
         column: Some(query.column),
     }

@@ -3,10 +3,10 @@ use super::openapi::{HttpOpenApiDocumentation, HttpOperationDocumentation};
 use super::repository::{self, RepositoryHttpOperation};
 use super::target::ResolvedHttpContract;
 use crate::config::RepositoryScope;
-use anyhow::{Context, Result};
-use codeatlas_domain::{
+use crate::outputs::reference::{
     EvidenceDocument, EvidenceEntry, EvidenceFact, EvidenceGroup, EvidenceSection, EvidenceTable,
 };
+use anyhow::{Context, Result};
 
 pub(crate) fn build(scope: &RepositoryScope) -> Result<EvidenceDocument> {
     let mut groups = Vec::new();

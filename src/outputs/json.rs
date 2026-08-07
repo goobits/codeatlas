@@ -1,5 +1,5 @@
+use crate::domain::{ScanReport, Symbol};
 use anyhow::Result;
-use codeatlas_domain::{ScanReport, Symbol};
 
 pub(crate) fn render(report: &ScanReport) -> Result<String> {
     let mut report = report.clone();

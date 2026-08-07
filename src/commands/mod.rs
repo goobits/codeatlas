@@ -12,12 +12,10 @@ pub(crate) mod postgres;
 pub(crate) mod testing;
 
 use crate::config::ProjectConfig;
-use crate::{analysis, outputs};
+use crate::domain::{ScanConfig, ScanReport};
+use crate::{analysis, languages, outputs, package};
 use anyhow::Result;
 use clap::ValueEnum;
-use codeatlas_domain::{ScanConfig, ScanReport};
-use codeatlas_languages as languages;
-use codeatlas_source::package;
 use std::path::{Path, PathBuf};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -192,9 +190,7 @@ pub(super) fn annotate_report(report: &mut ScanReport, project: &ProjectConfig) 
                     .config
                     .entrypoints
                     .iter()
-                    .map(|entrypoint| {
-                        codeatlas_source::paths::normalize_path(Path::new(entrypoint))
-                    })
+                    .map(|entrypoint| crate::paths::normalize_path(Path::new(entrypoint)))
                     .collect::<std::collections::HashSet<_>>();
                 package
                     .exports

@@ -79,7 +79,7 @@ fn declaration_contract_scans_reachable_files_inside_ignored_dist() {
         .iter()
         .find(|symbol| symbol.name == "createPublicValue")
         .expect("public declaration alias");
-    assert_eq!(symbol.visibility, codeatlas_domain::Visibility::Public);
+    assert_eq!(symbol.visibility, crate::domain::Visibility::Public);
     assert_eq!(
         symbol.signature,
         "function createPublicValue(options: PublicValueOptions) -> string"
@@ -105,7 +105,7 @@ fn declaration_contract_rejects_empty_public_export_scans() {
         .join("docs-dist");
     let project =
         ProjectConfig::load(&root, Some(&root.join("codeatlas.json"))).expect("project config");
-    let mut report = codeatlas_domain::ScanReport::default();
+    let mut report = crate::domain::ScanReport::default();
 
     let error = commands::annotate_report(&mut report, &project)
         .expect_err("empty declaration contract must fail");

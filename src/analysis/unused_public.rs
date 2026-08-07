@@ -1,6 +1,6 @@
 use crate::analysis::imports::UsageAnalysis;
-use codeatlas_domain::{ScanReport, UnusedPublic, Visibility};
-use codeatlas_source::source_policy;
+use crate::domain::{ScanReport, UnusedPublic, Visibility};
+use crate::source_policy;
 
 pub(crate) fn compute(
     report: &ScanReport,
@@ -27,11 +27,11 @@ pub(crate) fn compute(
     unused
 }
 
-fn suggestion_for(language: codeatlas_domain::Language) -> String {
+fn suggestion_for(language: crate::domain::Language) -> String {
     match language {
-        codeatlas_domain::Language::Rust => "pub(crate)".to_string(),
-        codeatlas_domain::Language::TypeScript => "remove export".to_string(),
-        codeatlas_domain::Language::Python => "prefix with _".to_string(),
+        crate::domain::Language::Rust => "pub(crate)".to_string(),
+        crate::domain::Language::TypeScript => "remove export".to_string(),
+        crate::domain::Language::Python => "prefix with _".to_string(),
         _ => "internal".to_string(),
     }
 }

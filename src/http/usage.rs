@@ -1,11 +1,11 @@
 use super::model::{HttpConfidence, HttpSourceCompleteness, HttpSourceOperation};
 use crate::analysis::reachability::Reachability;
 use crate::config::{RepositoryMember, RepositoryScope, RepositoryScopeEvidence};
-use anyhow::{Context, Result};
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     AnalysisCompleteness, ContextRole, EdgeTarget, FindingConfidence, NodeId, ProjectId,
     SourceEdgeKind, SourceGraph, SourceNode,
 };
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -130,7 +130,7 @@ pub(super) fn analyze_collected(
 ) -> Result<HttpUsageReport> {
     let projects = scope.analysis_projects();
     let (graph, graph_digest, graph_diagnostics) =
-        match crate::analysis::build_source_graph(projects) {
+        match crate::languages::reachability::build_source_graph(projects) {
             Ok(graph) => {
                 let digest = crate::execution::artifact::digest_value(GRAPH_DIGEST_DOMAIN, &graph)?;
                 (Some(graph), Some(digest), Vec::new())
@@ -402,10 +402,7 @@ fn collect_handler_references(
                     .get(&project)
                     .map_or(".", |project| project.root.as_str());
                 if path
-                    == codeatlas_source::paths::repository_path(
-                        declaration_path,
-                        &declaration.evidence.path,
-                    )
+                    == crate::paths::repository_path(declaration_path, &declaration.evidence.path)
                     && line == declaration.evidence.line
                 {
                     continue;
@@ -461,7 +458,7 @@ fn collect_literal_references(
                 .map_or(".", |project| project.root.as_str());
             declaration_locations.insert((
                 target.clone(),
-                codeatlas_source::paths::repository_path(project_root, &declaration.evidence.path),
+                crate::paths::repository_path(project_root, &declaration.evidence.path),
                 declaration.evidence.line,
             ));
         }
@@ -497,11 +494,9 @@ fn collect_literal_references(
             .projects
             .get(&file.project)
             .map_or(".", |project| project.root.as_str());
-        let report_path = codeatlas_source::paths::repository_path(project_root, &file.path);
+        let report_path = crate::paths::repository_path(project_root, &file.path);
         let is_test = node_is_test(graph, reachability, node_id)
-            || codeatlas_source::source_policy::is_conventional_test_source(std::path::Path::new(
-                &file.path,
-            ));
+            || crate::source_policy::is_conventional_test_source(std::path::Path::new(&file.path));
         for literal in plain_string_literals(&source, file.language) {
             let Some(matches) = candidates.get(&literal.value) else {
                 continue;
@@ -580,7 +575,7 @@ fn declaration_evidence(
             HttpConfidence::High => FindingConfidence::High,
             HttpConfidence::Medium => FindingConfidence::Medium,
         },
-        path: codeatlas_source::paths::repository_path(&member.report_root, &source.evidence.path),
+        path: crate::paths::repository_path(&member.report_root, &source.evidence.path),
         line: source.evidence.line,
         node_id,
     }
@@ -602,7 +597,7 @@ fn evidence_repository_path(graph: &SourceGraph, node: &NodeId, fallback: &str) 
     let root = project
         .and_then(|project| graph.projects.get(project))
         .map_or(".", |project| project.root.as_str());
-    codeatlas_source::paths::repository_path(root, fallback)
+    crate::paths::repository_path(root, fallback)
 }
 
 fn completeness_name(value: AnalysisCompleteness) -> &'static str {

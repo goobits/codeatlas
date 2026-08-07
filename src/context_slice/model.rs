@@ -1,7 +1,7 @@
-use crate::inspection::{InspectionDirection, InspectionRequest};
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     AnalysisBoundary, NodeId, SourceContext, SourceEdge, SourceNode, SourceProject,
 };
+use crate::inspection::{InspectionDirection, InspectionRequest};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

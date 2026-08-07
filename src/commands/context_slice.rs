@@ -1,5 +1,5 @@
 use super::{exit_code, load_project, output};
-use crate::{context_slice, outputs};
+use crate::{context_slice, languages, outputs};
 use anyhow::Result;
 use std::path::Path;
 
@@ -20,7 +20,7 @@ fn generate(
 ) -> Result<i32> {
     let project = load_project(path, config_path)?;
     let projects = project.analysis_projects()?;
-    let graph = crate::analysis::build_source_graph(&projects)?;
+    let graph = languages::reachability::build_source_graph(&projects)?;
     let report = context_slice::create(&graph, &request)?;
     let rendered = outputs::context_slice::render_json(&report)?;
     output::write_text_or_print(&rendered, out, "Context slice")?;

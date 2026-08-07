@@ -7,6 +7,7 @@ mod commands;
 mod config;
 mod context_slice;
 mod dead_code;
+mod domain;
 mod environment;
 mod execution;
 mod external_tool;
@@ -14,12 +15,17 @@ mod filesystem;
 mod fuzz;
 mod http;
 mod inspection;
+mod languages;
 mod lexicon;
 mod outputs;
+mod package;
+mod paths;
 mod postgres;
 #[cfg(test)]
 mod published_schemas;
+mod source_discovery;
 mod source_index;
+mod source_policy;
 mod testing;
 
 #[cfg(test)]

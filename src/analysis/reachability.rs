@@ -4,7 +4,7 @@
 //! This module only propagates configured contexts through resolved,
 //! traversable edges.
 
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope, EdgeTarget,
     FindingConfidence, GraphDiagnostic, NodeId, ProjectId, SourceContext, SourceEdge,
     SourceEdgeKind, SourceGraph, SourceLanguage, SourceNode,
@@ -292,7 +292,7 @@ fn same_runtime_family(left: Option<SourceLanguage>, right: Option<SourceLanguag
 fn localized_confidence(
     graph: &SourceGraph,
     project: &ProjectId,
-    boundary_applies: impl Fn(&codeatlas_domain::source_graph::AnalysisBoundary) -> bool,
+    boundary_applies: impl Fn(&crate::domain::source_graph::AnalysisBoundary) -> bool,
 ) -> FindingConfidence {
     let Some(source_project) = graph.projects.get(project) else {
         return FindingConfidence::Low;
@@ -333,7 +333,7 @@ fn confidence_for_completeness(completeness: AnalysisCompleteness) -> FindingCon
 #[cfg(test)]
 mod tests {
     use super::{file_confidence, project_confidence, symbol_confidence, Reachability};
-    use codeatlas_domain::source_graph::{
+    use crate::domain::source_graph::{
         AnalysisBoundary, AnalysisCompleteness, BoundaryKind, ContextId, ContextRole, ContextScope,
         EdgeTarget, FindingConfidence, NodeId, ProjectId, SourceContext, SourceEdge,
         SourceEdgeKind, SourceEvidence, SourceFile, SourceGraph, SourceLanguage, SourceNode,
@@ -363,12 +363,12 @@ mod tests {
         graph
             .add_node(
                 unused.clone(),
-                SourceNode::Symbol(codeatlas_domain::source_graph::SourceSymbol {
+                SourceNode::Symbol(crate::domain::source_graph::SourceSymbol {
                     project: project.clone(),
                     file: helper.clone(),
                     name: "unused".to_string(),
-                    symbol_kind: codeatlas_domain::source_graph::SourceSymbolKind::Function,
-                    visibility: codeatlas_domain::source_graph::SourceVisibility::Private,
+                    symbol_kind: crate::domain::source_graph::SourceSymbolKind::Function,
+                    visibility: crate::domain::source_graph::SourceVisibility::Private,
                     span: None,
                     callable: None,
                     fuzz_policy: None,
@@ -439,12 +439,12 @@ mod tests {
             graph
                 .add_node(
                     id,
-                    SourceNode::Symbol(codeatlas_domain::source_graph::SourceSymbol {
+                    SourceNode::Symbol(crate::domain::source_graph::SourceSymbol {
                         project: project.clone(),
                         file,
                         name: name.to_string(),
-                        symbol_kind: codeatlas_domain::source_graph::SourceSymbolKind::Function,
-                        visibility: codeatlas_domain::source_graph::SourceVisibility::Public,
+                        symbol_kind: crate::domain::source_graph::SourceSymbolKind::Function,
+                        visibility: crate::domain::source_graph::SourceVisibility::Public,
                         span: None,
                         callable: None,
                         fuzz_policy: None,

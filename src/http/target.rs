@@ -182,7 +182,7 @@ impl ProjectConfig {
                     Ok(ResolvedHttpContract {
                         id,
                         openapi: Some(openapi),
-                        openapi_display: Some(codeatlas_source::paths::normalize_relative_path(
+                        openapi_display: Some(crate::paths::normalize_relative_path(
                             &unresolved,
                             &self.root,
                         )),
@@ -231,7 +231,7 @@ impl ProjectConfig {
                     };
                     Some((
                         absolute_existing(path, &current_dir, "OpenAPI contract")?,
-                        codeatlas_source::paths::normalize_relative_path(&unresolved, &self.root),
+                        crate::paths::normalize_relative_path(&unresolved, &self.root),
                     ))
                 } else if let Some(path) = &contract.openapi {
                     let unresolved = if path.is_absolute() {
@@ -241,7 +241,7 @@ impl ProjectConfig {
                     };
                     Some((
                         absolute_existing(path, &self.config_dir, "OpenAPI contract")?,
-                        codeatlas_source::paths::normalize_relative_path(&unresolved, &self.root),
+                        crate::paths::normalize_relative_path(&unresolved, &self.root),
                     ))
                 } else {
                     None

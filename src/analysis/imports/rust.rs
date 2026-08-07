@@ -1,6 +1,6 @@
 use super::{add_file_edge, add_importer, FileEdges, Importers};
-use codeatlas_domain::Language;
-use codeatlas_languages::rust::{parser, resolver};
+use crate::domain::Language;
+use crate::languages::rust::{parser, resolver};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -22,8 +22,7 @@ pub(crate) fn collect_importers(
             return true;
         }
         let name = e.file_name().to_string_lossy();
-        !codeatlas_source::source_policy::is_ignored_dir(&name, no_default_ignore)
-            && name != "target"
+        !crate::source_policy::is_ignored_dir(&name, no_default_ignore) && name != "target"
     }) {
         let entry = match entry {
             Ok(e) => e,
@@ -40,7 +39,7 @@ pub(crate) fn collect_importers(
             Err(_) => continue,
         };
 
-        let relative = codeatlas_source::paths::normalize_relative_path(path, root_dir);
+        let relative = crate::paths::normalize_relative_path(path, root_dir);
         let module_path = resolver::module_path_from_file(&relative);
         module_map.insert(module_path.clone(), relative.clone());
 

@@ -1,7 +1,7 @@
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     AnalysisCompleteness, FindingConfidence, NodeId, SourceSymbolKind,
 };
-use codeatlas_domain::CallableContract;
+use crate::domain::CallableContract;
 use serde::{Deserialize, Serialize};
 
 pub(crate) const TESTING_INVENTORY_SCHEMA_VERSION: u32 = 1;

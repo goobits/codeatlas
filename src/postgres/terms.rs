@@ -103,9 +103,11 @@ fn collect_member_terms(
         .collect::<BTreeMap<_, _>>();
     let config_source = RepositoryTermSource::new(
         RepositoryTermSourceKind::Configuration,
-        member.member.config_path.as_ref().map(|path| {
-            codeatlas_source::paths::normalize_relative_path(path, &scope.workspace_root)
-        }),
+        member
+            .member
+            .config_path
+            .as_ref()
+            .map(|path| crate::paths::normalize_relative_path(path, &scope.workspace_root)),
     );
     for contract in &member.collected.report.contracts {
         let owner = format!("{project}/{}", contract.id);
@@ -157,7 +159,7 @@ fn collect_member_terms(
                     PostgresInspectionSourceRole::Bootstrap => RepositoryTermSourceKind::Bootstrap,
                     PostgresInspectionSourceRole::Migration => RepositoryTermSourceKind::Migration,
                 },
-                Some(codeatlas_source::paths::repository_path(
+                Some(crate::paths::repository_path(
                     &member.member.report_root,
                     &source.inventory.path,
                 )),
@@ -175,7 +177,7 @@ fn collect_member_terms(
         let target = super::graph::query_node_id(project, &query.contract_id, &query.contract.id);
         let source = RepositoryTermSource::new(
             RepositoryTermSourceKind::Query,
-            Some(codeatlas_source::paths::repository_path(
+            Some(crate::paths::repository_path(
                 &member.member.report_root,
                 &query.contract.path,
             )),

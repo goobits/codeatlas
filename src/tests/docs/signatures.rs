@@ -20,7 +20,7 @@ fn scan_reports_require_an_explicit_schema_contract() {
         "imports":[],
         "unused_public":[]
     }"#;
-    assert!(serde_json::from_str::<codeatlas_domain::ScanReport>(legacy).is_err());
+    assert!(serde_json::from_str::<crate::domain::ScanReport>(legacy).is_err());
 }
 
 #[test]
@@ -30,7 +30,7 @@ export function listNames(): readonly string[] { return [] }
 export function isName(value: unknown): value is string { return true }
 export type NameKey = `name:${string}`
 "#;
-    let report = codeatlas_languages::typescript::parser::parse_source(source, "src/types.ts")
+    let report = crate::languages::typescript::parser::parse_source(source, "src/types.ts")
         .expect("TypeScript source");
     let signature = |name: &str| {
         report
@@ -67,7 +67,7 @@ export type Options<TValue = string> = {
     transform<TNext>(value: TValue): TNext
 }
 "#;
-    let report = codeatlas_languages::typescript::parser::parse_source(source, "src/types.ts")
+    let report = crate::languages::typescript::parser::parse_source(source, "src/types.ts")
         .expect("TypeScript source");
     let signature = |name: &str| {
         report
@@ -119,7 +119,7 @@ export class StoreImpl {
     set current(value: string) {}
 }
 "#;
-    let report = codeatlas_languages::typescript::parser::parse_source(source, "src/accessors.ts")
+    let report = crate::languages::typescript::parser::parse_source(source, "src/accessors.ts")
         .expect("TypeScript accessors");
 
     for owner in ["Store", "StoreImpl"] {
@@ -134,7 +134,7 @@ export class StoreImpl {
             .filter(|child| child.name == "current")
             .collect::<Vec<_>>();
         assert_eq!(accessors.len(), 1);
-        assert_eq!(accessors[0].kind, codeatlas_domain::SymbolKind::Property);
+        assert_eq!(accessors[0].kind, crate::domain::SymbolKind::Property);
         assert!(accessors[0]
             .signature
             .lines()
@@ -153,7 +153,7 @@ export function parse(value: string): string
 export function parse(value: number): number
 export function parse(value: string | number): string | number { return value }
 "#;
-    let report = codeatlas_languages::typescript::parser::parse_source(source, "src/overloads.ts")
+    let report = crate::languages::typescript::parser::parse_source(source, "src/overloads.ts")
         .expect("TypeScript overloads");
     let overloads = report
         .symbols

@@ -8,7 +8,9 @@ mod postgres;
 mod repository;
 mod semantic_siblings;
 
-pub(crate) use analysis::AnalysisProjectConfig;
+pub(crate) use analysis::{
+    AnalysisContextConfig, AnalysisProjectConfig, ResolvedAnalysisProject, TestSubjectConfig,
+};
 pub(crate) use edit::{ConfigEdit, ConfigSubject};
 pub(crate) use execution::{
     ExecutionConfig, ExecutionContainerIsolationConfig, ExecutionFilesystemIsolation,
@@ -37,7 +39,6 @@ pub(crate) use semantic_siblings::{
 };
 
 use anyhow::{Context, Result};
-use codeatlas_domain::ResolvedAnalysisProject;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};

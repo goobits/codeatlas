@@ -1,6 +1,6 @@
 # Measured build topology and TypeMill-assisted crate extraction
 
-Status: Accepted; implementation in progress
+Status: [x] Complete; measured extraction rejected and fully removed
 
 Decision scope: Reduce CodeAtlas edit/build/test cost while making dependency
 direction explicit, without changing CLI behavior, evidence bytes, artifact
@@ -18,9 +18,9 @@ source-impact, and performance evidence
 
 ## Decision
 
-CodeAtlas will replace the single 92,000-line Rust compilation unit with a
+CodeAtlas trialed replacing the single 92,000-line Rust compilation unit with a
 small explicit workspace only where a cohesive boundary and measured edit-loop
-benefit agree. The accepted targets are:
+benefit agreed. The experimental targets were:
 
 - `codeatlas-domain`: language-neutral evidence and resolved analysis inputs.
 - `codeatlas-source`: path normalization, source selection, package evidence,
@@ -32,6 +32,15 @@ benefit agree. The accepted targets are:
   by HTTP planning and the execution kernel.
 - `codeatlas-execution`: plans, budgets, artifacts, sandboxing, proxying,
   workloads, cleanup, and receipts.
+
+The Phase 4 gate rejected that topology before the execution boundary moved.
+The extracted language boundary made a controlled application edit no faster,
+made a parser edit 28.0 percent slower, and made the root test-build lane 29.9
+percent slower. A faster cold build and independently runnable language tests
+did not satisfy the accepted warm-loop requirement. The trial crates are
+therefore removed rather than retained as architectural cruft, and Phases 5
+and 6 are canceled. The independently locked isolation-conformance crate stays
+unchanged.
 
 The root `codeatlas` package remains the application crate and owns config,
 commands, CLI, HTTP, PostgreSQL, outputs, schema publication, and product-level
@@ -59,22 +68,23 @@ dependency on another CodeAtlas module. Languages depends on domain plus the
 resolved analysis-project shape. Execution depends on four raw config types,
 two external-state lookups, and the existing exact-tool owner.
 
-Two cycles must be removed as part of the final boundary rather than hidden
-behind facades: HTTP/PostgreSQL documentation imports the evidence-document
-model from `outputs`, while `outputs` imports HTTP/PostgreSQL report models.
-Only the evidence-document model and validation move to domain; rendering and
-code-reference presentation helpers stay in `outputs`.
+The trial removed two module-level cycles rather than hiding them behind
+facades: HTTP/PostgreSQL documentation imported the evidence-document model
+from `outputs`, while `outputs` imported HTTP/PostgreSQL report models. Only
+the evidence-document model and validation moved to domain; rendering and
+code-reference presentation helpers stayed in `outputs`. The measurement gate
+still required the entire trial boundary to be removed.
 
 The clean Phase 3 dependency audit corrected one earlier assumption: language
 adapters also consume the existing path, source-discovery, source-policy,
 package-evidence, fuzz-directive, source-index, and effect-propagation owners.
-Those dependencies cannot point back into the application crate. One
-dependency-light `codeatlas-source` member therefore moves the first four
-owners without duplicating them. The root source index implements one generic
-fact-provider contract from that crate; root analysis wraps language graph
-construction and retains effect propagation. The pure adjacent-directive
-parser moves beside its existing domain evidence instead of creating a second
-grammar. No catch-all host interface, callback bag, or second source walker is
+Those dependencies could not point back into the application crate. One
+dependency-light `codeatlas-source` member therefore moved the first four
+owners without duplicating them. The root source index implemented one generic
+fact-provider contract from that crate; root analysis wrapped language graph
+construction and retained effect propagation. The pure adjacent-directive
+parser moved beside its existing domain evidence instead of creating a second
+grammar. No catch-all host interface, callback bag, or second source walker was
 introduced.
 
 PostgreSQL's ECMAScript SQL collector legitimately uses SWC directly for its
@@ -153,14 +163,14 @@ receipts live outside the checkout under
 
 ## Phase 2: Extract the dependency-light domain crate and remove report cycles
 
-Status: [x] Complete
+Status: [x] Trial completed; removed by the Phase 4 gate
 
 LOC: +1,950-2,250 / -1,750-2,050
 
-Scaffold checkpoint: the root workspace names `crates/domain` explicitly,
-continues to exclude the independently locked isolation probe, and packages the
-new crate. A focused topology test rejects a wildcard member and loss of the
-probe's nested workspace or lock before any source move is attempted.
+Trial scaffold checkpoint: the root workspace named `crates/domain` explicitly,
+continued to exclude the independently locked isolation probe, and packaged the
+new crate. A focused topology test rejected a wildcard member and loss of the
+probe's nested workspace or lock before any source move was attempted.
 
 TypeMill checkpoint: stable Mill 0.8.18 advertised Rust file moves and was
 probed from clean commit `c9ac41b`. Two destination-safe previews blocked
@@ -169,16 +179,16 @@ because its workspace resource reconciliation reached an unrelated Python
 import root. No plan was applied. The accepted ordinary-edit fallback owns the
 move rather than retaining a partial TypeMill result or compatibility module.
 
-Acceptance evidence: `codeatlas-domain` owns the former domain models plus
+Trial acceptance evidence: `codeatlas-domain` owned the former domain models plus
 resolved analysis inputs and the evidence-document model/validation. Raw JSON
-types remain config-private and one conversion test proves that resolution
-preserves serialized evidence. HTTP and PostgreSQL no longer import outputs;
-outputs retains only rendering and code-reference presentation. Six domain
+types remained config-private and one conversion test proved that resolution
+preserved serialized evidence. HTTP and PostgreSQL no longer imported outputs;
+outputs retained only rendering and code-reference presentation. Six domain
 tests, 422 root tests, 26 focused CLI/docs/repository tests, all-target Clippy,
 32 Node tests, 476 full-suite Rust tests, package assembly, schema/spec checks,
-and seven zero-gate self-dogfood lanes pass. The old module, imports, config
-re-exports, and compatibility paths are absent, while the standalone probe
-manifest and lock retain their exact digests.
+and seven zero-gate self-dogfood lanes passed. The old module, imports, config
+re-exports, and compatibility paths were absent, while the standalone probe
+manifest and lock retained their exact digests.
 
 Fresh-cache comparison against the Phase 1 binary proves exact output identity:
 scan `252122dbfcff8efe1c60558e34e6662a3badf9e63f00668125dd49119dc738b1`,
@@ -231,7 +241,7 @@ to those values in the same phase, with no alias or re-export of retired names.
 
 ## Phase 3: Extract shared source primitives and all language adapters
 
-Status: [x] Complete
+Status: [x] Trial completed; removed by the Phase 4 gate
 
 LOC: +20,300-21,300 / -19,700-20,700
 
@@ -281,25 +291,25 @@ cross-directory moves require unchanged module filenames or language-server
 file-rename support. It persisted no plan, and the complete source-tree digest
 remained unchanged, so the accepted ordinary-edit fallback owns this hard cut.
 
-Source checkpoint: `codeatlas-source` now owns the exact moved path,
+Trial source checkpoint: `codeatlas-source` owned the exact moved path,
 source-policy, source-discovery, and package-evidence implementations plus one
 generic fact-provider trait implemented by the root cache. Thirty moved tests
-and 392 remaining root tests pass, preserving the original 422-test total; the
-workspace, topology, package, formatting, and warning-denying source Clippy
-checks also pass. Searches find no retired root module or duplicate source
-owner, schemas are unchanged, and the standalone probe manifest and lock keep
+and 392 remaining root tests passed, preserving the original 422-test total;
+the workspace, topology, package, formatting, and warning-denying source Clippy
+checks also passed. Searches found no retired root module or duplicate source
+owner, schemas were unchanged, and the standalone probe manifest and lock kept
 their exact digests.
 
-Language checkpoint: all 56 adapter files now live only in
-`codeatlas-languages`. The root source index implements the sole generic
-fact-provider contract; the language crate collects syntax/resolution graph
-evidence, while root analysis alone adds propagated effects, validates, and
-caches the complete source graph. The pure fuzz directive parser has one
+Trial language checkpoint: all 56 adapter files lived only in
+`codeatlas-languages`. The root source index implemented the sole generic
+fact-provider contract; the language crate collected syntax/resolution graph
+evidence, while root analysis alone added propagated effects, validated, and
+cached the complete source graph. The pure fuzz directive parser had one
 domain owner. Thirty-six language tests, 354 root tests with three intentional
 ignores, eight domain tests, 30 source tests, the neutral resolution fixture
 against AgentSpeak Contracts `2d370e1`, 32 Node tests, all 14 Rust test
 binaries, all-target workspace Clippy, package assembly, and the specification
-guard pass.
+guard passed.
 
 Fresh-cache scan, check, and inspect artifacts remain byte-identical to the
 Phase 1 binary with SHA-256 digests `252122dbfcff8efe1c60558e34e6662a3badf9e63f00668125dd49119dc738b1`,
@@ -314,7 +324,7 @@ and `/tmp/codeatlas-gha-phase9.GAkQVR/artifacts/topology-languages-dogfood`.
 
 ## Phase 4: Re-measure before touching the execution boundary
 
-Status: [ ] Not started
+Status: [x] Complete; warm-loop gate failed and selected rollback
 
 LOC: +80-140 / -0
 
@@ -332,9 +342,31 @@ Failure to meet those budgets blocks further extraction until the measurement
 explains why. It does not authorize a speculative parser abstraction or hiding
 the result.
 
+Measurement evidence (commit `3ad85ed`, same host/toolchain, two Cargo jobs,
+same external warm target, exact source bytes):
+
+| Lane | Monolith | Extracted trial | Change | Result |
+| --- | ---: | ---: | ---: | --- |
+| unchanged `cargo check` median | 0.135 s | 0.120 s | 10.9% faster | informational |
+| app edit then `cargo build` | 17.17 s / 1,665,200 KiB | 17.17 s / 1,731,456 KiB | 0.0% wall / 4.0% RSS worse | fail |
+| parser edit then `cargo build` | 14.58 s / 1,666,904 KiB | 18.66 s / 1,730,748 KiB | 28.0% wall / 3.8% RSS worse | fail |
+| root `cargo test --no-run` | 23.80 s / 1,745,584 KiB | 30.91 s / 1,785,768 KiB | 29.9% wall / 2.3% RSS worse | fail |
+| empty-target offline build | 105.56 s / 3,079,308 KiB | 96.36 s / 2,622,060 KiB | 8.7% wall / 14.8% RSS better | pass |
+
+The controlled application lane compiled only the root package in both
+topologies, yet retained the same wall time and a larger binary. The split
+avoided rebuilding parser source but could not avoid relinking the same parser
+and runtime dependency graph; the extra package boundary then added work to
+parser and test lanes. `cargo test -p codeatlas-languages` independently passed
+36 tests in 14.67 seconds at 739,944 KiB without compiling the application,
+but that scoped benefit is not permission to waive the primary gate. The cold
+target was 3,110,495,604 bytes and the binary 453,947,752 bytes, respectively
+7.8 and 2.2 percent larger than baseline. Complete receipts remain external at
+`/tmp/codeatlas-gha-phase9.GAkQVR/benchmarks/topology-phase4`.
+
 ## Phase 5: Make execution inputs crate-safe without duplicating config
 
-Status: [ ] Not started
+Status: [x] Canceled by the Phase 4 measurement gate; not implemented
 
 LOC: +450-750 / -250-500
 
@@ -365,7 +397,7 @@ preserves the old path.
 
 ## Phase 6: Extract the execution kernel as one invariant crate
 
-Status: [ ] Not started
+Status: [x] Canceled by the Phase 4 measurement gate; not implemented
 
 LOC: +9,900-10,600 / -9,550-10,050
 
@@ -396,17 +428,17 @@ locked while becoming a path dependency of `codeatlas-execution`.
 
 ## Phase 7: Consolidate, benchmark, dogfood, and hard-cut the old topology
 
-Status: [ ] Not started
+Status: [x] Complete
 
 LOC: +150-300 / -250-600
 
-Verify: Root and per-crate focused tests, `pnpm check`, package assembly,
-published-schema drift, neutral interop, complete CodeAtlas self-dogfood, and
-generated-state audits pass. Warm app-layer build/test lanes improve by at
-least 30 percent or peak RSS by at least 25 percent over Phase 1; cold build
-regression remains below 10 percent. No old module path, facade, duplicate
-type, unused dependency, wildcard workspace member, or checkout-local build
-state remains.
+Verify: Restore the exact monolithic source topology, then run root focused
+tests, `pnpm check`, package assembly, published-schema drift, neutral interop,
+complete CodeAtlas self-dogfood, and generated-state audits. Scan, check, and
+inspect output digests must match the Phase 1 baseline. No trial workspace
+member, facade, duplicate type, unused dependency, wildcard workspace member,
+or checkout-local build state may remain. The standalone isolation probe's
+manifest and lock digests remain exact.
 
 ```text
 ~ Cargo.toml
@@ -418,20 +450,51 @@ state remains.
 ~ tasks/check-package.js
 ~ proposals/codeatlas-build-topology.md
 ~ proposals/codeatlas-fuzz-performance.md
+> src/domain/**
+> src/languages/**
+> src/package/**
+> src/paths.rs
+> src/source_discovery/**
+> src/source_policy.rs
+> src/fuzz/directive.rs
+- crates/domain/**
+- crates/languages/**
+- crates/source/**
+- tests/build-topology.test.js
 ```
 
-If the final performance budget fails, the phase removes or revises the
-specific extraction that caused it rather than waiving the budget or retaining
-a compatibility layer.
+The mechanical rollback returns product source exactly to baseline commit
+`18f0cec` before verification. Future crate extraction requires a new measured
+proposal that demonstrates the warm build benefit before moving product code;
+the rejected split is not retained behind a feature, facade, or alias.
 
-Total LOC: +32,970-35,560 / -31,500-33,920 physical move/edit lines; expected
-net authored surface +850-1,550 lines for manifests, explicit boundary inputs,
-and conformance coverage
+Rollback evidence: the product tree matches Phase 1 commit `18f0cec` exactly;
+only this proposal and the canonical tracker differ. `pnpm check` passes in
+119.36 seconds with 31 Node tests, 426 root unit tests plus every integration
+and probe test, warning-denying Clippy, architecture/spec/schema drift checks,
+eight zero-gate CodeAtlas self-audit lanes, and a 416-file package. Neutral
+resolution conformance passes against the sibling AgentSpeak contracts. Fresh
+fixture scan, check, and inspect outputs retain exact SHA-256 digests
+`252122dbfcff8efe1c60558e34e6662a3badf9e63f00668125dd49119dc738b1`,
+`8de7fe56d8403b88fcd9754e0545f0bd773f0d07e5e2471019fdf01bc232abeb`,
+and `c7ffc4dcc0016862d3d75642ded81b0ee88e4960fa26c2feff6da348c0b78266`.
+The standalone probe manifest and lock remain
+`57da423323b81fa25bf6d94cce674ee04d6050ec258d4279df607a7edb123150`
+and `e4c00d348e93c460b9cd404b2aaec163fbd32a63aa46393e8546b47cbfb09b6a`.
+Generated-state and retired-owner searches are clean. Complete verification
+and byte artifacts remain outside the checkout under
+`/tmp/codeatlas-gha-phase9.GAkQVR`.
+
+Total retained LOC: documentation-only measurement evidence; the trial's
+product and workspace changes net to zero after rollback
 
 ## Layman's wins
 
-- Editing a command no longer recompiles every parser and sandbox module.
-- Language and execution tests can run independently with lower memory use.
-- Package boundaries match real ownership instead of hiding cycles or aliases.
-- TypeMill performs reviewable moves where it can prove the final form; it is
-  never trusted as an incomplete cleanup shortcut.
+- We measured the proposed split instead of assuming more crates meant faster
+  development.
+- The common edit and test loops got slower, so none of that extra structure is
+  kept.
+- The security probe remains independently locked, and product behavior stays
+  byte-for-byte unchanged.
+- TypeMill was tried only from clean commits and failed closed; no partial
+  refactor or cleanup residue was accepted.

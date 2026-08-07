@@ -1,4 +1,4 @@
-use codeatlas_domain::{FileEdge, ImportUsage, Language, ScanReport, Symbol, Visibility};
+use crate::domain::{FileEdge, ImportUsage, Language, ScanReport, Symbol, Visibility};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 

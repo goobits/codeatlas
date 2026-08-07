@@ -11,14 +11,14 @@ use super::symbols::tokenize_identifier;
 use crate::config::{
     ResolvedSemanticSiblingComparisonSet, ResolvedSemanticSiblingPath, SemanticSiblingPathKind,
 };
-use anyhow::{Context, Result};
-use codeatlas_domain::source_graph::{
+use crate::domain::source_graph::{
     AnalysisCompleteness, EdgeTarget, NodeId, ProjectId, SourceEdgeKind, SourceGraph, SourceNode,
     SourceSymbolKind, SourceVisibility,
 };
-use codeatlas_domain::{
+use crate::domain::{
     CallableBlockKind, CallableContract, EffectKind, SemanticType, TypeUnknownReason,
 };
+use anyhow::{Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) use model::{
@@ -470,7 +470,7 @@ fn lifecycle_role(action: &str) -> Option<String> {
     Some(role.to_string())
 }
 
-fn symbol_role(symbol: &codeatlas_domain::source_graph::SourceSymbol) -> String {
+fn symbol_role(symbol: &crate::domain::source_graph::SourceSymbol) -> String {
     let kind = match symbol.symbol_kind {
         SourceSymbolKind::Module => "module",
         SourceSymbolKind::Class => "class",

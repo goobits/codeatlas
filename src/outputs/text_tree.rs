@@ -1,4 +1,4 @@
-use codeatlas_domain::{ScanReport, Visibility};
+use crate::domain::{ScanReport, Visibility};
 use colored::*;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -24,7 +24,7 @@ pub(crate) fn render(report: &ScanReport) -> String {
     output.push_str(&format!("{}\n\n", "● private".red()));
 
     // Group by file
-    let mut files: HashMap<&String, Vec<&codeatlas_domain::Symbol>> = HashMap::new();
+    let mut files: HashMap<&String, Vec<&crate::domain::Symbol>> = HashMap::new();
     for sym in &report.symbols {
         files.entry(&sym.file_path).or_default().push(sym);
     }
@@ -47,21 +47,22 @@ pub(crate) fn render(report: &ScanReport) -> String {
             let is_last = i == symbols.len() - 1 && sym.children.is_empty();
             let prefix = if is_last { "└" } else { "├" };
 
-            let kind_icon =
-                match sym.kind {
-                    codeatlas_domain::SymbolKind::Class | codeatlas_domain::SymbolKind::Struct => {
-                        "S".yellow()
-                    }
-                    codeatlas_domain::SymbolKind::Function
-                    | codeatlas_domain::SymbolKind::Method => "f".magenta(),
-                    codeatlas_domain::SymbolKind::Interface
-                    | codeatlas_domain::SymbolKind::Trait => "T".cyan(),
-                    codeatlas_domain::SymbolKind::Enum => "E".blue(),
-                    codeatlas_domain::SymbolKind::Const => "c".white(),
-                    codeatlas_domain::SymbolKind::Property => "p".white(),
-                    codeatlas_domain::SymbolKind::TypeAlias => "t".white(),
-                    _ => "?".white(),
-                };
+            let kind_icon = match sym.kind {
+                crate::domain::SymbolKind::Class | crate::domain::SymbolKind::Struct => {
+                    "S".yellow()
+                }
+                crate::domain::SymbolKind::Function | crate::domain::SymbolKind::Method => {
+                    "f".magenta()
+                }
+                crate::domain::SymbolKind::Interface | crate::domain::SymbolKind::Trait => {
+                    "T".cyan()
+                }
+                crate::domain::SymbolKind::Enum => "E".blue(),
+                crate::domain::SymbolKind::Const => "c".white(),
+                crate::domain::SymbolKind::Property => "p".white(),
+                crate::domain::SymbolKind::TypeAlias => "t".white(),
+                _ => "?".white(),
+            };
             let vis_icon = visibility_icon(&sym.visibility);
 
             output.push_str(&format!(
@@ -146,7 +147,7 @@ pub(crate) fn render(report: &ScanReport) -> String {
     output
 }
 
-fn compare_symbols(left: &codeatlas_domain::Symbol, right: &codeatlas_domain::Symbol) -> Ordering {
+fn compare_symbols(left: &crate::domain::Symbol, right: &crate::domain::Symbol) -> Ordering {
     left.span
         .cmp(&right.span)
         .then_with(|| left.id.cmp(&right.id))
@@ -155,7 +156,7 @@ fn compare_symbols(left: &codeatlas_domain::Symbol, right: &codeatlas_domain::Sy
 #[cfg(test)]
 mod tests {
     use super::render;
-    use codeatlas_domain::{Language, ScanReport, Symbol, SymbolKind, Visibility};
+    use crate::domain::{Language, ScanReport, Symbol, SymbolKind, Visibility};
 
     fn symbol(id: &str, name: &str, children: Vec<Symbol>) -> Symbol {
         Symbol {
