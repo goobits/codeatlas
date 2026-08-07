@@ -927,6 +927,17 @@ confirmation and returned the same exact `d07b7ac` run record to queued at
 2026-08-06T21:29:08Z. Actions still reports a major outage; query that run and
 do not retry again while the external boundary remains.
 
+After Actions recovered, the stale rerun could not be cancelled normally or
+forcibly because GitHub said it had never queued. User-authorized fresh run
+`31138827152` used exact audited remote revision `d330449`, excluding an
+unrelated concurrent license commit, and reached a runner. Its probe image
+built; the HTTP image then failed before sandbox or target work because Python
+3.10 `compileall` has no `--quiet --force` options. The isolated correction uses
+canonical `-q -f`, rejects the invalid spellings in the recipe test, removes a
+test-only checkout-basename assumption, and passes the focused seven-case plus
+complete 31-case Node suites. Commit/push only that correction from the
+isolated worktree before another hosted attempt.
+
 - [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
   effect evidence into the shared target classifier.
 - [ ] Route reviewed and eligible single-shot HTTP runs through the same

@@ -41,7 +41,9 @@ test('HTTP workload recipe is hash-locked, version-checked, and clears inherited
 	)
 
 	assert.match(recipe, /--require-hashes/)
+	assert.match(recipe, /-q\s+\\\n\s+-f\s+\\\n\s+--invalidation-mode checked-hash/)
 	assert.match(recipe, /--invalidation-mode checked-hash/)
+	assert.doesNotMatch(recipe, /--quiet|--force/)
 	assert.match(recipe, /4\\\.24\\\.3/)
 	assert.match(recipe, /FROM scratch\nCOPY --from=runtime \/ \/\n$/)
 	assert.doesNotMatch(recipe.slice(recipe.lastIndexOf('FROM scratch')), /^ENV /m)
@@ -201,7 +203,7 @@ test('HTTP workload build reuses the bounded image transaction with an exact Pyt
 
 	assert.ok(arguments_.includes(`PYTHON_IMAGE=python@sha256:${pythonDigest}`))
 	assert.ok(arguments_.includes('default'))
-	assert.ok(arguments_.at(-1).endsWith('/codeatlas'))
+	assert.equal(arguments_.at(-1), path.resolve(__dirname, '..'))
 	assert.equal(arguments_.filter(argument => argument === '--output').length, 2)
 	assert.throws(
 		() => parseHttpArguments([

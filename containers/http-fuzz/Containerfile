@@ -18,8 +18,8 @@ RUN test -n "${SOURCE_DATE_EPOCH}" \
         --require-hashes \
         --requirement requirements.txt \
     && /usr/local/bin/python3 -m compileall \
-        --quiet \
-        --force \
+        -q \
+        -f \
         --invalidation-mode checked-hash \
         /usr/local/lib/python3.10/site-packages \
     && /usr/local/bin/schemathesis --version | grep -Eq '(^| )4\.24\.3($| )' \

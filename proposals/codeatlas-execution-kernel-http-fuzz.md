@@ -1630,6 +1630,32 @@ Second Phase 5 hosted attempt, 2026-08-06:
   retry, dispatch, or code change while the external outage is the only
   boundary.
 
+Third Phase 5 hosted attempt, 2026-08-07:
+
+- After GitHub reported Actions operational, the stale rerun remained in a
+  contradictory state: the original job was completed/cancelled, while both
+  ordinary and force cancellation returned 409 because the rerun had not
+  actually queued. The record was retained rather than destructively deleted.
+- A user-authorized fresh dispatch used exact audited remote revision
+  `d330449`; an unrelated local license commit that appeared concurrently was
+  neither pushed nor included. GitHub run `31138827152` acquired hosted runner
+  `GitHub Actions 1000019502` and reached the live-matrix step.
+- The probe image built, but the HTTP workload image stopped before sandbox
+  launch or any target call because Python 3.10 `compileall` rejects the long
+  `--quiet --force` spellings. Artifact `8979051157` is 12,676 bytes with
+  verified digest
+  `sha256:6b117b09be2c3ede02bdf10b05b612d8f8e22aa7431570df0159a8969ba0ac7b`;
+  its bounded 32-file log set includes verified builder and container cleanup.
+- The correction uses Python 3.10's canonical `-q -f` flags while retaining
+  checked-hash invalidation. The recipe regression rejects both unsupported
+  long spellings. Running from an isolated worktree also exposed and removed a
+  test-only checkout-basename assumption; the test now compares the exact
+  resolved repository root.
+- The focused seven-case image-build test and complete 31-case Node suite pass
+  from the isolated `d330449` worktree. Next exact action: commit and push only
+  this narrow correction from that worktree, then run one duplicate-checked
+  hosted attempt without including the unrelated license commit.
+
 LOC: +700-1,100 / -250-450
 
 Verify: Existing positive, negative, boundary, unsupported-method, and stateful
