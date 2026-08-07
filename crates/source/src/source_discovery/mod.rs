@@ -8,19 +8,19 @@ use ::ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default)]
-pub(crate) struct SourceDiscovery {
+pub struct SourceDiscovery {
     pub files: Vec<PathBuf>,
     pub warnings: Vec<String>,
 }
 
-pub(crate) struct SourceDiscoveryRequest<'a> {
+pub struct SourceDiscoveryRequest<'a> {
     pub root: &'a Path,
     pub patterns: &'a [String],
     pub excluded_roots: &'a [PathBuf],
     pub no_default_ignore: bool,
 }
 
-pub(crate) fn discover(request: SourceDiscoveryRequest<'_>) -> SourceDiscovery {
+pub fn discover(request: SourceDiscoveryRequest<'_>) -> SourceDiscovery {
     discover_once(&request, true).unwrap_or_else(|| {
         discover_once(&request, false).expect("the final source discovery attempt is retained")
     })
@@ -78,7 +78,7 @@ fn discover_once(
                 discovery.files.push(entry.into_path());
             }
             Ok(_) => {}
-            Err(error) if retry_transient_not_found && crate::filesystem::is_not_found(&error) => {
+            Err(error) if retry_transient_not_found && crate::is_not_found(&error) => {
                 return None;
             }
             Err(error) => discovery.warnings.push(error.to_string()),
@@ -88,7 +88,7 @@ fn discover_once(
     Some(discovery)
 }
 
-pub(crate) fn is_visible_with_patterns(
+pub fn is_visible_with_patterns(
     root: &Path,
     source: &Path,
     no_default_ignore: bool,
@@ -175,7 +175,7 @@ fn is_conventional_fixture_boundary(directory: &str) -> bool {
     })
 }
 
-pub(crate) fn normalize_pattern(pattern: &str) -> String {
+pub fn normalize_pattern(pattern: &str) -> String {
     pattern
         .strip_prefix("./")
         .unwrap_or(pattern)

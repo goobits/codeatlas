@@ -7,7 +7,7 @@ license-file = "LICENSE"
 repository = "https://github.com/goobits/codeatlas"
 
 [workspace]
-members = ["crates/domain"]
+members = ["crates/domain", "crates/source"]
 exclude = ["crates/isolation-conformance"]
 resolver = "2"
 
@@ -21,6 +21,7 @@ thiserror = "1.0"
 clap = { version = "4.4", features = ["derive"] }
 anyhow = "1.0"
 codeatlas-domain = { path = "crates/domain" }
+codeatlas-source = { path = "crates/source" }
 codeatlas-isolation-conformance = { path = "crates/isolation-conformance" }
 cargo_metadata = "0.18"
 ctrlc = "3.4"

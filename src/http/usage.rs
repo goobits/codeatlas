@@ -402,7 +402,10 @@ fn collect_handler_references(
                     .get(&project)
                     .map_or(".", |project| project.root.as_str());
                 if path
-                    == crate::paths::repository_path(declaration_path, &declaration.evidence.path)
+                    == codeatlas_source::paths::repository_path(
+                        declaration_path,
+                        &declaration.evidence.path,
+                    )
                     && line == declaration.evidence.line
                 {
                     continue;
@@ -458,7 +461,7 @@ fn collect_literal_references(
                 .map_or(".", |project| project.root.as_str());
             declaration_locations.insert((
                 target.clone(),
-                crate::paths::repository_path(project_root, &declaration.evidence.path),
+                codeatlas_source::paths::repository_path(project_root, &declaration.evidence.path),
                 declaration.evidence.line,
             ));
         }
@@ -494,9 +497,11 @@ fn collect_literal_references(
             .projects
             .get(&file.project)
             .map_or(".", |project| project.root.as_str());
-        let report_path = crate::paths::repository_path(project_root, &file.path);
+        let report_path = codeatlas_source::paths::repository_path(project_root, &file.path);
         let is_test = node_is_test(graph, reachability, node_id)
-            || crate::source_policy::is_conventional_test_source(std::path::Path::new(&file.path));
+            || codeatlas_source::source_policy::is_conventional_test_source(std::path::Path::new(
+                &file.path,
+            ));
         for literal in plain_string_literals(&source, file.language) {
             let Some(matches) = candidates.get(&literal.value) else {
                 continue;
@@ -575,7 +580,7 @@ fn declaration_evidence(
             HttpConfidence::High => FindingConfidence::High,
             HttpConfidence::Medium => FindingConfidence::Medium,
         },
-        path: crate::paths::repository_path(&member.report_root, &source.evidence.path),
+        path: codeatlas_source::paths::repository_path(&member.report_root, &source.evidence.path),
         line: source.evidence.line,
         node_id,
     }
@@ -597,7 +602,7 @@ fn evidence_repository_path(graph: &SourceGraph, node: &NodeId, fallback: &str) 
     let root = project
         .and_then(|project| graph.projects.get(project))
         .map_or(".", |project| project.root.as_str());
-    crate::paths::repository_path(root, fallback)
+    codeatlas_source::paths::repository_path(root, fallback)
 }
 
 fn completeness_name(value: AnalysisCompleteness) -> &'static str {

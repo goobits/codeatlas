@@ -87,7 +87,7 @@ fn source_disposition(path: &str) -> SourceDisposition {
     }) {
         return SourceDisposition::Generated;
     }
-    if crate::source_policy::is_conventional_test_source(Path::new(path)) {
+    if codeatlas_source::source_policy::is_conventional_test_source(Path::new(path)) {
         return SourceDisposition::Test;
     }
     if parts.iter().any(|part| {

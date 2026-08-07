@@ -14,7 +14,7 @@ pub(super) fn add_cargo_contexts(
     modules: &BTreeMap<ModuleKey, Module>,
 ) -> Result<()> {
     for target in cargo.targets() {
-        let path = crate::paths::normalize_relative_path(&target.root, &project.root);
+        let path = codeatlas_source::paths::normalize_relative_path(&target.root, &project.root);
         let key = (project.id.clone(), path);
         let Some(module) = modules.get(&key) else {
             graph.record_boundary(

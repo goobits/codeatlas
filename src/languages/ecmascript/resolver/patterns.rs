@@ -139,7 +139,7 @@ impl ModuleResolver {
             .filter(|(project, _)| project == &module.project)
             .filter_map(|key| {
                 let relative = pathdiff::diff_paths(Path::new(&key.1), &base)?;
-                let normalized = crate::paths::normalize_path(&relative);
+                let normalized = codeatlas_source::paths::normalize_path(&relative);
                 if package_absolute && normalized.starts_with("../") {
                     return None;
                 }
@@ -163,7 +163,7 @@ impl ModuleResolver {
                     let project = self.projects.get(&key.0)?;
                     let absolute = project.root.join(&key.1);
                     let relative = absolute.strip_prefix(workspace_root).ok()?;
-                    let normalized = crate::paths::normalize_path(relative);
+                    let normalized = codeatlas_source::paths::normalize_path(relative);
                     (!normalized.is_empty()).then(|| (format!("/{normalized}"), key.clone()))
                 }));
             }

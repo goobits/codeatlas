@@ -32,7 +32,7 @@ impl ManifestIndex {
         let walker = walkdir::WalkDir::new(&root).into_iter();
         for entry in walker.filter_entry(|entry| {
             entry.depth() == 0
-                || !crate::source_policy::is_ignored_dir(
+                || !codeatlas_source::source_policy::is_ignored_dir(
                     &entry.file_name().to_string_lossy(),
                     false,
                 )
@@ -162,7 +162,7 @@ fn source_location(path: &Path, root: &Path, source: &str) -> SourceLocation {
     )
     .expect("manifest line length fits u64");
     SourceLocation {
-        path: crate::paths::normalize_relative_path(path, root),
+        path: codeatlas_source::paths::normalize_relative_path(path, root),
         span: SourceSpan {
             start: SourcePosition { line: 1, column: 1 },
             end: SourcePosition {

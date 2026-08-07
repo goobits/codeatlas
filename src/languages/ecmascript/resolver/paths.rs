@@ -8,7 +8,7 @@ pub(super) fn infer_workspace_root(
     project_root: &Path,
     report_root: &str,
 ) -> Result<Option<PathBuf>> {
-    if let Some(root) = crate::package::nearest_workspace_root(project_root)? {
+    if let Some(root) = codeatlas_source::package::nearest_workspace_root(project_root)? {
         return Ok(Some(root));
     }
     if report_root.is_empty() || report_root == "." {
@@ -287,9 +287,9 @@ pub(crate) fn resolve_relative_module(
     for candidate in module_candidates_with_declarations(&base.join(specifier), declarations_first)
     {
         let relative = if root_dir.as_os_str().is_empty() {
-            crate::paths::normalize_path(&candidate)
+            codeatlas_source::paths::normalize_path(&candidate)
         } else {
-            crate::paths::normalize_relative_path(&candidate, root_dir)
+            codeatlas_source::paths::normalize_relative_path(&candidate, root_dir)
         };
         if exists(&relative) {
             return Some(relative);

@@ -17,14 +17,10 @@ mod inspection;
 mod languages;
 mod lexicon;
 mod outputs;
-mod package;
-mod paths;
 mod postgres;
 #[cfg(test)]
 mod published_schemas;
-mod source_discovery;
 mod source_index;
-mod source_policy;
 mod testing;
 
 #[cfg(test)]

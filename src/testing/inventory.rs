@@ -95,7 +95,7 @@ fn resolve_subject(
 pub(super) fn scripts_for_project(
     project: &ResolvedAnalysisProject,
 ) -> Result<Vec<TestScriptInventory>> {
-    let mut scripts = crate::package::read_scripts(&project.root)?
+    let mut scripts = codeatlas_source::package::read_scripts(&project.root)?
         .into_iter()
         .filter_map(|(name, command)| {
             let mut runners = detect_runners(&command);

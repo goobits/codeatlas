@@ -16,7 +16,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
     let entrypoints = config
         .entrypoints
         .as_ref()
-        .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
+        .map(|entries| codeatlas_source::paths::normalize_entrypoints(entries, root_dir));
 
     let mut modules: std::collections::HashMap<String, ModuleInfo> =
         std::collections::HashMap::new();
@@ -28,8 +28,8 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
         if e.depth() == 0 {
             return true;
         }
-        let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
-        if crate::source_policy::is_ignored_path(&relative, config.no_default_ignore) {
+        let relative = codeatlas_source::paths::normalize_relative_path(e.path(), root_dir);
+        if codeatlas_source::source_policy::is_ignored_path(&relative, config.no_default_ignore) {
             return false;
         }
         let name = e.file_name().to_string_lossy();
@@ -58,7 +58,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
             }
         };
 
-        let relative = crate::paths::normalize_relative_path(path, root_dir);
+        let relative = codeatlas_source::paths::normalize_relative_path(path, root_dir);
         let module_path = resolver::module_path_from_file(&relative);
         module_map.insert(module_path.clone(), relative.clone());
         match parser::parse_module_info(path, root_dir, &source) {

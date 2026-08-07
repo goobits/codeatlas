@@ -666,7 +666,7 @@ pub(crate) fn source_inputs(
             } else {
                 source_root.join(path)
             };
-            crate::paths::normalize_relative_path(&path, source_root)
+            codeatlas_source::paths::normalize_relative_path(&path, source_root)
         })
         .collect()
 }

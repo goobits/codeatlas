@@ -279,7 +279,7 @@ impl HttpWorkloadAdapter {
             .with_context(|| {
                 format!("Managed HTTP command {owner} working directory escapes the workspace")
             })?;
-        let relative = crate::paths::normalize_path(relative);
+        let relative = codeatlas_source::paths::normalize_path(relative);
         let working_directory = if relative.is_empty() {
             "/codeatlas/workspace".to_string()
         } else {
@@ -294,7 +294,7 @@ impl HttpWorkloadAdapter {
                 (
                     format!(
                         "/codeatlas/workspace/{}",
-                        crate::paths::normalize_path(relative)
+                        codeatlas_source::paths::normalize_path(relative)
                     ),
                     command.args.clone(),
                 )

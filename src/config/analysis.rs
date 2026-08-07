@@ -198,7 +198,8 @@ impl ProjectConfig {
             let resolved_project = ResolvedAnalysisProject {
                 id: codeatlas_domain::source_graph::ProjectId(id),
                 report_root: {
-                    let relative = crate::paths::normalize_relative_path(&root, &self.config_dir);
+                    let relative =
+                        codeatlas_source::paths::normalize_relative_path(&root, &self.config_dir);
                     if relative.is_empty() {
                         ".".to_string()
                     } else {
@@ -352,8 +353,9 @@ impl ProjectConfig {
                     continue;
                 };
                 if root.is_file() {
-                    let display = crate::paths::normalize_relative_path(&root, &self.root);
-                    if crate::source_policy::source_argument(&display).is_some() {
+                    let display =
+                        codeatlas_source::paths::normalize_relative_path(&root, &self.root);
+                    if codeatlas_source::source_policy::source_argument(&display).is_some() {
                         sources.push(root);
                     }
                     continue;
@@ -362,8 +364,8 @@ impl ProjectConfig {
                     continue;
                 }
                 sources.extend(
-                    crate::source_discovery::discover(
-                        crate::source_discovery::SourceDiscoveryRequest {
+                    codeatlas_source::source_discovery::discover(
+                        codeatlas_source::source_discovery::SourceDiscoveryRequest {
                             root: &root,
                             patterns: &[],
                             excluded_roots: &[],
@@ -373,8 +375,9 @@ impl ProjectConfig {
                     .files
                     .into_iter()
                     .filter(|source| {
-                        let display = crate::paths::normalize_relative_path(source, &self.root);
-                        crate::source_policy::source_argument(&display).is_some()
+                        let display =
+                            codeatlas_source::paths::normalize_relative_path(source, &self.root);
+                        codeatlas_source::source_policy::source_argument(&display).is_some()
                     }),
                 );
             }
@@ -393,7 +396,7 @@ impl ProjectConfig {
             .unwrap_or_else(|| self.root.clone());
         std::iter::once(command)
             .chain(args.iter().map(String::as_str))
-            .filter_map(crate::source_policy::source_argument)
+            .filter_map(codeatlas_source::source_policy::source_argument)
             .map(|source| root.join(source))
             .filter(|source| source.is_file())
             .map(|source| source.canonicalize().unwrap_or(source))
@@ -469,7 +472,7 @@ fn add_inferred_context(
         let mut entrypoints = sources
             .iter()
             .filter_map(|source| source.strip_prefix(&project.root).ok())
-            .map(crate::paths::normalize_path)
+            .map(codeatlas_source::paths::normalize_path)
             .filter(|source| !source.is_empty())
             .collect::<Vec<_>>();
         entrypoints.sort();

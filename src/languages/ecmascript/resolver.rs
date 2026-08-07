@@ -74,7 +74,7 @@ impl ModuleResolver {
         let mut project_resolutions = BTreeMap::new();
         let mut packages = BTreeMap::new();
         for (project, _) in projects {
-            let package = crate::package::discover_javascript(&project.root)?;
+            let package = codeatlas_source::package::discover_javascript(&project.root)?;
             if let Some(package) = &package {
                 if packages
                     .insert(
@@ -254,7 +254,7 @@ impl ModuleResolver {
             source_path_specifier(specifier).trim_start_matches("./"),
         ))
         .into_iter()
-        .map(|candidate| crate::paths::normalize_path(&candidate))
+        .map(|candidate| codeatlas_source::paths::normalize_path(&candidate))
         .filter(|suffix| !suffix.is_empty() && !suffix.starts_with("../"))
         .collect::<BTreeSet<_>>();
         if suffixes.is_empty() {
@@ -284,12 +284,12 @@ impl ModuleResolver {
 
     fn resolve_cross_project_path(&self, module: &Module, raw: &Path) -> Option<ModuleKey> {
         let source_project = self.projects.get(&module.project)?;
-        let absolute = crate::paths::normalize_path(&source_project.root.join(raw));
+        let absolute = codeatlas_source::paths::normalize_path(&source_project.root.join(raw));
         self.projects
             .iter()
             .filter(|(project_id, _)| *project_id != &module.project)
             .filter_map(|(project_id, project)| {
-                let root = crate::paths::normalize_path(&project.root);
+                let root = codeatlas_source::paths::normalize_path(&project.root);
                 let relative = absolute.strip_prefix(&format!("{root}/"))?;
                 self.resolve_project_path(project_id, Path::new(relative))
                     .map(|resolved| (root.len(), resolved))
@@ -379,7 +379,7 @@ impl ModuleResolver {
         let Some(raw) = self.relative_path(module, specifier) else {
             return false;
         };
-        let normalized = crate::paths::normalize_path(&raw);
+        let normalized = codeatlas_source::paths::normalize_path(&raw);
         if normalized == ".." || normalized.starts_with("../") {
             return true;
         }
@@ -450,7 +450,7 @@ impl ModuleResolver {
         };
         let mut directory = Path::new(&module.path).parent();
         while let Some(current) = directory {
-            let directory_key = crate::paths::normalize_path(current);
+            let directory_key = codeatlas_source::paths::normalize_path(current);
             if let Some(imports) = project.package_imports.get(&directory_key) {
                 for (pattern, target) in imports {
                     let Some(capture) = match_alias(pattern, specifier) else {
@@ -474,7 +474,8 @@ impl ModuleResolver {
     }
 
     fn resolve_workspace_package(&self, module: &Module, specifier: &str) -> Option<Resolution> {
-        let (package_name, public_path) = crate::package::split_package_specifier(specifier)?;
+        let (package_name, public_path) =
+            codeatlas_source::package::split_package_specifier(specifier)?;
         let package = self.packages.get(&package_name)?;
         let Some(source) = package.exports.get(&public_path) else {
             if package.project == module.project {
@@ -530,7 +531,7 @@ impl ModuleResolver {
 
     fn resolve_project_path(&self, project: &ProjectId, raw: &Path) -> Option<ModuleKey> {
         for candidate in module_candidates(raw) {
-            let normalized = crate::paths::normalize_path(&candidate);
+            let normalized = codeatlas_source::paths::normalize_path(&candidate);
             let key = (project.clone(), normalized);
             if self.modules.contains(&key) {
                 return Some(key);
@@ -650,7 +651,7 @@ impl ModuleResolver {
         let project = self.projects.get(&module.project)?;
         let mut directory = Path::new(&module.path).parent();
         while let Some(current) = directory {
-            let key = crate::paths::normalize_path(current);
+            let key = codeatlas_source::paths::normalize_path(current);
             if project.package_imports.contains_key(&key) {
                 return Some(current.to_path_buf());
             }

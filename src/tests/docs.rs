@@ -1,6 +1,7 @@
 use crate::config::ProjectConfig;
-use crate::{analysis, commands, languages, outputs, package};
+use crate::{analysis, commands, languages, outputs};
 use codeatlas_domain::ScanConfig;
+use codeatlas_source::package;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};

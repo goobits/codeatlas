@@ -169,7 +169,7 @@ pub(super) fn resolve_relative_module(module: &Module, level: usize, imported: &
 }
 
 pub(super) fn python_source_roots(root: &Path) -> Result<Vec<PathBuf>> {
-    crate::package::discover_python_source_roots(root)
+    codeatlas_source::package::discover_python_source_roots(root)
 }
 
 pub(super) fn module_names(path: &str, source_roots: &[PathBuf]) -> BTreeSet<String> {
@@ -179,7 +179,7 @@ pub(super) fn module_names(path: &str, source_roots: &[PathBuf]) -> BTreeSet<Str
         let Ok(relative) = path.strip_prefix(source_root) else {
             continue;
         };
-        let relative = crate::paths::normalize_path(relative);
+        let relative = codeatlas_source::paths::normalize_path(relative);
         names.insert(module_name_from_relative_path(&relative));
     }
     names.retain(|name| !name.is_empty());

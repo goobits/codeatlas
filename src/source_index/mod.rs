@@ -11,6 +11,7 @@ mod tests;
 use anyhow::Result;
 use codeatlas_domain::source_graph::SourceGraph;
 use codeatlas_domain::ResolvedAnalysisProject;
+use codeatlas_source::SourceFactProvider;
 use metrics::{SourceIndexMeasurement, SourceIndexMetrics};
 use serde::{Deserialize, Serialize};
 use snapshot::{FileFingerprint, SourceSnapshot};
@@ -134,6 +135,22 @@ impl SourceIndex {
         projects: &[ResolvedAnalysisProject],
     ) -> Result<Self> {
         Self::from_environment(environment::for_tests(root, max_bytes), projects)
+    }
+}
+
+impl SourceFactProvider for SourceIndex {
+    fn parse_file<T, F>(
+        &self,
+        namespace: &str,
+        source_path: &Path,
+        project_root: &Path,
+        parse: F,
+    ) -> Result<T>
+    where
+        T: serde::Serialize + serde::de::DeserializeOwned,
+        F: FnOnce(&str) -> Result<T>,
+    {
+        SourceIndex::parse_file(self, namespace, source_path, project_root, parse)
     }
 }
 

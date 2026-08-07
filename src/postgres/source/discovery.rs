@@ -1,8 +1,8 @@
 use super::ecmascript;
 use crate::config::{PostgresContractConfig, PostgresSqlSourceConfig, ProjectConfig};
-use crate::paths;
-use crate::source_discovery::{self, SourceDiscoveryRequest};
 use anyhow::Result;
+use codeatlas_source::paths;
+use codeatlas_source::source_discovery::{self, SourceDiscoveryRequest};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -142,7 +142,7 @@ fn discover_sources(project: &ProjectConfig) -> Result<DiscoveredSources> {
 }
 
 fn has_postgres_project_evidence(root: &Path) -> bool {
-    crate::package::declares_any_dependency(
+    codeatlas_source::package::declares_any_dependency(
         root,
         &[
             "pg",

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-pub(crate) fn normalize_entrypoints(
+pub fn normalize_entrypoints(
     entries: &[String],
     root_dir: &Path,
 ) -> std::collections::HashSet<String> {
@@ -10,7 +10,7 @@ pub(crate) fn normalize_entrypoints(
         .collect()
 }
 
-pub(crate) fn normalize_entrypoint(entry: &str, root_dir: &Path) -> String {
+pub fn normalize_entrypoint(entry: &str, root_dir: &Path) -> String {
     let entry_path = Path::new(entry);
     let relative = if entry_path.is_absolute() {
         pathdiff::diff_paths(entry_path, root_dir).unwrap_or_else(|| entry_path.to_path_buf())
@@ -20,7 +20,7 @@ pub(crate) fn normalize_entrypoint(entry: &str, root_dir: &Path) -> String {
     normalize_path(&relative)
 }
 
-pub(crate) fn normalize_relative_path(path: &Path, root_dir: &Path) -> String {
+pub fn normalize_relative_path(path: &Path, root_dir: &Path) -> String {
     if let Ok(relative) = path.strip_prefix(root_dir) {
         return normalize_path(relative);
     }
@@ -28,7 +28,7 @@ pub(crate) fn normalize_relative_path(path: &Path, root_dir: &Path) -> String {
     normalize_path(&relative)
 }
 
-pub(crate) fn normalize_path(path: &Path) -> String {
+pub fn normalize_path(path: &Path) -> String {
     let mut parts = Vec::<String>::new();
     for component in path.components() {
         match component {
@@ -48,7 +48,7 @@ pub(crate) fn normalize_path(path: &Path) -> String {
     parts.join("/")
 }
 
-pub(crate) fn repository_path(project_root: &str, file_path: &str) -> String {
+pub fn repository_path(project_root: &str, file_path: &str) -> String {
     let root = project_root.trim_matches('/');
     if root.is_empty() || root == "." {
         file_path.to_string()

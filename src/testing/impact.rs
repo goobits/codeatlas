@@ -318,9 +318,9 @@ fn impacted_projects(
 
 fn normalize_changed_path(path: &Path, repository_root: &Path) -> String {
     if path.is_absolute() {
-        crate::paths::normalize_relative_path(path, repository_root)
+        codeatlas_source::paths::normalize_relative_path(path, repository_root)
     } else {
-        crate::paths::normalize_path(path)
+        codeatlas_source::paths::normalize_path(path)
     }
 }
 
@@ -331,7 +331,7 @@ fn resolve_files(graph: &SourceGraph, path: &str) -> BTreeSet<NodeId> {
         .filter_map(|(id, node)| match node {
             SourceNode::File(file)
                 if graph.projects.get(&file.project).is_some_and(|project| {
-                    crate::paths::repository_path(&project.root, &file.path) == path
+                    codeatlas_source::paths::repository_path(&project.root, &file.path) == path
                 }) =>
             {
                 Some(id.clone())

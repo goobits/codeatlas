@@ -20,11 +20,15 @@ pub(super) fn collect_project_modules(
     modules: &mut BTreeMap<ModuleKey, Module>,
     index: &crate::source_index::SourceIndex,
 ) -> Result<ProjectEvidence> {
-    let mut runtime_entrypoints = crate::package::discover_runtime_entrypoints(&project.root)?;
-    runtime_entrypoints.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
+    let mut runtime_entrypoints =
+        codeatlas_source::package::discover_runtime_entrypoints(&project.root)?;
+    runtime_entrypoints.extend(codeatlas_source::package::discover_bundled_entrypoints(
+        &project.root,
+    )?);
     runtime_entrypoints.sort();
     runtime_entrypoints.dedup();
-    let tooling_entrypoints = crate::package::discover_tooling_entrypoints(&project.root)?;
+    let tooling_entrypoints =
+        codeatlas_source::package::discover_tooling_entrypoints(&project.root)?;
     let mut discovery_patterns = if project.contexts.contains_key(contexts::TEST_CONTEXT) {
         Vec::new()
     } else {
@@ -66,7 +70,7 @@ pub(super) fn collect_project_modules(
             .and_then(|extension| extension.to_str())
             == Some("html");
         if is_html {
-            if crate::source_discovery::is_visible_with_patterns(
+            if codeatlas_source::source_discovery::is_visible_with_patterns(
                 &project.root,
                 &source_path,
                 project.no_default_ignore,
@@ -82,7 +86,7 @@ pub(super) fn collect_project_modules(
         if !languages.contains(&language) {
             continue;
         }
-        if !crate::source_discovery::is_visible_with_patterns(
+        if !codeatlas_source::source_discovery::is_visible_with_patterns(
             &project.root,
             &source_path,
             project.no_default_ignore,
@@ -97,7 +101,7 @@ pub(super) fn collect_project_modules(
             module_directories.insert(directory.to_path_buf());
         }
 
-        let path = crate::paths::normalize_relative_path(&source_path, &project.root);
+        let path = codeatlas_source::paths::normalize_relative_path(&source_path, &project.root);
         let file = NodeId::file(&project.id, &path);
         graph
             .add_node(

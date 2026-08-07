@@ -3,7 +3,7 @@ use codeatlas_domain::{PackageExport, PackageInfo};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
-pub(crate) fn discover(root_dir: &Path) -> Result<Option<PackageInfo>> {
+pub fn discover(root_dir: &Path) -> Result<Option<PackageInfo>> {
     let Some(manifest) = read_manifest(root_dir)? else {
         return Ok(None);
     };
@@ -64,7 +64,7 @@ pub(crate) fn discover(root_dir: &Path) -> Result<Option<PackageInfo>> {
     }))
 }
 
-pub(crate) fn source_roots(root_dir: &Path) -> Result<Vec<PathBuf>> {
+pub fn source_roots(root_dir: &Path) -> Result<Vec<PathBuf>> {
     let roots = if let Some(manifest) = read_manifest(root_dir)? {
         setuptools_layout(root_dir, &manifest).0
     } else {
@@ -73,7 +73,7 @@ pub(crate) fn source_roots(root_dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(ordered_source_roots(roots))
 }
 
-pub(crate) fn discover_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
+pub fn discover_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
     let Some(manifest) = read_manifest(root_dir)? else {
         return Ok(Vec::new());
     };

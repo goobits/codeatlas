@@ -640,7 +640,7 @@ fn module_segments(target: &CargoTarget, path: &Path) -> Vec<String> {
         .strip_prefix(&target.module_base)
         .unwrap_or(path)
         .to_path_buf();
-    let normalized = crate::paths::normalize_path(&relative);
+    let normalized = codeatlas_source::paths::normalize_path(&relative);
     let normalized = normalized.strip_suffix(".rs").unwrap_or(&normalized);
     let normalized = normalized.strip_suffix("/mod").unwrap_or(normalized);
     normalized

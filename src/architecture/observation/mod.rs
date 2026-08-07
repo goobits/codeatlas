@@ -458,7 +458,7 @@ pub(crate) fn source_input_paths(modules: &[PathBuf], source_root: &Path) -> Vec
             } else {
                 source_root.join(module)
             };
-            crate::paths::normalize_relative_path(&path, source_root)
+            codeatlas_source::paths::normalize_relative_path(&path, source_root)
         })
         .collect()
 }

@@ -1,7 +1,8 @@
 use super::{annotate_report, build_scan_config, exit_code, load_project, output, scan_project};
-use crate::{analysis, outputs, package};
+use crate::{analysis, outputs};
 use anyhow::{Context, Result};
 use clap::ValueEnum;
+use codeatlas_source::package;
 use std::path::Path;
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]

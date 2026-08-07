@@ -18,7 +18,7 @@ pub(crate) fn scan(root_dir: &Path, config: &ScanConfig) -> ScanReport {
     let entrypoints = config
         .entrypoints
         .as_ref()
-        .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir))
+        .map(|entries| codeatlas_source::paths::normalize_entrypoints(entries, root_dir))
         .unwrap_or_default();
     let (modules, skipped_files) = parse_modules(root_dir, config.no_default_ignore, &entrypoints);
     let allowed = resolve_allowed(root_dir, &entrypoints, &modules);
@@ -181,11 +181,12 @@ pub(crate) fn reachable_symbol_ids_by_entrypoint(
     entrypoints: &[String],
     no_default_ignore: bool,
 ) -> HashMap<String, HashSet<String>> {
-    let normalized_entrypoints = crate::paths::normalize_entrypoints(entrypoints, root_dir);
+    let normalized_entrypoints =
+        codeatlas_source::paths::normalize_entrypoints(entrypoints, root_dir);
     let (modules, _) = parse_modules(root_dir, no_default_ignore, &normalized_entrypoints);
     let mut result = HashMap::new();
     for original_entrypoint in entrypoints {
-        let normalized = crate::paths::normalize_entrypoints(
+        let normalized = codeatlas_source::paths::normalize_entrypoints(
             std::slice::from_ref(original_entrypoint),
             root_dir,
         );
@@ -211,7 +212,8 @@ pub(crate) fn reachable_symbol_ids_for_exports(
     export_names: HashSet<String>,
     no_default_ignore: bool,
 ) -> HashSet<String> {
-    let normalized = crate::paths::normalize_entrypoints(&[entrypoint.to_string()], root_dir);
+    let normalized =
+        codeatlas_source::paths::normalize_entrypoints(&[entrypoint.to_string()], root_dir);
     let (modules, _) = parse_modules(root_dir, no_default_ignore, &normalized);
     let Some(entrypoint) = normalized.into_iter().next() else {
         return HashSet::new();
@@ -360,11 +362,11 @@ fn parse_modules(
         if e.depth() == 0 {
             return true;
         }
-        let relative = crate::paths::normalize_relative_path(e.path(), root_dir);
+        let relative = codeatlas_source::paths::normalize_relative_path(e.path(), root_dir);
         let is_explicit_contract_tree = explicit_contract_roots
             .iter()
             .any(|root| relative == *root || relative.starts_with(&format!("{root}/")));
-        if crate::source_policy::is_ignored_path(&relative, no_default_ignore)
+        if codeatlas_source::source_policy::is_ignored_path(&relative, no_default_ignore)
             && !is_explicit_contract_tree
         {
             return false;
@@ -388,7 +390,7 @@ fn parse_modules(
             continue;
         }
 
-        let relative = crate::paths::normalize_relative_path(path, root_dir);
+        let relative = codeatlas_source::paths::normalize_relative_path(path, root_dir);
         if modules.contains_key(&relative) {
             continue;
         }
@@ -454,7 +456,7 @@ fn ignored_entrypoint_roots(entrypoints: &HashSet<String>) -> Vec<String> {
                     prefix.push('/');
                 }
                 prefix.push_str(part);
-                if crate::source_policy::is_ignored_path(&prefix, false) {
+                if codeatlas_source::source_policy::is_ignored_path(&prefix, false) {
                     return Some(prefix);
                 }
             }

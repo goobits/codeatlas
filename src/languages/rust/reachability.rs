@@ -99,7 +99,7 @@ fn collect_modules(
     let target_patterns = cargo
         .targets()
         .iter()
-        .map(|target| crate::paths::normalize_relative_path(&target.root, &project.root))
+        .map(|target| codeatlas_source::paths::normalize_relative_path(&target.root, &project.root))
         .collect::<Vec<_>>();
     let discovery =
         crate::languages::reachability::discover_project_sources(project, &target_patterns);
@@ -132,7 +132,7 @@ fn collect_modules(
         {
             continue;
         }
-        let path = crate::paths::normalize_relative_path(&source_path, &project.root);
+        let path = codeatlas_source::paths::normalize_relative_path(&source_path, &project.root);
         let module_key = (project.id.clone(), path.clone());
         if modules.contains_key(&module_key) {
             continue;
@@ -439,7 +439,7 @@ fn connect_embedded_sources(graph: &mut SourceGraph, module: &Module) {
         if !target.starts_with(&module.root) {
             continue;
         }
-        let path = crate::paths::normalize_relative_path(&target, &module.root);
+        let path = codeatlas_source::paths::normalize_relative_path(&target, &module.root);
         let node = NodeId::file(&module.project, &path);
         if !graph.nodes.contains_key(&node) {
             continue;

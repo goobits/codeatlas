@@ -93,7 +93,9 @@ fn collect_symbols<'a>(
     collected: &mut Vec<SymbolView<'a>>,
 ) {
     for symbol in symbols {
-        if top_level && crate::source_policy::is_fingerprinted_web_bundle(&symbol.file_path) {
+        if top_level
+            && codeatlas_source::source_policy::is_fingerprinted_web_bundle(&symbol.file_path)
+        {
             continue;
         }
         collected.push(SymbolView {

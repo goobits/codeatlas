@@ -100,7 +100,10 @@ pub(crate) fn discover(
             source_kind: kind,
             source_name: source.inventory.name.clone(),
             evidence: PostgresEvidence {
-                path: crate::paths::repository_path(&member.report_root, &source.inventory.path),
+                path: codeatlas_source::paths::repository_path(
+                    &member.report_root,
+                    &source.inventory.path,
+                ),
                 line: source.source_line,
                 column: Some(source.source_column),
             },

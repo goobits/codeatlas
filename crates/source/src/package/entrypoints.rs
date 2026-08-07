@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 
 const RUNTIME_SCRIPTS: [&str; 2] = ["start", "serve"];
 
-pub(crate) fn discover_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
+pub fn discover_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
     let mut entrypoints = discover_script_entrypoints(root_dir, is_runtime_script)?;
     entrypoints.extend(discover_workspace_script_entrypoints(
         root_dir,
@@ -27,7 +27,7 @@ pub(crate) fn discover_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
     Ok(entrypoints)
 }
 
-pub(crate) fn discover_bundled_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
+pub fn discover_bundled_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
     let manifest = read_manifest(root_dir)?;
     let Some(scripts) = manifest.get("scripts").and_then(Value::as_object) else {
         return Ok(Vec::new());
@@ -42,7 +42,7 @@ pub(crate) fn discover_bundled_entrypoints(root_dir: &Path) -> Result<Vec<String
     Ok(entrypoints)
 }
 
-pub(crate) fn discover_tooling_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
+pub fn discover_tooling_entrypoints(root_dir: &Path) -> Result<Vec<String>> {
     let mut entrypoints = discover_script_entrypoints(root_dir, |name| !is_runtime_script(name))?;
     entrypoints.extend(discover_workspace_script_entrypoints(root_dir, |name| {
         !is_runtime_script(name)
@@ -63,7 +63,7 @@ pub(crate) fn discover_tooling_entrypoints(root_dir: &Path) -> Result<Vec<String
     Ok(entrypoints)
 }
 
-pub(crate) fn read_scripts(root_dir: &Path) -> Result<BTreeMap<String, String>> {
+pub fn read_scripts(root_dir: &Path) -> Result<BTreeMap<String, String>> {
     let manifest = read_manifest(root_dir)?;
     Ok(manifest
         .get("scripts")

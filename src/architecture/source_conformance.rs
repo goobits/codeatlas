@@ -243,7 +243,7 @@ fn intrinsic_findings(
             let source = project_for_node(graph, &edge.from)?.0.clone();
             match (&edge.kind, &edge.to) {
                 (_, EdgeTarget::UnexportedWorkspace(specifier)) => {
-                    let target = crate::package::split_package_specifier(specifier)
+                    let target = codeatlas_source::package::split_package_specifier(specifier)
                         .map(|(package, _)| package)
                         .unwrap_or_else(|| specifier.clone());
                     if source == target {

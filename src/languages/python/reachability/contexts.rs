@@ -75,7 +75,7 @@ pub(super) fn add_pyproject_entrypoints(
     if project.contexts.contains_key(PROJECT_ENTRYPOINT_CONTEXT) {
         return Ok(());
     }
-    let entrypoints = crate::package::discover_python_entrypoints(&project.root)?;
+    let entrypoints = codeatlas_source::package::discover_python_entrypoints(&project.root)?;
     let mut roots = BTreeSet::new();
     for entrypoint in &entrypoints {
         let entrypoint = entrypoint.as_str();
@@ -132,7 +132,7 @@ pub(super) fn add_package_exports(
     if project.contexts.contains_key(PACKAGE_EXPORT_CONTEXT) {
         return Ok(());
     }
-    let roots = crate::package::discover_python(&project.root)?
+    let roots = codeatlas_source::package::discover_python(&project.root)?
         .into_iter()
         .flat_map(|package| package.exports)
         .filter_map(|export| {

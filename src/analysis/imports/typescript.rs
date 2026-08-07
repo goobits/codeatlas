@@ -24,7 +24,7 @@ pub(crate) fn collect_importers(
             return true;
         }
         let name = e.file_name().to_string_lossy();
-        !crate::source_policy::is_ignored_dir(&name, no_default_ignore)
+        !codeatlas_source::source_policy::is_ignored_dir(&name, no_default_ignore)
     }) {
         let entry = match entry {
             Ok(e) => e,
@@ -41,7 +41,7 @@ pub(crate) fn collect_importers(
             continue;
         }
 
-        let relative = crate::paths::normalize_relative_path(path, root_dir);
+        let relative = codeatlas_source::paths::normalize_relative_path(path, root_dir);
         let info = match parser::parse_module_info(path, root_dir) {
             Ok(info) => info,
             Err(_) => continue,
@@ -176,7 +176,7 @@ pub(crate) fn collect_package_consumers(
             return false;
         }
         let name = entry.file_name().to_string_lossy();
-        !crate::source_policy::is_ignored_consumer_dir(&name)
+        !codeatlas_source::source_policy::is_ignored_consumer_dir(&name)
     }) {
         let entry = match entry {
             Ok(entry) => entry,
@@ -197,7 +197,7 @@ pub(crate) fn collect_package_consumers(
             continue;
         }
 
-        let importer = crate::paths::normalize_relative_path(path, &consumer_root);
+        let importer = codeatlas_source::paths::normalize_relative_path(path, &consumer_root);
         let info = if path
             .extension()
             .is_some_and(|extension| extension == "svelte")
@@ -267,7 +267,8 @@ fn package_symbol_index(
             continue;
         }
         for export_path in &symbol.export_paths {
-            let Some((package_name, _)) = crate::package::split_package_specifier(export_path)
+            let Some((package_name, _)) =
+                codeatlas_source::package::split_package_specifier(export_path)
             else {
                 continue;
             };

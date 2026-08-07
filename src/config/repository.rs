@@ -147,7 +147,7 @@ impl RepositoryScope {
     }
 
     fn resolve_workspace(project: &ProjectConfig) -> Result<Self> {
-        let workspace = crate::package::discover_workspace(&project.root)?;
+        let workspace = codeatlas_source::package::discover_workspace(&project.root)?;
         let workspace_root = workspace.root.clone();
         let mut packages = workspace
             .members
@@ -173,7 +173,8 @@ impl RepositoryScope {
         }
         if !members.iter().any(|member| member.root == project.root) {
             let id = unique_root_id(&members)?;
-            let report_root = crate::paths::normalize_relative_path(&project.root, &workspace_root);
+            let report_root =
+                codeatlas_source::paths::normalize_relative_path(&project.root, &workspace_root);
             members.push(RepositoryMember::new(
                 codeatlas_domain::source_graph::ProjectId(id),
                 if report_root.is_empty() {
@@ -328,7 +329,8 @@ impl RepositoryScope {
     }
 
     pub(crate) fn evidence(&self) -> RepositoryScopeEvidence {
-        let selected_root = crate::paths::normalize_relative_path(&self.root, &self.workspace_root);
+        let selected_root =
+            codeatlas_source::paths::normalize_relative_path(&self.root, &self.workspace_root);
         RepositoryScopeEvidence {
             selected_root: if selected_root.is_empty() {
                 ".".to_string()
@@ -345,7 +347,7 @@ impl RepositoryScope {
                     id: member.id.0.clone(),
                     root: member.report_root.clone(),
                     config_path: member.config_path.as_ref().map(|path| {
-                        crate::paths::normalize_relative_path(path, &self.workspace_root)
+                        codeatlas_source::paths::normalize_relative_path(path, &self.workspace_root)
                     }),
                     config_digest: member.config_digest.clone(),
                     http_contracts: member.http_contracts.clone(),
@@ -417,7 +419,8 @@ fn append_local_members(
                             .display()
                     )
                 })?;
-            let report_root = crate::paths::normalize_relative_path(&local.root, workspace_root);
+            let report_root =
+                codeatlas_source::paths::normalize_relative_path(&local.root, workspace_root);
             members.push(RepositoryMember::new(
                 id,
                 if report_root.is_empty() {
@@ -511,7 +514,8 @@ fn merge_owned_projects(
                 existing.root.display()
             );
         }
-        owned.report_root = crate::paths::normalize_relative_path(&owned.root, workspace_root);
+        owned.report_root =
+            codeatlas_source::paths::normalize_relative_path(&owned.root, workspace_root);
         projects.push(owned);
     }
     projects.sort_by(|left, right| {

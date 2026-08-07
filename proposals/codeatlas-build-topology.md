@@ -281,6 +281,15 @@ cross-directory moves require unchanged module filenames or language-server
 file-rename support. It persisted no plan, and the complete source-tree digest
 remained unchanged, so the accepted ordinary-edit fallback owns this hard cut.
 
+Source checkpoint: `codeatlas-source` now owns the exact moved path,
+source-policy, source-discovery, and package-evidence implementations plus one
+generic fact-provider trait implemented by the root cache. Thirty moved tests
+and 392 remaining root tests pass, preserving the original 422-test total; the
+workspace, topology, package, formatting, and warning-denying source Clippy
+checks also pass. Searches find no retired root module or duplicate source
+owner, schemas are unchanged, and the standalone probe manifest and lock keep
+their exact digests.
+
 ## Phase 4: Re-measure before touching the execution boundary
 
 Status: [ ] Not started

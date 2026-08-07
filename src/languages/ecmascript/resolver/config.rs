@@ -18,7 +18,8 @@ pub(super) fn load_alias_config<'a>(
         let config_root = path.parent().unwrap_or(root);
         let absolute_base_url = config_root.join(compiler["baseUrl"].as_str().unwrap_or(""));
         if compiler["baseUrl"].is_string() {
-            let relative = crate::paths::normalize_relative_path(&absolute_base_url, root);
+            let relative =
+                codeatlas_source::paths::normalize_relative_path(&absolute_base_url, root);
             config.base_url = PathBuf::from(if relative.is_empty() { "." } else { &relative });
         }
         if let Some(paths) = compiler["paths"].as_object() {
@@ -29,7 +30,10 @@ pub(super) fn load_alias_config<'a>(
                     .flatten()
                     .filter_map(Value::as_str)
                     .map(|target| {
-                        crate::paths::normalize_relative_path(&absolute_base_url.join(target), root)
+                        codeatlas_source::paths::normalize_relative_path(
+                            &absolute_base_url.join(target),
+                            root,
+                        )
                     })
                     .collect::<Vec<_>>();
                 if !targets.is_empty() {
@@ -77,7 +81,7 @@ pub(super) fn add_configured_alias(
     pattern: &str,
     target: &str,
 ) {
-    let target = crate::paths::normalize_path(Path::new(target));
+    let target = codeatlas_source::paths::normalize_path(Path::new(target));
     paths
         .entry(pattern.to_string())
         .or_default()
@@ -113,7 +117,7 @@ pub(super) fn load_package_imports<'a>(
     for module_path in module_paths {
         let mut directory = Path::new(module_path).parent();
         while let Some(current) = directory {
-            directories.insert(crate::paths::normalize_path(current));
+            directories.insert(codeatlas_source::paths::normalize_path(current));
             directory = current.parent();
         }
     }

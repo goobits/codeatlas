@@ -40,7 +40,7 @@ fn compile_subject(pattern: &str, owner: &str) -> Result<GlobMatcher> {
 
 fn display_node(graph: &SourceGraph, node: &NodeId) -> String {
     match graph.nodes.get(node) {
-        Some(SourceNode::File(file)) => crate::paths::repository_path(
+        Some(SourceNode::File(file)) => codeatlas_source::paths::repository_path(
             graph
                 .projects
                 .get(&file.project)
@@ -52,7 +52,7 @@ fn display_node(graph: &SourceGraph, node: &NodeId) -> String {
                 .nodes
                 .get(&symbol.file)
                 .and_then(|node| match node {
-                    SourceNode::File(file) => Some(crate::paths::repository_path(
+                    SourceNode::File(file) => Some(codeatlas_source::paths::repository_path(
                         graph
                             .projects
                             .get(&file.project)

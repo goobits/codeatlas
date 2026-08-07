@@ -505,7 +505,7 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-07): 100 open CodeAtlas implementation checks
+Remaining-scope audit (2026-08-07): 99 open CodeAtlas implementation checks
 remain across Phase 10A and Phases 11 through 21, including Phase 16A and the
 deferred Phase 15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
@@ -1066,7 +1066,7 @@ Active child:
   duplicate resolved type, and retired import in the same phase.
 - [x] Pass domain tests, unchanged scan/inspect/schema bytes, HTTP/PostgreSQL
   docs fixtures, self-dogfood, and boundary searches before committing.
-- [ ] Extract the existing path, source-discovery, source-policy, and
+- [x] Extract the existing path, source-discovery, source-policy, and
   package-evidence owners into one dependency-light `codeatlas-source` member;
   give the root source index one narrow fact-provider contract rather than a
   callback bag or duplicate cache.
@@ -1631,6 +1631,12 @@ read-only and will not reconstruct or vendor it.
   pass; the probe manifest and lock digests remain exact. Separate fresh caches
   also produce byte-identical scan, check, and inspect artifacts across the
   Phase 1 and extracted binaries.
+- 2026-08-06: Phase 10A Phase 3's prerequisite source leaf moves path,
+  discovery, policy, and package evidence into `codeatlas-source` without a
+  root facade. The root cache implements one fact-provider trait. Thirty moved
+  tests plus 392 root tests preserve the 422-test total; topology, package,
+  formatting, and source Clippy checks pass with unchanged schemas and probe
+  identities.
 
 ## Existing-first check
 

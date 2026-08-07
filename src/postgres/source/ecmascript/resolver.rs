@@ -103,13 +103,15 @@ impl<'a> StaticSqlResolver<'a> {
         {
             return Ok(is_ecmascript_source(Path::new(&relative)).then_some(relative));
         }
-        let Some(dependency) = crate::package::resolve_dependency(self.root, specifier) else {
+        let Some(dependency) = codeatlas_source::package::resolve_dependency(self.root, specifier)
+        else {
             return Ok(None);
         };
-        if !crate::package::is_local_dependency(self.root, &dependency)? {
+        if !codeatlas_source::package::is_local_dependency(self.root, &dependency)? {
             return Ok(None);
         }
-        let Some(package) = crate::package::discover_javascript(&dependency.root)? else {
+        let Some(package) = codeatlas_source::package::discover_javascript(&dependency.root)?
+        else {
             return Ok(None);
         };
         let Some(export) = package
@@ -123,7 +125,7 @@ impl<'a> StaticSqlResolver<'a> {
         if !target.is_file() || !is_ecmascript_source(&target) {
             return Ok(None);
         }
-        Ok(Some(crate::paths::normalize_relative_path(
+        Ok(Some(codeatlas_source::paths::normalize_relative_path(
             &target, self.root,
         )))
     }

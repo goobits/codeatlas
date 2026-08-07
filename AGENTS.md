@@ -72,8 +72,10 @@ published contract, never vendor or reconstruct a draft locally.
   validation. Unknown fields fail; proposals do not create parallel config.
 - `src/domain` owns the language-neutral code-evidence primitives. Language
   syntax and resolution stay in `src/languages`.
-- `src/source_discovery` and `src/source_index` own bounded source discovery,
-  immutable indexed facts, cache identity, and index telemetry.
+- `crates/source` owns path normalization, bounded source discovery, source
+  selection policy, package evidence, and the fact-provider contract.
+  `src/source_index` owns immutable cached facts, graph identity, invalidation,
+  and index telemetry.
 - `src/analysis`, `src/dead_code`, `src/context_slice`, `src/testing`, and
   `src/lexicon` own their distinct static questions and report models.
 - `src/http`, `src/postgres`, and `src/architecture` own subject-specific

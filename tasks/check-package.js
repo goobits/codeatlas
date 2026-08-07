@@ -16,6 +16,8 @@ const requiredFiles = [
 	'Cargo.toml',
 	'crates/domain/Cargo.toml',
 	'crates/domain/src/lib.rs',
+	'crates/source/Cargo.toml',
+	'crates/source/src/lib.rs',
 	'crates/isolation-conformance/Cargo.lock',
 	'crates/isolation-conformance/Cargo.toml',
 	'crates/isolation-conformance/src/lib.rs',

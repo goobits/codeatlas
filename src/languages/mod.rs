@@ -103,16 +103,17 @@ fn scan_language_with_definition(
     let entrypoints = config
         .entrypoints
         .as_ref()
-        .map(|entries| crate::paths::normalize_entrypoints(entries, root_dir));
+        .map(|entries| codeatlas_source::paths::normalize_entrypoints(entries, root_dir));
 
     let patterns = config.entrypoints.as_deref().unwrap_or_default();
-    let discovery =
-        crate::source_discovery::discover(crate::source_discovery::SourceDiscoveryRequest {
+    let discovery = codeatlas_source::source_discovery::discover(
+        codeatlas_source::source_discovery::SourceDiscoveryRequest {
             root: root_dir,
             patterns,
             excluded_roots: &[],
             no_default_ignore: config.no_default_ignore,
-        });
+        },
+    );
     let mut files_to_scan: Vec<PathBuf> = Vec::new();
     for path in discovery.files {
         if !lang.is_language_file(&path) || has_language_ignored_parent(&path, root_dir, lang) {
@@ -120,7 +121,7 @@ fn scan_language_with_definition(
         }
 
         if let Some(ref entrypoints) = entrypoints {
-            let relative = crate::paths::normalize_relative_path(&path, root_dir);
+            let relative = codeatlas_source::paths::normalize_relative_path(&path, root_dir);
             if !entrypoints.contains(&relative) {
                 continue;
             }

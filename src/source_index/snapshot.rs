@@ -33,9 +33,15 @@ pub(super) fn create(projects: &[ResolvedAnalysisProject]) -> Result<SourceSnaps
             "**/conftest.py".to_string(),
             "**/*.html".to_string(),
         ];
-        patterns.extend(crate::package::discover_runtime_entrypoints(&project.root)?);
-        patterns.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
-        patterns.extend(crate::package::discover_tooling_entrypoints(&project.root)?);
+        patterns.extend(codeatlas_source::package::discover_runtime_entrypoints(
+            &project.root,
+        )?);
+        patterns.extend(codeatlas_source::package::discover_bundled_entrypoints(
+            &project.root,
+        )?);
+        patterns.extend(codeatlas_source::package::discover_tooling_entrypoints(
+            &project.root,
+        )?);
         patterns.sort();
         patterns.dedup();
         let discovery =
@@ -56,7 +62,7 @@ pub(super) fn create(projects: &[ResolvedAnalysisProject]) -> Result<SourceSnaps
             let fingerprint = files
                 .entry(path.clone())
                 .or_insert_with(|| fingerprint(&path));
-            let relative = crate::paths::normalize_relative_path(&path, &project.root);
+            let relative = codeatlas_source::paths::normalize_relative_path(&path, &project.root);
             hash_value(&mut digest, relative.as_bytes());
             hash_value(&mut digest, fingerprint.digest.as_bytes());
             digest.update(fingerprint.bytes.to_le_bytes());

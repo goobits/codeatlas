@@ -6,13 +6,13 @@ use super::{
 use crate::config::{
     PostgresContractConfig, PostgresPsqlMetaCommandMode, PostgresSqlSourceConfig, ProjectConfig,
 };
-use crate::paths;
 use crate::postgres::model::{
     PostgresContractInventory, PostgresEvidence, PostgresFinding, PostgresFindingSeverity,
     PostgresSqlSourceInventory,
 };
-use crate::source_discovery::{self, SourceDiscoveryRequest};
 use anyhow::{Context, Result};
+use codeatlas_source::paths;
+use codeatlas_source::source_discovery::{self, SourceDiscoveryRequest};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 

@@ -92,7 +92,7 @@ pub(crate) fn analyze(
         report.public_api.push(PublicApiTestWitness {
             node_id: node_id.clone(),
             project: symbol.project.0.clone(),
-            path: crate::paths::repository_path(
+            path: codeatlas_source::paths::repository_path(
                 graph
                     .projects
                     .get(&symbol.project)

@@ -55,8 +55,8 @@ fn load_modules(
 ) -> (HashMap<String, ModuleInfo>, HashMap<String, String>) {
     let mut modules: HashMap<String, ModuleInfo> = HashMap::new();
     let mut module_by_name: HashMap<String, String> = HashMap::new();
-    let source_roots =
-        crate::package::discover_python_source_roots(root_dir).unwrap_or_else(|_| Vec::new());
+    let source_roots = codeatlas_source::package::discover_python_source_roots(root_dir)
+        .unwrap_or_else(|_| Vec::new());
 
     let walker = walkdir::WalkDir::new(root_dir).into_iter();
     for entry in walker.filter_entry(|e| {
@@ -64,7 +64,7 @@ fn load_modules(
             return true;
         }
         let name = e.file_name().to_string_lossy();
-        if crate::source_policy::is_ignored_dir(&name, no_default_ignore) {
+        if codeatlas_source::source_policy::is_ignored_dir(&name, no_default_ignore) {
             return false;
         }
         name != "__pycache__" && name != "venv" && !name.ends_with(".egg-info")
@@ -84,14 +84,14 @@ fn load_modules(
             Err(_) => continue,
         };
 
-        let relative = crate::paths::normalize_relative_path(path, root_dir);
+        let relative = codeatlas_source::paths::normalize_relative_path(path, root_dir);
         let relative_path = Path::new(&relative);
         let module_path = source_roots
             .iter()
             .find_map(|source_root| relative_path.strip_prefix(source_root).ok())
             .unwrap_or(relative_path);
         let module_name =
-            resolver::module_name_from_path(&crate::paths::normalize_path(module_path));
+            resolver::module_name_from_path(&codeatlas_source::paths::normalize_path(module_path));
         module_by_name.insert(module_name.clone(), relative.clone());
 
         let info = match parser::parse_module_info(path, root_dir, &source) {
@@ -312,7 +312,7 @@ fn record_project_entrypoints(
     let Some(symbols_by_file) = symbols_by_file else {
         return;
     };
-    let Ok(entrypoints) = crate::package::discover_python_entrypoints(root_dir) else {
+    let Ok(entrypoints) = codeatlas_source::package::discover_python_entrypoints(root_dir) else {
         return;
     };
     for entrypoint in entrypoints {

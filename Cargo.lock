@@ -382,6 +382,7 @@ dependencies = [
  "clap",
  "codeatlas-domain",
  "codeatlas-isolation-conformance",
+ "codeatlas-source",
  "colored",
  "ctrlc",
  "globset",
@@ -435,6 +436,24 @@ dependencies = [
  "anyhow",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "codeatlas-source"
+version = "0.10.0"
+dependencies = [
+ "anyhow",
+ "codeatlas-domain",
+ "globset",
+ "ignore",
+ "json5",
+ "pathdiff",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "toml",
+ "walkdir",
 ]
 
 [[package]]

@@ -69,13 +69,14 @@ pub(crate) fn inventory(contracts: &[ResolvedHttpContract]) -> Result<HttpInvent
 pub(crate) fn proposed_config(
     project: &crate::config::ProjectConfig,
 ) -> Result<crate::config::HttpConfig> {
-    let discovery =
-        crate::source_discovery::discover(crate::source_discovery::SourceDiscoveryRequest {
+    let discovery = codeatlas_source::source_discovery::discover(
+        codeatlas_source::source_discovery::SourceDiscoveryRequest {
             root: &project.root,
             patterns: &[],
             excluded_roots: &[],
             no_default_ignore: project.config.no_default_ignore,
-        });
+        },
+    );
     if let Some(warning) = discovery.warnings.first() {
         anyhow::bail!("Could not discover HTTP configuration: {warning}");
     }
@@ -99,7 +100,7 @@ pub(crate) fn proposed_config(
             "HTTP init found multiple conventional OpenAPI files; select one explicitly in codeatlas.json:\n  {}",
             openapi
                 .iter()
-                .map(|path| crate::paths::normalize_relative_path(path, &project.root))
+                .map(|path| codeatlas_source::paths::normalize_relative_path(path, &project.root))
                 .collect::<Vec<_>>()
                 .join("\n  ")
         );
@@ -115,10 +116,11 @@ pub(crate) fn proposed_config(
     }
 
     let (id, openapi) = if let Some(path) = openapi {
-        let display = crate::paths::normalize_relative_path(&path, project.config_base());
+        let display =
+            codeatlas_source::paths::normalize_relative_path(&path, project.config_base());
         contract_file::load(
             &path,
-            &crate::paths::normalize_relative_path(&path, &project.root),
+            &codeatlas_source::paths::normalize_relative_path(&path, &project.root),
         )?;
         (openapi_contract_id(&path), Some(PathBuf::from(display)))
     } else {

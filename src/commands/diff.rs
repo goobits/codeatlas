@@ -99,7 +99,7 @@ pub(crate) fn render_baseline(baseline: &PublicApiBaseline) -> Result<String> {
 fn create_single_baseline(path: &Path, config_path: Option<&Path>) -> Result<PublicApiBaseline> {
     let project = load_project(path, config_path)?;
     let report = scan_report(&project)?;
-    let root = crate::paths::normalize_path(&project.root);
+    let root = codeatlas_source::paths::normalize_path(&project.root);
     baseline_from_reports(vec![(root, report)], false)
 }
 
@@ -114,7 +114,7 @@ fn create_workspace_baseline(path: &Path, config_path: Option<&Path>) -> Result<
     {
         let member_name = &member.id.0;
         let member_project = member.project();
-        let Some(package) = crate::package::discover_for_docs(
+        let Some(package) = codeatlas_source::package::discover_for_docs(
             &member_project.root,
             member_project.config.docs.declaration_contract,
         )?

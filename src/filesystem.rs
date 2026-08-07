@@ -1,16 +1,6 @@
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 
-pub(crate) fn is_not_found(error: &(dyn std::error::Error + 'static)) -> bool {
-    error
-        .downcast_ref::<std::io::Error>()
-        .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-        || error
-            .downcast_ref::<ignore::Error>()
-            .and_then(ignore::Error::io_error)
-            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-}
-
 pub(crate) fn replace_file(path: &Path, content: &str) -> anyhow::Result<()> {
     if let Some(parent) = path
         .parent()
@@ -47,17 +37,8 @@ fn temporary_path(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_not_found, replace_file};
+    use super::replace_file;
     use std::fs;
-
-    #[test]
-    fn recognizes_typed_missing_path_errors() {
-        let missing = std::io::Error::from(std::io::ErrorKind::NotFound);
-        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-
-        assert!(is_not_found(&missing));
-        assert!(!is_not_found(&denied));
-    }
 
     #[test]
     fn replacement_is_atomic_and_leaves_no_temporary_file() {

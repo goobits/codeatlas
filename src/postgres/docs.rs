@@ -501,7 +501,7 @@ fn repository_location(
     line: u32,
     column: Option<u32>,
 ) -> String {
-    let path = crate::paths::repository_path(&member.report_root, path);
+    let path = codeatlas_source::paths::repository_path(&member.report_root, path);
     match column {
         Some(column) => format!("{path}:{line}:{column}"),
         None => format!("{path}:{line}"),

@@ -41,6 +41,7 @@
 		"bin/**",
 		"src/**",
 		"crates/domain/**",
+		"crates/source/**",
 		"crates/isolation-conformance/Cargo.lock",
 		"crates/isolation-conformance/Cargo.toml",
 		"crates/isolation-conformance/src/**",

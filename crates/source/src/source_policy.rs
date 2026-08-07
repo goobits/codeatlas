@@ -20,11 +20,11 @@ fn is_ignored_part(part: &str) -> bool {
     )
 }
 
-pub(crate) fn is_ignored_dir(name: &str, no_default_ignore: bool) -> bool {
+pub fn is_ignored_dir(name: &str, no_default_ignore: bool) -> bool {
     !no_default_ignore && (name.starts_with('.') || is_ignored_part(name))
 }
 
-pub(crate) fn is_ignored_consumer_dir(name: &str) -> bool {
+pub fn is_ignored_consumer_dir(name: &str) -> bool {
     name.starts_with('.')
         || matches!(
             name,
@@ -32,11 +32,11 @@ pub(crate) fn is_ignored_consumer_dir(name: &str) -> bool {
         )
 }
 
-pub(crate) fn is_ignored_path(path: &str, no_default_ignore: bool) -> bool {
+pub fn is_ignored_path(path: &str, no_default_ignore: bool) -> bool {
     !no_default_ignore && path.split('/').any(is_ignored_part)
 }
 
-pub(crate) fn is_conventional_test_source(path: &Path) -> bool {
+pub fn is_conventional_test_source(path: &Path) -> bool {
     if path.components().any(|component| {
         component.as_os_str().to_str().is_some_and(|component| {
             matches!(
@@ -59,7 +59,7 @@ pub(crate) fn is_conventional_test_source(path: &Path) -> bool {
         })
 }
 
-pub(crate) fn is_fingerprinted_web_bundle(path: &str) -> bool {
+pub fn is_fingerprinted_web_bundle(path: &str) -> bool {
     let mut previous = None;
     let mut is_web_assets = false;
     for part in path.split('/') {
@@ -87,7 +87,7 @@ pub(crate) fn is_fingerprinted_web_bundle(path: &str) -> bool {
     })
 }
 
-pub(crate) fn source_argument(token: &str) -> Option<String> {
+pub fn source_argument(token: &str) -> Option<String> {
     let token = token.strip_prefix("./").unwrap_or(token);
     let path = Path::new(token);
     (!path.is_absolute()

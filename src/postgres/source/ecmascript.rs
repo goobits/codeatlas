@@ -52,7 +52,7 @@ pub(super) fn extract(root: &Path, paths: &[PathBuf]) -> Result<ExtractedSource>
     let mut resolver = StaticSqlResolver::new(root);
     let mut extracted = ExtractedSource::default();
     for path in paths {
-        let display = crate::paths::normalize_relative_path(path, root);
+        let display = codeatlas_source::paths::normalize_relative_path(path, root);
         let facts = resolver.load(&display)?.clone();
         for name in &facts.exports {
             let Some(expression) = facts.bindings.get(name) else {
@@ -217,7 +217,7 @@ fn resolve_project_sql_file(root: &Path, configured: &str) -> Result<Option<Stat
     Ok(Some(StaticSql {
         text: std::fs::read_to_string(&canonical)
             .with_context(|| format!("Could not read embedded migration file {configured}"))?,
-        path: crate::paths::normalize_relative_path(&canonical, &canonical_root),
+        path: codeatlas_source::paths::normalize_relative_path(&canonical, &canonical_root),
         line: 1,
         column: 1,
         dynamic: false,

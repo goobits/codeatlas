@@ -3,13 +3,13 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ResolvedDependency {
+pub struct ResolvedDependency {
     pub package_name: String,
     pub public_path: String,
     pub root: PathBuf,
 }
 
-pub(crate) fn resolve(root_dir: &Path, specifier: &str) -> Option<ResolvedDependency> {
+pub fn resolve(root_dir: &Path, specifier: &str) -> Option<ResolvedDependency> {
     let (package_name, public_path) = split_specifier(specifier)?;
     for ancestor in root_dir.ancestors() {
         for node_modules in [
@@ -29,7 +29,7 @@ pub(crate) fn resolve(root_dir: &Path, specifier: &str) -> Option<ResolvedDepend
     None
 }
 
-pub(crate) fn is_local(importer_root: &Path, dependency: &ResolvedDependency) -> Result<bool> {
+pub fn is_local(importer_root: &Path, dependency: &ResolvedDependency) -> Result<bool> {
     if !dependency
         .root
         .components()
@@ -69,7 +69,7 @@ pub(crate) fn is_local(importer_root: &Path, dependency: &ResolvedDependency) ->
     Ok(false)
 }
 
-pub(crate) fn declares_any(root: &Path, package_names: &[&str]) -> bool {
+pub fn declares_any(root: &Path, package_names: &[&str]) -> bool {
     let Ok(source) = std::fs::read_to_string(root.join("package.json")) else {
         return false;
     };
@@ -92,7 +92,7 @@ pub(crate) fn declares_any(root: &Path, package_names: &[&str]) -> bool {
     })
 }
 
-pub(crate) fn split_specifier(specifier: &str) -> Option<(String, String)> {
+pub fn split_specifier(specifier: &str) -> Option<(String, String)> {
     if specifier.starts_with('.')
         || specifier.starts_with('#')
         || specifier.starts_with('/')
@@ -143,8 +143,8 @@ mod tests {
 
     #[test]
     fn detects_declared_packages_without_interpreting_versions() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        assert!(declares_any(root, &["squawk-cli"]));
-        assert!(!declares_any(root, &["not-a-real-codeatlas-dependency"]));
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        assert!(declares_any(&root, &["squawk-cli"]));
+        assert!(!declares_any(&root, &["not-a-real-codeatlas-dependency"]));
     }
 }

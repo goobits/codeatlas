@@ -25,8 +25,10 @@ fn init_code(path: &Path, write: bool, config_path: Option<&Path>) -> Result<i32
             project.root.display()
         );
     }
-    let mut entrypoints = crate::package::discover_runtime_entrypoints(&project.root)?;
-    entrypoints.extend(crate::package::discover_bundled_entrypoints(&project.root)?);
+    let mut entrypoints = codeatlas_source::package::discover_runtime_entrypoints(&project.root)?;
+    entrypoints.extend(codeatlas_source::package::discover_bundled_entrypoints(
+        &project.root,
+    )?);
     entrypoints.sort();
     entrypoints.dedup();
 

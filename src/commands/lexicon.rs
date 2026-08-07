@@ -145,7 +145,8 @@ fn scan_workspace(
         .iter()
         .filter(|member| member.package_member)
         .filter_map(|member| {
-            let prefix = crate::paths::normalize_relative_path(&member.root, &project.root);
+            let prefix =
+                codeatlas_source::paths::normalize_relative_path(&member.root, &project.root);
             (!prefix.is_empty()).then_some((prefix, member.id.0.clone(), member))
         })
         .collect::<Vec<_>>();
@@ -206,7 +207,7 @@ fn strip_symbol_prefix(symbol: &mut Symbol, prefix: &str) -> Result<()> {
                 symbol.file_path, prefix
             )
         })?;
-    let relative = crate::paths::normalize_path(relative);
+    let relative = codeatlas_source::paths::normalize_path(relative);
     rewrite_symbol_path(symbol, &relative);
     for child in &mut symbol.children {
         strip_symbol_prefix(child, prefix)?;
@@ -215,7 +216,8 @@ fn strip_symbol_prefix(symbol: &mut Symbol, prefix: &str) -> Result<()> {
 }
 
 fn add_symbol_prefix(symbol: &mut Symbol, prefix: &str) {
-    let rebased = crate::paths::normalize_path(&Path::new(prefix).join(&symbol.file_path));
+    let rebased =
+        codeatlas_source::paths::normalize_path(&Path::new(prefix).join(&symbol.file_path));
     rewrite_symbol_path(symbol, &rebased);
     for child in &mut symbol.children {
         add_symbol_prefix(child, prefix);

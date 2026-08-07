@@ -65,11 +65,9 @@ fn collect_member_terms(
         let contract_target = super::graph::contract_node_id(&member.member.id.0, &contract.id);
         let config_source = RepositoryTermSource::new(
             RepositoryTermSourceKind::Configuration,
-            member
-                .member
-                .config_path
-                .as_ref()
-                .map(|path| crate::paths::normalize_relative_path(path, &scope.workspace_root)),
+            member.member.config_path.as_ref().map(|path| {
+                codeatlas_source::paths::normalize_relative_path(path, &scope.workspace_root)
+            }),
         );
         collection.push_value(
             &contract.id,
@@ -135,7 +133,7 @@ fn collect_member_terms(
             for declaration in &merged.declarations {
                 let source = RepositoryTermSource::new(
                     RepositoryTermSourceKind::Declaration,
-                    Some(crate::paths::repository_path(
+                    Some(codeatlas_source::paths::repository_path(
                         &member.member.report_root,
                         &declaration.evidence.path,
                     )),
@@ -286,5 +284,5 @@ fn resolve_openapi_path(
         .iter()
         .find(|contract| contract.id == contract_id)
         .and_then(|contract| contract.openapi.as_ref())
-        .map(|path| crate::paths::normalize_relative_path(path, &scope.workspace_root))
+        .map(|path| codeatlas_source::paths::normalize_relative_path(path, &scope.workspace_root))
 }

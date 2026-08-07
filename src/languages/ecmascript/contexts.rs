@@ -32,7 +32,7 @@ pub(super) fn add_discovered_contexts(
     let html_entrypoints = discover_html_entrypoints(project, resolver, &evidence.html_sources);
     let medusa_project = is_medusa_project(project, modules);
     if !project.contexts.contains_key(PACKAGE_EXPORT_CONTEXT) {
-        let roots = crate::package::discover_javascript(&project.root)?
+        let roots = codeatlas_source::package::discover_javascript(&project.root)?
             .into_iter()
             .flat_map(|package| package.exports)
             .filter_map(|export| {
@@ -257,7 +257,7 @@ fn discover_html_entrypoints(
 
     let mut entrypoints = HtmlEntrypoints::default();
     for html_path in html_sources {
-        let relative = crate::paths::normalize_relative_path(html_path, &project.root);
+        let relative = codeatlas_source::paths::normalize_relative_path(html_path, &project.root);
         let Some(role) = html_entrypoint_role(&relative) else {
             continue;
         };
@@ -297,7 +297,7 @@ fn discover_html_entrypoints(
             let source = if source.starts_with('/') {
                 source.trim_start_matches('/').to_string()
             } else {
-                crate::paths::normalize_path(&html_parent.join(source))
+                codeatlas_source::paths::normalize_path(&html_parent.join(source))
             };
             let Some((project_id, path)) =
                 resolver.resolve_project_entrypoint(&project.id, &source)
@@ -412,7 +412,7 @@ pub(super) fn is_test_config_module(module: &Module, project_uses_vitest: bool) 
 }
 
 pub(super) fn project_uses_vitest(project: &ResolvedAnalysisProject) -> Result<bool> {
-    Ok(crate::package::read_scripts(&project.root)?
+    Ok(codeatlas_source::package::read_scripts(&project.root)?
         .values()
         .any(|command| {
             command

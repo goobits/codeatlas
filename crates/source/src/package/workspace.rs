@@ -7,14 +7,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub(crate) struct PackageWorkspace {
+pub struct PackageWorkspace {
     pub root: PathBuf,
     pub root_name: Option<String>,
     pub members: Vec<PackageWorkspaceMember>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PackageWorkspaceMember {
+pub struct PackageWorkspaceMember {
     pub name: String,
     pub root: PathBuf,
     pub report_root: String,
@@ -26,7 +26,7 @@ struct PnpmWorkspaceManifest {
     packages: Vec<String>,
 }
 
-pub(crate) fn discover(scope: &Path) -> Result<PackageWorkspace> {
+pub fn discover(scope: &Path) -> Result<PackageWorkspace> {
     let scope = scope
         .canonicalize()
         .with_context(|| format!("Workspace scope does not exist: {}", scope.display()))?;
@@ -174,16 +174,16 @@ fn discover_direct_members(
 
 fn retry_once_on_not_found<T>(mut operation: impl FnMut() -> Result<T>) -> Result<T> {
     match operation() {
-        Err(error) if is_not_found(&error) => operation(),
+        Err(error) if has_not_found_cause(&error) => operation(),
         result => result,
     }
 }
 
-fn is_not_found(error: &anyhow::Error) -> bool {
-    error.chain().any(crate::filesystem::is_not_found)
+fn has_not_found_cause(error: &anyhow::Error) -> bool {
+    error.chain().any(crate::is_not_found)
 }
 
-pub(crate) fn nearest_root(scope: &Path) -> Result<Option<PathBuf>> {
+pub fn nearest_root(scope: &Path) -> Result<Option<PathBuf>> {
     let Some((manifest_path, _)) = nearest_workspace_manifest(scope)? else {
         return Ok(None);
     };
@@ -195,7 +195,7 @@ pub(crate) fn nearest_root(scope: &Path) -> Result<Option<PathBuf>> {
     Ok(Some(root))
 }
 
-pub(crate) fn owns_descendants(root: &Path) -> Result<bool> {
+pub fn owns_descendants(root: &Path) -> Result<bool> {
     let manifest_path = root.join("pnpm-workspace.yaml");
     if !manifest_path.is_file() {
         return Ok(false);
@@ -389,8 +389,10 @@ mod tests {
 
     #[test]
     fn settings_only_manifests_defer_to_the_owning_workspace() {
-        let workspace_root =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dead-code/workspace");
+        let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/dead-code/workspace")
+            .canonicalize()
+            .expect("workspace fixture");
         let package_source = workspace_root.join("packages/a/src");
 
         assert_eq!(

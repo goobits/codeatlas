@@ -133,7 +133,7 @@ fn is_nested_project_root(path: &Path) -> bool {
 }
 
 fn is_test_source(path: &Path, source_root: &Path) -> bool {
-    crate::source_policy::is_conventional_test_source(
+    codeatlas_source::source_policy::is_conventional_test_source(
         path.strip_prefix(source_root).unwrap_or(path),
     )
 }
@@ -438,7 +438,7 @@ fn push_page(
 }
 
 fn display_path(path: &Path, repository_root: &Path) -> String {
-    crate::paths::normalize_relative_path(path, repository_root)
+    codeatlas_source::paths::normalize_relative_path(path, repository_root)
 }
 
 fn line_at(source: &str, offset: usize) -> u32 {

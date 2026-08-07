@@ -1,6 +1,6 @@
 use crate::analysis::imports::UsageAnalysis;
-use crate::source_policy;
 use codeatlas_domain::{ScanReport, UnusedPublic, Visibility};
+use codeatlas_source::source_policy;
 
 pub(crate) fn compute(
     report: &ScanReport,

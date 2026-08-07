@@ -12,7 +12,7 @@ test('workspace names product crates while keeping the isolation probe standalon
 		'utf8'
 	)
 
-	assert.match(manifest, /^members = \["crates\/domain"\]$/m)
+	assert.match(manifest, /^members = \["crates\/domain", "crates\/source"\]$/m)
 	assert.doesNotMatch(manifest, /^members = .*crates\/\*/m)
 	assert.match(manifest, /^exclude = \["crates\/isolation-conformance"\]$/m)
 	assert.match(probeManifest, /^\[workspace\]$/m)

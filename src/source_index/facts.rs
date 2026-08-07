@@ -27,7 +27,8 @@ impl SourceIndex {
         F: FnOnce(&str) -> Result<T>,
     {
         validate_namespace(namespace)?;
-        let relative_path = crate::paths::normalize_relative_path(source_path, project_root);
+        let relative_path =
+            codeatlas_source::paths::normalize_relative_path(source_path, project_root);
         let Some(root) = &self.root else {
             let source = std::fs::read_to_string(source_path)
                 .with_context(|| format!("Could not read {}", source_path.display()))?;

@@ -3,11 +3,11 @@ use super::{
     PostgresQueryDocumentation, MAX_SQL_BYTES,
 };
 use crate::config::{PostgresContractConfig, ProjectConfig};
-use crate::paths;
 use crate::postgres::model::{PostgresEvidence, PostgresFinding, PostgresFindingSeverity};
 use crate::postgres::target::query::{analyze_query, StaticQueryInput};
-use crate::source_discovery::{self, SourceDiscoveryRequest};
 use anyhow::{Context, Result};
+use codeatlas_source::paths;
+use codeatlas_source::source_discovery::{self, SourceDiscoveryRequest};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -131,7 +131,7 @@ fn query_paths(
         paths.extend(discovery.files.into_iter().filter(|path| {
             discovery::is_supported_source_file(path)
                 && !is_excluded_query_path(path, &excluded_paths)
-                && !crate::source_policy::is_conventional_test_source(
+                && !codeatlas_source::source_policy::is_conventional_test_source(
                     path.strip_prefix(&root).unwrap_or(path),
                 )
         }));

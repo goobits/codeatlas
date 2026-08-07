@@ -98,7 +98,7 @@ fn collect_project_modules(
         ) {
             continue;
         }
-        let path = crate::paths::normalize_relative_path(&source_path, &project.root);
+        let path = codeatlas_source::paths::normalize_relative_path(&source_path, &project.root);
         let file = NodeId::file(&project.id, &path);
         graph
             .add_node(
