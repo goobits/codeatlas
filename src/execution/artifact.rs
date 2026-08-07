@@ -7,6 +7,7 @@ use serde::Serialize;
 
 #[cfg(test)]
 use crate::execution::model::{ArtifactPayload, ExecutionPlan, ExecutionPlanBody};
+use crate::execution::model::{ManagedCommandEvidence, ManagedImageEvidence};
 #[cfg(test)]
 use serde_json::json;
 
@@ -25,6 +26,45 @@ pub(crate) trait ManagedArtifact: Serialize + DeserializeOwned {
 
     fn artifact_id(&self) -> &str;
     fn verify_identity(&self) -> Result<()>;
+}
+
+pub(crate) fn managed_command_evidence<T: Serialize>(
+    owner: &str,
+    identity: &T,
+) -> Result<ManagedCommandEvidence> {
+    validate_evidence_owner(owner)?;
+    Ok(ManagedCommandEvidence {
+        owner: owner.to_string(),
+        digest: digest_value("atlas.codeatlas.dev/managed-command-evidence/v1", identity)?,
+    })
+}
+
+pub(crate) fn managed_image_evidence(
+    owner: &str,
+    reference: Option<&str>,
+) -> Result<Vec<ManagedImageEvidence>> {
+    validate_evidence_owner(owner)?;
+    let Some(reference) = reference else {
+        return Ok(Vec::new());
+    };
+    let (_, digest) = reference
+        .split_once("@sha256:")
+        .filter(|(repository, digest)| !repository.is_empty() && digest.len() == 64)
+        .ok_or_else(|| anyhow::anyhow!("Managed image reference must be digest-pinned"))?;
+    let manifest_digest = format!("sha256:{digest}");
+    validate_digest(&manifest_digest)?;
+    Ok(vec![ManagedImageEvidence {
+        owner: owner.to_string(),
+        reference: reference.to_string(),
+        manifest_digest,
+    }])
+}
+
+fn validate_evidence_owner(owner: &str) -> Result<()> {
+    if owner.is_empty() || owner.trim() != owner || owner.chars().any(char::is_control) {
+        anyhow::bail!("Managed evidence owner must be nonblank and contain no control characters");
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -95,7 +135,7 @@ pub(crate) fn sample_plan() -> ExecutionPlan {
 
 #[cfg(test)]
 mod tests {
-    use super::{digest_value, sample_plan, ArtifactRef, ArtifactStore};
+    use super::{digest_value, managed_image_evidence, sample_plan, ArtifactRef, ArtifactStore};
     use crate::execution::model::{
         ArtifactLink, ExecutionPlan, ManagedCommandEvidence, ManagedImageEvidence,
     };
@@ -167,11 +207,21 @@ mod tests {
 
     #[test]
     fn managed_image_evidence_is_digest_pinned_and_has_one_owner() {
-        let image = ManagedImageEvidence {
-            owner: "workload".to_string(),
-            reference: format!("example.invalid/workload@sha256:{}", "a".repeat(64)),
-            manifest_digest: format!("sha256:{}", "a".repeat(64)),
-        };
+        let image = managed_image_evidence(
+            "workload",
+            Some(&format!(
+                "example.invalid/workload@sha256:{}",
+                "a".repeat(64)
+            )),
+        )
+        .expect("managed image evidence")
+        .remove(0);
+        assert!(managed_image_evidence("workload", None)
+            .expect("optional image")
+            .is_empty());
+        assert!(
+            managed_image_evidence("workload", Some("example.invalid/workload:latest")).is_err()
+        );
         let mut mismatched = sample_plan().body;
         mismatched.managed_images = vec![ManagedImageEvidence {
             manifest_digest: format!("sha256:{}", "b".repeat(64)),

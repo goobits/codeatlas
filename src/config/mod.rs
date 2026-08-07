@@ -17,7 +17,7 @@ pub(crate) use execution::{
     ExecutionIsolationBackend, ExecutionIsolationConfig, ExecutionLimitsConfig,
     ExecutionNetworkIsolation, ExecutionProcessIsolation,
 };
-pub(crate) use fuzz::{FuzzConfig, FuzzLimitsConfig};
+pub(crate) use fuzz::{FuzzConfig, FuzzLimitsConfig, ResolvedCodeFuzzTarget};
 pub(crate) use http::{
     HttpConfig, HttpContractConfig, HttpFuzzCommandConfig, HttpFuzzEnvironmentClassConfig,
     HttpFuzzHealthCheck, HttpFuzzOperationScopeConfig, HttpFuzzOperationSelectionConfig,

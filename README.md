@@ -57,7 +57,7 @@ present.
 | `inspect code\|http\|postgres\|architecture` | Explain an exact target and its bounded neighborhood |
 | `lexicon code\|repository` | Report deterministic naming and conceptual evidence |
 | `docs code\|http\|postgres` | Generate or check sourced reference documentation |
-| `fuzz http` | Persist or execute a bounded HTTP fuzz plan |
+| `fuzz code\|http` | Persist or execute a bounded isolated fuzz plan |
 | `test postgres` | Replay migrations and prepare queries in a disposable database |
 | `init code\|http\|postgres` | Discover and optionally write conservative subject configuration |
 
@@ -74,9 +74,11 @@ Run `codeatlas <command> <subject> --help` for the complete option set.
 
 HTTP fuzz planning operates at a configured transport boundary and makes zero
 target calls. PostgreSQL live testing validates database contracts; it is not
-SQL fuzzing. CodeAtlas now validates static callable and SQL fuzzability
-evidence, but it does not advertise or execute code or PostgreSQL fuzzing until
-the shared isolation gate and subject adapters pass.
+SQL fuzzing. Callable fuzz planning currently creates a runnable native harness
+only for supported Python free functions; Rust, JavaScript, and TypeScript
+remain explicit zero-call adapter blocks until their parity gates pass. Python
+execution requires the verified shared isolation backend and a digest-pinned
+checked-in target image.
 
 ## Code Evidence
 
@@ -120,9 +122,9 @@ internal entry has the shared callable contract, deterministic boundary
 descriptors and bounded pairwise prefix, supported result-shape evidence, or
 exact block reasons. `scan code` exposes the callable and source-policy
 evidence, while `check code` emits malformed-directive findings. The complete
-fuzzability inventory has a registered schema for later planning but is not yet
-a standalone CLI report, and no `fuzz code` execution command is advertised
-before sandboxed harness execution exists.
+fuzzability inventory has a registered schema for planning but is not a
+standalone CLI report. `fuzz code` consumes that same inventory; it does not
+reparse display signatures or silently omit unsupported public APIs.
 
 Maintainers can place one subtractive directive beside the declaration:
 
@@ -143,6 +145,15 @@ Strict config provides the same exact fallback without wildcards:
 ```json
 {
   "fuzz": {
+    "code": {
+      "targets": [{
+        "id": "python-fixtures",
+        "project": "python-fixtures",
+        "language": "python",
+        "image": "ghcr.io/example/codeatlas-python-fuzz@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "preauthorized": true
+      }]
+    },
     "exclude": {
       "code": ["src/publisher.rs#ArtifactPublisher.publish"],
       "http": ["POST /admin/export"],
@@ -151,6 +162,24 @@ Strict config provides the same exact fallback without wildcards:
   }
 }
 ```
+
+One code target binds an existing analysis project and one language runtime; it
+does not duplicate the callable inventory. Target and replay forms are
+zero-call previews, while execution always uses the persisted plan and shared
+kernel:
+
+```bash
+codeatlas --root . fuzz code --target python-fixtures \
+  --symbol src/parser.py#parse_token --seed 42
+codeatlas --root . fuzz code --plan plan_ABC --execute
+codeatlas --root . fuzz code --replay reproducer_ABC
+```
+
+Single-shot `--execute` is available only for a checked-in preauthorized local,
+disposable target after runtime isolation is verified. The planned harness,
+engine fingerprint, deterministic prefix, seed, limits, and
+`CODEATLAS_FUZZ=1` marker are immutable plan evidence. The marker grants no
+authority; a callable that branches on it is reported as `alternate_behavior`.
 
 Code selectors use `path#symbol` and qualify members as `Type.method` when
 needed. HTTP plans persist the canonical excluded-operation set and reject an

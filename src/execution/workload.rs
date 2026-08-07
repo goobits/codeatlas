@@ -1,4 +1,6 @@
 use super::artifact::ArtifactStore;
+#[cfg(unix)]
+use super::call_permit::CallPermitBroker;
 use super::lease::LeaseRegistry;
 use super::model::{
     ArtifactLink, ArtifactPayload, ExecutionOutcome, ExecutionPlan, ManagedCommandEvidence,
@@ -31,7 +33,7 @@ pub(crate) struct ContainerWorkloadRequest {
     pub command_evidence: Vec<ManagedCommandEvidence>,
     pub protocol: ContainerWorkloadProtocol,
     pub runtime_files: Vec<WorkloadRuntimeFile>,
-    pub proxy: EnforcingProxyWorkload,
+    pub proxy: Option<EnforcingProxyWorkload>,
     pub secret_values: Vec<Vec<u8>>,
 }
 
@@ -90,55 +92,124 @@ pub(crate) async fn run_workload<A: WorkloadAdapter>(
         context.workspace_root,
         context.scratch_root,
     )?;
-    let managed_server = request.proxy.managed_server;
-    let upstream = if managed_server {
-        ProxyUpstream::ManagedServerSocket {
-            host_path: prepared.managed_server_socket(),
-        }
+    #[cfg(unix)]
+    let permit_broker = if request.protocol.call_permit.is_some() {
+        let broker = CallPermitBroker::start(
+            context.execution,
+            &context.plan.body.limits,
+            &prepared.call_permit_socket(),
+        )?;
+        context.leases.register_lease(broker.cleanup_lease());
+        Some(broker)
     } else {
-        ProxyUpstream::Network
+        None
     };
-    let proxy = EnforcingProxy::start_unix(
-        context.execution,
-        request.proxy.upstream,
-        upstream,
-        &context.plan.body.limits,
-        request.proxy.call_timeout_ms,
-        &prepared.client_proxy_socket(),
-        request.proxy.container_port,
-    )
-    .await?;
-    context.leases.register_lease(proxy.cleanup_lease());
-    let execution_result = match prepared.install_proxy_ca(proxy.endpoint().ca_pem.as_bytes()) {
-        Ok(()) => {
+    #[cfg(not(unix))]
+    if request.protocol.call_permit.is_some() {
+        anyhow::bail!("Call-permit transport is unavailable on this host");
+    }
+    let managed_server = request
+        .proxy
+        .as_ref()
+        .is_some_and(|proxy| proxy.managed_server);
+    let proxy = if let Some(proxy) = request.proxy {
+        let upstream = if managed_server {
+            ProxyUpstream::ManagedServerSocket {
+                host_path: prepared.managed_server_socket(),
+            }
+        } else {
+            ProxyUpstream::Network
+        };
+        let proxy = EnforcingProxy::start_unix(
+            context.execution,
+            proxy.upstream,
+            upstream,
+            &context.plan.body.limits,
+            proxy.call_timeout_ms,
+            &prepared.client_proxy_socket(),
+            proxy.container_port,
+        )
+        .await?;
+        context.leases.register_lease(proxy.cleanup_lease());
+        Some(proxy)
+    } else {
+        None
+    };
+    let execution_result = match &proxy {
+        Some(proxy) => match prepared.install_proxy_ca(proxy.endpoint().ca_pem.as_bytes()) {
+            Ok(()) => {
+                execute_container_workload(
+                    context.backend,
+                    context.execution,
+                    context.plan,
+                    &prepared,
+                    context.leases,
+                    |pid| {
+                        if managed_server {
+                            proxy.corroborate_managed_server_peer(pid)
+                        } else {
+                            Ok(())
+                        }
+                    },
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        },
+        None => {
             execute_container_workload(
                 context.backend,
                 context.execution,
                 context.plan,
                 &prepared,
                 context.leases,
-                |pid| {
-                    if managed_server {
-                        proxy.corroborate_managed_server_peer(pid)
-                    } else {
-                        Ok(())
-                    }
-                },
+                |_| Ok(()),
             )
             .await
         }
-        Err(error) => Err(error),
     };
-    let proxy_result = proxy.shutdown().await;
-    let proxy_cleanup = if proxy_result.is_ok() {
-        context.leases.complete_latest_verified()
-    } else {
-        context.leases.release_latest()
-    };
-    proxy_result.context("Could not stop the enforcing proxy")?;
-    let proxy_cleanup = proxy_cleanup?;
-    if !proxy_cleanup.released || !proxy_cleanup.verified {
-        anyhow::bail!("Enforcing proxy cleanup was not verified");
+    let mut transport_errors = Vec::new();
+    if let Some(proxy) = proxy {
+        let result = proxy.shutdown().await;
+        let cleanup = if result.is_ok() {
+            context.leases.complete_latest_verified()
+        } else {
+            context.leases.release_latest()
+        };
+        if let Err(error) = result {
+            transport_errors.push(format!("Could not stop the enforcing proxy: {error:#}"));
+        }
+        match cleanup {
+            Ok(evidence) if evidence.released && evidence.verified => {}
+            Ok(_) => transport_errors.push("Enforcing proxy cleanup was not verified".to_string()),
+            Err(error) => transport_errors.push(format!(
+                "Could not record enforcing proxy cleanup: {error:#}"
+            )),
+        }
+    }
+    #[cfg(unix)]
+    if let Some(broker) = permit_broker {
+        let result = broker.shutdown().await;
+        let cleanup = if result.is_ok() {
+            context.leases.complete_latest_verified()
+        } else {
+            context.leases.release_latest()
+        };
+        if let Err(error) = result {
+            transport_errors.push(format!("Could not stop the call-permit broker: {error:#}"));
+        }
+        match cleanup {
+            Ok(evidence) if evidence.released && evidence.verified => {}
+            Ok(_) => {
+                transport_errors.push("Call-permit broker cleanup was not verified".to_string())
+            }
+            Err(error) => transport_errors.push(format!(
+                "Could not record call-permit broker cleanup: {error:#}"
+            )),
+        }
+    }
+    if !transport_errors.is_empty() {
+        anyhow::bail!(transport_errors.join("; "));
     }
 
     let mut execution = execution_result?;
@@ -187,7 +258,7 @@ pub(crate) async fn run_workload<A: WorkloadAdapter>(
             },
             output_bytes: execution.output_bytes,
             execution_complete: false,
-            tls_interception_verified: true,
+            tls_interception_verified: request.protocol.client_proxy.is_some(),
         });
     }
     let completion = adapter.collect(
@@ -205,7 +276,7 @@ pub(crate) async fn run_workload<A: WorkloadAdapter>(
         completion,
         output_bytes: execution.output_bytes,
         execution_complete,
-        tls_interception_verified: true,
+        tls_interception_verified: request.protocol.client_proxy.is_some(),
     })
 }
 
@@ -226,6 +297,25 @@ pub(crate) fn validate_workload_request<'a>(
     if request.command_evidence != plan.body.managed_commands {
         anyhow::bail!("Container workload commands do not match the reviewed plan evidence");
     }
+    if request.proxy.is_some() != request.protocol.client_proxy.is_some() {
+        anyhow::bail!("Container proxy transport does not match the workload protocol");
+    }
+    if request
+        .proxy
+        .as_ref()
+        .is_some_and(|proxy| proxy.managed_server)
+        != request.protocol.managed_server.is_some()
+    {
+        anyhow::bail!("Container managed-server transport does not match the workload protocol");
+    }
+    let is_code_fuzz =
+        plan.body.subject == super::model::ExecutionSubject::Code && plan.body.operation == "fuzz";
+    if is_code_fuzz != (request.protocol.call_permit.is_some() && request.protocol.fuzz_marker) {
+        anyhow::bail!("Code fuzz workloads require the exact marker and call-permit transport");
+    }
+    if !is_code_fuzz && request.protocol.fuzz_marker {
+        anyhow::bail!("The code fuzz marker may only be supplied to a code fuzz workload");
+    }
     plan.body
         .managed_images
         .iter()
@@ -244,7 +334,8 @@ mod tests {
     use crate::execution::artifact::sample_plan;
     use crate::execution::model::{ExecutionPlan, ManagedCommandEvidence, ManagedImageEvidence};
     use crate::execution::sandbox::container::{
-        ContainerWorkloadProtocol, WorkloadCommand, WORKLOAD_PROTOCOL_SCHEMA_VERSION,
+        ClientProxyBridge, ContainerWorkloadProtocol, WorkloadCommand, CLIENT_PROXY_SOCKET,
+        WORKLOAD_PROTOCOL_SCHEMA_VERSION,
     };
     use std::collections::BTreeMap;
 
@@ -268,6 +359,7 @@ mod tests {
                 schema_version: WORKLOAD_PROTOCOL_SCHEMA_VERSION.to_string(),
                 plan_id: plan.id.clone(),
                 engine_version: plan.body.engine.version.clone(),
+                engine_probe_arguments: vec!["--version".to_string()],
                 prepare: Vec::new(),
                 delegated: Vec::new(),
                 service: None,
@@ -279,18 +371,23 @@ mod tests {
                     environment: BTreeMap::new(),
                     secret_environment_file: None,
                 },
-                client_proxy: None,
+                client_proxy: Some(ClientProxyBridge {
+                    listen_port: 41_001,
+                    socket: CLIENT_PROXY_SOCKET.to_string(),
+                }),
                 managed_server: None,
+                call_permit: None,
+                fuzz_marker: false,
                 startup_timeout_ms: 1,
                 max_output_bytes: 1,
             },
             runtime_files: Vec::new(),
-            proxy: EnforcingProxyWorkload {
+            proxy: Some(EnforcingProxyWorkload {
                 upstream: url::Url::parse("http://127.0.0.1:8080").expect("fixture URL"),
                 container_port: 41_001,
                 managed_server: false,
                 call_timeout_ms: 1,
-            },
+            }),
             secret_values: Vec::new(),
         };
 

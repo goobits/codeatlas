@@ -15,6 +15,24 @@ pub(crate) struct ExternalToolFingerprint {
     pub digest: String,
 }
 
+pub(crate) fn codeatlas_identity() -> Result<crate::execution::ToolIdentity> {
+    Ok(tool_identity(fingerprint_bytes(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        format!("{}@{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")).as_bytes(),
+    )?))
+}
+
+pub(crate) fn tool_identity(
+    fingerprint: ExternalToolFingerprint,
+) -> crate::execution::ToolIdentity {
+    crate::execution::ToolIdentity {
+        name: fingerprint.name,
+        version: fingerprint.version,
+        digest: fingerprint.digest,
+    }
+}
+
 pub(crate) fn fingerprint_bytes(
     name: &str,
     version: &str,
@@ -49,6 +67,23 @@ pub(crate) fn fingerprint_file(name: &str, path: &Path) -> Result<ExternalToolFi
         version: "content-addressed".to_string(),
         digest,
     })
+}
+
+pub(crate) fn validate_container_executable(executable: &str, label: &str) -> Result<()> {
+    if !executable.starts_with('/')
+        || executable.ends_with('/')
+        || executable.contains(['\\', '\0', '\n', '\r'])
+        || executable
+            .strip_prefix('/')
+            .expect("absolute path has a leading slash")
+            .split('/')
+            .any(|component| component.is_empty() || matches!(component, "." | ".."))
+    {
+        anyhow::bail!(
+            "{label} must be an absolute normalized executable path inside the workload image"
+        );
+    }
+    Ok(())
 }
 
 pub(crate) fn resolve(

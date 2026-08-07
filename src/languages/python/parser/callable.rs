@@ -249,7 +249,11 @@ fn semantic_name(name: &str, generic_names: &BTreeSet<String>) -> SemanticType {
             encoding: StringEncoding::Unicode,
             max_length: None,
         },
-        "bytes" | "bytearray" => SemanticType::Bytes { max_length: None },
+        "bytes" => SemanticType::Bytes { max_length: None },
+        "bytearray" => SemanticType::Named {
+            identity: name.to_string(),
+            arguments: Vec::new(),
+        },
         "Any" => SemanticType::unknown(TypeUnknownReason::Unsupported, name),
         "Never" | "NoReturn" | "Callable" => {
             SemanticType::unknown(TypeUnknownReason::Unsupported, name)

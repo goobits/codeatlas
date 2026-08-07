@@ -1,17 +1,36 @@
 use super::{exit_code, load_project, output};
 use crate::cli::execution::FuzzLimitArgs;
 use crate::cli::fuzz::HttpFuzzProfile;
-use crate::config::{ExecutionLimitsConfig, FuzzLimitsConfig, ProjectConfig};
+use crate::config::ProjectConfig;
 use crate::execution::{
     execute_isolation_checked_workload, resolve_execution_limits, verify_current_evidence,
-    ArtifactLink, ArtifactRef, ArtifactStore, AuthorizationMode, ExecutionLimits, ExecutionOutcome,
-    ExecutionPlan, ExecutionSubject, TargetDisposition,
+    ArtifactLink, ArtifactRef, ArtifactStore, AuthorizationMode, ExecutionOutcome, ExecutionPlan,
+    ExecutionSubject, TargetDisposition,
 };
-use crate::fuzz::reproducer::Reproducer;
-use crate::fuzz::{resolve_fuzz_limits, FuzzLimits};
+use crate::fuzz::reproducer::ReplayDerivation;
+use crate::fuzz::{execution_config_from_limits, fuzz_config_from_limits, resolve_fuzz_limits};
 use crate::http::{self, HttpFuzzWorkload, HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION};
 use anyhow::Result;
 use std::path::Path;
+
+mod code;
+
+pub(crate) struct CodeOptions<'a> {
+    pub path: &'a Path,
+    pub target: Option<&'a str>,
+    pub symbol: Option<&'a str>,
+    pub replay: Option<&'a str>,
+    pub plan: Option<&'a str>,
+    pub execute: bool,
+    pub profile: crate::cli::fuzz::CodeFuzzProfile,
+    pub seed: Option<u128>,
+    pub limits: &'a FuzzLimitArgs,
+    pub config_path: Option<&'a Path>,
+}
+
+pub(crate) fn run_code(options: &CodeOptions<'_>) -> i32 {
+    exit_code(code::run(options))
+}
 
 pub(crate) struct HttpOptions<'a> {
     pub path: &'a Path,
@@ -171,23 +190,11 @@ fn plan_replay(project: &ProjectConfig, reference: &str, options: &HttpOptions<'
         &project.root,
         project.config.execution.limits.max_artifact_bytes,
     )?;
-    let reproducer: Reproducer = store.load(&ArtifactRef::parse(reference)?)?;
-    if reproducer.body.subject != ExecutionSubject::Http {
-        anyhow::bail!("HTTP replay requires an HTTP reproducer");
-    }
-    let parent_reference = ArtifactRef::parse(&reproducer.body.parent_plan_id)?;
-    let parent: ExecutionPlan = store.load(&parent_reference)?;
-    if parent.content_digest != reproducer.body.parent_plan_content_digest
-        || parent.body.evidence != reproducer.body.evidence
-        || parent.body.limits != reproducer.body.execution_limits
-    {
-        anyhow::bail!("Reproducer does not match its parent execution plan");
-    }
-    let current_parent = http::rebuild_fuzz_execution_plan(project, &parent)?;
-    verify_current_evidence(&parent, &current_parent.body.evidence)?;
-    if current_parent.id != parent.id {
-        anyhow::bail!("Reproducer parent plan no longer has the same canonical identity");
-    }
+    let replay = ReplayDerivation::load(&store, reference, ExecutionSubject::Http)?;
+    let reproducer = &replay.reproducer;
+    let parent = &replay.parent;
+    let current_parent = http::rebuild_fuzz_execution_plan(project, parent)?;
+    replay.verify_rebuilt_parent(&current_parent)?;
 
     let mut workload: HttpFuzzWorkload = reproducer
         .body
@@ -227,29 +234,4 @@ fn plan_replay(project: &ProjectConfig, reference: &str, options: &HttpOptions<'
     store.persist(&plan)?;
     output::write_or_print(&plan, None, "Replay execution plan")?;
     Ok(0)
-}
-
-fn execution_config_from_limits(limits: &ExecutionLimits) -> ExecutionLimitsConfig {
-    ExecutionLimitsConfig {
-        max_calls: limits.max_calls,
-        calls_per_second: limits.calls_per_second,
-        max_concurrency: limits.max_concurrency,
-        run_timeout_ms: limits.run_timeout_ms,
-        max_cpu_time_ms: limits.max_cpu_time_ms,
-        max_rss_bytes: limits.max_rss_bytes,
-        max_processes: limits.max_processes,
-        max_open_files: limits.max_open_files,
-        max_call_result_bytes: limits.max_call_result_bytes,
-        max_output_bytes: limits.max_output_bytes,
-        max_artifact_bytes: limits.max_artifact_bytes,
-    }
-}
-
-fn fuzz_config_from_limits(limits: &FuzzLimits) -> FuzzLimitsConfig {
-    FuzzLimitsConfig {
-        max_cases: limits.max_cases,
-        max_shrinks: limits.max_shrinks,
-        max_failures: limits.max_failures,
-        case_timeout_ms: limits.case_timeout_ms,
-    }
 }

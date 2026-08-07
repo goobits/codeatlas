@@ -15,10 +15,10 @@ const {
 	validateSpecification
 } = require('../tasks/build-container-image.js')
 const {
-	createBuildArguments: createHttpBuildArguments,
-	parseArguments: parseHttpArguments,
-	validateBuildArtifacts: validateHttpBuildArtifacts
-} = require('../tasks/build-http-workload.js')
+	createBuildArguments: createPythonBuildArguments,
+	parseArguments: parsePythonArguments,
+	validateBuildArtifacts: validatePythonBuildArtifacts
+} = require('../tasks/build-python-workload.js')
 const { createRuntimeOptions } = require('../tasks/container-runtime.js')
 
 const digest = 'a'.repeat(64)
@@ -34,19 +34,23 @@ test('probe recipe verifies the musl static default without breaking procedural 
 	assert.doesNotMatch(recipe, /target-feature=\+crt-static/)
 })
 
+const assertPythonRuntimeRecipe = (recipe, versionPattern) => {
+	assert.match(recipe, /--require-hashes/)
+	assert.match(recipe, /--invalidation-mode checked-hash/)
+	assert.doesNotMatch(recipe, /--quiet|--force/)
+	assert.match(recipe, versionPattern)
+	assert.match(recipe, /FROM scratch\nCOPY --from=runtime \/ \/\n$/)
+	assert.doesNotMatch(recipe.slice(recipe.lastIndexOf('FROM scratch')), /^ENV /m)
+}
+
 test('HTTP workload recipe is hash-locked, version-checked, and clears inherited image metadata', () => {
 	const recipe = fs.readFileSync(
 		path.resolve(__dirname, '..', 'containers', 'http-fuzz', 'Containerfile'),
 		'utf8'
 	)
 
-	assert.match(recipe, /--require-hashes/)
 	assert.match(recipe, /-q\s+\\\n\s+-f\s+\\\n\s+--invalidation-mode checked-hash/)
-	assert.match(recipe, /--invalidation-mode checked-hash/)
-	assert.doesNotMatch(recipe, /--quiet|--force/)
-	assert.match(recipe, /4\\\.24\\\.3/)
-	assert.match(recipe, /FROM scratch\nCOPY --from=runtime \/ \/\n$/)
-	assert.doesNotMatch(recipe.slice(recipe.lastIndexOf('FROM scratch')), /^ENV /m)
+	assertPythonRuntimeRecipe(recipe, /4\\\.24\\\.3/)
 	assert.equal(
 		fs.readFileSync(
 			path.resolve(
@@ -59,6 +63,17 @@ test('HTTP workload recipe is hash-locked, version-checked, and clears inherited
 			'utf8'
 		),
 		'**\n!src/\n!src/http/\n!src/http/schemathesis/\n!src/http/schemathesis/requirements.txt\n'
+	)
+})
+
+test('Python code-fuzz recipe exposes only its hash-locked native engine runtime', () => {
+	const root = path.resolve(__dirname, '..', 'containers', 'code-fuzz-python')
+	const recipe = fs.readFileSync(path.join(root, 'Containerfile'), 'utf8')
+	assertPythonRuntimeRecipe(recipe, /6\.165\.2/)
+	assert.match(recipe, /--only-binary=:all:/)
+	assert.equal(
+		fs.readFileSync(path.join(root, 'Containerfile.dockerignore'), 'utf8'),
+		'**\n!src/\n!src/languages/\n!src/languages/python/\n!src/languages/python/fuzz_requirements.txt\n'
 	)
 })
 
@@ -181,32 +196,36 @@ test('probe build has one bounded solve with canonical OCI and optional Docker i
 	)
 })
 
-test('HTTP workload build reuses the bounded image transaction with an exact Python input', () => {
+test('Python workloads reuse one bounded image transaction with exact subject recipes', () => {
 	const pythonDigest = 'd'.repeat(64)
-	const options = parseHttpArguments([
-		'--runtime', '/usr/bin/docker',
-		'--socket', '/run/docker.sock',
-		'--python-image', `python@sha256:${pythonDigest}`,
-		'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
-		'--platform', 'linux/amd64',
-		'--network', 'allow',
-		'--out', '/tmp/codeatlas-http.oci.tar'
-	])
-	const arguments_ = createHttpBuildArguments({
-		...options,
-		clientRoot: '/tmp/client',
-		metadata: '/tmp/http.metadata.json',
-		loadOut: '/tmp/codeatlas-http.docker.tar',
-		sourceDateEpoch: '1700000000',
-		builder: 'codeatlas-images-1'
-	})
+	for (const workload of ['http', 'code']) {
+		const options = parsePythonArguments([
+			'--workload', workload,
+			'--runtime', '/usr/bin/docker',
+			'--socket', '/run/docker.sock',
+			'--python-image', `python@sha256:${pythonDigest}`,
+			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
+			'--platform', 'linux/amd64',
+			'--network', 'allow',
+			'--out', `/tmp/codeatlas-${workload}.oci.tar`
+		])
+		const arguments_ = createPythonBuildArguments({
+			...options,
+			clientRoot: '/tmp/client',
+			metadata: `/tmp/${workload}.metadata.json`,
+			loadOut: `/tmp/codeatlas-${workload}.docker.tar`,
+			sourceDateEpoch: '1700000000',
+			builder: 'codeatlas-images-1'
+		})
 
-	assert.ok(arguments_.includes(`PYTHON_IMAGE=python@sha256:${pythonDigest}`))
-	assert.ok(arguments_.includes('default'))
-	assert.equal(arguments_.at(-1), path.resolve(__dirname, '..'))
-	assert.equal(arguments_.filter(argument => argument === '--output').length, 2)
+		assert.ok(arguments_.includes(`PYTHON_IMAGE=python@sha256:${pythonDigest}`))
+		assert.ok(arguments_.includes('default'))
+		assert.equal(arguments_.at(-1), path.resolve(__dirname, '..'))
+		assert.equal(arguments_.filter(argument => argument === '--output').length, 2)
+	}
 	assert.throws(
-		() => parseHttpArguments([
+		() => parsePythonArguments([
+			'--workload', 'http',
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/run/docker.sock',
 			'--python-image', 'python:3.10',
@@ -218,7 +237,8 @@ test('HTTP workload build reuses the bounded image transaction with an exact Pyt
 		/exact repository@sha256/
 	)
 	assert.throws(
-		() => parseHttpArguments([
+		() => parsePythonArguments([
+			'--workload', 'code',
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/run/docker.sock',
 			'--python-image', `python@sha256:${pythonDigest}`,
@@ -228,6 +248,19 @@ test('HTTP workload build reuses the bounded image transaction with an exact Pyt
 			'--out', '/tmp/http.tar'
 		]),
 		/exactly allow/
+	)
+	assert.throws(
+		() => parsePythonArguments([
+			'--workload', 'unknown',
+			'--runtime', '/usr/bin/docker',
+			'--socket', '/run/docker.sock',
+			'--python-image', `python@sha256:${pythonDigest}`,
+			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
+			'--platform', 'linux/amd64',
+			'--network', 'allow',
+			'--out', '/tmp/unknown.tar'
+		]),
+		/exactly http or code/
 	)
 })
 
@@ -277,7 +310,7 @@ test('probe build artifacts have finite nonzero byte ceilings', () => {
 			/Docker import archive must contain 1 through 67108864 bytes/
 		)
 		fs.truncateSync(loadArchive, 65 * 1024 * 1024)
-		assert.deepEqual(validateHttpBuildArtifacts(archive, metadata, loadArchive), {
+		assert.deepEqual(validatePythonBuildArtifacts('http', archive, metadata, loadArchive), {
 			archiveBytes: 7,
 			loadArchiveBytes: 65 * 1024 * 1024,
 			metadataBytes: 2

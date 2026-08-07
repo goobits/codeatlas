@@ -399,6 +399,7 @@ impl WorkloadAdapter for HttpWorkloadAdapter {
                 schema_version: WORKLOAD_PROTOCOL_SCHEMA_VERSION.to_string(),
                 plan_id: plan.id.clone(),
                 engine_version: plan.body.engine.version.clone(),
+                engine_probe_arguments: vec!["--version".to_string()],
                 prepare,
                 delegated,
                 service,
@@ -408,16 +409,18 @@ impl WorkloadAdapter for HttpWorkloadAdapter {
                     socket: CLIENT_PROXY_SOCKET.to_string(),
                 }),
                 managed_server,
+                call_permit: None,
+                fuzz_marker: false,
                 startup_timeout_ms,
                 max_output_bytes: plan.body.limits.max_output_bytes,
             },
             runtime_files,
-            proxy: EnforcingProxyWorkload {
+            proxy: Some(EnforcingProxyWorkload {
                 upstream: self.target.base_url.clone(),
                 container_port: CLIENT_PROXY_PORT,
                 managed_server: self.target.server.is_some(),
                 call_timeout_ms: self.workload.limits.case_timeout_ms,
-            },
+            }),
             secret_values: Self::secret_values(&runtime),
         })
     }

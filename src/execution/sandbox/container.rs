@@ -33,9 +33,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
 
 pub(crate) use self::workload::{
-    ClientProxyBridge, ContainerWorkloadProtocol, ContainerWorkloadResult, ManagedServerBridge,
-    WorkloadCommand, WorkloadRuntimeFile, CLIENT_PROXY_SOCKET, MANAGED_SERVER_SOCKET,
-    WORKLOAD_PROTOCOL_SCHEMA_VERSION,
+    CallPermitBridge, ClientProxyBridge, ContainerWorkloadProtocol, ContainerWorkloadResult,
+    ManagedServerBridge, WorkloadCommand, WorkloadRuntimeFile, CLIENT_PROXY_SOCKET,
+    MANAGED_SERVER_SOCKET, WORKLOAD_PROTOCOL_SCHEMA_VERSION,
 };
 
 const RUNTIME_CONTROL_TIMEOUT: Duration = Duration::from_secs(30);

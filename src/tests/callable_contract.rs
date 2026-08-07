@@ -90,6 +90,28 @@ fn callable_contracts_share_one_cross_language_shape() {
 }
 
 #[test]
+fn python_bytearray_keeps_its_factory_boundary_instead_of_claiming_bytes_parity() {
+    let contract = python_contract(
+        "def transform(value: bytearray) -> bytearray:\n    return value\n",
+        "transform",
+    );
+    let signature = &contract.signatures[0];
+    for semantic_type in [&signature.parameters[0].semantic_type, &signature.result] {
+        assert_eq!(
+            semantic_type,
+            &SemanticType::Named {
+                identity: "bytearray".to_string(),
+                arguments: Vec::new(),
+            }
+        );
+    }
+    assert!(contract
+        .block_reasons
+        .iter()
+        .any(|reason| reason.kind == CallableBlockKind::RequiresFactory));
+}
+
+#[test]
 fn receivers_are_structured_without_becoming_parameters() {
     let contracts = [
         rust_child_contract(

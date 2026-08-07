@@ -448,6 +448,23 @@ pub(crate) enum CallableBlockKind {
     UnknownEffectBoundary,
 }
 
+impl CallableBlockKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::DeclarationOnly => "declaration_only",
+            Self::MissingType => "missing_type",
+            Self::UnresolvedType => "unresolved_type",
+            Self::UnsupportedType => "unsupported_type",
+            Self::UnboundedType => "unbounded_type",
+            Self::UnsupportedPattern => "unsupported_pattern",
+            Self::UnknownReceiver => "unknown_receiver",
+            Self::RequiresFactory => "requires_factory",
+            Self::UnsupportedConstruction => "unsupported_construction",
+            Self::UnknownEffectBoundary => "unknown_effect_boundary",
+        }
+    }
+}
+
 fn collect_block_reasons(
     signatures: &[CallableSignature],
     effects: &[CallableEffect],

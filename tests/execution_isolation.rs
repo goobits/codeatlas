@@ -279,6 +279,46 @@ HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
         });
     }
 
+    fn enable_live_code_workload(&self, image: &str) {
+        fs::write(
+            self.workspace.join("safe.py"),
+            r#"import os
+
+
+def fails_at_two(value: int) -> int:
+    if os.environ.get("CODEATLAS_FUZZ") != "1":
+        raise RuntimeError("planned fuzz marker missing")
+    if value == 2:
+        raise ValueError("deterministic native-engine fixture")
+    return value
+"#,
+        )
+        .expect("live Python code-fuzz fixture");
+        self.update_config(|config| {
+            config["projects"] = json!([{
+                "id": "python-live",
+                "root": ".",
+                "languages": ["py"],
+                "contexts": {
+                    "public-api": {
+                        "role": "production",
+                        "scope": "public_surface",
+                        "entrypoints": ["safe.py"]
+                    }
+                }
+            }]);
+            config["fuzz"]["code"] = json!({
+                "targets": [{
+                    "id": "python-live",
+                    "project": "python-live",
+                    "language": "python",
+                    "image": image,
+                    "preauthorized": true
+                }]
+            });
+        });
+    }
+
     fn enable_secrets(&self) {
         self.update_config(|config| {
             let target = &mut config["http"]["fuzz"]["targets"][0];
@@ -351,6 +391,39 @@ HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
         serde_json::from_slice(&output.stdout).expect("execution plan JSON")
     }
 
+    fn plan_code(&self, extra: &[&str]) -> Value {
+        let mut arguments = vec![
+            "fuzz",
+            "code",
+            "--target",
+            "python-live",
+            "--symbol",
+            "safe.py#fails_at_two",
+        ];
+        arguments.extend_from_slice(extra);
+        let output = run_codeatlas(&self.workspace, &self.state, &arguments);
+        assert!(
+            output.status.success(),
+            "code planning failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("code execution plan JSON")
+    }
+
+    fn plan_code_replay(&self, reproducer: &str) -> Value {
+        let output = run_codeatlas(
+            &self.workspace,
+            &self.state,
+            &["fuzz", "code", "--replay", reproducer],
+        );
+        assert!(
+            output.status.success(),
+            "code replay planning failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("code replay plan JSON")
+    }
+
     fn execute(&self, plan: &Value) -> Value {
         self.execute_with_status(plan, 2)
     }
@@ -386,6 +459,23 @@ HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
             }
         }
         serde_json::from_slice(&output.stdout).expect("execution receipt JSON")
+    }
+
+    fn execute_code(&self, plan: &Value, expected_status: i32) -> Value {
+        let plan_id = plan["id"].as_str().expect("code plan ID");
+        let output = run_codeatlas(
+            &self.workspace,
+            &self.state,
+            &["fuzz", "code", "--plan", plan_id, "--execute"],
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(expected_status),
+            "code execution stdout:\n{}\ncode execution stderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("code execution receipt JSON")
     }
 
     fn execute_and_interrupt(&self, plan: &Value, marker: &Path) -> Value {
@@ -442,28 +532,30 @@ HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
         assert_eq!(state["sentinel_verified"], true);
     }
 
+    fn linked_artifact(&self, link: &Value, directory: &str) -> Value {
+        let id = link["id"].as_str().expect("linked artifact ID");
+        let path = self
+            .state
+            .join("codeatlas/execution/v1")
+            .join(directory)
+            .join(format!("{id}.json"));
+        let artifact: Value = serde_json::from_slice(&fs::read(&path).unwrap_or_else(|error| {
+            panic!("could not read linked artifact {}: {error}", path.display())
+        }))
+        .expect("linked artifact JSON");
+        assert_eq!(artifact["id"], link["id"]);
+        assert_eq!(artifact["content_digest"], link["content_digest"]);
+        artifact
+    }
+
     fn report(&self, receipt: &Value) -> Value {
         let link = receipt["links"]
             .as_array()
             .expect("receipt artifact links")
             .iter()
             .find(|link| link["kind"] == "report")
-            .expect("HTTP fuzz report link");
-        let id = link["id"].as_str().expect("HTTP fuzz report ID");
-        let path = self
-            .state
-            .join("codeatlas/execution/v1/reports")
-            .join(format!("{id}.json"));
-        let report: Value = serde_json::from_slice(&fs::read(&path).unwrap_or_else(|error| {
-            panic!(
-                "could not read linked HTTP fuzz report {}: {error}",
-                path.display()
-            )
-        }))
-        .expect("HTTP fuzz report JSON");
-        assert_eq!(report["id"], link["id"]);
-        assert_eq!(report["content_digest"], link["content_digest"]);
-        report
+            .expect("fuzz report link");
+        self.linked_artifact(link, "reports")
     }
 
     fn assert_state_excludes(&self, values: &[&str]) {
@@ -954,7 +1046,7 @@ fn interrupt_cancels_the_workload_then_runs_verified_cleanup() {
 #[cfg(unix)]
 #[test]
 #[ignore = "requires digest-pinned probe/workload images and a usable local OCI socket"]
-fn live_oci_backend_executes_the_managed_http_workload() {
+fn live_oci_backend_executes_managed_http_and_python_code_workloads() {
     let runtime = std::env::var_os("CODEATLAS_TEST_OCI_RUNTIME")
         .expect("CODEATLAS_TEST_OCI_RUNTIME is required for the live isolation gate");
     let socket = std::env::var_os("CODEATLAS_TEST_OCI_SOCKET")
@@ -963,6 +1055,8 @@ fn live_oci_backend_executes_the_managed_http_workload() {
         .expect("CODEATLAS_TEST_OCI_PROBE_IMAGE is required for the live isolation gate");
     let http_image = std::env::var("CODEATLAS_TEST_OCI_HTTP_IMAGE")
         .expect("CODEATLAS_TEST_OCI_HTTP_IMAGE is required for the live isolation gate");
+    let code_image = std::env::var("CODEATLAS_TEST_OCI_CODE_IMAGE")
+        .expect("CODEATLAS_TEST_OCI_CODE_IMAGE is required for the live isolation gate");
     assert!(
         image.contains("@sha256:"),
         "live probe image must be digest-pinned"
@@ -970,6 +1064,10 @@ fn live_oci_backend_executes_the_managed_http_workload() {
     assert!(
         http_image.contains("@sha256:"),
         "live HTTP workload image must be digest-pinned"
+    );
+    assert!(
+        code_image.contains("@sha256:"),
+        "live Python code-fuzz workload image must be digest-pinned"
     );
     let fixture = IsolationFixture::create("codeatlas-isolation-live");
     fixture.enable_live_workload(&http_image);
@@ -1058,5 +1156,72 @@ fn live_oci_backend_executes_the_managed_http_workload() {
             .iter()
             .any(|operation| operation["operation"] == "POST /widgets/{id}")
     }));
+
+    fixture.enable_live_code_workload(&code_image);
+    let source_before = fs::read(fixture.workspace.join("safe.py")).expect("live code source");
+    let code_plan = fixture.plan_code(&[
+        "--max-cases",
+        "32",
+        "--max-shrinks",
+        "32",
+        "--max-failures",
+        "1",
+        "--max-calls",
+        "66",
+        "--seed",
+        "44",
+    ]);
+    assert_eq!(code_plan["workload"]["body"]["fuzz_marker"], true);
+    assert_eq!(
+        code_plan["workload"]["body"]["adapter_version"],
+        "codeatlas.python-hypothesis/v1"
+    );
+    let code_receipt = fixture.execute_code(&code_plan, 1);
+    assert_eq!(code_receipt["outcome"], "failed");
+    assert!(code_receipt["calls"]["consumed"]
+        .as_u64()
+        .is_some_and(|calls| calls > 0 && calls <= 66));
+    let categories = code_receipt["calls"]["by_category"]
+        .as_array()
+        .expect("code call categories");
+    for category in ["readiness", "generated_case", "reduction", "retry"] {
+        assert!(
+            categories.iter().any(|calls| {
+                calls["category"] == category
+                    && calls["count"].as_u64().is_some_and(|count| count > 0)
+            }),
+            "missing code call category {category}: {code_receipt}"
+        );
+    }
+    let code_report = fixture.report(&code_receipt);
+    assert_eq!(code_report["alternate_behavior"], true);
+    assert!(code_report["deterministic_cases"]
+        .as_u64()
+        .is_some_and(|cases| cases > 0));
+    assert!(code_report["adaptive_cases"]
+        .as_u64()
+        .is_some_and(|cases| cases > 0));
+    assert_eq!(code_report["failures"].as_array().map(Vec::len), Some(1));
+    assert_eq!(code_report["failures"][0]["kind"], "panic_or_crash");
+    assert_eq!(code_report["failures"][0]["minimized"], true);
+    let reproducer_link = &code_report["failures"][0]["reproducer"];
+    let reproducer = fixture.linked_artifact(reproducer_link, "reproducers");
+    assert_eq!(
+        reproducer["workload"]["body"]["replay_input"],
+        json!([{"kind": "integer", "value": "2"}])
+    );
+    let replay_plan =
+        fixture.plan_code_replay(reproducer_link["id"].as_str().expect("code reproducer ID"));
+    assert_eq!(
+        replay_plan["workload"]["body"]["replay_input"],
+        reproducer["workload"]["body"]["replay_input"]
+    );
+    let replay_receipt = fixture.execute_code(&replay_plan, 1);
+    assert_eq!(replay_receipt["outcome"], "failed");
+    assert_eq!(replay_receipt["calls"]["consumed"], 2);
+    assert_eq!(
+        fs::read(fixture.workspace.join("safe.py")).expect("live code source after fuzzing"),
+        source_before
+    );
     assert_no_target_call(&fixture.target);
 }

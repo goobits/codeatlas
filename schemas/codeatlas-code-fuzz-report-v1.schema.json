@@ -1,0 +1,153 @@
+{
+  "$defs": {
+    "ArtifactLink": {
+      "additionalProperties": false,
+      "properties": {
+        "content_digest": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "content_digest"
+      ],
+      "type": "object"
+    },
+    "CodeFuzzFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/FuzzFailureKind"
+        },
+        "minimized": {
+          "type": "boolean"
+        },
+        "reproducer": {
+          "$ref": "#/$defs/ArtifactLink"
+        }
+      },
+      "required": [
+        "kind",
+        "minimized",
+        "reproducer"
+      ],
+      "type": "object"
+    },
+    "CodeFuzzReportArtifactKind": {
+      "enum": [
+        "report"
+      ],
+      "type": "string"
+    },
+    "FuzzFailureKind": {
+      "enum": [
+        "panic_or_crash",
+        "timeout",
+        "resource_limit",
+        "forbidden_effect",
+        "result_shape",
+        "serialization",
+        "cleanup"
+      ],
+      "type": "string"
+    },
+    "SourceLanguage": {
+      "enum": [
+        "javascript",
+        "typescript",
+        "svelte",
+        "python",
+        "rust"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "codeatlas.code-fuzz-report/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "adaptive_cases": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "alternate_behavior": {
+      "type": "boolean"
+    },
+    "callable_id": {
+      "type": "string"
+    },
+    "content_digest": {
+      "type": "string"
+    },
+    "deterministic_cases": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "deterministic_prefix_digest": {
+      "type": "string"
+    },
+    "failures": {
+      "items": {
+        "$ref": "#/$defs/CodeFuzzFailure"
+      },
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/CodeFuzzReportArtifactKind"
+    },
+    "language": {
+      "$ref": "#/$defs/SourceLanguage"
+    },
+    "plan_content_digest": {
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "codeatlas.code-fuzz-report/v1",
+      "type": "string"
+    },
+    "seed": {
+      "type": "string"
+    },
+    "target_id": {
+      "type": "string"
+    },
+    "tool_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "id",
+    "content_digest",
+    "plan_id",
+    "plan_content_digest",
+    "tool_version",
+    "target_id",
+    "callable_id",
+    "language",
+    "seed",
+    "deterministic_prefix_digest",
+    "deterministic_cases",
+    "adaptive_cases",
+    "alternate_behavior",
+    "failures"
+  ],
+  "title": "CodeFuzzReport",
+  "type": "object"
+}

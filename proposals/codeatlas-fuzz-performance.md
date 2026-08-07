@@ -555,6 +555,16 @@ means every remaining tracker item is either verified and checked here or
 removed through an accepted scope change; a child status line alone is not
 completion evidence.
 
+Phase 11B and the Python portion of Phase 12 are locally implemented at the
+2026-08-07 checkpoint: one shared call-permit bridge, code workload protocol,
+zero-call replay derivation, external-only harness state, published workload
+and report schemas, a strict typed replay-input contract, required
+target/project/language authority coordinates, and a pinned Hypothesis adapter
+pass focused checks. Import-time target code consumes a readiness permit; no
+arbitrary harness JSON can become a reproducer. The existing hosted matrix has
+been extended rather than duplicated; its exact target-observed run is the
+next incomplete gate, so no Phase 11 or Python checkbox is closed yet.
+
 ### Order and ownership rules
 
 1. Finish and commit the active dirty slice before changing product areas.

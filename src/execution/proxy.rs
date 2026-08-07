@@ -2,6 +2,11 @@ use super::budget::{CallBudget, CallDisposition};
 use super::lease::ExecutionLease;
 use super::model::{CallCategory, ExecutionLimits};
 use super::scheduler::ExecutionContext;
+#[cfg(unix)]
+use super::unix_socket::{
+    bind_private_unix_listener, remove_private_unix_socket, validate_unix_socket_parent,
+    UnixSocketAddress,
+};
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full, Limited};
@@ -21,12 +26,8 @@ use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 use rustls::ServerConfig;
 use std::collections::HashSet;
 use std::convert::Infallible;
-#[cfg(target_os = "linux")]
-use std::fs::File;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr};
-#[cfg(target_os = "linux")]
-use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -123,25 +124,7 @@ impl EnforcingProxy {
         if container_port == 0 {
             anyhow::bail!("Unix enforcing proxy needs a container port");
         }
-        validate_unix_socket_parent(socket_path)?;
-        if std::fs::symlink_metadata(socket_path).is_ok() {
-            anyhow::bail!(
-                "Unix enforcing proxy socket already exists: {}",
-                socket_path.display()
-            );
-        }
-        let socket_address = UnixSocketAddress::new(socket_path)?;
-        let listener = UnixListener::bind(socket_address.path()).with_context(|| {
-            format!(
-                "Could not bind Unix enforcing proxy {}",
-                socket_path.display()
-            )
-        })?;
-        if let Err(error) = crate::execution::private_fs::secure_file(socket_path) {
-            drop(listener);
-            let _ = std::fs::remove_file(socket_path);
-            return Err(error);
-        }
+        let listener = bind_private_unix_listener(socket_path, "enforcing proxy")?;
         Self::start_with_listener(
             context,
             upstream,
@@ -250,19 +233,7 @@ impl EnforcingProxy {
 }
 
 fn remove_socket_path(path: Option<&Path>) -> Result<bool> {
-    let Some(path) = path else {
-        return Ok(true);
-    };
-    match std::fs::remove_file(path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(error).with_context(|| {
-                format!("Could not remove Unix enforcing proxy {}", path.display())
-            });
-        }
-    }
-    Ok(!path.exists())
+    remove_private_unix_socket(path, "enforcing proxy")
 }
 
 enum ProxyListener {
@@ -393,7 +364,7 @@ impl ProxyUpstreamClient {
                 .map(|client| (client, None)),
             #[cfg(unix)]
             ProxyUpstream::ManagedServerSocket { host_path } => {
-                validate_unix_socket_parent(&host_path)?;
+                validate_unix_socket_parent(&host_path, "managed-server bridge")?;
                 let expected_peer_pid = Arc::new(AtomicU32::new(0));
                 Ok((
                     Self::ManagedServerSocket {
@@ -431,8 +402,8 @@ impl ProxyUpstreamClient {
                 if !metadata.file_type().is_socket() {
                     return Err(ForwardFailure::Rejected);
                 }
-                let socket_address =
-                    UnixSocketAddress::new(host_path).map_err(|_| ForwardFailure::Failed)?;
+                let socket_address = UnixSocketAddress::new(host_path, "managed-server bridge")
+                    .map_err(|_| ForwardFailure::Failed)?;
                 let stream = UnixStream::connect(socket_address.path())
                     .await
                     .map_err(|_| ForwardFailure::Failed)?;
@@ -559,67 +530,6 @@ fn resolve_proxy_connection_limit(limits: &ExecutionLimits) -> Result<usize> {
         .map_err(|_| anyhow::anyhow!("enforcing-proxy connection limit does not fit this host"))
 }
 
-#[cfg(unix)]
-fn validate_unix_socket_parent(path: &Path) -> Result<()> {
-    if !path.is_absolute() {
-        anyhow::bail!("Unix enforcing proxy socket must be absolute");
-    }
-    let parent = path
-        .parent()
-        .context("Unix enforcing proxy socket has no parent")?;
-    let metadata = std::fs::symlink_metadata(parent).with_context(|| {
-        format!(
-            "Could not inspect Unix enforcing proxy directory {}",
-            parent.display()
-        )
-    })?;
-    if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
-        anyhow::bail!("Unix enforcing proxy parent must be a real directory");
-    }
-    Ok(())
-}
-
-#[cfg(unix)]
-struct UnixSocketAddress {
-    path: PathBuf,
-    #[cfg(target_os = "linux")]
-    _parent: File,
-}
-
-#[cfg(unix)]
-impl UnixSocketAddress {
-    fn new(path: &Path) -> Result<Self> {
-        validate_unix_socket_parent(path)?;
-        #[cfg(target_os = "linux")]
-        {
-            let parent_path = path.parent().context("Unix socket path has no parent")?;
-            let file_name = path
-                .file_name()
-                .context("Unix socket path has no file name")?;
-            let parent = File::open(parent_path).with_context(|| {
-                format!(
-                    "Could not open Unix socket directory {}",
-                    parent_path.display()
-                )
-            })?;
-            let path =
-                PathBuf::from(format!("/proc/self/fd/{}", parent.as_raw_fd())).join(file_name);
-            Ok(Self {
-                path,
-                _parent: parent,
-            })
-        }
-        #[cfg(not(target_os = "linux"))]
-        Ok(Self {
-            path: path.to_path_buf(),
-        })
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
 async fn handle_request(
     state: Arc<ProxyState>,
     request: Request<Incoming>,
@@ -728,18 +638,7 @@ fn request_category(request: &Request<Incoming>) -> CallCategory {
 }
 
 fn parse_call_category(value: &str) -> Option<CallCategory> {
-    match value {
-        "setup" => Some(CallCategory::Setup),
-        "readiness" => Some(CallCategory::Readiness),
-        "authentication" => Some(CallCategory::Authentication),
-        "generated_case" => Some(CallCategory::GeneratedCase),
-        "stateful_step" => Some(CallCategory::StatefulStep),
-        "reduction" => Some(CallCategory::Reduction),
-        "retry" => Some(CallCategory::Retry),
-        "validation" => Some(CallCategory::Validation),
-        "cleanup" => None,
-        _ => None,
-    }
+    CallCategory::from_str(value).filter(|category| *category != CallCategory::Cleanup)
 }
 
 fn validate_upstream(upstream: &Url) -> Result<()> {
@@ -1193,7 +1092,7 @@ mod tests {
         let config = ClientConfig::builder()
             .with_root_certificates(roots)
             .with_no_client_auth();
-        let socket_address = super::UnixSocketAddress::new(socket)?;
+        let socket_address = super::UnixSocketAddress::new(socket, "test target")?;
         let tls = TlsConnector::from(Arc::new(config))
             .connect(
                 ServerName::try_from("localhost")?,
@@ -1308,7 +1207,7 @@ mod tests {
             let client_socket = client_socket.clone();
             let server_socket = server_socket.clone();
             async move {
-                let server_address = super::UnixSocketAddress::new(&server_socket)?;
+                let server_address = super::UnixSocketAddress::new(&server_socket, "test server")?;
                 let listener = UnixListener::bind(server_address.path())?;
                 let calls = Arc::new(AtomicU64::new(0));
                 let observed = Arc::clone(&calls);

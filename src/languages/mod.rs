@@ -1,3 +1,4 @@
+mod code_fuzz;
 mod definition;
 pub(crate) mod ecmascript;
 mod effects;
@@ -8,6 +9,10 @@ pub(crate) mod rust;
 mod svelte;
 pub(crate) mod typescript;
 
+pub(crate) use code_fuzz::{
+    generate_code_fuzz_harness, CodeFuzzHarnessCapability, CodeFuzzHarnessRequest,
+    GeneratedCodeFuzzHarness,
+};
 pub(crate) use svelte::parse_module_source as parse_svelte_module_source;
 
 use crate::domain::{

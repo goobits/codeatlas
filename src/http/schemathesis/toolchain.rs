@@ -29,20 +29,7 @@ pub(super) fn container_executable(override_path: Option<&str>) -> Result<String
 }
 
 pub(super) fn validate_container_executable(executable: &str) -> Result<()> {
-    if !executable.starts_with('/')
-        || executable.ends_with('/')
-        || executable.contains(['\\', '\0', '\n', '\r'])
-        || executable
-            .strip_prefix('/')
-            .expect("absolute path has a leading slash")
-            .split('/')
-            .any(|component| component.is_empty() || matches!(component, "." | ".."))
-    {
-        anyhow::bail!(
-            "--schemathesis must be an absolute normalized executable path inside the workload image"
-        );
-    }
-    Ok(())
+    crate::external_tool::validate_container_executable(executable, "--schemathesis")
 }
 
 #[cfg(test)]

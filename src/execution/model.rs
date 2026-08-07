@@ -288,6 +288,23 @@ pub(crate) enum CallCategory {
     Cleanup,
 }
 
+impl CallCategory {
+    pub(crate) fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "setup" => Some(Self::Setup),
+            "readiness" => Some(Self::Readiness),
+            "authentication" => Some(Self::Authentication),
+            "generated_case" => Some(Self::GeneratedCase),
+            "stateful_step" => Some(Self::StatefulStep),
+            "reduction" => Some(Self::Reduction),
+            "retry" => Some(Self::Retry),
+            "validation" => Some(Self::Validation),
+            "cleanup" => Some(Self::Cleanup),
+            _ => None,
+        }
+    }
+}
+
 #[derive(
     schemars::JsonSchema, Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize,
 )]

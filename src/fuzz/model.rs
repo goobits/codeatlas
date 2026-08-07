@@ -1,8 +1,20 @@
-use crate::config::FuzzLimitsConfig;
+use crate::config::{ExecutionLimitsConfig, FuzzLimitsConfig};
 use crate::execution::ExecutionLimits;
 use serde::{Deserialize, Serialize};
 
 pub(crate) const FUZZ_REPRODUCER_SCHEMA_VERSION: &str = "codeatlas.reproducer/v1";
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum FuzzFailureKind {
+    PanicOrCrash,
+    Timeout,
+    ResourceLimit,
+    ForbiddenEffect,
+    ResultShape,
+    Serialization,
+    Cleanup,
+}
 
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -82,6 +94,31 @@ pub(crate) fn validate_fuzz_execution_limits(
         anyhow::bail!("Resolved case_timeout_ms may not exceed run_timeout_ms");
     }
     Ok(())
+}
+
+pub(crate) fn execution_config_from_limits(limits: &ExecutionLimits) -> ExecutionLimitsConfig {
+    ExecutionLimitsConfig {
+        max_calls: limits.max_calls,
+        calls_per_second: limits.calls_per_second,
+        max_concurrency: limits.max_concurrency,
+        run_timeout_ms: limits.run_timeout_ms,
+        max_cpu_time_ms: limits.max_cpu_time_ms,
+        max_rss_bytes: limits.max_rss_bytes,
+        max_processes: limits.max_processes,
+        max_open_files: limits.max_open_files,
+        max_call_result_bytes: limits.max_call_result_bytes,
+        max_output_bytes: limits.max_output_bytes,
+        max_artifact_bytes: limits.max_artifact_bytes,
+    }
+}
+
+pub(crate) fn fuzz_config_from_limits(limits: &FuzzLimits) -> FuzzLimitsConfig {
+    FuzzLimitsConfig {
+        max_cases: limits.max_cases,
+        max_shrinks: limits.max_shrinks,
+        max_failures: limits.max_failures,
+        case_timeout_ms: limits.case_timeout_ms,
+    }
 }
 
 fn resolve_limit(

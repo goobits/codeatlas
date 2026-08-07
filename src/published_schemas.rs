@@ -15,6 +15,10 @@ use crate::execution::{
     ExecutionPlan, ExecutionReceipt, EXECUTION_PLAN_SCHEMA_VERSION,
     EXECUTION_RECEIPT_SCHEMA_VERSION,
 };
+use crate::fuzz::code::{
+    CodeFuzzReport, CodeFuzzWorkload, CODE_FUZZ_REPORT_SCHEMA_VERSION,
+    CODE_FUZZ_WORKLOAD_SCHEMA_VERSION,
+};
 use crate::fuzz::reproducer::Reproducer;
 use crate::fuzz::{
     CodeFuzzInventory, CODE_FUZZ_INVENTORY_SCHEMA_VERSION, FUZZ_REPRODUCER_SCHEMA_VERSION,
@@ -340,6 +344,18 @@ const PUBLISHED_SCHEMAS: &[PublishedSchema] = &[
         "codeatlas-code-fuzz-inventory-v1.schema.json",
         "fuzz::code",
         generate_schema::<CodeFuzzInventory>,
+    ),
+    PublishedSchema::new_artifact(
+        CODE_FUZZ_WORKLOAD_SCHEMA_VERSION,
+        "codeatlas-code-fuzz-workload-v1.schema.json",
+        "fuzz::code",
+        generate_schema::<CodeFuzzWorkload>,
+    ),
+    PublishedSchema::new_artifact(
+        CODE_FUZZ_REPORT_SCHEMA_VERSION,
+        "codeatlas-code-fuzz-report-v1.schema.json",
+        "fuzz::code",
+        generate_schema::<CodeFuzzReport>,
     ),
     PublishedSchema::new_artifact(
         HTTP_FUZZ_WORKLOAD_SCHEMA_VERSION,

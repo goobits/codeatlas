@@ -11,9 +11,31 @@ const { requireDigestImage } = require('./container-runtime.js')
 const { requireExternalCargoTarget } = require('./storage.js')
 
 const repositoryRoot = path.resolve(__dirname, '..')
-const context = repositoryRoot
-const containerfile = path.join(repositoryRoot, 'containers', 'http-fuzz', 'Containerfile')
 const maxArchiveBytes = 512 * 1024 * 1024
+const definitions = Object.freeze({
+	http: Object.freeze({
+		name: 'HTTP workload',
+		slug: 'http-workload',
+		containerfile: path.join(repositoryRoot, 'containers', 'http-fuzz', 'Containerfile')
+	}),
+	code: Object.freeze({
+		name: 'Python code-fuzz workload',
+		slug: 'code-fuzz-python-workload',
+		containerfile: path.join(
+			repositoryRoot,
+			'containers',
+			'code-fuzz-python',
+			'Containerfile'
+		)
+	})
+})
+
+const requireWorkload = value => {
+	if (!Object.hasOwn(definitions, value)) {
+		throw new Error('--workload must be exactly http or code')
+	}
+	return value
+}
 
 const parseArguments = arguments_ => {
 	const values = new Map()
@@ -21,12 +43,13 @@ const parseArguments = arguments_ => {
 		const name = arguments_[index]
 		const value = arguments_[index + 1]
 		if (!name?.startsWith('--') || value === undefined || value.startsWith('--')) {
-			throw new Error('HTTP workload build options must be exact --name value pairs')
+			throw new Error('Python workload build options must be exact --name value pairs')
 		}
-		if (values.has(name)) throw new Error(`HTTP workload build option ${name} was repeated`)
+		if (values.has(name)) throw new Error(`Python workload build option ${name} was repeated`)
 		values.set(name, value)
 	}
 	const known = new Set([
+		'--workload',
 		'--runtime',
 		'--socket',
 		'--python-image',
@@ -36,10 +59,10 @@ const parseArguments = arguments_ => {
 		'--out'
 	])
 	for (const name of values.keys()) {
-		if (!known.has(name)) throw new Error(`Unknown HTTP workload build option ${name}`)
+		if (!known.has(name)) throw new Error(`Unknown Python workload build option ${name}`)
 	}
 	for (const name of known) {
-		if (!values.has(name)) throw new Error(`Missing required HTTP workload build option ${name}`)
+		if (!values.has(name)) throw new Error(`Missing required Python workload build option ${name}`)
 	}
 	const network = values.get('--network')
 	if (network !== 'allow') {
@@ -50,6 +73,7 @@ const parseArguments = arguments_ => {
 		throw new Error('--platform must be exactly linux/amd64 or linux/arm64')
 	}
 	return {
+		workload: requireWorkload(values.get('--workload')),
 		runtime: values.get('--runtime'),
 		socket: values.get('--socket'),
 		pythonImage: requireDigestImage(values.get('--python-image'), '--python-image'),
@@ -63,38 +87,37 @@ const parseArguments = arguments_ => {
 	}
 }
 
-const httpWorkloadSpecification = ({ pythonImage, out, loadOut }) => ({
-	name: 'HTTP workload',
-	slug: 'http-workload',
-	containerfile,
-	context,
-	buildArguments: { PYTHON_IMAGE: pythonImage },
-	pinnedImages: [{ image: pythonImage, label: 'python-image' }],
-	maxArchiveBytes,
-	out,
-	loadOut
-})
+const pythonWorkloadSpecification = ({ workload, pythonImage, out, loadOut }) => {
+	const definition = definitions[requireWorkload(workload)]
+	return {
+		...definition,
+		context: repositoryRoot,
+		buildArguments: { PYTHON_IMAGE: pythonImage },
+		pinnedImages: [{ image: pythonImage, label: 'python-image' }],
+		maxArchiveBytes,
+		out,
+		loadOut
+	}
+}
 
 const createBuildArguments = options =>
 	createContainerBuildArguments({
 		...options,
-		specification: httpWorkloadSpecification({
-			pythonImage: options.pythonImage,
-			out: options.out,
-			loadOut: options.loadOut
-		})
+		specification: pythonWorkloadSpecification(options)
 	})
 
-const validateBuildArtifacts = (archive, metadata, loadArchive) =>
-	validateContainerBuildArtifacts(
+const validateBuildArtifacts = (workload, archive, metadata, loadArchive) => {
+	const definition = definitions[requireWorkload(workload)]
+	return validateContainerBuildArtifacts(
 		archive,
 		metadata,
 		loadArchive,
 		maxArchiveBytes,
-		'HTTP workload'
+		definition.name
 	)
+}
 
-const buildHttpWorkload = options => {
+const buildPythonWorkload = options => {
 	requireExternalCargoTarget(repositoryRoot)
 	return buildContainerImage(
 		{
@@ -105,14 +128,14 @@ const buildHttpWorkload = options => {
 			network: options.network,
 			logRoot: options.logRoot
 		},
-		httpWorkloadSpecification(options)
+		pythonWorkloadSpecification(options)
 	)
 }
 
 if (require.main === module) {
 	try {
 		process.stdout.write(
-			`${JSON.stringify(buildHttpWorkload(parseArguments(process.argv.slice(2))))}\n`
+			`${JSON.stringify(buildPythonWorkload(parseArguments(process.argv.slice(2))))}\n`
 		)
 	} catch (error) {
 		process.stderr.write(`${error.message}\n`)
@@ -121,9 +144,9 @@ if (require.main === module) {
 }
 
 module.exports = {
-	buildHttpWorkload,
+	buildPythonWorkload,
 	createBuildArguments,
-	httpWorkloadSpecification,
 	parseArguments,
+	pythonWorkloadSpecification,
 	validateBuildArtifacts
 }

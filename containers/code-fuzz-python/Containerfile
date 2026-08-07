@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1.7
+
+ARG PYTHON_IMAGE
+FROM ${PYTHON_IMAGE} AS runtime
+
+ARG SOURCE_DATE_EPOCH
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+WORKDIR /opt/codeatlas-code-fuzz
+
+COPY src/languages/python/fuzz_requirements.txt ./requirements.txt
+
+RUN test -n "${SOURCE_DATE_EPOCH}" \
+    && /usr/local/bin/python3 --version 2>&1 | grep -Eq '^Python 3\.10\.' \
+    && /usr/local/bin/python3 -m pip install \
+        --disable-pip-version-check \
+        --no-cache-dir \
+        --no-compile \
+        --only-binary=:all: \
+        --require-hashes \
+        --requirement requirements.txt \
+    && /usr/local/bin/python3 -m compileall \
+        -q \
+        -f \
+        --invalidation-mode checked-hash \
+        /usr/local/lib/python3.10/site-packages \
+    && /usr/local/bin/python3 -c 'import hypothesis; assert hypothesis.__version__ == "6.165.2"' \
+    && test -x /usr/bin/env \
+    && test -x /bin/sh \
+    && rm -rf /root/.cache /tmp/* /opt/codeatlas-code-fuzz
+
+FROM scratch
+COPY --from=runtime / /

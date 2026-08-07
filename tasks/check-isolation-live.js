@@ -6,8 +6,8 @@ const os = require('node:os')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 const { buildContainerImages } = require('./build-container-image.js')
-const { httpWorkloadSpecification } = require('./build-http-workload.js')
 const { probeSpecification } = require('./build-isolation-probe.js')
+const { pythonWorkloadSpecification } = require('./build-python-workload.js')
 const {
 	createRuntimeArguments,
 	digestPattern,
@@ -45,7 +45,7 @@ const parseArguments = arguments_ => {
 		'--runtime',
 		'--socket',
 		'--build-image',
-		'--http-base-image',
+		'--python-base-image',
 		'--buildkit-image',
 		'--registry-image',
 		'--platform',
@@ -70,9 +70,9 @@ const parseArguments = arguments_ => {
 		runtime: values.get('--runtime'),
 		socket: values.get('--socket'),
 		buildImage: requireDigestImage(values.get('--build-image'), '--build-image'),
-		httpBaseImage: requireDigestImage(
-			values.get('--http-base-image'),
-			'--http-base-image'
+		pythonBaseImage: requireDigestImage(
+			values.get('--python-base-image'),
+			'--python-base-image'
 		),
 		buildkitImage: requireDigestImage(
 			values.get('--buildkit-image'),
@@ -397,6 +397,8 @@ const checkIsolationLive = async options => {
 	const loadArchive = path.join(outDir, 'isolation-probe.docker.tar')
 	const httpArchive = path.join(outDir, 'http-workload.oci.tar')
 	const httpLoadArchive = path.join(outDir, 'http-workload.docker.tar')
+	const codeArchive = path.join(outDir, 'code-fuzz-python-workload.oci.tar')
+	const codeLoadArchive = path.join(outDir, 'code-fuzz-python-workload.docker.tar')
 	const receipt = path.join(outDir, receiptFilename)
 	let registryCreated = false
 	const publications = []
@@ -414,7 +416,7 @@ const checkIsolationLive = async options => {
 		}
 		for (const [label, image] of [
 			['build-image-pull', options.buildImage],
-			['http-base-image-pull', options.httpBaseImage],
+			['python-base-image-pull', options.pythonBaseImage],
 			['buildkit-image-pull', options.buildkitImage],
 			['registry-image-pull', options.registryImage]
 		]) {
@@ -426,7 +428,7 @@ const checkIsolationLive = async options => {
 				label
 			)
 		}
-		const [build, httpBuild] = buildContainerImages(
+		const [build, httpBuild, codeBuild] = buildContainerImages(
 			{
 				runtime: options.runtime,
 				socket: options.socket,
@@ -441,10 +443,17 @@ const checkIsolationLive = async options => {
 					out: archive,
 					loadOut: loadArchive
 				}),
-				httpWorkloadSpecification({
-					pythonImage: options.httpBaseImage,
+				pythonWorkloadSpecification({
+					workload: 'http',
+					pythonImage: options.pythonBaseImage,
 					out: httpArchive,
 					loadOut: httpLoadArchive
+				}),
+				pythonWorkloadSpecification({
+					workload: 'code',
+					pythonImage: options.pythonBaseImage,
+					out: codeArchive,
+					loadOut: codeLoadArchive
 				})
 			]
 		)
@@ -498,12 +507,23 @@ const checkIsolationLive = async options => {
 			repositoryName: 'codeatlas-http-workload',
 			publications
 		})
+		const codePublication = importAndPublishImage({
+			options,
+			clientRoot,
+			logRoot,
+			address,
+			build: codeBuild,
+			loadArchive: codeLoadArchive,
+			repositoryName: 'codeatlas-code-fuzz-python-workload',
+			publications
+		})
 		const testEnvironment = {
 			...process.env,
 			CODEATLAS_TEST_OCI_RUNTIME: options.runtime,
 			CODEATLAS_TEST_OCI_SOCKET: options.socket,
 			CODEATLAS_TEST_OCI_PROBE_IMAGE: probePublication.publishedReference,
 			CODEATLAS_TEST_OCI_HTTP_IMAGE: httpPublication.publishedReference,
+			CODEATLAS_TEST_OCI_CODE_IMAGE: codePublication.publishedReference,
 			CODEATLAS_TEST_OCI_RECEIPT_OUT: receipt,
 			TMPDIR: temporaryRoot
 		}
@@ -516,7 +536,7 @@ const checkIsolationLive = async options => {
 				'1',
 				'--test',
 				'execution_isolation',
-				'live_oci_backend_executes_the_managed_http_workload',
+				'live_oci_backend_executes_managed_http_and_python_code_workloads',
 				'--',
 				'--ignored',
 				'--exact',
@@ -607,6 +627,21 @@ const checkIsolationLive = async options => {
 			http_workload_metadata_bytes: httpBuild.metadata_bytes,
 			http_workload_archive_digest: digestFile(httpArchive),
 			http_workload_metadata_digest: digestFile(httpBuild.metadata),
+			code_workload_image: codePublication.publishedReference,
+			code_workload_build_manifest_digest: codeBuild.image_digest,
+			code_workload_published_manifest_digest:
+				codePublication.publishedReference.split('@')[1],
+			code_workload_manifest_preserved:
+				codePublication.publishedReference.split('@')[1] === codeBuild.image_digest,
+			code_workload_loaded_image_id: codePublication.loadedImage,
+			code_workload_archive_bytes: codeBuild.archive_bytes,
+			code_workload_import_archive_bytes: codePublication.loadArchiveBytes,
+			code_workload_import_archive_digest: codePublication.loadArchiveDigest,
+			code_workload_import_archive_cleanup_verified:
+				codePublication.loadArchiveCleanupVerified,
+			code_workload_metadata_bytes: codeBuild.metadata_bytes,
+			code_workload_archive_digest: digestFile(codeArchive),
+			code_workload_metadata_digest: digestFile(codeBuild.metadata),
 			receipt_id: receiptValue.id,
 			receipt_digest: digestFile(receipt),
 			capabilities: receiptValue.runtime.capabilities,

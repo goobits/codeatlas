@@ -12,7 +12,6 @@ use crate::execution::{
     ManagedImageEvidence, NetworkDestination, PlannedTarget, SecretReference,
     TargetEnvironmentClass, TargetEvidence, ToolIdentity, WritableScratchRoot,
 };
-use crate::external_tool::ExternalToolFingerprint;
 use crate::fuzz::validate_fuzz_execution_limits;
 use anyhow::{Context, Result};
 use serde_json::json;
@@ -113,8 +112,8 @@ pub(crate) fn prepare_fuzz_execution_plan(
     let config_digest = digest_config(project)?;
     let target_digest = digest_target(&target)?;
     let contract_digest = digest_contract(&contract)?;
-    let tool = codeatlas_identity()?;
-    let engine = tool_identity(fingerprint_engine(
+    let tool = crate::external_tool::codeatlas_identity()?;
+    let engine = crate::external_tool::tool_identity(fingerprint_engine(
         &workload.engine_executable,
         target.workload_image.as_deref(),
     )?);
@@ -318,22 +317,6 @@ fn digest_contract(contract: &FuzzContract) -> Result<String> {
     }
 }
 
-fn codeatlas_identity() -> Result<ToolIdentity> {
-    Ok(tool_identity(crate::external_tool::fingerprint_bytes(
-        env!("CARGO_PKG_NAME"),
-        env!("CARGO_PKG_VERSION"),
-        format!("{}@{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")).as_bytes(),
-    )?))
-}
-
-fn tool_identity(fingerprint: ExternalToolFingerprint) -> ToolIdentity {
-    ToolIdentity {
-        name: fingerprint.name,
-        version: fingerprint.version,
-        digest: fingerprint.digest,
-    }
-}
-
 fn classify_http_target(target: &ResolvedHttpFuzzTarget) -> crate::execution::TargetDecision {
     let is_local = target.base_url.host_str().is_some_and(|host| {
         host == "localhost" || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
@@ -385,16 +368,13 @@ pub(super) fn managed_command_evidence(
     target: &ResolvedHttpFuzzTarget,
     engine: &ToolIdentity,
 ) -> Result<Vec<ManagedCommandEvidence>> {
-    let mut commands = vec![ManagedCommandEvidence {
-        owner: "fuzz_engine".to_string(),
-        digest: digest_value(
-            "atlas.codeatlas.dev/managed-command-evidence/v1",
-            &json!({
-                "owner": "fuzz_engine",
-                "tool": engine,
-            }),
-        )?,
-    }];
+    let mut commands = vec![crate::execution::artifact::managed_command_evidence(
+        "fuzz_engine",
+        &json!({
+            "owner": "fuzz_engine",
+            "tool": engine,
+        }),
+    )?];
     if let Some(server) = &target.server {
         for (index, command) in server.prepare.iter().enumerate() {
             commands.push(managed_command(
@@ -421,17 +401,10 @@ pub(super) fn managed_command_evidence(
 }
 
 fn managed_image_evidence(target: &ResolvedHttpFuzzTarget) -> Result<Vec<ManagedImageEvidence>> {
-    let Some(reference) = target.workload_image.as_deref() else {
-        return Ok(Vec::new());
-    };
-    let (_, digest) = reference
-        .split_once("@sha256:")
-        .context("HTTP fuzz workload image must be digest-pinned")?;
-    Ok(vec![ManagedImageEvidence {
-        owner: "http_fuzz_workload".to_string(),
-        reference: reference.to_string(),
-        manifest_digest: format!("sha256:{digest}"),
-    }])
+    crate::execution::artifact::managed_image_evidence(
+        "http_fuzz_workload",
+        target.workload_image.as_deref(),
+    )
 }
 
 fn managed_command(
@@ -451,18 +424,15 @@ fn managed_command(
     } else {
         normalized_cwd.as_str()
     };
-    Ok(ManagedCommandEvidence {
-        owner: owner.to_string(),
-        digest: digest_value(
-            "atlas.codeatlas.dev/managed-command-evidence/v1",
-            &json!({
-                "owner": owner,
-                "command": command.command,
-                "args": command.args,
-                "cwd": cwd,
-            }),
-        )?,
-    })
+    crate::execution::artifact::managed_command_evidence(
+        owner,
+        &json!({
+            "owner": owner,
+            "command": command.command,
+            "args": command.args,
+            "cwd": cwd,
+        }),
+    )
 }
 
 fn secret_references(

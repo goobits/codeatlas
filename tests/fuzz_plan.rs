@@ -1,8 +1,10 @@
+#[path = "support/artifact.rs"]
+mod artifact_support;
 mod support;
 
+use self::artifact_support::{artifact_payload, write_reproducer};
 use self::support::TestDirectory;
-use serde_json::{json, Map, Value};
-use sha2::{Digest, Sha256};
+use serde_json::{json, Value};
 use std::fs;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -28,55 +30,6 @@ fn assert_no_target_call(listener: &TcpListener) {
         Ok((_stream, address)) => panic!("planning contacted target at {address}"),
         Err(error) => panic!("could not inspect target listener: {error}"),
     }
-}
-
-fn create_reproducer(plan: &Value, path: &Path) {
-    let body = json!({
-        "subject": plan["subject"],
-        "tool": plan["tool"],
-        "parent_plan_id": plan["id"],
-        "parent_plan_content_digest": plan["content_digest"],
-        "evidence": plan["evidence"],
-        "workload": plan["workload"],
-        "execution_limits": plan["limits"],
-        "fuzz_limits": plan["workload"]["body"]["limits"],
-        "oracle_digest": format!("sha256:{}", "a".repeat(64)),
-        "result_digest": format!("sha256:{}", "b".repeat(64)),
-        "links": [{
-            "kind": "plan",
-            "id": plan["id"],
-            "content_digest": plan["content_digest"]
-        }]
-    });
-    let mut identity = body.as_object().expect("reproducer body object").clone();
-    identity.insert(
-        "schema_version".to_string(),
-        Value::String("codeatlas.reproducer/v1".to_string()),
-    );
-    identity.insert("kind".to_string(), Value::String("reproducer".to_string()));
-    let canonical = serde_json_canonicalizer::to_vec(&Value::Object(identity.clone()))
-        .expect("canonical reproducer identity");
-    let mut digest = Sha256::new();
-    digest.update(b"atlas.codeatlas.dev/reproducer/v1\n");
-    digest.update(canonical);
-    let hex = format!("{:x}", digest.finalize());
-    let mut document = Map::new();
-    document.insert(
-        "schema_version".to_string(),
-        Value::String("codeatlas.reproducer/v1".to_string()),
-    );
-    document.insert("kind".to_string(), Value::String("reproducer".to_string()));
-    document.insert("id".to_string(), Value::String(format!("reproducer_{hex}")));
-    document.insert(
-        "content_digest".to_string(),
-        Value::String(format!("sha256:{hex}")),
-    );
-    document.extend(body.as_object().expect("reproducer body object").clone());
-    fs::write(
-        path,
-        serde_json::to_vec_pretty(&Value::Object(document)).expect("reproducer JSON"),
-    )
-    .expect("write reproducer fixture");
 }
 
 fn validate_schema(value: &Value, filename: &str) {
@@ -339,7 +292,14 @@ fn target_and_replay_planning_are_zero_call_and_reviewed_execution_fails_closed(
     }
 
     let reproducer_path = directory.path().join("reproducer.json");
-    create_reproducer(&plan, &reproducer_path);
+    let workload_schema = plan["workload"]["schema_version"]
+        .as_str()
+        .expect("workload schema");
+    write_reproducer(
+        &plan,
+        artifact_payload(workload_schema, plan["workload"]["body"].clone()),
+        &reproducer_path,
+    );
     let reproducer: Value =
         serde_json::from_slice(&fs::read(&reproducer_path).expect("read reproducer fixture"))
             .expect("reproducer fixture JSON");

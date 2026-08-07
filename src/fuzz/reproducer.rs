@@ -3,7 +3,8 @@ use crate::execution::artifact::{
     validate_execution_limits, validate_tool_identity, ManagedArtifact,
 };
 use crate::execution::{
-    ArtifactLink, ArtifactPayload, EvidenceDigests, ExecutionLimits, ExecutionSubject, ToolIdentity,
+    verify_current_evidence, ArtifactLink, ArtifactPayload, ArtifactRef, ArtifactStore,
+    EvidenceDigests, ExecutionLimits, ExecutionPlan, ExecutionSubject, ToolIdentity,
 };
 use crate::fuzz::{validate_fuzz_execution_limits, FuzzLimits, FUZZ_REPRODUCER_SCHEMA_VERSION};
 use anyhow::Result;
@@ -74,6 +75,51 @@ impl Reproducer {
             body,
         })
     }
+}
+
+pub(crate) struct ReplayDerivation {
+    pub reproducer: Reproducer,
+    pub parent: ExecutionPlan,
+}
+
+impl ReplayDerivation {
+    pub(crate) fn load(
+        store: &ArtifactStore,
+        reference: &str,
+        expected_subject: ExecutionSubject,
+    ) -> Result<Self> {
+        let reproducer: Reproducer = store.load(&ArtifactRef::parse(reference)?)?;
+        if reproducer.body.subject != expected_subject {
+            anyhow::bail!(
+                "Replay subject {:?} does not match requested {:?}",
+                reproducer.body.subject,
+                expected_subject
+            );
+        }
+        let parent: ExecutionPlan =
+            store.load(&ArtifactRef::parse(&reproducer.body.parent_plan_id)?)?;
+        verify_parent(&reproducer, &parent)?;
+        Ok(Self { reproducer, parent })
+    }
+
+    pub(crate) fn verify_rebuilt_parent(&self, current: &ExecutionPlan) -> Result<()> {
+        verify_current_evidence(&self.parent, &current.body.evidence)?;
+        if current.id != self.parent.id || current.content_digest != self.parent.content_digest {
+            anyhow::bail!("Reproducer parent plan no longer has the same canonical identity");
+        }
+        Ok(())
+    }
+}
+
+fn verify_parent(reproducer: &Reproducer, parent: &ExecutionPlan) -> Result<()> {
+    if parent.content_digest != reproducer.body.parent_plan_content_digest
+        || parent.body.subject != reproducer.body.subject
+        || parent.body.evidence != reproducer.body.evidence
+        || parent.body.limits != reproducer.body.execution_limits
+    {
+        anyhow::bail!("Reproducer does not match its parent execution plan");
+    }
+    Ok(())
 }
 
 impl ManagedArtifact for Reproducer {

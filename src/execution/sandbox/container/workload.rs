@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 pub(crate) const WORKLOAD_PROTOCOL_SCHEMA_VERSION: &str =
-    "codeatlas.execution-container-workload/v1";
+    "codeatlas.execution-container-workload/v2";
 pub(crate) const WORKLOAD_RESULT_SCHEMA_VERSION: &str = "codeatlas.execution-container-result/v1";
 pub(crate) const CLIENT_PROXY_SOCKET: &str = "/codeatlas/scratch/transport/client.sock";
 pub(crate) const MANAGED_SERVER_SOCKET: &str = "/codeatlas/scratch/transport/server.sock";
@@ -20,7 +20,10 @@ const WORKLOAD_HARNESS_EXECUTABLE: &str = "/usr/local/bin/python3";
 const WORKLOAD_HARNESS_PATH: &str = "/codeatlas/runtime/workload_harness.py";
 const WORKLOAD_PROTOCOL_PATH: &str = "/codeatlas/runtime/workload.json";
 const MAX_WORKLOAD_COMMANDS: usize = 32;
-const RESERVED_ENVIRONMENT: [&str; 6] = [
+const RESERVED_ENVIRONMENT: [&str; 9] = [
+    "CODEATLAS_CALL_PERMIT_SOCKET",
+    "CODEATLAS_FUZZ",
+    "CODEATLAS_PLAN_ID",
     "CODEATLAS_SCRATCH",
     "CODEATLAS_WORKSPACE",
     "HOME",
@@ -62,16 +65,25 @@ pub(crate) struct ManagedServerBridge {
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct CallPermitBridge {
+    pub socket: String,
+}
+
+#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ContainerWorkloadProtocol {
     pub schema_version: String,
     pub plan_id: String,
     pub engine_version: String,
+    pub engine_probe_arguments: Vec<String>,
     pub prepare: Vec<WorkloadCommand>,
     pub delegated: Vec<WorkloadCommand>,
     pub service: Option<WorkloadCommand>,
     pub workload: WorkloadCommand,
     pub client_proxy: Option<ClientProxyBridge>,
     pub managed_server: Option<ManagedServerBridge>,
+    pub call_permit: Option<CallPermitBridge>,
+    pub fuzz_marker: bool,
     pub startup_timeout_ms: u64,
     pub max_output_bytes: u64,
 }
@@ -103,6 +115,10 @@ impl PreparedWorkload {
 
     pub(crate) fn managed_server_socket(&self) -> PathBuf {
         self.writable_root.join("transport/server.sock")
+    }
+
+    pub(crate) fn call_permit_socket(&self) -> PathBuf {
+        self.writable_root.join("transport/permit.sock")
     }
 
     pub(crate) fn writable_root(&self) -> &Path {
@@ -182,7 +198,8 @@ pub(crate) fn prepare_workload(
         runtime_files,
         plan.body.limits.max_artifact_bytes,
     )?;
-    let environment = BTreeMap::from([
+    let mut environment = BTreeMap::from([
+        ("CODEATLAS_PLAN_ID".to_string(), protocol.plan_id.clone()),
         (
             "CODEATLAS_SCRATCH".to_string(),
             "/codeatlas/scratch".to_string(),
@@ -202,6 +219,15 @@ pub(crate) fn prepare_workload(
             "/codeatlas/scratch/cache".to_string(),
         ),
     ]);
+    if let Some(bridge) = &protocol.call_permit {
+        environment.insert(
+            "CODEATLAS_CALL_PERMIT_SOCKET".to_string(),
+            bridge.socket.clone(),
+        );
+    }
+    if protocol.fuzz_marker {
+        environment.insert("CODEATLAS_FUZZ".to_string(), "1".to_string());
+    }
     let launch = ContainerLaunchSpec::new(
         ContainerProcessSpec {
             name: placement.name,
@@ -249,6 +275,15 @@ fn validate_workload(
     {
         anyhow::bail!("Container workload engine version does not match the execution plan");
     }
+    if protocol.engine_probe_arguments.is_empty()
+        || protocol.engine_probe_arguments.len() > MAX_WORKLOAD_COMMANDS
+        || protocol
+            .engine_probe_arguments
+            .iter()
+            .any(|argument| argument.contains(['\0', '\n', '\r']))
+    {
+        anyhow::bail!("Container workload engine probe is not bounded and representable");
+    }
     let planned_image = plan
         .body
         .managed_images
@@ -295,6 +330,14 @@ fn validate_workload(
         {
             anyhow::bail!("Container managed-server bridge is incomplete");
         }
+    }
+    if let Some(permit) = &protocol.call_permit {
+        if permit.socket != crate::execution::CALL_PERMIT_SOCKET {
+            anyhow::bail!("Container call-permit bridge is not the kernel-owned endpoint");
+        }
+    }
+    if protocol.fuzz_marker && protocol.call_permit.is_none() {
+        anyhow::bail!("Container fuzz marker requires the enforcing call-permit bridge");
     }
 
     let planned_owners = plan
@@ -504,9 +547,9 @@ fn is_environment_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        prepare_workload, ClientProxyBridge, ContainerWorkloadProtocol, ContainerWorkloadResult,
-        ManagedServerBridge, WorkloadCommand, WorkloadPlacement, CLIENT_PROXY_SOCKET,
-        MANAGED_SERVER_SOCKET, WORKLOAD_PROTOCOL_SCHEMA_VERSION,
+        prepare_workload, CallPermitBridge, ClientProxyBridge, ContainerWorkloadProtocol,
+        ContainerWorkloadResult, ManagedServerBridge, WorkloadCommand, WorkloadPlacement,
+        CLIENT_PROXY_SOCKET, MANAGED_SERVER_SOCKET, WORKLOAD_PROTOCOL_SCHEMA_VERSION,
     };
     use crate::execution::artifact::sample_plan;
     use crate::execution::model::{ExecutionPlan, ManagedCommandEvidence, ManagedImageEvidence};
@@ -552,6 +595,7 @@ mod tests {
             schema_version: WORKLOAD_PROTOCOL_SCHEMA_VERSION.to_string(),
             plan_id: plan.id.clone(),
             engine_version: plan.body.engine.version.clone(),
+            engine_probe_arguments: vec!["--version".to_string()],
             prepare: vec![command("http_prepare:0", "/usr/bin/prepare")],
             delegated: Vec::new(),
             service: Some(command("http_server", "/usr/bin/server")),
@@ -564,6 +608,8 @@ mod tests {
                 socket: MANAGED_SERVER_SOCKET.to_string(),
                 target_port: 41_002,
             }),
+            call_permit: None,
+            fuzz_marker: false,
             startup_timeout_ms: 1_000,
             max_output_bytes: 4_096,
         };
@@ -577,6 +623,10 @@ mod tests {
 
         let (plan, image, protocol) = fixture();
         let mut protocol = protocol;
+        protocol.call_permit = Some(CallPermitBridge {
+            socket: crate::execution::CALL_PERMIT_SOCKET.to_string(),
+        });
+        protocol.fuzz_marker = true;
         protocol.workload.working_directory = "/codeatlas/scratch/reports/http".to_string();
         let root =
             std::env::temp_dir().join(format!("codeatlas-workload-launch-{}", std::process::id()));
@@ -613,6 +663,19 @@ mod tests {
         assert!(!arguments.iter().any(|argument| {
             argument.to_string_lossy().contains("docker.sock")
                 || argument.to_string_lossy().contains("fixture-token")
+        }));
+        assert!(prepared
+            .launch
+            .environment
+            .iter()
+            .any(|value| value == "CODEATLAS_FUZZ=1"));
+        assert!(prepared
+            .launch
+            .environment
+            .iter()
+            .any(|value| value == format!("CODEATLAS_PLAN_ID={}", plan.id).as_str()));
+        assert!(prepared.launch.environment.iter().any(|value| {
+            value == "CODEATLAS_CALL_PERMIT_SOCKET=/codeatlas/scratch/transport/permit.sock"
         }));
         assert_eq!(
             std::fs::metadata(execution.join("workload-runtime/workload.json"))
@@ -741,6 +804,7 @@ while True:
                 .arg(&protocol_path)
                 .env_clear()
                 .env("CODEATLAS_SCRATCH", &scratch)
+                .env("CODEATLAS_PLAN_ID", &plan.id)
                 .env("HOME", scratch.join("home"))
                 .env("PATH", "/usr/bin:/bin")
                 .env("TMPDIR", scratch.join("tmp"))

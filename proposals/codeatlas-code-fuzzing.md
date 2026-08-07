@@ -1,7 +1,7 @@
 # Sandboxed callable code fuzzing
 
-Status: Accepted follow-on; static Phase 1A is complete, while harness
-execution waits for the execution sandbox gate
+Status: Accepted follow-on; static Phase 1A is complete, Phase 1B is in
+progress, and the Python Phase 2 adapter awaits its target-observed hosted gate
 
 Decision scope: Deterministic boundary corpora, language harnesses, native
 engine adapters, and `fuzz code`
@@ -83,6 +83,43 @@ either supplies receiver/factory requirements, ordered inputs, semantic types,
 constructibility, results, effects, and supported oracle evidence, or it carries
 exact deterministic block reasons. Public APIs are never silently omitted from
 fuzzability evidence merely because a harness cannot yet invoke them.
+
+## Managed code targets
+
+Execution authority and runtime provisioning use one checked-in target per
+analysis-project/language boundary:
+
+```json
+{
+  "fuzz": {
+    "code": {
+      "targets": [{
+        "id": "parser-fixtures",
+        "project": "codeatlas",
+        "language": "rust",
+        "image": "ghcr.io/goobits/codeatlas-rust-fuzz@sha256:<digest>",
+        "preauthorized": true
+      }]
+    }
+  }
+}
+```
+
+The target does not duplicate public callable inventory. It binds an existing
+analysis project, exactly one of `rust|python|javascript|typescript`, an
+optional digest-pinned runtime image, and single-shot preauthorization.
+`--symbol` selects one exact public callable from the target's existing
+inventory; it is required when more than one eligible callable remains. The
+callable's structured effects and block evidence still decide whether the
+target is preauthorized, review-only, or blocked. Omitting an image keeps
+planning available but blocks before execution.
+
+One target may therefore cover every public callable in a project/language
+without a second per-API allowlist. Exact config and source-adjacent denials
+remain the only subtractive lists. Runtime images may extend the CodeAtlas
+base with project dependencies, but the checkout remains read-only and the
+plan binds the image digest, engine identity, generated harness digest, and
+callable schema.
 
 ## One-way exclusions
 
@@ -295,6 +332,10 @@ Domain selectors:
 --seed
 ```
 
+`--target` chooses the checked-in runtime/authority boundary and `--symbol`
+chooses the exact callable within it; they are not aliases for the same
+coordinate.
+
 All common execution and fuzz limits come from the kernel-owned flattened CLI
 structs. This subject neither relists nor reparses them. CLI limits only tighten
 checked-in ceilings.
@@ -410,9 +451,13 @@ not a performance-product claim.
 
 ## Phase 1B: Harness, plan, and reproducer foundation
 
-Status: [ ] Waiting for the live isolation gate and HTTP kernel migration
+Status: [ ] In progress; live isolation and HTTP kernel migration are complete
 
-LOC: +350-500 / -30-60
+Measured together with the first Python adapter checkpoint below: +5,555 / -490
+authored and +1,602 / -0 generated schema. The shared kernel, workload
+protocol, typed replay contract, and hosted acceptance fixture cross the phase
+boundary, so this proposal records the exact combined slice instead of
+inventing a per-file allocation.
 
 Verify: Zero-call plans and replay derivation, exact evidence digests,
 pre-call permits, watchdog limits, external-only harness state, unchanged-seed
@@ -420,52 +465,90 @@ replay, and the full target-observed isolation suite pass using controlled
 language-neutral fixtures.
 
 ```text
++ schemas/codeatlas-code-fuzz-{workload,report}-v1.schema.json
++ src/commands/fuzz/code.rs
++ src/execution/{call_permit,permit_protocol,unix_socket}.rs
 + src/fuzz/code/harness.rs
++ src/fuzz/code/planning.rs
 + src/fuzz/code/runner.rs
 + tests/code_fuzz_cli.rs
+~ .github/workflows/live-oci-isolation.yml
+~ README.md
+~ docs/concepts/lexicon.md
+~ package.json
+~ src/config/{fuzz,mod}.rs
+~ src/domain/callable.rs
+~ src/execution/{artifact,budget,mod,model,proxy,workload}.rs
+~ src/execution/sandbox/container/{workload.rs,workload_harness.py}
+~ src/execution/sandbox/container.rs
+~ src/http/{planning.rs,schemathesis/adapter.rs,schemathesis/toolchain.rs}
 ~ src/fuzz/code/report.rs
 ~ src/fuzz/model.rs
 ~ src/fuzz/reproducer.rs
 ~ src/commands/fuzz.rs
 ~ src/cli/fuzz.rs
-~ src/execution/model.rs
-~ src/execution/lease.rs
-~ src/execution/redaction.rs
-~ src/execution/runner.rs
-~ src/execution/sandbox/mod.rs
 ~ src/external_tool.rs
-~ src/environment.rs
-~ codeatlas.json
+~ src/published_schemas.rs
+~ tasks/check-isolation-live.js
+~ tests/container-image-build.test.js
+~ tests/execution_isolation.rs
+~ tests/fuzz_plan.rs
+~ tests/isolation-live.test.js
++ tests/support/artifact.rs
 ```
+
+Local implementation checkpoint (2026-08-07): zero-call target and replay
+plans, the shared permit bridge, external runtime files, host-owned result and
+oracle digests, strict workload/report schemas, typed recursively validated
+replay inputs, required target/project/language coordinates, the Python
+Hypothesis adapter, and the shared Python workload-image build transaction pass
+their focused local tests. Python import-time target code consumes a readiness
+permit before any generated case. The existing hosted OCI matrix now builds
+the focused hash-locked Python image and contains one target-observed marker,
+readiness, generated-case, reduction, retry, replay, read-only-source, and
+cleanup proof. The phase remains open until that exact committed matrix passes;
+no receipt-only assertion closes the gate.
 
 ## Phase 2: Rust, Python, JavaScript, and TypeScript adapters
 
-Status: [ ] Not started
+Status: [ ] In progress; Python is implemented locally and awaits the shared
+hosted proof, while Rust and the JavaScript/TypeScript boundary remain pending
 
-LOC: +1,200-1,900 / -100-250
+Current Python checkpoint is included in the exact combined measurement above.
+Remaining Rust plus JavaScript/TypeScript adapter work is forecast at
++1,800-2,800 / -100-300 authored; the estimate will be replaced by measured
+LOC at the cross-language gate.
 
 Verify: Each language passes the shared parity suite, deterministic prefix,
 native-engine budget/replay contract, automatic oracles, reduction, and sandbox
 escape suite; capability evidence names unsupported engine behavior.
 
 ```text
++ containers/code-fuzz-python/{Containerfile,Containerfile.dockerignore}
 + src/languages/ecmascript/fuzz.rs
 + src/languages/python/fuzz.rs
++ src/languages/python/{fuzz_harness.py,fuzz_requirements.txt}
 + src/languages/rust/fuzz.rs
+~ .github/workflows/live-oci-isolation.yml
 ~ Cargo.toml
 ~ Cargo.lock
-~ src/main.rs
-~ src/languages/definition.rs
-~ src/languages/registry.rs
+~ package.json
+~ src/languages/code_fuzz.rs
 ~ src/languages/ecmascript/mod.rs
 ~ src/languages/python/mod.rs
+~ src/languages/python/parser/callable.rs
 ~ src/languages/rust/mod.rs
 ~ src/fuzz/code/harness.rs
 ~ src/fuzz/code/runner.rs
 ~ src/external_tool.rs
+~ src/tests/callable_contract.rs
++ tasks/build-python-workload.js
+- tasks/build-http-workload.js
+~ tasks/check-isolation-live.js
+~ tests/container-image-build.test.js
+~ tests/execution_isolation.rs
 ~ tests/code_fuzz_cli.rs
 ~ tests/fixtures/code_fuzz/
-~ package.json
 ```
 
 ## Phase 3: Self-dogfood, consolidation, and release hardening
@@ -496,7 +579,10 @@ harness generation and four real runtime adapters. It must not grow a second
 callable/effect model, source-local fuzz projects, or language-private execution
 controls.
 
-Total projected authored LOC: +4,564-5,614 / -639-1,019
+Revised projected authored LOC: +10,369-11,569 / -1,099-1,499, plus the
+already measured generated-schema delta. The increase is the accepted shared
+permit transport, strict typed replay surface, host-owned artifact validation,
+and real native runtime packaging rather than four thin language wrappers.
 
 ## Layman's wins
 

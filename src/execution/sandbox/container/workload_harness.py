@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 
-PROTOCOL_SCHEMA = "codeatlas.execution-container-workload/v1"
+PROTOCOL_SCHEMA = "codeatlas.execution-container-workload/v2"
 RESULT_SCHEMA = "codeatlas.execution-container-result/v1"
 SCRATCH = Path(os.environ["CODEATLAS_SCRATCH"])
 READY = SCRATCH / "control/harness-ready"
@@ -21,7 +21,15 @@ START = SCRATCH / "control/start-workload"
 RESULT = SCRATCH / "control/result.json"
 CLIENT_PROXY_SOCKET = SCRATCH / "transport/client.sock"
 MANAGED_SERVER_SOCKET = SCRATCH / "transport/server.sock"
-BASE_ENVIRONMENT = ("HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME")
+BASE_ENVIRONMENT = (
+    "CODEATLAS_CALL_PERMIT_SOCKET",
+    "CODEATLAS_FUZZ",
+    "CODEATLAS_PLAN_ID",
+    "HOME",
+    "PATH",
+    "TMPDIR",
+    "XDG_CACHE_HOME",
+)
 MAX_READINESS_ATTEMPTS = 1024
 RESERVED_ENVIRONMENT = {
     "CODEATLAS_SCRATCH",
@@ -32,12 +40,15 @@ TOP_LEVEL_FIELDS = {
     "schema_version",
     "plan_id",
     "engine_version",
+    "engine_probe_arguments",
     "prepare",
     "delegated",
     "service",
     "workload",
     "client_proxy",
     "managed_server",
+    "call_permit",
+    "fuzz_marker",
     "startup_timeout_ms",
     "max_output_bytes",
 }
@@ -101,8 +112,23 @@ def load_protocol(path: Path) -> dict[str, Any]:
         raise ValueError("unsupported workload protocol schema")
     if not isinstance(protocol["plan_id"], str) or not protocol["plan_id"].startswith("plan_"):
         raise ValueError("workload plan ID is invalid")
+    if os.environ.get("CODEATLAS_PLAN_ID") != protocol["plan_id"]:
+        raise ValueError("workload plan environment does not match the protocol")
     if not isinstance(protocol["engine_version"], str) or not protocol["engine_version"]:
         raise ValueError("workload engine version is invalid")
+    if (
+        not isinstance(protocol["engine_probe_arguments"], list)
+        or not protocol["engine_probe_arguments"]
+        or len(protocol["engine_probe_arguments"]) > 32
+        or not all(
+            isinstance(argument, str)
+            and "\x00" not in argument
+            and "\n" not in argument
+            and "\r" not in argument
+            for argument in protocol["engine_probe_arguments"]
+        )
+    ):
+        raise ValueError("workload engine probe is invalid")
     if not isinstance(protocol["prepare"], list):
         raise ValueError("workload prepare list is invalid")
     protocol["prepare"] = [
@@ -134,6 +160,14 @@ def load_protocol(path: Path) -> dict[str, Any]:
         require_port(bridge["target_port"], "managed server target port")
         if protocol["service"] is None:
             raise ValueError("managed server requires a service command")
+    if protocol["call_permit"] is not None:
+        bridge = require_object(protocol["call_permit"], {"socket"}, "call permit")
+        if bridge["socket"] != "/codeatlas/scratch/transport/permit.sock":
+            raise ValueError("call permit socket is invalid")
+    if not isinstance(protocol["fuzz_marker"], bool):
+        raise ValueError("workload fuzz marker is invalid")
+    if protocol["fuzz_marker"] and protocol["call_permit"] is None:
+        raise ValueError("workload fuzz marker requires call permits")
     if (
         protocol["client_proxy"] is not None
         and protocol["managed_server"] is not None
@@ -387,7 +421,7 @@ async def execute(protocol: dict[str, Any]) -> int:
     try:
         engine_probe = {
             **protocol["workload"],
-            "arguments": ["--version"],
+            "arguments": protocol["engine_probe_arguments"],
             "environment": {},
             "secret_environment_file": None,
         }

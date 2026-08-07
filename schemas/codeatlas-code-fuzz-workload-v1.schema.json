@@ -1,0 +1,1449 @@
+{
+  "$defs": {
+    "BoundaryPoint": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unit",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "null",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "boolean",
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "integer",
+              "type": "string"
+            },
+            "point": {
+              "$ref": "#/$defs/IntegerBoundary"
+            }
+          },
+          "required": [
+            "kind",
+            "point"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "float",
+              "type": "string"
+            },
+            "point": {
+              "$ref": "#/$defs/FloatBoundary"
+            }
+          },
+          "required": [
+            "kind",
+            "point"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "encoding": {
+              "$ref": "#/$defs/TextEncoding"
+            },
+            "kind": {
+              "const": "text",
+              "type": "string"
+            },
+            "point": {
+              "$ref": "#/$defs/TextBoundary"
+            }
+          },
+          "required": [
+            "kind",
+            "encoding",
+            "point"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "bytes",
+              "type": "string"
+            },
+            "point": {
+              "$ref": "#/$defs/LengthBoundary"
+            }
+          },
+          "required": [
+            "kind",
+            "point"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "canonical": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "literal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "canonical"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "presence",
+              "type": "string"
+            },
+            "present": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "present"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "collection",
+              "type": "string"
+            },
+            "point": {
+              "$ref": "#/$defs/CollectionBoundary"
+            }
+          },
+          "required": [
+            "kind",
+            "point"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "index": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "variant",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "index"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CallableBlockKind": {
+      "enum": [
+        "declaration_only",
+        "missing_type",
+        "unresolved_type",
+        "unsupported_type",
+        "unbounded_type",
+        "unsupported_pattern",
+        "unknown_receiver",
+        "requires_factory",
+        "unsupported_construction",
+        "unknown_effect_boundary"
+      ],
+      "type": "string"
+    },
+    "CallableBlockReason": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/CallableBlockKind"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "subject"
+      ],
+      "type": "object"
+    },
+    "CallableBody": {
+      "enum": [
+        "present",
+        "declaration_only"
+      ],
+      "type": "string"
+    },
+    "CallableKind": {
+      "enum": [
+        "function",
+        "method",
+        "constructor",
+        "getter",
+        "setter"
+      ],
+      "type": "string"
+    },
+    "CallableParameter": {
+      "additionalProperties": false,
+      "properties": {
+        "constructibility": {
+          "$ref": "#/$defs/Constructibility"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "position": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "requirement": {
+          "$ref": "#/$defs/ParameterRequirement"
+        },
+        "role": {
+          "$ref": "#/$defs/ParameterRole"
+        },
+        "semantic_type": {
+          "$ref": "#/$defs/SemanticType"
+        }
+      },
+      "required": [
+        "position",
+        "role",
+        "requirement",
+        "semantic_type",
+        "constructibility"
+      ],
+      "type": "object"
+    },
+    "CallableSignature": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/CallableBody"
+        },
+        "is_async": {
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/CallableKind"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/CallableParameter"
+          },
+          "type": "array"
+        },
+        "receiver": {
+          "$ref": "#/$defs/ReceiverContract"
+        },
+        "result": {
+          "$ref": "#/$defs/SemanticType"
+        },
+        "type_parameters": {
+          "items": {
+            "$ref": "#/$defs/TypeParameterContract"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "body",
+        "is_async",
+        "receiver",
+        "parameters",
+        "result"
+      ],
+      "type": "object"
+    },
+    "CodeFuzzActionLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "cleanup": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "readiness": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retries": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "readiness",
+        "retries",
+        "cleanup"
+      ],
+      "type": "object"
+    },
+    "CodeFuzzBlockKind": {
+      "enum": [
+        "blocked_by_policy",
+        "malformed_directive",
+        "not_publicly_reachable",
+        "unsupported_language",
+        "unsupported_corpus"
+      ],
+      "type": "string"
+    },
+    "CodeFuzzBlockReason": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/CodeFuzzBlockKind"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "subject"
+      ],
+      "type": "object"
+    },
+    "CodeFuzzInputValue": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "null",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "boolean",
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "integer",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "float",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "string",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "base64": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "bytes",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "base64"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "sequence",
+              "type": "string"
+            },
+            "values": {
+              "items": {
+                "$ref": "#/$defs/CodeFuzzInputValue"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "values"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entries": {
+              "items": {
+                "$ref": "#/$defs/CodeFuzzMapEntry"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "map",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entries"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "fields": {
+              "additionalProperties": {
+                "$ref": "#/$defs/CodeFuzzInputValue"
+              },
+              "type": "object"
+            },
+            "kind": {
+              "const": "record",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "fields"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CodeFuzzMapEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/CodeFuzzInputValue"
+        },
+        "value": {
+          "$ref": "#/$defs/CodeFuzzInputValue"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
+    "CollectionBoundary": {
+      "enum": [
+        "empty",
+        "singleton",
+        "declared_limit",
+        "duplicate",
+        "sorted",
+        "unsorted",
+        "nested"
+      ],
+      "type": "string"
+    },
+    "Constructibility": {
+      "enum": [
+        "direct",
+        "requires_factory",
+        "unsupported",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "CorpusDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/BoundaryPoint"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "points"
+      ],
+      "type": "object"
+    },
+    "FloatBoundary": {
+      "enum": [
+        "negative_infinity",
+        "negative_finite_extreme",
+        "negative_one",
+        "negative_zero",
+        "positive_zero",
+        "one",
+        "positive_finite_extreme",
+        "positive_infinity",
+        "nan"
+      ],
+      "type": "string"
+    },
+    "FuzzLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "case_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_cases": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_failures": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_shrinks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_cases",
+        "max_shrinks",
+        "max_failures",
+        "case_timeout_ms"
+      ],
+      "type": "object"
+    },
+    "IntegerBoundary": {
+      "enum": [
+        "minimum",
+        "above_minimum",
+        "negative_one",
+        "zero",
+        "one",
+        "below_maximum",
+        "maximum"
+      ],
+      "type": "string"
+    },
+    "LengthBoundary": {
+      "enum": [
+        "empty",
+        "one",
+        "below_minimum",
+        "minimum",
+        "above_minimum",
+        "below_maximum",
+        "maximum",
+        "above_maximum"
+      ],
+      "type": "string"
+    },
+    "ParameterRequirement": {
+      "enum": [
+        "required",
+        "optional",
+        "defaulted"
+      ],
+      "type": "string"
+    },
+    "ParameterRole": {
+      "enum": [
+        "positional",
+        "positional_only",
+        "positional_or_named",
+        "named_only",
+        "variadic_positional",
+        "variadic_named"
+      ],
+      "type": "string"
+    },
+    "ReceiverContract": {
+      "additionalProperties": false,
+      "properties": {
+        "constructibility": {
+          "$ref": "#/$defs/Constructibility"
+        },
+        "requirement": {
+          "$ref": "#/$defs/ReceiverRequirement"
+        }
+      },
+      "required": [
+        "requirement",
+        "constructibility"
+      ],
+      "type": "object"
+    },
+    "ReceiverRequirement": {
+      "enum": [
+        "none",
+        "instance",
+        "mutable_instance",
+        "type",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "SemanticField": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "semantic_type": {
+          "$ref": "#/$defs/SemanticType"
+        }
+      },
+      "required": [
+        "name",
+        "required",
+        "semantic_type"
+      ],
+      "type": "object"
+    },
+    "SemanticLiteral": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "boolean",
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "integer",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "float",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "string",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "null",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SemanticType": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "display": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "unknown",
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/$defs/TypeUnknownReason"
+            }
+          },
+          "required": [
+            "kind",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unit",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "boolean",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bits": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "integer",
+              "type": "string"
+            },
+            "signed": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "allows_special": {
+              "type": "boolean"
+            },
+            "bits": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "float",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "allows_special"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "encoding": {
+              "$ref": "#/$defs/StringEncoding"
+            },
+            "kind": {
+              "const": "string",
+              "type": "string"
+            },
+            "max_length": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "encoding"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "bytes",
+              "type": "string"
+            },
+            "max_length": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "null",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "literal",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/SemanticLiteral"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "optional",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/SemanticType"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "union",
+              "type": "string"
+            },
+            "variants": {
+              "items": {
+                "$ref": "#/$defs/SemanticType"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "variants"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "list",
+              "type": "string"
+            },
+            "max_items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "min_items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/SemanticType"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "tuple",
+              "type": "string"
+            },
+            "values": {
+              "items": {
+                "$ref": "#/$defs/SemanticType"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "values"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "set",
+              "type": "string"
+            },
+            "max_items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/SemanticType"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "$ref": "#/$defs/SemanticType"
+            },
+            "kind": {
+              "const": "map",
+              "type": "string"
+            },
+            "max_items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/SemanticType"
+            }
+          },
+          "required": [
+            "kind",
+            "key",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "fields": {
+              "items": {
+                "$ref": "#/$defs/SemanticField"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "record",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/SemanticType"
+            },
+            "kind": {
+              "const": "result",
+              "type": "string"
+            },
+            "ok": {
+              "$ref": "#/$defs/SemanticType"
+            }
+          },
+          "required": [
+            "kind",
+            "ok",
+            "error"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "arguments": {
+              "items": {
+                "$ref": "#/$defs/SemanticType"
+              },
+              "type": "array"
+            },
+            "identity": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "named",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "identity"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "type_parameter",
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SourceLanguage": {
+      "enum": [
+        "javascript",
+        "typescript",
+        "svelte",
+        "python",
+        "rust"
+      ],
+      "type": "string"
+    },
+    "StringEncoding": {
+      "enum": [
+        "utf8",
+        "utf16",
+        "unicode",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "TextBoundary": {
+      "oneOf": [
+        {
+          "enum": [
+            "ascii",
+            "unicode",
+            "combining",
+            "encoding_edge"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "length": {
+              "$ref": "#/$defs/LengthBoundary"
+            }
+          },
+          "required": [
+            "length"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "TextEncoding": {
+      "enum": [
+        "utf8",
+        "utf16",
+        "unicode",
+        "binary",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "TypeParameterContract": {
+      "additionalProperties": false,
+      "properties": {
+        "constraints": {
+          "items": {
+            "$ref": "#/$defs/SemanticType"
+          },
+          "type": "array"
+        },
+        "default": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SemanticType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/TypeParameterKind"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "TypeParameterKind": {
+      "enum": [
+        "type",
+        "const",
+        "lifetime",
+        "parameter_spec",
+        "variadic"
+      ],
+      "type": "string"
+    },
+    "TypeUnknownReason": {
+      "enum": [
+        "missing_annotation",
+        "unresolved",
+        "unsupported",
+        "unbounded_recursive",
+        "unsupported_pattern"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "codeatlas.code-fuzz-workload/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "action_limits": {
+      "$ref": "#/$defs/CodeFuzzActionLimits"
+    },
+    "adapter_version": {
+      "type": "string"
+    },
+    "alternate_behavior": {
+      "type": "boolean"
+    },
+    "callable_block_reasons": {
+      "items": {
+        "$ref": "#/$defs/CallableBlockReason"
+      },
+      "type": "array"
+    },
+    "callable_id": {
+      "type": "string"
+    },
+    "deterministic_prefix": {
+      "items": {
+        "items": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "deterministic_prefix_digest": {
+      "type": "string"
+    },
+    "dimensions": {
+      "items": {
+        "$ref": "#/$defs/CorpusDimension"
+      },
+      "type": "array"
+    },
+    "engine": {
+      "type": "string"
+    },
+    "engine_block_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "engine_executable": {
+      "type": "string"
+    },
+    "fuzz_block_reasons": {
+      "items": {
+        "$ref": "#/$defs/CodeFuzzBlockReason"
+      },
+      "type": "array"
+    },
+    "fuzz_marker": {
+      "type": "boolean"
+    },
+    "harness_digest": {
+      "type": "string"
+    },
+    "language": {
+      "$ref": "#/$defs/SourceLanguage"
+    },
+    "limits": {
+      "$ref": "#/$defs/FuzzLimits"
+    },
+    "replay_input": {
+      "items": {
+        "$ref": "#/$defs/CodeFuzzInputValue"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "const": "codeatlas.code-fuzz-workload/v1",
+      "type": "string"
+    },
+    "seed": {
+      "type": "string"
+    },
+    "signature": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "signature_contract": {
+      "$ref": "#/$defs/CallableSignature"
+    },
+    "target_id": {
+      "type": "string"
+    },
+    "workers": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "target_id",
+    "callable_id",
+    "language",
+    "signature",
+    "signature_contract",
+    "dimensions",
+    "deterministic_prefix",
+    "deterministic_prefix_digest",
+    "seed",
+    "engine",
+    "engine_executable",
+    "adapter_version",
+    "harness_digest",
+    "workers",
+    "action_limits",
+    "fuzz_marker",
+    "alternate_behavior",
+    "fuzz_block_reasons",
+    "callable_block_reasons",
+    "engine_block_reasons",
+    "limits"
+  ],
+  "title": "CodeFuzzWorkload",
+  "type": "object"
+}
