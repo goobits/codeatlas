@@ -3,7 +3,7 @@ use super::request_adapter::HOOK_SOURCE;
 use super::{
     checks, collect_expected_non_success_operations, expected_non_success_operations, phases,
     positive_coverage_failures, render_schemathesis_config, schemathesis_config, select_operations,
-    selected_operation_failures, CHECKS, SOURCE_TRANSPORT_CHECKS, STATEFUL_CONFIG,
+    selected_operation_failures, CHECKS, SOURCE_TRANSPORT_CHECKS, STANDARD_CONFIG, STATEFUL_CONFIG,
 };
 use crate::config::{HttpFuzzHealthCheck, HttpFuzzPositiveCoverageConfig};
 use crate::execution::CALL_CATEGORY_HEADER;
@@ -127,6 +127,8 @@ fn stateful_policy_is_explicit_and_adds_resource_checks() {
     assert_eq!(phases(true), "examples,stateful");
     assert!(STATEFUL_CONFIG.contains("algorithms = []"));
     assert!(STATEFUL_CONFIG.contains("link-calibration = false"));
+    assert!(STATEFUL_CONFIG.contains("max-steps = 3"));
+    assert!(!STANDARD_CONFIG.contains("max-steps"));
     let stateful_checks = checks(HttpFuzzContractMode::OpenApi, true);
     assert!(stateful_checks.contains("use_after_free"));
     assert!(stateful_checks.contains("ensure_resource_availability"));

@@ -927,6 +927,12 @@ fn interrupt_cancels_the_workload_then_runs_verified_cleanup() {
     let started = fixture.runtime.with_extension("workload-started");
     let receipt = fixture.execute_and_interrupt(&plan, &started);
     assert_eq!(receipt["outcome"], "cancelled");
+    assert!(receipt["reasons"]
+        .as_array()
+        .expect("cancelled workload reasons")
+        .iter()
+        .any(|reason| reason.as_str().is_some_and(|reason| reason
+            .contains("Container workload was cancelled before producing its result"))));
     assert!(receipt["cleanup"]
         .as_array()
         .expect("cancelled workload cleanup evidence")
@@ -1014,7 +1020,8 @@ fn live_oci_backend_executes_the_managed_http_workload() {
             .all(|cleanup| cleanup["released"] == true && cleanup["verified"] == true));
     };
 
-    let stateful_plan = fixture.plan_with(&["--profile", "stateful", "--max-cases", "4"]);
+    let stateful_plan =
+        fixture.plan_with(&["--profile", "stateful", "--max-cases", "4", "--seed", "42"]);
     let stateful_receipt = fixture.execute_with_status_and_export(&stateful_plan, 0, false);
     assert_live_receipt(&stateful_receipt);
     let stateful_report = fixture.report(&stateful_receipt);
@@ -1024,7 +1031,7 @@ fn live_oci_backend_executes_the_managed_http_workload() {
         .as_u64()
         .is_some_and(|scenarios| scenarios > 0));
 
-    let plan = fixture.plan_with(&["--max-cases", "12"]);
+    let plan = fixture.plan_with(&["--max-cases", "12", "--seed", "43"]);
     let receipt = fixture.execute_with_status(&plan, 0);
     assert_live_receipt(&receipt);
     let report = fixture.report(&receipt);

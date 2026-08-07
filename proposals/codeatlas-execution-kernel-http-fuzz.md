@@ -1656,6 +1656,45 @@ Third Phase 5 hosted attempt, 2026-08-07:
   this narrow correction from that worktree, then run one duplicate-checked
   hosted attempt without including the unrelated license commit.
 
+Fourth Phase 5 hosted attempt, 2026-08-07:
+
+- The Python 3.10 correction is clean isolated commit `721d118`; it was pushed
+  as a one-commit fast-forward from audited remote revision `d330449`, without
+  the unrelated local license commit. GitHub run `31139150366` used that exact
+  revision on hosted runner `GitHub Actions 1000019503`, restored the compatible
+  Cargo cache, and built, imported, and published both runtime images.
+- The real stateful managed workload reached the target through the enforcing
+  proxy and consumed 68 of 256 call permits. The kernel stopped it at 110,083
+  milliseconds, exactly the 120-second run ceiling less the reserved 10-second
+  cleanup window. Receipt
+  `receipt_d3353dd4b2405606b8198d107f5c55d673117ec102a119f58650c12011093dcc`
+  is correctly `partial`; both containers, the proxy, scratch, registry, and
+  builder cleanup released and verified. No standard workload ran after the
+  stateful acceptance failure.
+- Artifact `8979252406` is 68,426,609 bytes with verified digest
+  `sha256:35dbce74f5e4cbaf816e4397b7d315a4fec1aa125e8d2e700441e9a678ca3f27`.
+  Its bounded logs and exact OCI image reproduce the failure boundary. The
+  missing `result.json` was a consequence of the kernel terminating the still
+  running engine, not an isolation or cleanup failure.
+- Running the artifact's exact Schemathesis 4.24.3 bytes against the disposable
+  fixture reproduced the cause without another paid run: the vendor's default
+  six-step state-machine strategy can spend hundreds of rejected attempts while
+  seeking four accepted scenarios. The HTTP adapter now caps stateful sequence
+  depth at three as generation strategy; the shared kernel remains the sole
+  call, time, and resource budget owner. No public limit or second executor is
+  added.
+- The live fixture now pins seed 42 for stateful and seed 43 for standard
+  evidence. Against the extracted exact engine, stateful completed in 3.77
+  seconds with both declared links covered and standard completed in 9.84
+  seconds with all three operations tested. The kernel also preserves the real
+  timeout/cancellation cause when a result cannot become durable instead of
+  reporting only a missing result file.
+- Eleven focused Schemathesis policy tests, all 426 root unit tests, the 12-case
+  non-live isolation suite, and the focused cancellation diagnostic pass with
+  external build state. Next exact action: finish the scoped diff and residue
+  audit, commit and push it from the isolated worktree, confirm zero equivalent
+  run for the new revision, then dispatch the existing hosted gate once.
+
 LOC: +700-1,100 / -250-450
 
 Verify: Existing positive, negative, boundary, unsupported-method, and stateful

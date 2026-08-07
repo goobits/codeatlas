@@ -193,7 +193,17 @@ where
         (output, peer_output_bytes)
     };
     output_bytes = output_bytes.saturating_add(peer_output_bytes);
-    let result = collect_workload_result(prepared, plan)?;
+    let result = collect_workload_result(prepared, plan).map_err(|error| {
+        if output.cancelled {
+            error.context("Container workload was cancelled before producing its result")
+        } else if output.timed_out {
+            error.context("Container workload exceeded its execution time ceiling before producing its result")
+        } else if output.output_exhausted {
+            error.context("Container workload exhausted its runtime output ceiling before producing its result")
+        } else {
+            error
+        }
+    })?;
     Ok(ContainerWorkloadExecution {
         result,
         runtime_stdout: output.stdout,

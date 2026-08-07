@@ -938,6 +938,20 @@ test-only checkout-basename assumption, and passes the focused seven-case plus
 complete 31-case Node suites. Commit/push only that correction from the
 isolated worktree before another hosted attempt.
 
+The correction is isolated commit `721d118`. Exact run `31139150366` built both
+images and made 68 target-observed stateful calls, then the kernel stopped the
+still-running Schemathesis process at its normal 110-second deadline and
+verified every cleanup lease. Artifact `8979252406` has digest
+`sha256:35dbce74f5e4cbaf816e439b7d315a4fec1aa125e8d2e700441e9a678ca3f27`.
+An exact-engine local reproduction showed that Schemathesis's default six-step
+state-machine search can spend hundreds of rejected attempts while seeking four
+accepted scenarios. The existing HTTP generation-policy owner now sets three
+stateful steps, while the kernel remains the only call/time/resource limiter;
+the live fixture pins proven seeds 42 and 43. Focused policy, cancellation, all
+root unit, and all non-live isolation checks pass. Commit and push this scoped
+correction, then issue one duplicate-checked hosted run; do not begin Phase 11
+until both stateful and standard evidence pass there.
+
 - [ ] Feed HTTP target, destination, authentication, readiness, stateful, and
   effect evidence into the shared target classifier.
 - [ ] Route reviewed and eligible single-shot HTTP runs through the same

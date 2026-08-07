@@ -24,6 +24,7 @@ unexpected-methods = [\"get\", \"put\", \"post\", \"delete\", \"options\", \"pat
 
 [phases.stateful]
 link-calibration = false
+max-steps = 3
 
 [phases.stateful.inference]
 algorithms = []
