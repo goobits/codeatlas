@@ -1,7 +1,7 @@
 # Sandboxed callable code fuzzing
 
-Status: Accepted follow-on; static Phase 1A is complete, Phase 1B is in
-progress, and the Python Phase 2 adapter awaits its target-observed hosted gate
+Status: Accepted follow-on; Phases 1A and 1B and the Python Phase 2 adapter are
+complete, while the Rust and JavaScript/TypeScript Phase 2 adapters remain
 
 Decision scope: Deterministic boundary corpora, language harnesses, native
 engine adapters, and `fuzz code`
@@ -451,7 +451,7 @@ not a performance-product claim.
 
 ## Phase 1B: Harness, plan, and reproducer foundation
 
-Status: [ ] In progress; live isolation and HTTP kernel migration are complete
+Status: [x] Complete; target-observed hosted isolation passed
 
 Measured together with the first Python adapter checkpoint below: +5,555 / -490
 authored and +1,602 / -0 generated schema. The shared kernel, workload
@@ -549,12 +549,25 @@ Python adapter therefore had no authoritative result root. Artifact
 `777acbb1c34ab1329b376caeaaf1cc6790a4688fbcf4a2e12aa7574d768a0d62`.
 The narrow correction adds that existing kernel-owned variable to the shared
 base environment and proves it in the supervisor test before one
-duplicate-checked retry.
+duplicate-checked retry. Hosted run `31244812846` then passed on exact revision
+`b6766c6`. It proved target-observed generated, reduction, retry, and replay
+permits; minimized the failing integer to `2`; retained one plan-bound report
+and reproducer; kept source bytes unchanged; and verified every cleanup lease.
+The accepted receipt is
+`receipt_835c98048b98b77f9c458d2eb7a3b7d905346deb17fa8d09774ca42a9f1ee71c`
+with digest
+`sha256:d74cadd2f814d8e7a35b1f605d899073e11c61ab31c5d348a708affe40be9fb8`.
+Hosted artifact `9018189257` is 121,513,997 bytes with GitHub-verified digest
+`sha256:12d96a9018ef409febc53e53ba5d5741c10f5ec590390c926b812b91ae84058a`.
+The full local `pnpm check` surface also passes: 436 root unit tests, every
+integration suite, the independently locked isolation probe, warning-denying
+Clippy, schema/spec drift, eight-lane self-dogfood with zero gates, and a
+429-file package.
 
 ## Phase 2: Rust, Python, JavaScript, and TypeScript adapters
 
-Status: [ ] In progress; Python is implemented locally and awaits the shared
-hosted proof, while Rust and the JavaScript/TypeScript boundary remain pending
+Status: [ ] In progress; Python is complete with target-observed hosted proof,
+while Rust and the JavaScript/TypeScript boundary remain pending
 
 Current Python checkpoint is included in the exact combined measurement above.
 Remaining Rust plus JavaScript/TypeScript adapter work is forecast at

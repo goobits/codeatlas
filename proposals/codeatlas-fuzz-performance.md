@@ -497,7 +497,7 @@ metric-feedback and threshold-preserving shrink capabilities.
 
 ## Canonical v1 completion tracker
 
-Tracker date: 2026-08-07
+Tracker date: 2026-08-08
 
 This is the one cross-program ordering and progress tracker. Child proposals
 remain the normative owners for behavior, acceptance evidence, and file
@@ -505,9 +505,9 @@ manifests. Their phase statuses are subordinate checkpoints and must be updated
 with this section when a phase starts, completes, blocks, or changes order. Do
 not create another program roadmap or copy these tasks into a scratch document.
 
-Remaining-scope audit (2026-08-07): 90 open CodeAtlas implementation checks
-remain across Phase 10A and Phases 11 through 21, including Phase 16A and the
-deferred Phase 15 observation enrichment. Every incomplete child phase maps to exactly one
+Remaining-scope audit (2026-08-08): 82 open CodeAtlas implementation checks
+remain across Phases 12 through 21, including Phase 16A and the deferred Phase
+15 observation enrichment. Every incomplete child phase maps to exactly one
 checklist below. Child proposals retain contract rationale and acceptance
 criteria, but they do not own a second rolling task list.
 
@@ -517,8 +517,9 @@ foundations and the verification log are audit history and do not need to be
 reloaded unless a claim is under review. The immediate plan-only-host queue
 through Phase 16, the live Phase 9 isolation gate, and Phase 10 HTTP migration
 are complete. Phase 10A's trial extraction failed its accepted warm-loop budget
-and was fully removed before any execution boundary moved. Continue numerically
-through Phase 11, Phase 16A, performance, cost search, and final signoff.
+and was fully removed before any execution boundary moved. The callable fuzz
+foundation and Python adapter are complete. Continue numerically through Phase
+12, Phase 16A, performance, cost search, and final signoff.
 
 ### Current verdict
 
@@ -548,44 +549,29 @@ kernel remains with its existing sole owner. The source-impact producer design i
 graph, callable effects, source index, bounded projection, and completeness
 vocabulary. Its implementation remains gated without making HQA graph
 alignment a CodeAtlas dependency. On implementation progress rather than
-proposal-design progress, the complete program is approximately 69 percent
+proposal-design progress, the complete program is approximately 72 percent
 done. That estimate is weighted by the
 accepted implementation phases, not by raw checkbox count. One hundred percent
 means every remaining tracker item is either verified and checked here or
 removed through an accepted scope change; a child status line alone is not
 completion evidence.
 
-Phase 11B and the Python portion of Phase 12 are locally implemented at the
-2026-08-07 checkpoint: one shared call-permit bridge, code workload protocol,
-zero-call replay derivation, external-only harness state, published workload
-and report schemas, a strict typed replay-input contract, required
-target/project/language authority coordinates, and a pinned Hypothesis adapter
-pass focused checks. Import-time target code consumes a readiness permit; no
-arbitrary harness JSON can become a reproducer. The existing hosted matrix has
-been extended rather than duplicated; its exact target-observed run is the
-next incomplete gate, so no Phase 11 or Python checkbox is closed yet. Hosted
-run `31162205411` on `c7e183f` reached that matrix after both managed HTTP
-profiles, then correctly stopped before a Python target call because the live
-fixture requested 32 cases above its shared configured ceiling of 12. The
-narrow correction is to set the fixture ceiling to 32 while retaining HTTP's
-12-case tightening override, then issue one duplicate-checked run for the new
-revision. Retry run `31162790047` on `e706d9f` passed that boundary and proved
-one readiness plus 32 generated permits with verified cleanup, but the sparse
-equality fixture produced no native reduction/retry before its bounded search
-ended and its private result relied on a late-created adapter directory. The
-next correction uses a monotone shrink fixture and the existing
-kernel-precreated `control/` directory, with one Rust-owned result-path
-constant and adapter conformance, then issues one duplicate-checked run for the
-new revision. Hosted run `31244354451` on exact revision `a1361d8` proved one
-readiness, 7 generated, 10 reduction, and 1 retry permits with verified cleanup.
-It then failed final collection because the shared container supervisor
-reserved `CODEATLAS_SCRATCH` but did not forward it to the workload child; the
-Python adapter therefore had no authoritative result root. Artifact
-`9018050517` has SHA-256
-`777acbb1c34ab1329b376caeaaf1cc6790a4688fbcf4a2e12aa7574d768a0d62`.
-The narrow correction adds that already kernel-owned variable to the shared
-base environment and proves it in the supervisor test before one
-duplicate-checked retry.
+Phase 11 and the Python portion of Phase 12 are complete. Hosted run
+`31244812846` passed on exact revision `b6766c6`, proving target-observed
+readiness, generated-case, reduction, retry, and replay permits; deterministic
+minimization to integer `2`; unchanged source bytes; and verified cleanup of
+every lease. The accepted receipt is
+`receipt_835c98048b98b77f9c458d2eb7a3b7d905346deb17fa8d09774ca42a9f1ee71c`
+with digest
+`sha256:d74cadd2f814d8e7a35b1f605d899073e11c61ab31c5d348a708affe40be9fb8`.
+Hosted artifact `9018189257` has GitHub-verified digest
+`sha256:12d96a9018ef409febc53e53ba5d5741c10f5ec590390c926b812b91ae84058a`.
+The correction found during the gate lives in the shared container supervisor:
+it forwards the existing kernel-owned scratch root to workload children rather
+than introducing a Python-only path. Full `pnpm check` passes with 436 root
+unit tests, all integration suites, warning-denying Clippy, schema/spec drift,
+the isolation probe, eight-lane self-dogfood with zero gates, and the 429-file
+package. The first incomplete gate is the Rust adapter in Phase 12.
 
 ### Order and ownership rules
 
@@ -1168,22 +1154,22 @@ Static checkpoint (Phase 1A; can proceed on a plan-only host):
 
 Execution checkpoint (Phase 1B; waits for Phases 9 and 10):
 
-- [ ] Supply the single planned `CODEATLAS_FUZZ=1` marker to sandboxed code
+- [x] Supply the single planned `CODEATLAS_FUZZ=1` marker to sandboxed code
   harnesses (or one exact protocol-equivalent marker) as evidence, never as a
   safety boundary. When a target branches on it or skips an effect, label the
   run `alternate_behavior` and do not claim production-path coverage.
-- [ ] Persist exact deterministic prefix, seed, engine fingerprint, scheduling,
+- [x] Persist exact deterministic prefix, seed, engine fingerprint, scheduling,
   limits, evidence digests, and block reasons in the zero-call plan.
-- [ ] Generate all harness, manifest, compiler, package, bytecode, corpus, and
+- [x] Generate all harness, manifest, compiler, package, bytecode, corpus, and
   reproducer state under external scratch/cache roots with a read-only
   checkout.
-- [ ] Use the shared reproducer envelope and kernel replay derivation with
+- [x] Use the shared reproducer envelope and kernel replay derivation with
   unchanged-evidence checks and no implicit execution.
-- [ ] Require a pre-call permit for every case, retry, reduction, readiness,
+- [x] Require a pre-call permit for every case, retry, reduction, readiness,
   and cleanup action, with bounded watchdog and captured output.
-- [ ] Prove path, symlink, home, `/tmp`, network, subprocess, resource, and
+- [x] Prove path, symlink, home, `/tmp`, network, subprocess, resource, and
   cancellation escape behavior against controlled fixtures.
-- [ ] Register report/reproducer schema changes, run foundation acceptance
+- [x] Register report/reproducer schema changes, run foundation acceptance
   tests, dogfood zero-call planning, and commit code-fuzz Phase 1B.
 
 ### Phase 12: Add four native callable fuzz adapters and self-fuzzing
@@ -1192,7 +1178,7 @@ Active child: code fuzzing Phases 2 and 3.
 
 - [ ] Implement one pinned Rust engine adapter with exact capability,
   deterministic-prefix, budget, replay, reduction, and oracle translation.
-- [ ] Implement the equivalent pinned Python adapter without a private parser,
+- [x] Implement the equivalent pinned Python adapter without a private parser,
   limiter, cache, artifact, or execution path.
 - [ ] Implement one shared JavaScript/TypeScript adapter boundary with exact
   language capability evidence and no duplicated engine provisioning.
