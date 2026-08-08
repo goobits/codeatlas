@@ -234,6 +234,12 @@ mod tests {
         let harness = std::str::from_utf8(HARNESS).expect("Python harness UTF-8");
         let runtime_support =
             std::str::from_utf8(RUNTIME_SUPPORT).expect("Python runtime support UTF-8");
+        assert!(
+            harness.contains(
+                "from runtime_support import PermitDenied, RESULT_SCHEMA, call_permit, write_result"
+            ),
+            "Python harness must import every shared runtime contract it consumes"
+        );
         for (source, name, value) in [
             (harness, "ADAPTER_SCHEMA", STRATEGY_SCHEMA_VERSION),
             (

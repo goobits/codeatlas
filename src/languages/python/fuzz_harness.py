@@ -20,7 +20,7 @@ from hypothesis import strategies as st
 from hypothesis.errors import NoSuchExample
 import hypothesis
 
-from runtime_support import PermitDenied, call_permit, write_result
+from runtime_support import PermitDenied, RESULT_SCHEMA, call_permit, write_result
 
 
 ADAPTER_SCHEMA = "codeatlas.python-fuzz-strategy/v1"

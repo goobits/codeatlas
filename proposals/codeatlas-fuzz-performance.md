@@ -619,6 +619,19 @@ headroom and rejects an over-budget build set before publication. Artifact
 `sha256:fae614fb2522559265fb32aec07e81e11481cd91906dea1bc34eb4e1047103f6`;
 the useful 5,116,156,017-byte Cargo cache generation was retained. One
 duplicate-checked corrected run remains the first incomplete gate.
+Corrected run `31272558257` was dispatched once against exact revision
+`b84f98d`. It passed the corrected registry budget and published all four
+workload images, then exposed a post-search Python harness defect before the
+Rust assertions: the target consumed one readiness, seven generated-case, ten
+reduction, and one retry permit, but the harness referenced the shared
+`RESULT_SCHEMA` constant without importing it after that constant moved to the
+shared runtime owner. Collection therefore found no result file. The narrow
+correction imports that existing owner and adds a focused source-contract
+regression; formatting, private Python syntax, and the exact Rust unit test
+pass locally. Artifact `9026127213` is 457,141,040 bytes with GitHub-verified
+digest
+`sha256:97bb70f61478ea23acfe8c47d8146b88739ac379fcdf0f90346665a2e3c286d2`.
+The target-observed Rust gate remains open pending one exact corrected run.
 
 ### Order and ownership rules
 
