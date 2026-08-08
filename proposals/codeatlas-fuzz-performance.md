@@ -605,6 +605,20 @@ warning-denying Clippy surface and 435-file package pass. The first
 unproved claim is target-observed Rust generated-case, reduction, retry, and
 replay execution inside the digest-pinned hosted OCI workload; no local check
 is promoted to that live evidence.
+Duplicate-checked GitHub Actions run `31271703117` was dispatched once against
+exact revision `08b45f9`; it is the first hosted run carrying the Rust workload
+image and target-observed Rust fixture, and the Rust tracker row remains open
+until those assertions pass.
+That run built all four images and published the first three, then failed before
+target execution when the Rust push crossed a contradictory registry resource
+contract: 512 MiB of tmpfs storage was charged to a 256 MiB cgroup. The Rust
+archive is 337,509,376 bytes and all four archives total 459,627,520 bytes. The
+existing registry owner now uses one 1 GiB storage budget plus 256 MiB process
+headroom and rejects an over-budget build set before publication. Artifact
+`9025869252` is 457,135,570 bytes with digest
+`sha256:fae614fb2522559265fb32aec07e81e11481cd91906dea1bc34eb4e1047103f6`;
+the useful 5,116,156,017-byte Cargo cache generation was retained. One
+duplicate-checked corrected run remains the first incomplete gate.
 
 ### Order and ownership rules
 

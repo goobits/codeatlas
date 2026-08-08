@@ -28,6 +28,9 @@ const maxCommandOutputBytes = 16 * 1024 * 1024
 const maxCommandElapsedMs = 30 * 60 * 1000
 const registryReadyAttempts = 40
 const registryReadyDelayMs = 250
+const registryStorageBytes = 1024 * 1024 * 1024
+const registryProcessHeadroomBytes = 256 * 1024 * 1024
+const registryMemoryBytes = registryStorageBytes + registryProcessHeadroomBytes
 const receiptFilename = 'execution-receipt.json'
 
 const parseArguments = arguments_ => {
@@ -102,15 +105,15 @@ const createRegistryArguments = (name, image) => [
 	'127.0.0.1::5000',
 	'--read-only',
 	'--tmpfs',
-	'/var/lib/registry:rw,noexec,nosuid,nodev,size=536870912',
+	`/var/lib/registry:rw,noexec,nosuid,nodev,size=${registryStorageBytes}`,
 	'--cap-drop',
 	'ALL',
 	'--security-opt',
 	'no-new-privileges=true',
 	'--memory',
-	'268435456',
+	String(registryMemoryBytes),
 	'--memory-swap',
-	'268435456',
+	String(registryMemoryBytes),
 	'--pids-limit',
 	'64',
 	'--cpus',
@@ -119,6 +122,24 @@ const createRegistryArguments = (name, image) => [
 	'none',
 	image
 ]
+
+const validateRegistryArchiveBudget = builds => {
+	if (!Array.isArray(builds) || builds.length === 0) {
+		throw new Error('Registry archive budget requires at least one built image')
+	}
+	const archiveBytes = builds.reduce((total, build) => {
+		if (!Number.isSafeInteger(build.archive_bytes) || build.archive_bytes <= 0) {
+			throw new Error('Registry archive budget requires finite nonzero image bytes')
+		}
+		return total + build.archive_bytes
+	}, 0)
+	if (!Number.isSafeInteger(archiveBytes) || archiveBytes > registryStorageBytes) {
+		throw new Error(
+			`Built image archives require ${archiveBytes} bytes; registry storage permits ${registryStorageBytes}`
+		)
+	}
+	return archiveBytes
+}
 
 const parseLoadedImage = output => {
 	const matches = output
@@ -408,6 +429,7 @@ const checkIsolationLive = async options => {
 	const rustCodeLoadArchive = path.join(outDir, 'code-fuzz-rust-workload.docker.tar')
 	const receipt = path.join(outDir, receiptFilename)
 	let registryCreated = false
+	let registryArchiveBytes = 0
 	const publications = []
 	let failure
 	let summary
@@ -472,6 +494,12 @@ const checkIsolationLive = async options => {
 				})
 			]
 		)
+		registryArchiveBytes = validateRegistryArchiveBudget([
+			build,
+			httpBuild,
+			codeBuild,
+			rustCodeBuild
+		])
 		const registry = runRuntime(
 			options.runtime,
 			createRuntimeArguments(
@@ -689,6 +717,9 @@ const checkIsolationLive = async options => {
 			capabilities: receiptValue.runtime.capabilities,
 			rootless: receiptValue.runtime.rootless,
 			nested: receiptValue.runtime.nested,
+			registry_archive_bytes: registryArchiveBytes,
+			registry_storage_limit_bytes: registryStorageBytes,
+			registry_memory_limit_bytes: registryMemoryBytes,
 			cleanup_verified: true
 		}
 		writePrivateFile(
@@ -771,6 +802,10 @@ module.exports = {
 	parseLoadedImage,
 	parseRegistryAddress,
 	selectPublishedReference,
+	registryMemoryBytes,
+	registryProcessHeadroomBytes,
+	registryStorageBytes,
+	validateRegistryArchiveBudget,
 	verifyLoadedImage,
 	waitForRegistry
 }

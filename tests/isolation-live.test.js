@@ -7,7 +7,11 @@ const {
 	parseArguments,
 	parseLoadedImage,
 	parseRegistryAddress,
+	registryMemoryBytes,
+	registryProcessHeadroomBytes,
+	registryStorageBytes,
 	selectPublishedReference,
+	validateRegistryArchiveBudget,
 	verifyLoadedImage,
 	waitForRegistry
 } = require('../tasks/check-isolation-live.js')
@@ -138,9 +142,34 @@ test('temporary registry is loopback-only, bounded, and unprivileged', () => {
 	assert.ok(arguments_.includes('--cap-drop'))
 	assert.ok(arguments_.includes('no-new-privileges=true'))
 	assert.ok(arguments_.includes('--memory'))
+	assert.equal(registryMemoryBytes, registryStorageBytes + registryProcessHeadroomBytes)
+	assert.equal(
+		arguments_[arguments_.indexOf('--memory') + 1],
+		String(registryMemoryBytes)
+	)
+	assert.equal(
+		arguments_[arguments_.indexOf('--memory-swap') + 1],
+		String(registryMemoryBytes)
+	)
+	assert.ok(
+		arguments_.includes(
+			`/var/lib/registry:rw,noexec,nosuid,nodev,size=${registryStorageBytes}`
+		)
+	)
 	assert.ok(arguments_.includes('--pids-limit'))
 	assert.ok(!arguments_.includes('--privileged'))
 	assert.ok(!arguments_.includes('/var/run/docker.sock'))
+	assert.equal(
+		validateRegistryArchiveBudget([
+			{ archive_bytes: 1 },
+			{ archive_bytes: registryStorageBytes - 1 }
+		]),
+		registryStorageBytes
+	)
+	assert.throws(
+		() => validateRegistryArchiveBudget([{ archive_bytes: registryStorageBytes + 1 }]),
+		/registry storage permits/
+	)
 })
 
 test('image import and publication preserve their distinct exact digests', () => {

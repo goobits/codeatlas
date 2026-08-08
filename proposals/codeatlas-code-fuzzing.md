@@ -642,6 +642,27 @@ first incomplete Rust gate is now target-observed generated, reduction, retry,
 and replay execution in the digest-pinned workload image; no live capability
 is inferred from the local checks.
 
+Hosted checkpoint (2026-08-08): duplicate-checked GitHub Actions run
+`31271703117` was dispatched once against exact revision `08b45f9`. It is the
+first run carrying the Rust workload image and target-observed Rust adapter
+fixture; the gate remains open until the run reaches and passes those exact
+assertions.
+
+Hosted checkpoint (2026-08-08): run `31271703117` built all four images and
+successfully published the probe, HTTP, and Python workloads, then the local
+registry exited during the Rust workload push before any target test ran. The
+evidence proves a coherent resource-contract defect: the Rust OCI archive is
+337,509,376 bytes and all four archives total 459,627,520 bytes, while the
+registry's 512 MiB tmpfs was charged to a contradictory 256 MiB container
+memory ceiling. The existing registry owner now has one 1 GiB storage budget,
+256 MiB process headroom, a conservative pre-push archive-budget check, and
+exact argument tests; no adapter or private retry path was added. The run
+restored and retained a useful 5,116,156,017-byte Cargo cache generation.
+Artifact `9025869252` is 457,135,570 bytes with GitHub-verified digest
+`sha256:fae614fb2522559265fb32aec07e81e11481cd91906dea1bc34eb4e1047103f6`.
+The target-observed Rust gate remains open pending one duplicate-checked run of
+the corrected revision.
+
 ## Phase 3: Self-dogfood, consolidation, and release hardening
 
 Status: [ ] Not started
