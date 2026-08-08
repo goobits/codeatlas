@@ -576,7 +576,16 @@ ended and its private result relied on a late-created adapter directory. The
 next correction uses a monotone shrink fixture and the existing
 kernel-precreated `control/` directory, with one Rust-owned result-path
 constant and adapter conformance, then issues one duplicate-checked run for the
-new revision.
+new revision. Hosted run `31244354451` on exact revision `a1361d8` proved one
+readiness, 7 generated, 10 reduction, and 1 retry permits with verified cleanup.
+It then failed final collection because the shared container supervisor
+reserved `CODEATLAS_SCRATCH` but did not forward it to the workload child; the
+Python adapter therefore had no authoritative result root. Artifact
+`9018050517` has SHA-256
+`777acbb1c34ab1329b376caeaaf1cc6790a4688fbcf4a2e12aa7574d768a0d62`.
+The narrow correction adds that already kernel-owned variable to the shared
+base environment and proves it in the supervisor test before one
+duplicate-checked retry.
 
 ### Order and ownership rules
 

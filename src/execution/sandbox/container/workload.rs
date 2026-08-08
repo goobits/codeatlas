@@ -721,7 +721,7 @@ mod tests {
         let workload_marker = root.join("workload-ran");
         std::fs::write(
             &engine_path,
-            b"#!/bin/sh\nif [ \"${1:-}\" = --version ]; then printf '%s\\n' 'fixture 2.0.0'; exit 0; fi\n: > \"$1\"\n",
+            b"#!/bin/sh\nif [ \"${1:-}\" = --version ]; then printf '%s\\n' 'fixture 2.0.0'; exit 0; fi\ntest -d \"${CODEATLAS_SCRATCH:?}/control\" || exit 9\n: > \"$1\"\n",
         )
         .expect("fixture engine");
         std::fs::set_permissions(&engine_path, std::fs::Permissions::from_mode(0o700))

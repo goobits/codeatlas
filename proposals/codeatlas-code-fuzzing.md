@@ -540,7 +540,16 @@ cache bytes from the exact `c7e183f` generation, saved a useful
 generation, and uploaded artifact `8987839822` with SHA-256
 `a3f8204ec490165835e66c617a1a73e3821b0a557dddcc64a9bf8c9b204e19d0`.
 The target-observed gate remains open pending one duplicate-checked corrected
-revision.
+revision. Hosted run `31244354451` on exact revision `a1361d8` proved one
+readiness, 7 generated, 10 reduction, and 1 retry permits with verified cleanup.
+It then failed final collection because the shared container supervisor
+reserved `CODEATLAS_SCRATCH` but did not forward it to the workload child; the
+Python adapter therefore had no authoritative result root. Artifact
+`9018050517` has SHA-256
+`777acbb1c34ab1329b376caeaaf1cc6790a4688fbcf4a2e12aa7574d768a0d62`.
+The narrow correction adds that existing kernel-owned variable to the shared
+base environment and proves it in the supervisor test before one
+duplicate-checked retry.
 
 ## Phase 2: Rust, Python, JavaScript, and TypeScript adapters
 
