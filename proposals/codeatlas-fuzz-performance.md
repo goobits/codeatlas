@@ -632,6 +632,19 @@ pass locally. Artifact `9026127213` is 457,141,040 bytes with GitHub-verified
 digest
 `sha256:97bb70f61478ea23acfe8c47d8146b88739ac379fcdf0f90346665a2e3c286d2`.
 The target-observed Rust gate remains open pending one exact corrected run.
+Duplicate-checked retry run `31273399546` was dispatched once against exact
+revision `d48981b`; it is the only run for that SHA.
+That run proved the shared Python import correction through complete target,
+reduction, retry, artifact, replay, source-integrity, and cleanup assertions,
+then blocked Rust planning because the combined live fixture retained Python
+HTTP sources while replacing its analysis project with a Rust-only language
+set. The fixture now truthfully declares both retained source languages, and a
+new zero-call mixed-language regression reaches the exact Rust plan without
+contacting the target. Formatting and that focused integration test pass.
+Artifact `9026356125` is 457,132,232 bytes with GitHub-verified digest
+`sha256:8776b39b4ac47bcbf9b81cb2078358b437da6e399de8686e1d4df42278b8b3b0`;
+the run restored 5,664,346,770 cache bytes and saved a useful 5,139,903,616-byte
+generation. The target-observed Rust gate remains open.
 
 ### Order and ownership rules
 

@@ -342,7 +342,7 @@ def fails_at_or_above_two(value: int) -> int:
             config["projects"] = json!([{
                 "id": "rust-live",
                 "root": ".",
-                "languages": ["rs"],
+                "languages": ["py", "rs"],
                 "contexts": {
                     "public-api": {
                         "role": "production",
@@ -1077,6 +1077,24 @@ fn interrupt_cancels_the_workload_then_runs_verified_cleanup() {
         .iter()
         .all(|cleanup| cleanup["verified"] == true));
     fixture.assert_runtime_absent();
+    assert_no_target_call(&fixture.target);
+}
+
+#[cfg(unix)]
+#[test]
+fn rust_code_planning_accounts_for_retained_python_http_sources() {
+    let fixture = IsolationFixture::create("codeatlas-rust-mixed-language-plan");
+    fixture.enable_live_workload(PROBE_IMAGE);
+    fixture.enable_live_rust_code_workload(PROBE_IMAGE);
+
+    let plan = fixture.plan_code(
+        "rust-live",
+        "src/lib.rs#fails_in_shrinkable_window",
+        &["--max-cases", "1", "--max-calls", "4", "--seed", "45"],
+    );
+
+    assert_eq!(plan["subject"], "code");
+    assert_eq!(plan["workload"]["body"]["language"], "rust");
     assert_no_target_call(&fixture.target);
 }
 
