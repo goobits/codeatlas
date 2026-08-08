@@ -285,10 +285,11 @@ HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
             r#"import os
 
 
-def fails_at_two(value: int) -> int:
+def fails_at_or_above_two(value: int) -> int:
     if os.environ.get("CODEATLAS_FUZZ") != "1":
         raise RuntimeError("planned fuzz marker missing")
-    if value == 2:
+    # A monotone adaptive predicate guarantees a native shrink path to 2.
+    if value >= 2:
         raise ValueError("deterministic native-engine fixture")
     return value
 "#,
@@ -398,7 +399,7 @@ def fails_at_two(value: int) -> int:
             "--target",
             "python-live",
             "--symbol",
-            "safe.py#fails_at_two",
+            "safe.py#fails_at_or_above_two",
         ];
         arguments.extend_from_slice(extra);
         let output = run_codeatlas(&self.workspace, &self.state, &arguments);

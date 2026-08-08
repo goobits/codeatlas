@@ -268,6 +268,10 @@ mod tests {
                 crate::fuzz::code::CODE_FUZZ_HARNESS_RESULT_SCHEMA_VERSION,
             ),
             (
+                "RESULT_PATH",
+                crate::fuzz::code::CODE_FUZZ_HARNESS_RESULT_PATH,
+            ),
+            (
                 "PERMIT_SCHEMA",
                 crate::execution::CALL_PERMIT_PROTOCOL_SCHEMA_VERSION,
             ),

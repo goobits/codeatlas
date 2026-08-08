@@ -1,5 +1,6 @@
 use super::harness::{
-    CodeFuzzHarnessResult, CodeFuzzWorkload, CodeHarnessInput, CODE_FUZZ_WORKLOAD_SCHEMA_VERSION,
+    CodeFuzzHarnessResult, CodeFuzzWorkload, CodeHarnessInput, CODE_FUZZ_HARNESS_RESULT_PATH,
+    CODE_FUZZ_WORKLOAD_SCHEMA_VERSION,
 };
 use super::report::{CodeFuzzFailure, CodeFuzzReport, CodeFuzzReportBody};
 use crate::execution::artifact::{digest_value, ManagedArtifact};
@@ -12,8 +13,6 @@ use crate::execution::{
 use crate::fuzz::reproducer::{Reproducer, ReproducerBody};
 use anyhow::{Context, Result};
 use std::path::Path;
-
-const CODE_REPORT_PATH: &str = "reports/code/result.json";
 
 pub(crate) struct CodeWorkloadAdapter {
     strategy: CodeFuzzWorkload,
@@ -94,7 +93,7 @@ impl WorkloadAdapter for CodeWorkloadAdapter {
         store: &ArtifactStore,
     ) -> Result<WorkloadCompletion> {
         let bytes = crate::execution::private_fs::read_bounded_file(
-            &writable_root.join(CODE_REPORT_PATH),
+            &writable_root.join(CODE_FUZZ_HARNESS_RESULT_PATH),
             plan.body.limits.max_call_result_bytes,
             "code fuzz harness result",
         )?;
@@ -221,7 +220,8 @@ mod tests {
         ExecutionOutcome, ExecutionPlan, ExecutionSubject, Redactor, WorkloadAdapter,
     };
     use crate::fuzz::code::harness::{
-        sample_code_fuzz_workload, CodeHarnessInput, CODE_FUZZ_HARNESS_RESULT_SCHEMA_VERSION,
+        sample_code_fuzz_workload, CodeHarnessInput, CODE_FUZZ_HARNESS_RESULT_PATH,
+        CODE_FUZZ_HARNESS_RESULT_SCHEMA_VERSION,
     };
     use crate::fuzz::code::CodeFuzzActionLimits;
     use crate::fuzz::reproducer::Reproducer;
@@ -289,9 +289,9 @@ mod tests {
         let state = root.join("state");
         let writable = root.join("writable");
         std::fs::create_dir_all(&workspace).expect("workspace");
-        std::fs::create_dir_all(writable.join("reports/code")).expect("report directory");
+        std::fs::create_dir_all(writable.join("control")).expect("control directory");
         std::fs::write(
-            writable.join("reports/code/result.json"),
+            writable.join(CODE_FUZZ_HARNESS_RESULT_PATH),
             serde_json::to_vec(&json!({
                 "schema_version": CODE_FUZZ_HARNESS_RESULT_SCHEMA_VERSION,
                 "plan_id": plan.id,

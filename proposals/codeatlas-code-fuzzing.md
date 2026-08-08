@@ -482,6 +482,7 @@ language-neutral fixtures.
 ~ src/execution/sandbox/container/{workload.rs,workload_harness.py}
 ~ src/execution/sandbox/container.rs
 ~ src/http/{planning.rs,schemathesis/adapter.rs,schemathesis/toolchain.rs}
+~ src/fuzz/code/mod.rs
 ~ src/fuzz/code/report.rs
 ~ src/fuzz/model.rs
 ~ src/fuzz/reproducer.rs
@@ -521,6 +522,25 @@ uploaded artifact `8987634484` with SHA-256
 `022f1636ca55dba31aa3c1231680200e8e87b29e7ccdb0cb72c82092f0a1a56d`.
 The target-observed gate remains open pending one duplicate-checked run of the
 corrected revision.
+
+Hosted checkpoint (2026-08-07): retry run `31162790047` executed exact commit
+`e706d9f` and passed the corrected zero-call planning boundary. The Python
+target then observed one readiness permit and 32 generated-case permits, every
+cleanup lease released and verified, and no reduction or retry before the
+sparse equality fixture exhausted its bounded search. Collection also found
+that the private harness result depended on a late-created adapter report
+directory. The correction makes the fixture predicate monotone so native
+shrinking deterministically minimizes to 2 and moves the private result into
+the kernel-precreated `control/` directory. The Rust harness protocol owns that
+exact result path, the Python conformance test prevents adapter drift, and the
+adapter refuses a missing or replaced control directory; this does not add a
+report owner or a new scratch-path contract. The run restored 5,640,060,261
+cache bytes from the exact `c7e183f` generation, saved a useful
+5,123,919,194-byte `e706d9f`
+generation, and uploaded artifact `8987839822` with SHA-256
+`a3f8204ec490165835e66c617a1a73e3821b0a557dddcc64a9bf8c9b204e19d0`.
+The target-observed gate remains open pending one duplicate-checked corrected
+revision.
 
 ## Phase 2: Rust, Python, JavaScript, and TypeScript adapters
 

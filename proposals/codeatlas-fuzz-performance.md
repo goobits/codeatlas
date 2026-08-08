@@ -569,7 +569,14 @@ profiles, then correctly stopped before a Python target call because the live
 fixture requested 32 cases above its shared configured ceiling of 12. The
 narrow correction is to set the fixture ceiling to 32 while retaining HTTP's
 12-case tightening override, then issue one duplicate-checked run for the new
-revision.
+revision. Retry run `31162790047` on `e706d9f` passed that boundary and proved
+one readiness plus 32 generated permits with verified cleanup, but the sparse
+equality fixture produced no native reduction/retry before its bounded search
+ended and its private result relied on a late-created adapter directory. The
+next correction uses a monotone shrink fixture and the existing
+kernel-precreated `control/` directory, with one Rust-owned result-path
+constant and adapter conformance, then issues one duplicate-checked run for the
+new revision.
 
 ### Order and ownership rules
 

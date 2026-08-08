@@ -12,6 +12,7 @@ import os
 import random
 import signal
 import socket
+import stat
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -25,6 +26,7 @@ import hypothesis
 
 ADAPTER_SCHEMA = "codeatlas.python-fuzz-strategy/v1"
 RESULT_SCHEMA = "codeatlas.code-fuzz-harness-result/v1"
+RESULT_PATH = "control/code-result.json"
 PERMIT_SCHEMA = "codeatlas.execution-call-permit/v1"
 EXPECTED_HYPOTHESIS = "6.165.2"
 STRATEGY_FIELDS = {
@@ -538,10 +540,16 @@ def run(strategy: dict[str, Any]) -> dict[str, Any]:
 
 
 def write_result(result: dict[str, Any]) -> None:
-    root = Path(os.environ["CODEATLAS_SCRATCH"]) / "reports/code"
-    root.mkdir(parents=True, exist_ok=True)
-    temporary = root / "result.json.tmp"
-    final = root / "result.json"
+    scratch = Path(os.environ["CODEATLAS_SCRATCH"])
+    final = scratch / RESULT_PATH
+    root = final.parent
+    try:
+        mode = root.lstat().st_mode
+    except FileNotFoundError as error:
+        raise RuntimeError("kernel-created result directory is unavailable") from error
+    if not stat.S_ISDIR(mode):
+        raise RuntimeError("kernel-created result directory is not a directory")
+    temporary = final.with_suffix(".json.tmp")
     with temporary.open("xb") as handle:
         os.chmod(temporary, 0o600)
         handle.write(

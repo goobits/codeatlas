@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 pub(crate) const CODE_FUZZ_WORKLOAD_SCHEMA_VERSION: &str = "codeatlas.code-fuzz-workload/v1";
 pub(crate) const CODE_FUZZ_HARNESS_RESULT_SCHEMA_VERSION: &str =
     "codeatlas.code-fuzz-harness-result/v1";
+pub(crate) const CODE_FUZZ_HARNESS_RESULT_PATH: &str = "control/code-result.json";
 
 pub(crate) struct CodeHarnessInput {
     pub image_owner: String,
