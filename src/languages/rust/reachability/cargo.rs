@@ -14,6 +14,12 @@ pub(super) struct CargoLayout {
     feature_pattern: Regex,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::languages::rust) struct FuzzLibraryBinding {
+    pub(in crate::languages::rust) package: String,
+    pub(in crate::languages::rust) package_root: String,
+}
+
 struct CargoPackage {
     name: String,
     root: PathBuf,
@@ -28,6 +34,50 @@ pub(super) struct CargoTarget {
     pub(super) module_base: PathBuf,
     pub(super) role: ContextRole,
     pub(super) library: bool,
+    fuzz_library: bool,
+}
+
+pub(in crate::languages::rust) fn resolve_fuzz_library_binding(
+    project: &ResolvedAnalysisProject,
+    source: &Path,
+) -> Result<Option<FuzzLibraryBinding>> {
+    let source = source
+        .canonicalize()
+        .with_context(|| format!("Could not resolve Rust fuzz source {}", source.display()))?;
+    let layout = CargoLayout::load(project)?;
+    let mut matches = layout
+        .targets
+        .iter()
+        .filter(|target| target.fuzz_library && target.root == source)
+        .filter_map(|target| {
+            layout
+                .packages
+                .iter()
+                .find(|package| package.name == target.package)
+                .map(|package| FuzzLibraryBinding {
+                    package: package.name.clone(),
+                    package_root: {
+                        let relative =
+                            crate::paths::normalize_relative_path(&package.root, &project.root);
+                        if relative.is_empty() {
+                            ".".to_string()
+                        } else {
+                            relative
+                        }
+                    },
+                })
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by(|left, right| {
+        left.package
+            .cmp(&right.package)
+            .then_with(|| left.package_root.cmp(&right.package_root))
+    });
+    matches.dedup();
+    if matches.len() > 1 {
+        anyhow::bail!("Rust fuzz source matches more than one Cargo library target");
+    }
+    Ok(matches.pop())
 }
 
 impl CargoLayout {
@@ -203,6 +253,10 @@ fn cargo_target(package: &Package, target: &Target) -> CargoTarget {
                 "lib" | "rlib" | "dylib" | "cdylib" | "staticlib" | "proc-macro"
             )
         }),
+        fuzz_library: target
+            .kind
+            .iter()
+            .any(|kind| matches!(kind.as_str(), "lib" | "rlib")),
     }
 }
 
@@ -220,7 +274,7 @@ fn target_module_base(root: &Path, modules_beside_root: bool) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::CargoLayout;
+    use super::{resolve_fuzz_library_binding, CargoLayout};
     use crate::config::ResolvedAnalysisProject;
     use crate::domain::source_graph::ProjectId;
     use std::collections::BTreeMap;
@@ -260,5 +314,13 @@ mod tests {
             .targets
             .iter()
             .all(|target| { target.package == "helper-crate" && target.root.starts_with(&root) }));
+
+        assert_eq!(
+            resolve_fuzz_library_binding(&project, &root.join("src/lib.rs")).expect("fuzz binding"),
+            Some(super::FuzzLibraryBinding {
+                package: "helper-crate".to_string(),
+                package_root: ".".to_string(),
+            })
+        );
     }
 }

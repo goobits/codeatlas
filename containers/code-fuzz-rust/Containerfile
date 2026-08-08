@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.7
+
+ARG PYTHON_IMAGE
+ARG RUST_IMAGE
+FROM ${PYTHON_IMAGE} AS python-runtime
+FROM ${RUST_IMAGE} AS runtime
+
+ARG SOURCE_DATE_EPOCH
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+WORKDIR /opt/codeatlas-rust-fuzz
+
+COPY --from=python-runtime /usr/local/ /usr/local/
+COPY src/languages/rust/fuzz_cargo.toml ./Cargo.toml
+COPY src/languages/rust/fuzz_cargo.lock ./Cargo.lock
+COPY containers/code-fuzz-rust/engine.rs ./src/main.rs
+
+RUN test -n "${SOURCE_DATE_EPOCH}" \
+    && /usr/local/bin/python3 --version 2>&1 | grep -Eq '^Python 3\.10\.' \
+    && /usr/local/cargo/bin/rustc --version \
+        | grep -Eq '^rustc 1\.97\.1 ' \
+    && /usr/local/cargo/bin/cargo fetch --locked \
+    && /usr/local/cargo/bin/cargo metadata --locked --offline --format-version 1 \
+        | /usr/local/bin/python3 -c 'import json,sys; p=json.load(sys.stdin)["packages"]; v=[x["version"] for x in p if x["name"]=="proptest"]; assert v==["1.11.0"], v' \
+    && test -x /usr/bin/env \
+    && test -x /bin/sh \
+    && rm -rf /root/.cache /tmp/* /opt/codeatlas-rust-fuzz
+
+FROM scratch
+COPY --from=runtime / /

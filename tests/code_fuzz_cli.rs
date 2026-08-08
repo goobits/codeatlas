@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const PYTHON_IMAGE: &str = "ghcr.io/goobits/codeatlas-python-fuzz@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const RUST_IMAGE: &str = "ghcr.io/goobits/codeatlas-rust-fuzz@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 fn run_codeatlas(root: &Path, state: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_codeatlas"))
@@ -71,6 +72,63 @@ fn create_python_fixture(directory: &TestDirectory) -> (PathBuf, PathBuf) {
         .expect("CodeAtlas fixture config"),
     )
     .expect("CodeAtlas fixture config");
+    (workspace, state)
+}
+
+fn create_rust_fixture(directory: &TestDirectory) -> (PathBuf, PathBuf) {
+    let workspace = directory.path().join("workspace");
+    let state = directory.path().join("state");
+    fs::create_dir_all(workspace.join("src")).expect("Rust source directory");
+    fs::create_dir_all(&state).expect("external state root");
+    fs::write(
+        workspace.join("Cargo.toml"),
+        "[package]\nname = \"rust-fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+    )
+    .expect("Rust fixture manifest");
+    fs::write(
+        workspace.join("src/lib.rs"),
+        "pub fn classify(value: i8) -> i8 {\n    if value == 2 { panic!(\"two\"); }\n    value\n}\n",
+    )
+    .expect("Rust fixture source");
+    fs::write(
+        workspace.join("codeatlas.json"),
+        serde_json::to_vec_pretty(&json!({
+            "root": ".",
+            "projects": [{
+                "id": "rust-fixture",
+                "root": ".",
+                "languages": ["rs"],
+                "contexts": {
+                    "public-api": {
+                        "role": "production",
+                        "scope": "public_surface",
+                        "entrypoints": ["src/lib.rs"]
+                    }
+                }
+            }],
+            "package_exports": false,
+            "execution": {
+                "isolation": {
+                    "container": {
+                        "executable": workspace.join("missing-container-runtime")
+                    }
+                }
+            },
+            "fuzz": {
+                "code": {
+                    "targets": [{
+                        "id": "rust-fixture",
+                        "project": "rust-fixture",
+                        "language": "rust",
+                        "image": RUST_IMAGE,
+                        "preauthorized": true
+                    }]
+                }
+            }
+        }))
+        .expect("CodeAtlas Rust fixture config"),
+    )
+    .expect("CodeAtlas Rust fixture config");
     (workspace, state)
 }
 
@@ -225,6 +283,68 @@ fn python_target_and_replay_plan_deterministically_without_calls_or_source_state
             .map(Into::into)
             .collect()
     );
+}
+
+#[test]
+fn rust_target_plans_one_pinned_engine_and_exact_delegated_cargo_command() {
+    let directory = TestDirectory::create("codeatlas-rust-fuzz-plan");
+    let (workspace, state) = create_rust_fixture(&directory);
+    let source_before = fs::read(workspace.join("src/lib.rs")).expect("Rust source before plan");
+    let args = [
+        "fuzz",
+        "code",
+        "--target",
+        "rust-fixture",
+        "--symbol",
+        "src/lib.rs#classify",
+        "--seed",
+        "42",
+        "--max-cases",
+        "3",
+        "--max-shrinks",
+        "2",
+        "--max-failures",
+        "1",
+        "--max-calls",
+        "7",
+    ];
+    let first = run_codeatlas(&workspace, &state, &args);
+    assert!(
+        first.status.success(),
+        "Rust planning failed:\n{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let second = run_codeatlas(&workspace, &state, &args);
+    assert!(second.status.success());
+    let first: Value = serde_json::from_slice(&first.stdout).expect("first Rust plan JSON");
+    let second: Value = serde_json::from_slice(&second.stdout).expect("second Rust plan JSON");
+    assert_eq!(first, second, "Rust planning must be byte deterministic");
+    validate_schema(&first, "codeatlas-execution-plan-v2.schema.json");
+    assert_eq!(first["workload"]["body"]["language"], "rust");
+    assert_eq!(first["workload"]["body"]["engine"], "proptest");
+    assert_eq!(
+        first["workload"]["body"]["adapter_version"],
+        "codeatlas.rust-proptest/v1"
+    );
+    assert_eq!(first["managed_images"][0]["reference"], RUST_IMAGE);
+    assert_eq!(
+        first["managed_commands"]
+            .as_array()
+            .expect("managed commands")
+            .iter()
+            .filter_map(|command| command["owner"].as_str())
+            .collect::<Vec<_>>(),
+        ["code_fuzz_engine", "code_fuzz_rust_cargo"]
+    );
+    assert_eq!(
+        fs::read(workspace.join("src/lib.rs")).expect("Rust source after plan"),
+        source_before
+    );
+    assert!(
+        !workspace.join("Cargo.lock").exists(),
+        "zero-call Rust planning must not create a consumer lockfile"
+    );
+    assert!(!workspace.join("target").exists());
 }
 
 #[test]

@@ -16,9 +16,10 @@ const definitions = Object.freeze({
 	http: Object.freeze({
 		name: 'HTTP workload',
 		slug: 'http-workload',
-		containerfile: path.join(repositoryRoot, 'containers', 'http-fuzz', 'Containerfile')
+		containerfile: path.join(repositoryRoot, 'containers', 'http-fuzz', 'Containerfile'),
+		images: Object.freeze(['python'])
 	}),
-	code: Object.freeze({
+	'code-python': Object.freeze({
 		name: 'Python code-fuzz workload',
 		slug: 'code-fuzz-python-workload',
 		containerfile: path.join(
@@ -26,13 +27,25 @@ const definitions = Object.freeze({
 			'containers',
 			'code-fuzz-python',
 			'Containerfile'
-		)
+		),
+		images: Object.freeze(['python'])
+	}),
+	'code-rust': Object.freeze({
+		name: 'Rust code-fuzz workload',
+		slug: 'code-fuzz-rust-workload',
+		containerfile: path.join(
+			repositoryRoot,
+			'containers',
+			'code-fuzz-rust',
+			'Containerfile'
+		),
+		images: Object.freeze(['python', 'rust'])
 	})
 })
 
 const requireWorkload = value => {
 	if (!Object.hasOwn(definitions, value)) {
-		throw new Error('--workload must be exactly http or code')
+		throw new Error('--workload must be exactly http, code-python, or code-rust')
 	}
 	return value
 }
@@ -43,9 +56,9 @@ const parseArguments = arguments_ => {
 		const name = arguments_[index]
 		const value = arguments_[index + 1]
 		if (!name?.startsWith('--') || value === undefined || value.startsWith('--')) {
-			throw new Error('Python workload build options must be exact --name value pairs')
+			throw new Error('Workload build options must be exact --name value pairs')
 		}
-		if (values.has(name)) throw new Error(`Python workload build option ${name} was repeated`)
+		if (values.has(name)) throw new Error(`Workload build option ${name} was repeated`)
 		values.set(name, value)
 	}
 	const known = new Set([
@@ -53,16 +66,37 @@ const parseArguments = arguments_ => {
 		'--runtime',
 		'--socket',
 		'--python-image',
+		'--rust-image',
 		'--buildkit-image',
 		'--platform',
 		'--network',
 		'--out'
 	])
 	for (const name of values.keys()) {
-		if (!known.has(name)) throw new Error(`Unknown Python workload build option ${name}`)
+		if (!known.has(name)) throw new Error(`Unknown workload build option ${name}`)
 	}
-	for (const name of known) {
-		if (!values.has(name)) throw new Error(`Missing required Python workload build option ${name}`)
+	for (const name of [
+		'--workload',
+		'--runtime',
+		'--socket',
+		'--buildkit-image',
+		'--platform',
+		'--network',
+		'--out'
+	]) {
+		if (!values.has(name)) throw new Error(`Missing required workload build option ${name}`)
+	}
+	const workload = requireWorkload(values.get('--workload'))
+	const definition = definitions[workload]
+	for (const image of definition.images) {
+		const name = `--${image}-image`
+		if (!values.has(name)) throw new Error(`Missing required workload build option ${name}`)
+	}
+	for (const image of ['python', 'rust']) {
+		const name = `--${image}-image`
+		if (!definition.images.includes(image) && values.has(name)) {
+			throw new Error(`${name} is not used by workload ${workload}`)
+		}
 	}
 	const network = values.get('--network')
 	if (network !== 'allow') {
@@ -73,10 +107,15 @@ const parseArguments = arguments_ => {
 		throw new Error('--platform must be exactly linux/amd64 or linux/arm64')
 	}
 	return {
-		workload: requireWorkload(values.get('--workload')),
+		workload,
 		runtime: values.get('--runtime'),
 		socket: values.get('--socket'),
-		pythonImage: requireDigestImage(values.get('--python-image'), '--python-image'),
+		pythonImage: values.has('--python-image')
+			? requireDigestImage(values.get('--python-image'), '--python-image')
+			: undefined,
+		rustImage: values.has('--rust-image')
+			? requireDigestImage(values.get('--rust-image'), '--rust-image')
+			: undefined,
 		buildkitImage: requireDigestImage(
 			values.get('--buildkit-image'),
 			'--buildkit-image'
@@ -87,13 +126,26 @@ const parseArguments = arguments_ => {
 	}
 }
 
-const pythonWorkloadSpecification = ({ workload, pythonImage, out, loadOut }) => {
+const workloadSpecification = ({ workload, pythonImage, rustImage, out, loadOut }) => {
 	const definition = definitions[requireWorkload(workload)]
+	const images = {
+		python: pythonImage,
+		rust: rustImage
+	}
+	const resolvedImages = definition.images.map(name => ({
+		name,
+		image: requireDigestImage(images[name], `--${name}-image`)
+	}))
 	return {
 		...definition,
 		context: repositoryRoot,
-		buildArguments: { PYTHON_IMAGE: pythonImage },
-		pinnedImages: [{ image: pythonImage, label: 'python-image' }],
+		buildArguments: Object.fromEntries(
+			resolvedImages.map(({ name, image }) => [`${name.toUpperCase()}_IMAGE`, image])
+		),
+		pinnedImages: resolvedImages.map(({ name, image }) => ({
+			image,
+			label: `${name}-image`
+		})),
 		maxArchiveBytes,
 		out,
 		loadOut
@@ -103,7 +155,7 @@ const pythonWorkloadSpecification = ({ workload, pythonImage, out, loadOut }) =>
 const createBuildArguments = options =>
 	createContainerBuildArguments({
 		...options,
-		specification: pythonWorkloadSpecification(options)
+		specification: workloadSpecification(options)
 	})
 
 const validateBuildArtifacts = (workload, archive, metadata, loadArchive) => {
@@ -117,7 +169,7 @@ const validateBuildArtifacts = (workload, archive, metadata, loadArchive) => {
 	)
 }
 
-const buildPythonWorkload = options => {
+const buildWorkload = options => {
 	requireExternalCargoTarget(repositoryRoot)
 	return buildContainerImage(
 		{
@@ -128,14 +180,14 @@ const buildPythonWorkload = options => {
 			network: options.network,
 			logRoot: options.logRoot
 		},
-		pythonWorkloadSpecification(options)
+		workloadSpecification(options)
 	)
 }
 
 if (require.main === module) {
 	try {
 		process.stdout.write(
-			`${JSON.stringify(buildPythonWorkload(parseArguments(process.argv.slice(2))))}\n`
+			`${JSON.stringify(buildWorkload(parseArguments(process.argv.slice(2))))}\n`
 		)
 	} catch (error) {
 		process.stderr.write(`${error.message}\n`)
@@ -144,9 +196,9 @@ if (require.main === module) {
 }
 
 module.exports = {
-	buildPythonWorkload,
+	buildWorkload,
 	createBuildArguments,
 	parseArguments,
-	pythonWorkloadSpecification,
+	workloadSpecification,
 	validateBuildArtifacts
 }

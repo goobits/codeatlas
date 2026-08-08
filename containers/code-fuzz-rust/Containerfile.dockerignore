@@ -1,0 +1,9 @@
+**
+!containers/
+!containers/code-fuzz-rust/
+!containers/code-fuzz-rust/engine.rs
+!src/
+!src/languages/
+!src/languages/rust/
+!src/languages/rust/fuzz_cargo.lock
+!src/languages/rust/fuzz_cargo.toml

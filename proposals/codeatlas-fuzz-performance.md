@@ -217,6 +217,24 @@ HTTP/PostgreSQL usage, inspection, docs, cross-domain lexicon, and truthful
 code/HTTP init are scheduled in the separate subject-parity proposal. They are
 not created merely for matrix symmetry.
 
+### Defensive user-safety purpose
+
+This program exists to protect CodeAtlas users by finding crashes, invariant
+violations, unsafe side effects, resource exhaustion, and performance cliffs
+before a release reaches them. Runtime exploration is owner-authorized quality
+assurance over CodeAtlas itself or an exact checked-in target the operator owns
+and has made disposable. It is not a general-purpose remote security-testing
+service.
+
+Every executable workflow starts from a zero-call plan and may address only the
+target, process, database, or destination named by that plan. Unknown, remote,
+production, ambient-credential, or incompletely isolated targets remain
+review-only or blocked; review cannot create a missing safety capability.
+CodeAtlas never discovers unrelated network targets, broadens an allowlist,
+changes a consumer checkout, or turns a reproducer into authority to execute
+against different evidence. These restrictions are product requirements, not
+development-environment assumptions.
+
 ## Architectural decision
 
 ```text
@@ -572,6 +590,21 @@ than introducing a Python-only path. Full `pnpm check` passes with 436 root
 unit tests, all integration suites, warning-denying Clippy, schema/spec drift,
 the isolation probe, eight-lane self-dogfood with zero gates, and the 429-file
 package. The first incomplete gate is the Rust adapter in Phase 12.
+
+The Rust adapter now passes every locally knowable Phase 12 gate. It consumes
+the shared callable/corpus/execution owners, provisions one pinned proptest
+engine manifest and lock, creates no consumer `Cargo.lock` or `target/`, and
+uses the shared workload-image transaction. Ten focused Rust unit tests, five
+code-fuzz CLI integrations, 16 image/orchestration tests, private Python syntax
+checks, generated-harness parsing, and an external offline Cargo type-check
+pass. The type-check found and fixed one missing `Read` trait import. The first
+full self-audit identified the workload image's Cargo entrypoint as an
+undeclared tooling root; the exact root is now represented in `codeatlas.json`,
+and the repeated audit reports 304 advisory findings and zero gates. The
+warning-denying Clippy surface and 435-file package pass. The first
+unproved claim is target-observed Rust generated-case, reduction, retry, and
+replay execution inside the digest-pinned hosted OCI workload; no local check
+is promoted to that live evidence.
 
 ### Order and ownership rules
 

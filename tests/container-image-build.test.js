@@ -15,10 +15,10 @@ const {
 	validateSpecification
 } = require('../tasks/build-container-image.js')
 const {
-	createBuildArguments: createPythonBuildArguments,
-	parseArguments: parsePythonArguments,
-	validateBuildArtifacts: validatePythonBuildArtifacts
-} = require('../tasks/build-python-workload.js')
+	createBuildArguments: createWorkloadBuildArguments,
+	parseArguments: parseWorkloadArguments,
+	validateBuildArtifacts: validateWorkloadBuildArtifacts
+} = require('../tasks/build-workload.js')
 const { createRuntimeOptions } = require('../tasks/container-runtime.js')
 
 const digest = 'a'.repeat(64)
@@ -74,6 +74,20 @@ test('Python code-fuzz recipe exposes only its hash-locked native engine runtime
 	assert.equal(
 		fs.readFileSync(path.join(root, 'Containerfile.dockerignore'), 'utf8'),
 		'**\n!src/\n!src/languages/\n!src/languages/python/\n!src/languages/python/fuzz_requirements.txt\n'
+	)
+})
+
+test('Rust code-fuzz recipe provisions one locked engine manifest into a metadata-free runtime', () => {
+	const root = path.resolve(__dirname, '..', 'containers', 'code-fuzz-rust')
+	const recipe = fs.readFileSync(path.join(root, 'Containerfile'), 'utf8')
+	assert.match(recipe, /cargo fetch --locked/)
+	assert.match(recipe, /cargo metadata --locked --offline/)
+	assert.match(recipe, /\["1\.11\.0"\]/)
+	assert.match(recipe, /FROM scratch\nCOPY --from=runtime \/ \/\n$/)
+	assert.doesNotMatch(recipe.slice(recipe.lastIndexOf('FROM scratch')), /^ENV /m)
+	assert.equal(
+		fs.readFileSync(path.join(root, 'Containerfile.dockerignore'), 'utf8'),
+		'**\n!containers/\n!containers/code-fuzz-rust/\n!containers/code-fuzz-rust/engine.rs\n!src/\n!src/languages/\n!src/languages/rust/\n!src/languages/rust/fuzz_cargo.lock\n!src/languages/rust/fuzz_cargo.toml\n'
 	)
 })
 
@@ -196,10 +210,11 @@ test('probe build has one bounded solve with canonical OCI and optional Docker i
 	)
 })
 
-test('Python workloads reuse one bounded image transaction with exact subject recipes', () => {
+test('workloads reuse one bounded image transaction with exact subject recipes', () => {
 	const pythonDigest = 'd'.repeat(64)
-	for (const workload of ['http', 'code']) {
-		const options = parsePythonArguments([
+	const rustDigest = 'e'.repeat(64)
+	for (const workload of ['http', 'code-python']) {
+		const options = parseWorkloadArguments([
 			'--workload', workload,
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/run/docker.sock',
@@ -209,7 +224,7 @@ test('Python workloads reuse one bounded image transaction with exact subject re
 			'--network', 'allow',
 			'--out', `/tmp/codeatlas-${workload}.oci.tar`
 		])
-		const arguments_ = createPythonBuildArguments({
+		const arguments_ = createWorkloadBuildArguments({
 			...options,
 			clientRoot: '/tmp/client',
 			metadata: `/tmp/${workload}.metadata.json`,
@@ -223,8 +238,30 @@ test('Python workloads reuse one bounded image transaction with exact subject re
 		assert.equal(arguments_.at(-1), path.resolve(__dirname, '..'))
 		assert.equal(arguments_.filter(argument => argument === '--output').length, 2)
 	}
+	const rustOptions = parseWorkloadArguments([
+		'--workload', 'code-rust',
+		'--runtime', '/usr/bin/docker',
+		'--socket', '/run/docker.sock',
+		'--python-image', `python@sha256:${pythonDigest}`,
+		'--rust-image', `rust@sha256:${rustDigest}`,
+		'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
+		'--platform', 'linux/amd64',
+		'--network', 'allow',
+		'--out', '/tmp/codeatlas-code-rust.oci.tar'
+	])
+	const rustArguments = createWorkloadBuildArguments({
+		...rustOptions,
+		clientRoot: '/tmp/client',
+		metadata: '/tmp/code-rust.metadata.json',
+		loadOut: '/tmp/codeatlas-code-rust.docker.tar',
+		sourceDateEpoch: '1700000000',
+		builder: 'codeatlas-images-1'
+	})
+	assert.ok(rustArguments.includes(`PYTHON_IMAGE=python@sha256:${pythonDigest}`))
+	assert.ok(rustArguments.includes(`RUST_IMAGE=rust@sha256:${rustDigest}`))
+	assert.equal(rustArguments.filter(argument => argument === '--output').length, 2)
 	assert.throws(
-		() => parsePythonArguments([
+		() => parseWorkloadArguments([
 			'--workload', 'http',
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/run/docker.sock',
@@ -237,8 +274,8 @@ test('Python workloads reuse one bounded image transaction with exact subject re
 		/exact repository@sha256/
 	)
 	assert.throws(
-		() => parsePythonArguments([
-			'--workload', 'code',
+		() => parseWorkloadArguments([
+			'--workload', 'code-python',
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/run/docker.sock',
 			'--python-image', `python@sha256:${pythonDigest}`,
@@ -250,7 +287,7 @@ test('Python workloads reuse one bounded image transaction with exact subject re
 		/exactly allow/
 	)
 	assert.throws(
-		() => parsePythonArguments([
+		() => parseWorkloadArguments([
 			'--workload', 'unknown',
 			'--runtime', '/usr/bin/docker',
 			'--socket', '/run/docker.sock',
@@ -260,7 +297,20 @@ test('Python workloads reuse one bounded image transaction with exact subject re
 			'--network', 'allow',
 			'--out', '/tmp/unknown.tar'
 		]),
-		/exactly http or code/
+		/exactly http, code-python, or code-rust/
+	)
+	assert.throws(
+		() => parseWorkloadArguments([
+			'--workload', 'code-rust',
+			'--runtime', '/usr/bin/docker',
+			'--socket', '/run/docker.sock',
+			'--python-image', `python@sha256:${pythonDigest}`,
+			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
+			'--platform', 'linux/amd64',
+			'--network', 'allow',
+			'--out', '/tmp/code-rust.tar'
+		]),
+		/Missing required workload build option --rust-image/
 	)
 })
 
@@ -310,7 +360,7 @@ test('probe build artifacts have finite nonzero byte ceilings', () => {
 			/Docker import archive must contain 1 through 67108864 bytes/
 		)
 		fs.truncateSync(loadArchive, 65 * 1024 * 1024)
-		assert.deepEqual(validatePythonBuildArtifacts('http', archive, metadata, loadArchive), {
+		assert.deepEqual(validateWorkloadBuildArtifacts('http', archive, metadata, loadArchive), {
 			archiveBytes: 7,
 			loadArchiveBytes: 65 * 1024 * 1024,
 			metadataBytes: 2

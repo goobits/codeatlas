@@ -3,6 +3,7 @@ use crate::languages::definition::LanguageDefinition;
 use anyhow::Result;
 use std::path::Path;
 
+pub(crate) mod fuzz;
 pub(crate) mod parser;
 mod public_api;
 pub(super) mod reachability;

@@ -279,7 +279,7 @@ HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
         });
     }
 
-    fn enable_live_code_workload(&self, image: &str) {
+    fn enable_live_python_code_workload(&self, image: &str) {
         fs::write(
             self.workspace.join("safe.py"),
             r#"import os
@@ -313,6 +313,49 @@ def fails_at_or_above_two(value: int) -> int:
                     "id": "python-live",
                     "project": "python-live",
                     "language": "python",
+                    "image": image,
+                    "preauthorized": true
+                }]
+            });
+        });
+    }
+
+    fn enable_live_rust_code_workload(&self, image: &str) {
+        fs::write(
+            self.workspace.join("Cargo.toml"),
+            "[package]\nname = \"codeatlas-rust-live\"\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+        )
+        .expect("live Rust manifest fixture");
+        fs::write(
+            self.workspace.join("src/lib.rs"),
+            r#"pub fn fails_in_shrinkable_window(value: i8) -> i8 {
+    assert_eq!(std::env::var("CODEATLAS_FUZZ").as_deref(), Ok("1"));
+    if (2..=64).contains(&value) {
+        panic!("deterministic native-engine fixture");
+    }
+    value
+}
+"#,
+        )
+        .expect("live Rust code-fuzz fixture");
+        self.update_config(|config| {
+            config["projects"] = json!([{
+                "id": "rust-live",
+                "root": ".",
+                "languages": ["rs"],
+                "contexts": {
+                    "public-api": {
+                        "role": "production",
+                        "scope": "public_surface",
+                        "entrypoints": ["src/lib.rs"]
+                    }
+                }
+            }]);
+            config["fuzz"]["code"] = json!({
+                "targets": [{
+                    "id": "rust-live",
+                    "project": "rust-live",
+                    "language": "rust",
                     "image": image,
                     "preauthorized": true
                 }]
@@ -392,15 +435,8 @@ def fails_at_or_above_two(value: int) -> int:
         serde_json::from_slice(&output.stdout).expect("execution plan JSON")
     }
 
-    fn plan_code(&self, extra: &[&str]) -> Value {
-        let mut arguments = vec![
-            "fuzz",
-            "code",
-            "--target",
-            "python-live",
-            "--symbol",
-            "safe.py#fails_at_or_above_two",
-        ];
+    fn plan_code(&self, target: &str, symbol: &str, extra: &[&str]) -> Value {
+        let mut arguments = vec!["fuzz", "code", "--target", target, "--symbol", symbol];
         arguments.extend_from_slice(extra);
         let output = run_codeatlas(&self.workspace, &self.state, &arguments);
         assert!(
@@ -1047,7 +1083,7 @@ fn interrupt_cancels_the_workload_then_runs_verified_cleanup() {
 #[cfg(unix)]
 #[test]
 #[ignore = "requires digest-pinned probe/workload images and a usable local OCI socket"]
-fn live_oci_backend_executes_managed_http_and_python_code_workloads() {
+fn live_oci_backend_executes_managed_http_and_code_workloads() {
     let runtime = std::env::var_os("CODEATLAS_TEST_OCI_RUNTIME")
         .expect("CODEATLAS_TEST_OCI_RUNTIME is required for the live isolation gate");
     let socket = std::env::var_os("CODEATLAS_TEST_OCI_SOCKET")
@@ -1056,8 +1092,10 @@ fn live_oci_backend_executes_managed_http_and_python_code_workloads() {
         .expect("CODEATLAS_TEST_OCI_PROBE_IMAGE is required for the live isolation gate");
     let http_image = std::env::var("CODEATLAS_TEST_OCI_HTTP_IMAGE")
         .expect("CODEATLAS_TEST_OCI_HTTP_IMAGE is required for the live isolation gate");
-    let code_image = std::env::var("CODEATLAS_TEST_OCI_CODE_IMAGE")
-        .expect("CODEATLAS_TEST_OCI_CODE_IMAGE is required for the live isolation gate");
+    let python_code_image = std::env::var("CODEATLAS_TEST_OCI_PYTHON_CODE_IMAGE")
+        .expect("CODEATLAS_TEST_OCI_PYTHON_CODE_IMAGE is required for the live isolation gate");
+    let rust_code_image = std::env::var("CODEATLAS_TEST_OCI_RUST_CODE_IMAGE")
+        .expect("CODEATLAS_TEST_OCI_RUST_CODE_IMAGE is required for the live isolation gate");
     assert!(
         image.contains("@sha256:"),
         "live probe image must be digest-pinned"
@@ -1067,8 +1105,12 @@ fn live_oci_backend_executes_managed_http_and_python_code_workloads() {
         "live HTTP workload image must be digest-pinned"
     );
     assert!(
-        code_image.contains("@sha256:"),
+        python_code_image.contains("@sha256:"),
         "live Python code-fuzz workload image must be digest-pinned"
+    );
+    assert!(
+        rust_code_image.contains("@sha256:"),
+        "live Rust code-fuzz workload image must be digest-pinned"
     );
     let fixture = IsolationFixture::create("codeatlas-isolation-live");
     fixture.enable_live_workload(&http_image);
@@ -1158,20 +1200,24 @@ fn live_oci_backend_executes_managed_http_and_python_code_workloads() {
             .any(|operation| operation["operation"] == "POST /widgets/{id}")
     }));
 
-    fixture.enable_live_code_workload(&code_image);
+    fixture.enable_live_python_code_workload(&python_code_image);
     let source_before = fs::read(fixture.workspace.join("safe.py")).expect("live code source");
-    let code_plan = fixture.plan_code(&[
-        "--max-cases",
-        "32",
-        "--max-shrinks",
-        "32",
-        "--max-failures",
-        "1",
-        "--max-calls",
-        "66",
-        "--seed",
-        "44",
-    ]);
+    let code_plan = fixture.plan_code(
+        "python-live",
+        "safe.py#fails_at_or_above_two",
+        &[
+            "--max-cases",
+            "32",
+            "--max-shrinks",
+            "32",
+            "--max-failures",
+            "1",
+            "--max-calls",
+            "66",
+            "--seed",
+            "44",
+        ],
+    );
     assert_eq!(code_plan["workload"]["body"]["fuzz_marker"], true);
     assert_eq!(
         code_plan["workload"]["body"]["adapter_version"],
@@ -1223,6 +1269,68 @@ fn live_oci_backend_executes_managed_http_and_python_code_workloads() {
     assert_eq!(
         fs::read(fixture.workspace.join("safe.py")).expect("live code source after fuzzing"),
         source_before
+    );
+
+    fixture.enable_live_rust_code_workload(&rust_code_image);
+    let rust_source_before =
+        fs::read(fixture.workspace.join("src/lib.rs")).expect("live Rust source");
+    let rust_plan = fixture.plan_code(
+        "rust-live",
+        "src/lib.rs#fails_in_shrinkable_window",
+        &[
+            "--max-cases",
+            "32",
+            "--max-shrinks",
+            "32",
+            "--max-failures",
+            "1",
+            "--max-calls",
+            "66",
+            "--seed",
+            "45",
+        ],
+    );
+    assert_eq!(rust_plan["workload"]["body"]["engine"], "proptest");
+    assert_eq!(
+        rust_plan["workload"]["body"]["adapter_version"],
+        "codeatlas.rust-proptest/v1"
+    );
+    let rust_receipt = fixture.execute_code(&rust_plan, 1);
+    assert_eq!(rust_receipt["outcome"], "failed");
+    let rust_categories = rust_receipt["calls"]["by_category"]
+        .as_array()
+        .expect("Rust call categories");
+    for category in ["readiness", "generated_case", "reduction", "retry"] {
+        assert!(
+            rust_categories.iter().any(|calls| {
+                calls["category"] == category
+                    && calls["count"].as_u64().is_some_and(|count| count > 0)
+            }),
+            "missing Rust call category {category}: {rust_receipt}"
+        );
+    }
+    let rust_report = fixture.report(&rust_receipt);
+    assert_eq!(rust_report["alternate_behavior"], true);
+    assert_eq!(rust_report["failures"].as_array().map(Vec::len), Some(1));
+    assert_eq!(rust_report["failures"][0]["kind"], "panic_or_crash");
+    assert_eq!(rust_report["failures"][0]["minimized"], true);
+    let rust_reproducer_link = &rust_report["failures"][0]["reproducer"];
+    let rust_reproducer = fixture.linked_artifact(rust_reproducer_link, "reproducers");
+    assert_eq!(
+        rust_reproducer["workload"]["body"]["replay_input"],
+        json!([{"kind": "integer", "value": "2"}])
+    );
+    let rust_replay_plan = fixture.plan_code_replay(
+        rust_reproducer_link["id"]
+            .as_str()
+            .expect("Rust reproducer ID"),
+    );
+    let rust_replay_receipt = fixture.execute_code(&rust_replay_plan, 1);
+    assert_eq!(rust_replay_receipt["outcome"], "failed");
+    assert_eq!(rust_replay_receipt["calls"]["consumed"], 2);
+    assert_eq!(
+        fs::read(fixture.workspace.join("src/lib.rs")).expect("live Rust source after fuzzing"),
+        rust_source_before
     );
     assert_no_target_call(&fixture.target);
 }

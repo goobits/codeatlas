@@ -53,7 +53,7 @@ impl WorkloadAdapter for CodeWorkloadAdapter {
                 engine_version: plan.body.engine.version.clone(),
                 engine_probe_arguments: self.input.engine_probe_arguments.clone(),
                 prepare: self.input.prepare.clone(),
-                delegated: Vec::new(),
+                delegated: self.input.delegated.clone(),
                 service: None,
                 workload: self.input.workload.clone(),
                 client_proxy: None,
@@ -268,6 +268,7 @@ mod tests {
             CodeHarnessInput {
                 image_owner: "fixture".to_string(),
                 prepare: Vec::new(),
+                delegated: Vec::new(),
                 workload: crate::execution::WorkloadCommand {
                     owner: "fixture".to_string(),
                     executable: "/usr/bin/fixture".to_string(),

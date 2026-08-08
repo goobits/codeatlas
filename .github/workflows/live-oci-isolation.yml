@@ -28,6 +28,8 @@ jobs:
       BUILD_IMAGE: rust@sha256:c4a364ddbf684fe038e6fa6a4f25b30c8dc85247423e0e660676ece0d17be4a2
       # python:3.10.20-slim-bookworm
       PYTHON_BASE_IMAGE: python@sha256:ff7161e2b8e2a56fc6a62a6099ff8feb72f1a6dbae9860cdcb9a6c65cf4c6be9
+      # rust:1.97.1-slim-bookworm
+      RUST_BASE_IMAGE: rust@sha256:96c0af8cf054fd006435089f0076729716784ec9be485bd655de59c55df105ce
       # moby/buildkit:buildx-stable-1
       BUILDKIT_IMAGE: moby/buildkit@sha256:2f5adac4ecd194d9f8c10b7b5d7bceb5186853db1b26e5abd3a657af0b7e26ec
       # registry:3.0.0
@@ -129,6 +131,7 @@ jobs:
             --socket /var/run/docker.sock \
             --build-image "$BUILD_IMAGE" \
             --python-base-image "$PYTHON_BASE_IMAGE" \
+            --rust-base-image "$RUST_BASE_IMAGE" \
             --buildkit-image "$BUILDKIT_IMAGE" \
             --registry-image "$REGISTRY_IMAGE" \
             --platform linux/amd64 \
@@ -211,6 +214,9 @@ jobs:
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/code-fuzz-python-workload.oci.tar
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/code-fuzz-python-workload.docker.tar
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/code-fuzz-python-workload.oci.tar.metadata.json
+            ${{ env.CODEATLAS_LIVE_OUTPUT }}/code-fuzz-rust-workload.oci.tar
+            ${{ env.CODEATLAS_LIVE_OUTPUT }}/code-fuzz-rust-workload.docker.tar
+            ${{ env.CODEATLAS_LIVE_OUTPUT }}/code-fuzz-rust-workload.oci.tar.metadata.json
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/image-build.logs
             ${{ env.CODEATLAS_LIVE_OUTPUT }}/logs
           if-no-files-found: warn

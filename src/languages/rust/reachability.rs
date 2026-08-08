@@ -20,7 +20,7 @@ use resolver::{
 type ModuleKey = (ProjectId, String);
 const EXTRACTOR: &str = "codeatlas.rust";
 
-mod cargo;
+pub(super) mod cargo;
 mod contexts;
 mod resolver;
 

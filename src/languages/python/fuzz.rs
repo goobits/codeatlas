@@ -1,7 +1,4 @@
-use crate::domain::{
-    CallableBody, CallableKind, CallableSignature, ParameterRequirement, ParameterRole,
-    ReceiverRequirement, SemanticLiteral, SemanticType, StringEncoding,
-};
+use crate::domain::{CallableSignature, SemanticLiteral, SemanticType, StringEncoding};
 use crate::execution::{WorkloadCommand, WorkloadRuntimeFile};
 use crate::fuzz::code::CodeFuzzInputValue;
 use crate::languages::{
@@ -16,9 +13,11 @@ const STRATEGY_SCHEMA_VERSION: &str = "codeatlas.python-fuzz-strategy/v1";
 const HYPOTHESIS_VERSION: &str = "6.165.2";
 const PYTHON_EXECUTABLE: &str = "/usr/local/bin/python3";
 const HARNESS_PATH: &str = "code-fuzz/python_harness.py";
+const RUNTIME_SUPPORT_PATH: &str = "code-fuzz/runtime_support.py";
 const STRATEGY_PATH: &str = "code-fuzz/strategy.json";
 const MAX_MATERIALIZED_LENGTH: u64 = 4_096;
 const HARNESS: &[u8] = include_bytes!("fuzz_harness.py");
+const RUNTIME_SUPPORT: &[u8] = include_bytes!("../../fuzz/code/runtime_support.py");
 
 #[derive(Serialize)]
 #[serde(deny_unknown_fields)]
@@ -79,10 +78,11 @@ pub(in crate::languages) fn generate_harness(
     };
     let strategy = serde_json_canonicalizer::to_vec(&strategy)
         .context("canonicalize Python code fuzz strategy")?;
-    let project_mount = project_mount(request.project)?;
+    let project_mount = crate::languages::code_fuzz::project_mount(request.project)?;
     let input = crate::fuzz::code::CodeHarnessInput {
         image_owner: "code_fuzz_workload".to_string(),
         prepare: Vec::new(),
+        delegated: Vec::new(),
         workload: WorkloadCommand {
             owner: "code_fuzz_engine".to_string(),
             executable: PYTHON_EXECUTABLE.to_string(),
@@ -106,6 +106,10 @@ pub(in crate::languages) fn generate_harness(
             WorkloadRuntimeFile {
                 path: HARNESS_PATH.to_string(),
                 contents: HARNESS.to_vec(),
+            },
+            WorkloadRuntimeFile {
+                path: RUNTIME_SUPPORT_PATH.to_string(),
+                contents: RUNTIME_SUPPORT.to_vec(),
             },
             WorkloadRuntimeFile {
                 path: STRATEGY_PATH.to_string(),
@@ -138,41 +142,21 @@ fn unsupported_reason(
     request: &CodeFuzzHarnessRequest<'_>,
     signature: &CallableSignature,
 ) -> Option<String> {
-    if signature.kind != CallableKind::Function
-        || signature.body != CallableBody::Present
-        || signature.receiver.requirement != ReceiverRequirement::None
-        || !signature.type_parameters.is_empty()
-    {
+    if !crate::languages::code_fuzz::requires_concrete_free_function(signature) {
         return Some("python_v1_requires_a_concrete_free_function".to_string());
     }
     if !is_identifier(&request.contract.symbol) {
         return Some("python_v1_requires_one_direct_import_name".to_string());
     }
-    if signature.parameters.iter().any(|parameter| {
-        parameter.requirement != ParameterRequirement::Required
-            || !matches!(
-                parameter.role,
-                ParameterRole::Positional
-                    | ParameterRole::PositionalOnly
-                    | ParameterRole::PositionalOrNamed
-            )
-            || !supports_type(&parameter.semantic_type)
-    }) || !supports_type(&signature.result)
+    if signature
+        .parameters
+        .iter()
+        .any(|parameter| !supports_type(&parameter.semantic_type))
+        || !supports_type(&signature.result)
     {
         return Some("python_v1_primitive_signature_set_not_satisfied".to_string());
     }
-    let expected_paths = signature
-        .parameters
-        .iter()
-        .map(|parameter| format!("parameter:{}", parameter.position))
-        .collect::<std::collections::BTreeSet<_>>();
-    let actual_paths = request
-        .signature
-        .dimensions
-        .iter()
-        .map(|dimension| dimension.path.clone())
-        .collect::<std::collections::BTreeSet<_>>();
-    (expected_paths != actual_paths)
+    (!crate::languages::code_fuzz::has_one_dimension_per_parameter(request, signature))
         .then(|| "python_v1_requires_one_corpus_dimension_per_parameter".to_string())
 }
 
@@ -214,22 +198,6 @@ fn module_name(path: &str) -> Result<String> {
     Ok(parts.join("."))
 }
 
-fn project_mount(project: &crate::config::ResolvedAnalysisProject) -> Result<String> {
-    if project.report_root == "." {
-        return Ok("/codeatlas/workspace".to_string());
-    }
-    if project.report_root.is_empty()
-        || project.report_root.starts_with('/')
-        || project
-            .report_root
-            .split('/')
-            .any(|part| part.is_empty() || matches!(part, "." | ".."))
-    {
-        anyhow::bail!("Python code fuzz project root is not a safe workspace-relative path");
-    }
-    Ok(format!("/codeatlas/workspace/{}", project.report_root))
-}
-
 fn is_identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
     bytes
@@ -240,7 +208,10 @@ fn is_identifier(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{module_name, supports_type, HARNESS, HYPOTHESIS_VERSION, STRATEGY_SCHEMA_VERSION};
+    use super::{
+        module_name, supports_type, HARNESS, HYPOTHESIS_VERSION, RUNTIME_SUPPORT,
+        STRATEGY_SCHEMA_VERSION,
+    };
     use crate::domain::{SemanticType, StringEncoding};
 
     #[test]
@@ -261,25 +232,30 @@ mod tests {
     #[test]
     fn python_harness_protocol_identities_match_their_rust_owners() {
         let harness = std::str::from_utf8(HARNESS).expect("Python harness UTF-8");
-        for (name, value) in [
-            ("ADAPTER_SCHEMA", STRATEGY_SCHEMA_VERSION),
+        let runtime_support =
+            std::str::from_utf8(RUNTIME_SUPPORT).expect("Python runtime support UTF-8");
+        for (source, name, value) in [
+            (harness, "ADAPTER_SCHEMA", STRATEGY_SCHEMA_VERSION),
             (
+                runtime_support,
                 "RESULT_SCHEMA",
                 crate::fuzz::code::CODE_FUZZ_HARNESS_RESULT_SCHEMA_VERSION,
             ),
             (
+                runtime_support,
                 "RESULT_PATH",
                 crate::fuzz::code::CODE_FUZZ_HARNESS_RESULT_PATH,
             ),
             (
+                runtime_support,
                 "PERMIT_SCHEMA",
                 crate::execution::CALL_PERMIT_PROTOCOL_SCHEMA_VERSION,
             ),
-            ("EXPECTED_HYPOTHESIS", HYPOTHESIS_VERSION),
+            (harness, "EXPECTED_HYPOTHESIS", HYPOTHESIS_VERSION),
         ] {
             assert!(
-                harness.contains(&format!("{name} = \"{value}\"")),
-                "Python harness {name} drifted from its Rust owner"
+                source.contains(&format!("{name} = \"{value}\"")),
+                "Python runtime {name} drifted from its Rust owner"
             );
         }
     }

@@ -1,7 +1,9 @@
 # Sandboxed callable code fuzzing
 
 Status: Accepted follow-on; Phases 1A and 1B and the Python Phase 2 adapter are
-complete, while the Rust and JavaScript/TypeScript Phase 2 adapters remain
+complete; the Rust Phase 2 implementation passes local generation, syntax,
+type-check, planning, and image-contract gates but awaits target-observed OCI
+proof; the JavaScript/TypeScript Phase 2 adapter remains
 
 Decision scope: Deterministic boundary corpora, language harnesses, native
 engine adapters, and `fuzz code`
@@ -15,6 +17,11 @@ Depends on:
   isolation backend remains a hard prerequisite for harness execution
 
 ## Decision
+
+This proposal inherits the umbrella's **Defensive user-safety purpose**. Its
+only runtime scope is release qualification of CodeAtlas or an exact
+owner-provided disposable fixture; unrelated, third-party, remote, and
+production targets are outside the product contract and remain unexecutable.
 
 CodeAtlas will fuzz supported callables in Rust, Python, JavaScript, and
 TypeScript by consuming the accepted structured callable evidence and execution
@@ -259,11 +266,16 @@ Python bytecode, Node caches, and fuzz corpora live under external scratch/cache
 roots. The consumer checkout is read-only and never gains a `fuzz/` directory,
 dependency, fixture, or generated test.
 
-Candidate native engines include:
+Adopted native engines include:
 
-- Rust structure-aware fuzzing behind a pinned cargo-fuzz/libFuzzer toolchain.
+- Rust typed generation and shrinking behind pinned proptest 1.11.0. One
+  checked-in engine manifest and lock own provisioning; planning adds only the
+  exact Cargo package/path binding for the read-only target. The runtime image
+  may extend that base with an owner's exact dependency cache, while an
+  unavailable dependency remains a visible execution failure rather than a
+  network fallback.
 - Python property generation and shrinking behind pinned Hypothesis.
-- JavaScript/TypeScript property generation and shrinking behind pinned
+- JavaScript/TypeScript property generation and shrinking will use pinned
   fast-check or an equivalently capable exact adapter.
 
 The adapter owns translation only. CodeAtlas owns target identity, input schema,
@@ -376,8 +388,10 @@ source files into the checkout.
   reported as `alternate_behavior`, never production-path coverage.
 - Boundary corpus ordering and seeded replay are exact for capable engines.
 - The target never observes a call without a kernel permit.
-- Checkout, home, absolute, traversal, symlink, `/tmp`, network, and subprocess
-  escape attempts fail under the accepted isolation suite.
+- Controlled negative isolation fixtures prove that a harness cannot write the
+  checkout or home, traverse or follow symlinks outside scratch, use ambient
+  `/tmp`, reach an unplanned network destination, or start an unplanned
+  subprocess.
 - Sandbox absence blocks before target invocation.
 - Every automatic failure identifies its oracle and minimized reproducer.
 - CodeAtlas dogfood creates no source-adjacent state or fake public library.
@@ -567,7 +581,8 @@ Clippy, schema/spec drift, eight-lane self-dogfood with zero gates, and a
 ## Phase 2: Rust, Python, JavaScript, and TypeScript adapters
 
 Status: [ ] In progress; Python is complete with target-observed hosted proof,
-while Rust and the JavaScript/TypeScript boundary remain pending
+Rust passes every locally knowable gate and awaits the exact hosted proof, and
+the JavaScript/TypeScript boundary remains pending
 
 Current Python checkpoint is included in the exact combined measurement above.
 Remaining Rust plus JavaScript/TypeScript adapter work is forecast at
@@ -580,14 +595,17 @@ escape suite; capability evidence names unsupported engine behavior.
 
 ```text
 + containers/code-fuzz-python/{Containerfile,Containerfile.dockerignore}
++ containers/code-fuzz-rust/{Containerfile,Containerfile.dockerignore,engine.rs}
 + src/languages/ecmascript/fuzz.rs
 + src/languages/python/fuzz.rs
 + src/languages/python/{fuzz_harness.py,fuzz_requirements.txt}
 + src/languages/rust/fuzz.rs
-~ .github/workflows/live-oci-isolation.yml
-~ Cargo.toml
-~ Cargo.lock
-~ package.json
++ src/languages/rust/{fuzz_cargo.lock,fuzz_cargo.toml,fuzz_driver.py,fuzz_harness.rs.tpl}
+ ~ .github/workflows/live-oci-isolation.yml
+ ~ Cargo.toml
+ ~ Cargo.lock
+~ codeatlas.json
+ ~ package.json
 ~ src/languages/code_fuzz.rs
 ~ src/languages/ecmascript/mod.rs
 ~ src/languages/python/mod.rs
@@ -597,7 +615,7 @@ escape suite; capability evidence names unsupported engine behavior.
 ~ src/fuzz/code/runner.rs
 ~ src/external_tool.rs
 ~ src/tests/callable_contract.rs
-+ tasks/build-python-workload.js
++ tasks/build-workload.js
 - tasks/build-http-workload.js
 ~ tasks/check-isolation-live.js
 ~ tests/container-image-build.test.js
@@ -605,6 +623,24 @@ escape suite; capability evidence names unsupported engine behavior.
 ~ tests/code_fuzz_cli.rs
 ~ tests/fixtures/code_fuzz/
 ```
+
+Local Rust checkpoint (2026-08-08): the adapter reuses the accepted callable
+contract, corpus, Cargo metadata owner, shared permit transport, execution
+limits, artifact store, and workload runner. It supports the exact v1 Copy
+primitive set and emits deterministic block evidence for every other Rust
+shape. Zero-call planning is byte-stable, records one proptest engine and one
+exact delegated Cargo command, and creates neither `Cargo.lock` nor `target/`
+in the consumer checkout. Ten focused Rust unit tests, five code-fuzz CLI
+integrations, 16 image/orchestration tests, Python syntax checks, generated
+harness parsing, and an external offline Cargo type-check pass. The type-check
+caught and fixed the missing `Read` trait import before remote dispatch. The
+full local signoff then used CodeAtlas itself to identify the workload image's
+Cargo entrypoint as an undeclared tooling root; `codeatlas.json` now declares
+that exact root and the repeated self-audit reports 304 advisory findings with
+zero gates. The warning-denying Clippy surface and 435-file package pass. The
+first incomplete Rust gate is now target-observed generated, reduction, retry,
+and replay execution in the digest-pinned workload image; no live capability
+is inferred from the local checks.
 
 ## Phase 3: Self-dogfood, consolidation, and release hardening
 

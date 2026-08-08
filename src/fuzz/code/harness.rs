@@ -19,6 +19,7 @@ pub(crate) const CODE_FUZZ_HARNESS_RESULT_PATH: &str = "control/code-result.json
 pub(crate) struct CodeHarnessInput {
     pub image_owner: String,
     pub prepare: Vec<WorkloadCommand>,
+    pub delegated: Vec<WorkloadCommand>,
     pub workload: WorkloadCommand,
     pub engine_probe_arguments: Vec<String>,
     pub runtime_files: Vec<WorkloadRuntimeFile>,
@@ -59,6 +60,7 @@ impl CodeHarnessInput {
         let mut commands = self
             .prepare
             .iter()
+            .chain(&self.delegated)
             .chain(std::iter::once(&self.workload))
             .map(|command| managed_command_evidence(&command.owner, command))
             .collect::<Result<Vec<_>>>()?;
@@ -584,6 +586,7 @@ pub(crate) fn sample_code_fuzz_workload(
     let input = CodeHarnessInput {
         image_owner: "fixture".to_string(),
         prepare: Vec::new(),
+        delegated: Vec::new(),
         workload: WorkloadCommand {
             owner: "fixture".to_string(),
             executable: "/usr/bin/fixture".to_string(),

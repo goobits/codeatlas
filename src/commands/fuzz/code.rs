@@ -484,6 +484,7 @@ fn unavailable_harness() -> CodeHarnessInput {
     CodeHarnessInput {
         image_owner: "code_fuzz_workload".to_string(),
         prepare: Vec::new(),
+        delegated: Vec::new(),
         workload: crate::execution::WorkloadCommand {
             owner: "code_fuzz_engine".to_string(),
             executable: "/usr/bin/false".to_string(),

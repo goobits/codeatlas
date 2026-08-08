@@ -154,6 +154,18 @@ pub(crate) fn parse_module_info(
     })
 }
 
+pub(super) fn has_public_top_level_function(source: &str, symbol: &str) -> Result<bool> {
+    let syntax = syn::parse_file(source)?;
+    Ok(syntax.items.iter().any(|item| {
+        matches!(
+            item,
+            syn::Item::Fn(function)
+                if function.sig.ident == symbol
+                    && matches!(function.vis, syn::Visibility::Public(_))
+        )
+    }))
+}
+
 fn item_symbol_visibility(item: &syn::Item) -> Option<(String, RustVisibility)> {
     match item {
         syn::Item::Const(item) => Some((item.ident.to_string(), rust_visibility(&item.vis))),

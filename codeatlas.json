@@ -10,6 +10,11 @@
           "role": "production",
           "scope": "runtime",
           "entrypoints": ["src/main.rs"]
+        },
+        "rust-fuzz-image": {
+          "role": "tooling",
+          "scope": "runtime",
+          "entrypoints": ["containers/code-fuzz-rust/engine.rs"]
         }
       }
     },

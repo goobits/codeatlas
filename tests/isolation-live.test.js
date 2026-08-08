@@ -40,6 +40,7 @@ test('hosted isolation is manual, finite, least-authority, and immutable', () =>
 	for (const imageVariable of [
 		'BUILD_IMAGE',
 		'PYTHON_BASE_IMAGE',
+		'RUST_BASE_IMAGE',
 		'BUILDKIT_IMAGE',
 		'REGISTRY_IMAGE'
 	]) {
@@ -87,6 +88,7 @@ test('live isolation accepts one exact bounded runner contract', () => {
 		'--socket', '/var/run/docker.sock',
 		'--build-image', `docker.io/library/rust@sha256:${digest}`,
 		'--python-base-image', `docker.io/library/python@sha256:${digest}`,
+		'--rust-base-image', `docker.io/library/rust@sha256:${digest}`,
 		'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
 		'--registry-image', `docker.io/library/registry@sha256:${registryDigest}`,
 		'--platform', 'linux/amd64',
@@ -101,6 +103,7 @@ test('live isolation accepts one exact bounded runner contract', () => {
 			'--socket', '/var/run/docker.sock',
 			'--build-image', 'rust:latest',
 			'--python-base-image', `python@sha256:${digest}`,
+			'--rust-base-image', `rust@sha256:${digest}`,
 			'--buildkit-image', `moby/buildkit@sha256:${buildkitDigest}`,
 			'--registry-image', `registry@sha256:${registryDigest}`,
 			'--platform', 'linux/amd64',
@@ -175,12 +178,15 @@ test('live orchestration builds all images through one owner and one import each
 	assert.match(source, /http-workload\.docker\.tar/)
 	assert.match(source, /code-fuzz-python-workload\.oci\.tar/)
 	assert.match(source, /code-fuzz-python-workload\.docker\.tar/)
+	assert.match(source, /code-fuzz-rust-workload\.oci\.tar/)
+	assert.match(source, /code-fuzz-rust-workload\.docker\.tar/)
 	assert.equal(source.match(/buildContainerImages\(/g)?.length, 1)
 	assert.match(source, /probeSpecification\(/)
-	assert.equal(source.match(/pythonWorkloadSpecification\(/g)?.length, 2)
+	assert.equal(source.match(/workloadSpecification\(/g)?.length, 3)
 	assert.match(source, /probe_import_archive_cleanup_verified/)
 	assert.match(source, /http_workload_import_archive_cleanup_verified/)
-	assert.match(source, /code_workload_import_archive_cleanup_verified/)
+	assert.match(source, /python_code_workload_import_archive_cleanup_verified/)
+	assert.match(source, /rust_code_workload_import_archive_cleanup_verified/)
 	assert.doesNotMatch(source, /'image',\s*'load',[\s\S]{0,100}\barchive\b/)
 })
 
